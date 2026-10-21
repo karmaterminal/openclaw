@@ -7,6 +7,7 @@ import {
 } from "../../agents/subagents/registry/subagent-continuation-reset-retention.js";
 import { killSubagentRunAdmin } from "../../agents/subagents/registry/subagent-control-kill.js";
 import type { SubagentRunRecord } from "../../agents/subagents/registry/subagent-registry.types.js";
+import { isSessionRecipientAuthorityCurrent } from "../../config/sessions/session-accessor.js";
 import { readSessionEntryReadOnlyInWorker } from "../../config/sessions/session-entry-read-runtime.js";
 import { resolveAllAgentSessionStoreTargetsSync } from "../../config/sessions/targets.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
@@ -17,16 +18,44 @@ import {
 } from "../../infra/session-delivery-queue-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
+import { parseContinuationRecipientAuthorityBinding } from "./recipient-authority-binding.js";
 
 const log = createSubsystemLogger("continuation/reset-retention");
 
 type RetentionOutcome = "adopted" | "aborted" | "orphaned";
 
+/**
+ * False when the run's captured recipient authority for the reset session is no longer current
+ * (delete, owner change or visibility narrowing advanced the epoch): no later head may adopt it.
+ */
+function isRetainedRecipientAuthorityCurrent(
+  entry: SubagentRunRecord,
+  mark: NonNullable<SubagentRunRecord["continuationResetRetention"]>,
+  storePath: string | undefined,
+): boolean {
+  const parsed = parseContinuationRecipientAuthorityBinding(
+    entry.continuationRecipientAuthorityBinding,
+  );
+  const authority =
+    parsed.state === "valid" && parsed.binding.selection === "selected"
+      ? parsed.binding.recipients.find((recipient) => recipient.sessionKey === mark.sessionKey)
+          ?.authority
+      : undefined;
+  return (
+    !authority ||
+    isSessionRecipientAuthorityCurrent(
+      { agentId: mark.agentId, sessionKey: mark.sessionKey, ...(storePath ? { storePath } : {}) },
+      authority,
+    )
+  );
+}
+
 function classifyRetention(
   mark: NonNullable<SubagentRunRecord["continuationResetRetention"]>,
   row: SessionEntry | undefined,
+  authorityCurrent: boolean,
 ): RetentionOutcome | undefined {
-  if (!row) {
+  if (!row || !authorityCurrent) {
     return "orphaned";
   }
   if (row.lifecycleRevision === mark.toRevision) {
@@ -37,9 +66,10 @@ function classifyRetention(
 
 /**
  * Settles pending marks: `resetId` selects one reset's marks (its own flow), `markedBefore`
- * selects marks a previous process left (boot). A mark whose session row holds neither revision
- * stays pending and keeps its results held: a third lifecycle owns that row, and releasing to it
- * is not proven.
+ * selects marks a previous process left (boot). Successor revision: adopted. Replaced revision:
+ * aborted (the reset did not commit). Missing row or stale recipient authority: orphaned. A row
+ * holding a third revision under the same authority stays pending and keeps its results held:
+ * releasing to that head is not proven.
  */
 export async function resolveContinuationResetRetentions(params: {
   cfg: OpenClawConfig;
@@ -77,8 +107,8 @@ export async function resolveContinuationResetRetentions(params: {
       continue;
     }
     const rowKey = `${mark.agentId}\u0000${mark.sessionKey}`;
+    const storePath = params.storePath ?? storePaths.get(mark.agentId);
     if (!rows.has(rowKey)) {
-      const storePath = params.storePath ?? storePaths.get(mark.agentId);
       rows.set(
         rowKey,
         await readSessionEntryReadOnlyInWorker({
@@ -88,7 +118,11 @@ export async function resolveContinuationResetRetentions(params: {
         }),
       );
     }
-    const state = classifyRetention(mark, rows.get(rowKey));
+    const state = classifyRetention(
+      mark,
+      rows.get(rowKey),
+      isRetainedRecipientAuthorityCurrent(entry, mark, storePath),
+    );
     if (!state) {
       log.warn(
         `[continuation:reset-retention] unresolved: session=${mark.sessionKey} holds neither revision of reset ${mark.resetId}; run=${entry.runId} keeps its results held`,
