@@ -1,8 +1,8 @@
-import { subagentRuns } from "../../agents/subagents/registry/subagent-registry-memory.js";
 // Continuation (karmaterminal): a fresh Gateway process for the reset-retention restart proof.
 // Restores the subagent registry from SQLite, runs the boot resolution the Gateway runs after
 // registry activation, replays each run's held return rows once, and prints what it saw as JSON.
 // Arguments: one or more `<sessionKey> <runId> <text>` triples.
+import { subagentRuns } from "../../agents/subagents/registry/subagent-registry-memory.js";
 import { initSubagentRegistry } from "../../agents/subagents/registry/subagent-registry.js";
 import { captureRuntimeConfigAsyncReader, getRuntimeConfig } from "../../config/config.js";
 import { deliverQueuedSessionDeliveryCore } from "../../gateway/server-restart-sentinel-delivery.js";
