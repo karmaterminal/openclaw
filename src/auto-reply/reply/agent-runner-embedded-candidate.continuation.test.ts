@@ -169,6 +169,7 @@ function runCandidate(
     runId: "run-fallback",
     getLifecycleGeneration: () => "generation-1",
     onLifecycleGeneration: vi.fn(),
+    hasAgentRunStarted: () => false,
     suppressQueuedUserPersistenceForCandidate: false,
     userTurnTranscriptRecorder: undefined,
     contextEngineLogicalTurnLease: {} as never,
