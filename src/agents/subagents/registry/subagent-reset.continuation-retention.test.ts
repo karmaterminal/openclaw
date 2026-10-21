@@ -1,13 +1,11 @@
 // Continuation (karmaterminal): F4 option 1. /new and /reset replace the head and keep the
 // continuation-elected delegate tree; ordinary children stay upstream-governed. Real reset entry
 // points, registry, SQLite state and delivery rows; only the fixture's gateway/announce edges are
-// doubles.
+// doubles. Fresh-process recovery: subagent-reset.continuation-retention.restart.test.ts.
 // Preserve module setup before modules that consume it.
 // oxfmt-ignore
 import { useSubagentControlFixture } from "./subagent-control.test-support.js";
 import { beforeEach, expect, it, vi } from "vitest";
-import { runNodeScript } from "../../../../test/helpers/run-node-script.js";
-import { captureContinuationRecipientAuthorities } from "../../../auto-reply/continuation/recipient-authority-binding.js";
 import {
   prepareContinuationResetRetention,
   resolveContinuationResetRetentions,
@@ -16,78 +14,36 @@ import { finalizeInboundContext } from "../../../auto-reply/reply/inbound-contex
 import { stopSessionResetSubagents } from "../../../auto-reply/reply/session-reset-cleanup.js";
 import { initSessionState } from "../../../auto-reply/reply/session.js";
 import { captureRuntimeConfigAsyncReader, getRuntimeConfig } from "../../../config/config.js";
-import {
-  loadSessionEntry,
-  patchSessionEntryCore,
-} from "../../../config/sessions/session-accessor.js";
+import { loadSessionEntry } from "../../../config/sessions/session-accessor.js";
 import { createChatAbortContext } from "../../../gateway/server-methods/chat.abort.test-helpers.js";
 import { sessionDeleteHandlers } from "../../../gateway/server-methods/sessions-delete.js";
 import { sessionMutationHandlers } from "../../../gateway/server-methods/sessions-mutations.js";
-import { deliverQueuedSessionDeliveryCore } from "../../../gateway/server-restart-sentinel-delivery.js";
 import { registerInternalHook, unregisterInternalHook } from "../../../hooks/internal-hooks.js";
-import {
-  loadPendingSessionDeliveries,
-  SessionDeliveryDeferredError,
-} from "../../../infra/session-delivery-queue-storage.js";
-import { resolveSystemEventQueueKey } from "../../../infra/system-event-ownership.js";
-import { peekSystemEventEntries } from "../../../infra/system-events.js";
-import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.js";
-import { routeSubagentContinuationReturn } from "../../subagent-announce.continuation-return.js";
 import { killSubagentRunAdmin } from "./subagent-control-kill.js";
 import { subagentRuns } from "./subagent-registry-memory.js";
-import { mutateSubagentRuns } from "./subagent-registry-persistence.js";
-import { markSubagentRunPausedAfterYield } from "./subagent-registry-run-pause.js";
-import { registerSubagentRun } from "./subagent-registry.js";
-import { writeChildSession } from "./subagent-registry.persistence.test-support.js";
-import type { SubagentRunRecord } from "./subagent-registry.types.js";
+import {
+  childKey,
+  createResetRetentionFixture,
+  parentKey,
+} from "./subagent-reset.continuation-retention.test-support.js";
 import { resolveSubagentDisplayStatus } from "./subagent-session-metrics.js";
 
 const fixture = useSubagentControlFixture();
 beforeEach(async () => captureRuntimeConfigAsyncReader()());
-const parentKey = "agent:main:main";
-const childKey = (id: string) => "agent:main:subagent:" + id;
+const {
+  writeSession,
+  addChild,
+  returnFrom,
+  returnRows,
+  replay,
+  queuedEvents,
+  leavePendingRetention,
+} = createResetRetentionFixture(() => fixture.stateDir);
 const WAITING = "waiting for external continuation";
 
-const writeSession = (sessionKey: string, sessionId: string, lifecycleRevision?: string) =>
-  writeChildSession(fixture.stateDir, sessionKey, sessionId, lifecycleRevision);
 const displayStatus = (id: string) => resolveSubagentDisplayStatus(subagentRuns.get(id)!);
+const retentionState = (id: string) => subagentRuns.get(id)?.continuationResetRetention?.state;
 const readParent = (storePath: string) => loadSessionEntry({ storePath, sessionKey: parentKey });
-
-async function updateRun(runId: string, update: (draft: SubagentRunRecord) => void): Promise<void> {
-  await mutateSubagentRuns([runId], (rows) => {
-    const current = rows.get(runId);
-    if (!current) {
-      throw new Error("Retention fixture run missing");
-    }
-    const draft = structuredClone(current);
-    update(draft);
-    return { value: undefined, postimages: new Map([[runId, draft]]) };
-  });
-}
-
-/** A paused child of the parent; `elected` gives it a continuation recipient binding. */
-async function addChild(runId: string, elected: boolean, requester = parentKey): Promise<void> {
-  await writeSession(childKey(runId), runId);
-  await registerSubagentRun({
-    runId,
-    childSessionKey: childKey(runId),
-    childAgentId: "main",
-    sessionEntry: { sessionId: runId },
-    requesterSessionKey: requester,
-    requesterAgentId: "main",
-    requesterDisplayKey: requester,
-    task: runId,
-    cleanup: "keep",
-    expectsCompletionMessage: true,
-  });
-  const binding = elected ? await captureContinuationRecipientAuthorities([requester]) : undefined;
-  await updateRun(runId, (entry) => {
-    expect(markSubagentRunPausedAfterYield({ entry })).toBe(true);
-    if (binding) {
-      entry.continuationRecipientAuthorityBinding = binding;
-    }
-  });
-}
 
 function adminCall<P>(params: P) {
   const respond = vi.fn();
@@ -129,55 +85,6 @@ async function reset(boundary: "chat" | "rpc"): Promise<void> {
   expect(respond).toHaveBeenCalledWith(true, expect.objectContaining({ ok: true }), undefined);
 }
 
-/** The elected child's continuation return through the real router and producer. */
-async function returnFromElected(text: string, requester = parentKey) {
-  return await routeSubagentContinuationReturn({
-    cfg: getRuntimeConfig(),
-    continuationEnabled: true,
-    isContinuationChainDelegate: true,
-    maxChainLength: 10,
-    task: "elected",
-    taskLabel: "elected",
-    triggerMessage: text,
-    announceId: `announce:${text}`,
-    childSessionKey: childKey("elected"),
-    childAgentId: "main",
-    childRunId: "elected",
-    targetRequesterSessionKey: requester,
-    targetRequesterAgentId: "main",
-    continuationRecipientAuthorityBinding:
-      subagentRuns.get("elected")?.continuationRecipientAuthorityBinding,
-  });
-}
-
-async function returnRows() {
-  return (await loadPendingSessionDeliveries(captureOpenClawStateWorkerContext())).filter(
-    (row) => row.kind === "systemEvent" && row.continuationSourceRunId === "elected",
-  );
-}
-
-/** Replays one row through the real restart-sentinel delivery; returns how it settled. */
-async function replay(row: Awaited<ReturnType<typeof returnRows>>[number]) {
-  try {
-    await deliverQueuedSessionDeliveryCore({
-      deps: {} as never,
-      entry: row,
-      queueContext: captureOpenClawStateWorkerContext(),
-    });
-    return "returned";
-  } catch (error) {
-    if (error instanceof SessionDeliveryDeferredError) {
-      return error.heldByOwner ? "held" : error.awaitingAdoptionInMemory ? "queued" : "deferred";
-    }
-    throw error;
-  }
-}
-
-const parentEvents = (text: string, requester = parentKey) =>
-  peekSystemEventEntries(resolveSystemEventQueueKey(requester, "main")).filter(
-    (event) => event.text === text,
-  );
-
 it.each(["chat", "rpc"] as const)(
   "%s reset retains the continuation-elected child and still kills the ordinary child",
   async (boundary) => {
@@ -212,12 +119,12 @@ it("a return produced across the reset commit is held, then released once to the
   // command:reset runs after the reset's kill marked the tree and before its commit.
   const inFlight: Record<string, unknown> = {};
   const produceInFlight = async () => {
-    inFlight.handled = (await returnFromElected(text)).handled;
-    inFlight.queuedAtProducer = parentEvents(text).length;
-    const rows = await returnRows();
+    inFlight.handled = (await returnFrom("elected", text)).handled;
+    inFlight.queuedAtProducer = queuedEvents(text).length;
+    const rows = await returnRows("elected");
     inFlight.rows = rows.length;
     inFlight.replay = rows[0] ? await replay(rows[0]) : "missing";
-    inFlight.queuedAfterReplay = parentEvents(text).length;
+    inFlight.queuedAfterReplay = queuedEvents(text).length;
     inFlight.revision = readParent(storePath)?.lifecycleRevision;
   };
   registerInternalHook("command:reset", produceInFlight);
@@ -241,11 +148,11 @@ it("a return produced across the reset commit is held, then released once to the
     state: "adopted",
     toRevision: committed,
   });
-  const [row] = await returnRows();
+  const [row] = await returnRows("elected");
   expect(row).toBeDefined();
   expect(await replay(row!)).toBe("queued");
   expect(await replay(row!)).toBe("queued");
-  expect(parentEvents(text)).toEqual([expect.objectContaining({ sessionDeliveryAckId: row!.id })]);
+  expect(queuedEvents(text)).toEqual([expect.objectContaining({ sessionDeliveryAckId: row!.id })]);
 });
 
 it("a reset that kills but never commits releases its held return once to the unchanged head", async () => {
@@ -271,52 +178,31 @@ it("a reset that kills but never commits releases its held return once to the un
         agentId: "main",
         assertCurrent: () => {},
       });
-      await returnFromElected(text);
-      const [row] = await returnRows();
+      await returnFrom("elected", text);
+      const [row] = await returnRows("elected");
       replayInFlight = row ? await replay(row) : "missing";
       return killed;
     },
   );
   expect(replayInFlight).toBe("held");
-  expect(parentEvents(text)).toEqual([]);
+  expect(queuedEvents(text)).toEqual([]);
   await retention.resolve();
 
   expect(readParent(storePath)?.lifecycleRevision).toBe("before-reset");
   expect(displayStatus("ordinary")).toBe("killed");
   expect(displayStatus("elected")).toBe(WAITING);
-  expect(subagentRuns.get("elected")?.continuationResetRetention?.state).toBe("aborted");
-  const [row] = await returnRows();
+  expect(retentionState("elected")).toBe("aborted");
+  const [row] = await returnRows("elected");
   expect(await replay(row!)).toBe("queued");
   expect(await replay(row!)).toBe("queued");
-  expect(parentEvents(text)).toEqual([expect.objectContaining({ sessionDeliveryAckId: row!.id })]);
+  expect(queuedEvents(text)).toEqual([expect.objectContaining({ sessionDeliveryAckId: row!.id })]);
 });
-
-/** A reset that marked its tree and then died: nothing in this process resolves the mark. */
-async function leavePendingRetention(
-  storePath: string,
-  during?: () => Promise<void>,
-  requester = parentKey,
-) {
-  const retention = prepareContinuationResetRetention({
-    cfg: getRuntimeConfig(),
-    sessionKey: requester,
-    agentId: "main",
-    storePath,
-  });
-  await retention.stopSubagents(
-    { fromRevision: "before-reset", assertCurrent: () => {} },
-    async () => {
-      await during?.();
-    },
-  );
-  expect(subagentRuns.get("elected")?.continuationResetRetention?.state).toBe("pending");
-  return retention;
-}
 
 it("an explicit kill still stops a run a pending reset retained", async () => {
   const storePath = await writeSession(parentKey, "parent", "before-reset");
   await addChild("elected", true);
   await leavePendingRetention(storePath);
+  expect(retentionState("elected")).toBe("pending");
 
   const result = await killSubagentRunAdmin({
     cfg: getRuntimeConfig(),
@@ -334,14 +220,14 @@ it("delete stops a pending-retained run and its held return never reaches a new 
   const storePath = await writeSession(requester, "parent", "before-reset");
   await addChild("elected", true, requester);
   const text = "elected result before delete";
-  await leavePendingRetention(
-    storePath,
-    async () => {
-      await returnFromElected(text, requester);
-    },
+  await leavePendingRetention(storePath, {
     requester,
-  );
-  expect(await returnRows()).toHaveLength(1);
+    during: async () => {
+      await returnFrom("elected", text, requester);
+    },
+  });
+  expect(retentionState("elected")).toBe("pending");
+  expect(await returnRows("elected")).toHaveLength(1);
 
   const deletion = adminCall({ key: requester });
   await sessionDeleteHandlers["sessions.delete"]!(deletion.request);
@@ -350,93 +236,15 @@ it("delete stops a pending-retained run and its held return never reaches a new 
 
   await writeSession(requester, "new-head", "new-head-revision");
   // Delete advanced the recipient authority epoch: replay skips the row without queueing it.
-  const [held] = await returnRows();
+  const [held] = await returnRows("elected");
   expect(await replay(held!)).toBe("returned");
-  expect(parentEvents(text, requester)).toEqual([]);
+  expect(queuedEvents(text, requester)).toEqual([]);
   await resolveContinuationResetRetentions({
     cfg: getRuntimeConfig(),
     markedBefore: Date.now() + 1,
   });
 
-  expect(subagentRuns.get("elected")?.continuationResetRetention?.state).toBe("orphaned");
-  expect(await returnRows()).toEqual([]);
-  expect(parentEvents(text, requester)).toEqual([]);
+  expect(retentionState("elected")).toBe("orphaned");
+  expect(await returnRows("elected")).toEqual([]);
+  expect(queuedEvents(text, requester)).toEqual([]);
 });
-
-const bootChildEntry = new URL(
-  "../../../auto-reply/continuation/session-reset-retention.boot-child.test-support.ts",
-  import.meta.url,
-);
-
-/** A new Gateway process on the same state: registry restore, boot resolution, one replay. */
-async function bootFreshProcess(text: string, signal: AbortSignal) {
-  const env: NodeJS.ProcessEnv = { ...process.env, NO_COLOR: "1" };
-  for (const key of Object.keys(env)) {
-    if (key.startsWith("VITEST") || key === "NODE_OPTIONS") {
-      delete env[key];
-    }
-  }
-  const result = await runNodeScript(
-    (workerArgv) => [...workerArgv(bootChildEntry), parentKey, "elected", text],
-    env,
-    120_000,
-    { signal, maxBuffer: 4 * 1024 * 1024 },
-  );
-  expect(result.error, result.stderr).toBeUndefined();
-  expect(result.status, result.stderr).toBe(0);
-  const line = result.stdout
-    .trim()
-    .split("\n")
-    .findLast((candidate) => candidate.startsWith("{"));
-  expect(line, result.stdout + result.stderr).toBeDefined();
-  return JSON.parse(line!) as {
-    pid: number;
-    before?: string;
-    after?: string;
-    resolvedAt?: number;
-    rowIds: string[];
-    replays: string[];
-    events: string[];
-  };
-}
-
-it.for(["adopted", "aborted"] as const)(
-  "fresh processes resolve a reset that died before resolving (%s) exactly once",
-  async (outcome, { signal }) => {
-    const storePath = await writeSession(parentKey, "parent", "before-reset");
-    await addChild("elected", true);
-    const text = `elected result before the crash (${outcome})`;
-    const retention = await leavePendingRetention(storePath, async () => {
-      await returnFromElected(text);
-    });
-    if (outcome === "adopted") {
-      // The reset committed its successor; the process died before its resolution ran.
-      await patchSessionEntryCore({ storePath, sessionKey: parentKey }, (entry) => ({
-        ...entry,
-        lifecycleRevision: retention.successorRevision,
-      }));
-    }
-    const [row] = await returnRows();
-    expect(row).toBeDefined();
-
-    const first = await bootFreshProcess(text, signal);
-    const second = await bootFreshProcess(text, signal);
-
-    expect(first).toMatchObject({
-      before: "pending",
-      after: outcome,
-      rowIds: [row!.id],
-      replays: ["queued"],
-      events: [row!.id],
-    });
-    expect(second).toMatchObject({
-      before: outcome,
-      after: outcome,
-      resolvedAt: first.resolvedAt,
-      rowIds: [row!.id],
-      replays: ["queued"],
-      events: [row!.id],
-    });
-    expect(new Set([process.pid, first.pid, second.pid]).size).toBe(3);
-  },
-);

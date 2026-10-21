@@ -1,9 +1,10 @@
 import { subagentRuns } from "../../agents/subagents/registry/subagent-registry-memory.js";
 // Continuation (karmaterminal): a fresh Gateway process for the reset-retention restart proof.
 // Restores the subagent registry from SQLite, runs the boot resolution the Gateway runs after
-// registry activation, replays the held return rows once, and prints what it saw as JSON.
+// registry activation, replays each run's held return rows once, and prints what it saw as JSON.
+// Arguments: one or more `<sessionKey> <runId> <text>` triples.
 import { initSubagentRegistry } from "../../agents/subagents/registry/subagent-registry.js";
-import { getRuntimeConfig } from "../../config/config.js";
+import { captureRuntimeConfigAsyncReader, getRuntimeConfig } from "../../config/config.js";
 import { deliverQueuedSessionDeliveryCore } from "../../gateway/server-restart-sentinel-delivery.js";
 import {
   loadPendingSessionDeliveries,
@@ -14,49 +15,58 @@ import { peekSystemEventEntries } from "../../infra/system-events.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import { resolveContinuationResetRetentions } from "./session-reset-retention-resolve.js";
 
-const [sessionKey, runId, text] = process.argv.slice(2);
-if (!sessionKey || !runId || !text) {
-  throw new Error("usage: <sessionKey> <runId> <text>");
+const args = process.argv.slice(2);
+if (args.length === 0 || args.length % 3 !== 0) {
+  throw new Error("usage: (<sessionKey> <runId> <text>)+");
 }
+const targets = Array.from({ length: args.length / 3 }, (_, index) => ({
+  sessionKey: args[index * 3]!,
+  runId: args[index * 3 + 1]!,
+  text: args[index * 3 + 2]!,
+}));
 const bootedAt = Date.now();
+await captureRuntimeConfigAsyncReader()();
 await initSubagentRegistry();
-const before = subagentRuns.get(runId)?.continuationResetRetention;
-await resolveContinuationResetRetentions({ cfg: getRuntimeConfig(), markedBefore: bootedAt });
-const after = subagentRuns.get(runId)?.continuationResetRetention;
-const context = captureOpenClawStateWorkerContext();
-const rows = (await loadPendingSessionDeliveries(context)).filter(
-  (row) => row.kind === "systemEvent" && row.continuationSourceRunId === runId,
+const before = new Map(
+  targets.map(({ runId }) => [runId, subagentRuns.get(runId)?.continuationResetRetention?.state]),
 );
-const replays: string[] = [];
-for (const row of rows) {
-  try {
-    await deliverQueuedSessionDeliveryCore({
-      deps: {} as never,
-      entry: row,
-      queueContext: context,
-    });
-    replays.push("returned");
-  } catch (error) {
-    if (!(error instanceof SessionDeliveryDeferredError)) {
-      throw error;
+await resolveContinuationResetRetentions({ cfg: getRuntimeConfig(), markedBefore: bootedAt });
+const context = captureOpenClawStateWorkerContext();
+const pending = await loadPendingSessionDeliveries(context);
+const runs: Record<string, unknown> = {};
+for (const { sessionKey, runId, text } of targets) {
+  const rows = pending.filter(
+    (row) => row.kind === "systemEvent" && row.continuationSourceRunId === runId,
+  );
+  const replays: string[] = [];
+  for (const row of rows) {
+    try {
+      await deliverQueuedSessionDeliveryCore({
+        deps: {} as never,
+        entry: row,
+        queueContext: context,
+      });
+      replays.push("returned");
+    } catch (error) {
+      if (!(error instanceof SessionDeliveryDeferredError)) {
+        throw error;
+      }
+      replays.push(
+        error.heldByOwner ? "held" : error.awaitingAdoptionInMemory ? "queued" : "deferred",
+      );
     }
-    replays.push(
-      error.heldByOwner ? "held" : error.awaitingAdoptionInMemory ? "queued" : "deferred",
-    );
   }
-}
-const events = peekSystemEventEntries(resolveSystemEventQueueKey(sessionKey, "main"))
-  .filter((event) => event.text === text)
-  .map((event) => event.sessionDeliveryAckId);
-process.stdout.write(
-  `${JSON.stringify({
-    pid: process.pid,
-    before: before?.state,
-    after: after?.state,
-    resolvedAt: after?.resolvedAt,
+  const mark = subagentRuns.get(runId)?.continuationResetRetention;
+  runs[runId] = {
+    before: before.get(runId),
+    after: mark?.state,
+    resolvedAt: mark?.resolvedAt,
     rowIds: rows.map((row) => row.id),
     replays,
-    events,
-  })}\n`,
-);
+    events: peekSystemEventEntries(resolveSystemEventQueueKey(sessionKey, "main"))
+      .filter((event) => event.text === text)
+      .map((event) => event.sessionDeliveryAckId),
+  };
+}
+process.stdout.write(`${JSON.stringify({ pid: process.pid, runs })}\n`);
 process.exit(0);
