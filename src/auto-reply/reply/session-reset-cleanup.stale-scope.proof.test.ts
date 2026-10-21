@@ -12,6 +12,8 @@ import {
   peekSystemEvents,
   resetSystemEventsForTest,
 } from "../../infra/system-events.js";
+import { captureSessionTarget } from "../../sessions/session-controller.lifecycle.js";
+import { reserveSessionControllerSource } from "../../sessions/session-controller.mailbox.js";
 import { testing as controllerTesting } from "../../sessions/session-controller.test-support.js";
 import { resolveOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
@@ -230,5 +232,61 @@ it("interleaving: a replacement winning after the custody read, before its write
     await expect(resetWithGuard(scope)).rejects.toThrow("session changed before cleanup");
 
     expect((await readCustodyRecordForTest(delegate.recordId))?.status).toBe("queued");
+  });
+});
+
+it("negative: an agent-scoped reset never cancels another agent's custody, claims or timers among its keys", async () => {
+  await withResetState(async () => {
+    // Upstream's agent-scope fixture: the alpha reset receives a foreign beta key.
+    const foreignKey = "agent:beta:global";
+    const owned = await enqueuePendingDelegate("global", {
+      task: "alpha raw-key work",
+      delayMs: 60_000,
+    });
+    const foreign = await enqueuePendingDelegate(foreignKey, {
+      task: "beta work",
+      delayMs: 60_000,
+    });
+    const foreignClaim = seedLiveRuntime(foreignKey, "beta", "beta event");
+
+    await clearSessionResetRuntimeState(["global", foreignKey], {
+      agentId: "alpha",
+      reason: "reset",
+      sessionKey: "global",
+      assertCurrent: () => {},
+    });
+
+    expect((await readCustodyRecordForTest(owned.recordId))?.status, "owned").toBe("cancelled");
+    expect(peekSystemEvents("agent:beta:global")).toEqual(["beta event"]);
+    expect((await readCustodyRecordForTest(foreign.recordId))?.status, "beta custody").toBe(
+      "queued",
+    );
+    expect(foreignClaim.controller.signal.aborted, "beta claim").toBe(false);
+    expect(hasLiveContinuationTimerRefs(foreignKey), "beta timer").toBe(true);
+  });
+});
+
+it("negative: an agent-scoped reset leaves another agent's queued follow-up in its mailbox", async () => {
+  await withResetState(async (scope) => {
+    // Qualified keys only: a raw shared key names no agent (known ambiguity).
+    const ownKey = "agent:alpha:global";
+    const foreignKey = "agent:beta:global";
+    const reserveFollowup = (sessionKey: string, agentId: string) =>
+      reserveSessionControllerSource(sessionKey, {
+        target: captureSessionTarget({ storeScope: scope.storePath, sessionKey, agentId }),
+        policy: { mode: "followup" },
+      });
+    const own = reserveFollowup(ownKey, "alpha");
+    const foreign = reserveFollowup(foreignKey, "beta");
+
+    await clearSessionResetRuntimeState([ownKey, foreignKey], {
+      agentId: "alpha",
+      reason: "reset",
+      sessionKey: ownKey,
+      assertCurrent: () => {},
+    });
+
+    expect(own.abortSignal.aborted, "alpha follow-up").toBe(true);
+    expect(foreign.abortSignal.aborted, "beta follow-up").toBe(false);
   });
 });

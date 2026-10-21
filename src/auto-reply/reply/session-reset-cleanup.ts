@@ -131,6 +131,19 @@ function interruptsContinuationAuthority(reason: SessionRuntimeCleanupReason): b
   return reason === "new" || reason === "reset" || reason === "delete";
 }
 
+/**
+ * Reset clears only keys the resetting agent owns: custody, follow-up mailboxes,
+ * claims and timers for another agent's qualified key stay put. An unqualified
+ * key (raw `global`, a legacy alias, a session id) names no agent and counts as
+ * the resetting agent's own. Custody and mailboxes under a raw shared key carry
+ * no agent dimension, so that case is NOT proven cross-agent safe: another
+ * agent's work under the same raw key is cleared too. Known ambiguity.
+ */
+function isOwnedByResettingAgent(key: string, agentId: string): boolean {
+  const owner = parseAgentSessionKey(key)?.agentId;
+  return !owner || owner === normalizeAgentId(agentId);
+}
+
 /** Clears queued follow-ups and pending system events visible to the resetting agent. */
 export async function clearSessionResetRuntimeState(
   keys: Array<string | undefined>,
@@ -144,14 +157,14 @@ export async function clearSessionResetRuntimeState(
   },
 ): Promise<void> {
   opts.assertCurrent();
-  const normalizedKeys = [
+  const ownedKeys = [
     ...new Set(keys.flatMap((key) => (typeof key === "string" && key.trim() ? [key.trim()] : []))),
-  ];
+  ].filter((key) => isOwnedByResettingAgent(key, opts.agentId));
   const interruptContinuations = interruptsContinuationAuthority(opts.reason);
   if (interruptContinuations) {
     // Durable authority must close before timers, waiters, or queues are destroyed.
     // A persistence failure leaves every transient claim path intact for retry.
-    for (const key of normalizedKeys) {
+    for (const key of ownedKeys) {
       await cancelSessionContinuations(key, opts.assertCurrent);
     }
     opts.assertCurrent();
@@ -163,7 +176,12 @@ export async function clearSessionResetRuntimeState(
     clearPromptCacheObservations(opts.activeReplySessionId);
     clearEmbeddedSessionForkSnapshot(opts.activeReplySessionId);
   }
-  const cleared = clearSessionQueues(keys, opts.controllerTarget, undefined, opts.assertCurrent);
+  const cleared = clearSessionQueues(
+    ownedKeys,
+    opts.controllerTarget,
+    undefined,
+    opts.assertCurrent,
+  );
   for (const key of cleared.keys) {
     opts.assertCurrent();
     if (interruptContinuations) {
