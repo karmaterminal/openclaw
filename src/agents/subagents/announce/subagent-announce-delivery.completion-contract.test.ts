@@ -88,6 +88,14 @@ afterEach(() => {
 });
 
 const sentDeliveryStatus = { status: "sent", resultCount: 1 } as const;
+const noVisiblePayloadDeliveryStatus = {
+  requested: true,
+  attempted: false,
+  status: "suppressed",
+  succeeded: true,
+  reason: "no_visible_payload",
+  resultCount: 0,
+} as const;
 
 function createGatewayMock(response: Record<string, unknown> = {}, onCall?: () => void) {
   return vi.fn(async (opts: Parameters<typeof runtimeCallGateway>[0]) => {
@@ -335,7 +343,11 @@ describe("deliverSubagentAnnouncement completion delivery", () => {
   // These inputs differ only in the typed no-visible-result fact. Keep the
   // authority boundary on the fact rather than the placeholder wording.
   it("gates a reworded no-visible-result placeholder for channel completions", async () => {
-    const callGateway = createPayloadGatewayMock({ text: "NO_REPLY" });
+    // An exact NO_REPLY final sends nothing: the command reports a suppressed,
+    // no-visible-payload receipt (noVisiblePayloadStatus), not a sent one.
+    const callGateway = createGatewayMock({
+      result: { payloads: [{ text: "NO_REPLY" }], deliveryStatus: noVisiblePayloadDeliveryStatus },
+    });
     const childSessionKey = "agent:worker:subagent:reworded-placeholder";
     const result = await deliverSlackChannelAnnouncement({
       callGateway,
@@ -360,6 +372,29 @@ describe("deliverSubagentAnnouncement completion delivery", () => {
       reason: "visible_reply_missing",
       error: "completion agent did not produce a visible reply",
     });
+  });
+
+  it("counts a sent visible final as delivered for the same channel completion", async () => {
+    const callGateway = createPayloadGatewayMock({ text: "The child finished the report." });
+    const childSessionKey = "agent:worker:subagent:reworded-placeholder-control";
+    const result = await deliverSlackChannelAnnouncement({
+      callGateway,
+      directIdempotencyKey: "announce-channel-subagent-reworded-placeholder-control",
+      sourceTool: "subagent_announce",
+      sourceSessionKey: childSessionKey,
+      runtimeConfig: { messages: { groupChat: { visibleReplies: "automatic" } } },
+      internalEvents: taskCompletionEvents({
+        childSessionKey,
+        childSessionId: "child-session-id",
+        taskLabel: "reworded placeholder completion smoke",
+        status: "ok",
+        statusLabel: "completed successfully",
+        result: "(no result yet; child still running)",
+        noVisibleResult: true,
+      }),
+    });
+
+    expectRecordFields(result, { delivered: true, path: "direct" });
   });
 
   it("does not gate visible output that only resembles the placeholder", async () => {
