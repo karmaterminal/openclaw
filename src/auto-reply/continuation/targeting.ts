@@ -199,8 +199,10 @@ export async function enqueueContinuationReturnDeliveries(
   deliveryIds: string[];
   /** Recipients whose event reached the queue now. */
   deliveredSessionKeys: string[];
-  /** Recipients whose return the full queue refused or a pending reset holds; their rows wait. */
+  /** Recipients whose return the full queue refused; their rows are held for retry. */
   heldSessionKeys: string[];
+  /** Recipients whose head a pending reset is replacing; the reset's resolution releases them. */
+  resetHeldSessionKeys: string[];
 }> {
   if (!params.ownerAgentId) {
     throw new Error("Continuation return source owner is unavailable.");
@@ -215,6 +217,7 @@ export async function enqueueContinuationReturnDeliveries(
   const deliveryIds: string[] = [];
   const deliveredSessionKeys: string[] = [];
   const heldSessionKeys: string[] = [];
+  const resetHeldSessionKeys: string[] = [];
   let delivered = 0;
   const returnWake: ContinuationReturnWake =
     params.returnWake ??
@@ -280,7 +283,7 @@ export async function enqueueContinuationReturnDeliveries(
     // the child later clears this event and its replay is deferred by the same mark.
     if (params.holdForReset?.(sessionKey)) {
       deliveryIds.push(deliveryId);
-      heldSessionKeys.push(sessionKey);
+      resetHeldSessionKeys.push(sessionKey);
       log.info(
         `[continuation:return-held] session reset pending; deliveryId=${deliveryId} session=${sessionKey} waits for the reset to resolve`,
       );
@@ -375,5 +378,6 @@ export async function enqueueContinuationReturnDeliveries(
     deliveryIds,
     deliveredSessionKeys,
     heldSessionKeys,
+    resetHeldSessionKeys,
   };
 }
