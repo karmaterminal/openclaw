@@ -195,7 +195,7 @@ async function replay(id: string): Promise<string> {
     stateDir: custody.stateDir(),
   }).then(
     () => "settled",
-    (error: Error) => error.message,
+    (error: unknown) => (error instanceof Error ? error.message : String(error)),
   );
 }
 
@@ -231,9 +231,9 @@ describe.each([
     expect(await pendingIds()).toEqual([id]);
     expect(queuedTexts(scope)).toEqual([]);
 
-    let persisted: unknown;
-    const bound = bindTurn(turn.deliveries, () => persisted);
-    persisted = await commitTurn(scope, [id]);
+    const commit: { persisted?: unknown } = {};
+    const bound = bindTurn(turn.deliveries, () => commit.persisted);
+    commit.persisted = await commitTurn(scope, [id]);
     // The transcript commit alone settles nothing; adoption does.
     expect(ackCalls(id)).toBe(0);
     await bound.lifecycle?.onAdopted();
