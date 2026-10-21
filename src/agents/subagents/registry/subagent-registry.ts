@@ -1,7 +1,7 @@
 import { getRuntimeConfig } from "../../../config/config.js";
 import { prepareSqliteTargetFromSessionStorePath } from "../../../config/sessions/session-sqlite-target.js";
 import type { GatewayContextResolver } from "../../../gateway/server-methods/types.js";
-import type { GatewayStartupTrace } from "../../../gateway/server-startup-trace.js";
+import { measureStartup, type GatewayStartupTrace } from "../../../gateway/server-startup-trace.js";
 import { registerSystemEventStoreOwner } from "../../../infra/system-event-ownership.js";
 import { runWithGatewayIndependentRootWorkAdmission } from "../../../process/gateway-work-admission.js";
 import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state-worker-context.js";
@@ -428,7 +428,12 @@ const subagentRestorer = createSubagentRegistryRestorer({
   ensureListener: () => subagentListener.ensure(),
   startSweeper: () => subagentSweeper.start(),
   scheduleSweep: scheduleSubagentRegistrySweep,
-  recoverInterruptedRuns: (entries) => subagentSweeper.recoverInterruptedRuns(entries),
+  recoverInterruptedRuns: (entries, startupTrace) =>
+    measureStartup(startupTrace, "background.subagent-interrupted", () =>
+      subagentSweeper.recoverInterruptedRuns(entries),
+    ).catch((error: unknown) => {
+      log.warn("interrupted subagent recovery remains pending", { error });
+    }),
   resumeRun: (runId) => resumeSubagentRun(runId, "restore"),
   listSwarmRunsForGroup: (groupId, requesterSessionKey, requesterAgentId) =>
     listSwarmRunsForGroup(groupId, requesterSessionKey, requesterAgentId),
@@ -649,9 +654,7 @@ async function resetSubagentRegistryForTests(opts?: { persist?: boolean }) {
   completionRetryTimers.clear();
   subagentRuns.clear();
   resumedRuns.clear();
-  resumeReader.reset();
   pendingLifecycle.clearAll();
-  contextCleanup.reset();
   clearSubagentRunsReadCacheForTest();
   const sweeperRetirement = subagentSweeper.reset();
   subagentRestorer.reset();

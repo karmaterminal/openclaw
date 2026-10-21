@@ -5,7 +5,7 @@ import {
   deriveContinuationDelegateChildSessionKey,
 } from "../../subagent-continuation-ids.js";
 import { installAcceptedSubagentGatewayMock } from "../../test-helpers/subagent-gateway.js";
-import { testing as swarmSchedulerTesting } from "../swarm/swarm-scheduler.test-support.js";
+import { closeSwarmScheduler } from "../swarm/swarm-scheduler.js";
 import {
   SpawnSubagentAdmissionCancelledError,
   type SpawnSubagentAdmissionAuthority,
@@ -124,7 +124,7 @@ describe("spawnSubagentDirect continuation delegate seam flow", () => {
   });
 
   beforeEach(async () => {
-    swarmSchedulerTesting.reset();
+    await closeSwarmScheduler();
     await resetSubagentRegistryForTests();
     for (const mock of Object.values(hoisted)) {
       mock.mockReset();
@@ -163,8 +163,8 @@ describe("spawnSubagentDirect continuation delegate seam flow", () => {
     );
   });
 
-  afterEach(() => {
-    swarmSchedulerTesting.reset();
+  afterEach(async () => {
+    await closeSwarmScheduler();
     vi.unstubAllEnvs();
   });
   it("admits no child side effect when delegate authority closes after planning", async () => {

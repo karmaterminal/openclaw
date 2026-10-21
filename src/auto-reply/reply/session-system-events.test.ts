@@ -10,7 +10,7 @@ const RECIPIENT_AUTHORITY_EPOCH = "11111111-1111-4111-8111-111111111111";
 const mocks = vi.hoisted(() => ({
   emitContinuationQueueDrainSpan: vi.fn(),
   peekSystemEventEntries: vi.fn(),
-  consumeSelectedSystemEventEntries: vi.fn(),
+  adoptSelectedSystemEventEntries: vi.fn(),
   buildChannelSummary: vi.fn(async () => []),
   ackSessionDelivery: vi.fn(async () => undefined),
   loadSessionEntry: vi.fn(),
@@ -28,7 +28,7 @@ vi.mock("../../infra/system-events.js", async (importOriginal) => {
   return {
     ...actual,
     peekSystemEventEntries: mocks.peekSystemEventEntries,
-    consumeSelectedSystemEventEntries: mocks.consumeSelectedSystemEventEntries,
+    adoptSelectedSystemEventEntries: mocks.adoptSelectedSystemEventEntries,
   };
 });
 
@@ -74,9 +74,7 @@ async function useActualQueue() {
   );
   actual.resetSystemEventsForTest();
   mocks.peekSystemEventEntries.mockImplementation(actual.peekSystemEventEntries);
-  mocks.consumeSelectedSystemEventEntries.mockImplementation(
-    actual.consumeSelectedSystemEventEntries,
-  );
+  mocks.adoptSelectedSystemEventEntries.mockImplementation(actual.adoptSelectedSystemEventEntries);
   return actual;
 }
 
@@ -84,7 +82,7 @@ describe("drainFormattedSystemEvents trace context", () => {
   beforeEach(() => {
     mocks.emitContinuationQueueDrainSpan.mockClear();
     mocks.peekSystemEventEntries.mockReset();
-    mocks.consumeSelectedSystemEventEntries.mockReset();
+    mocks.adoptSelectedSystemEventEntries.mockReset();
     mocks.buildChannelSummary.mockClear();
     mocks.ackSessionDelivery.mockClear();
     mocks.loadSessionEntry.mockReset().mockReturnValue({ sessionId: "current-session" });
@@ -104,7 +102,7 @@ describe("drainFormattedSystemEvents trace context", () => {
       },
     ];
     mocks.peekSystemEventEntries.mockReturnValue(events);
-    mocks.consumeSelectedSystemEventEntries.mockReturnValue(events);
+    mocks.adoptSelectedSystemEventEntries.mockReturnValue(events);
 
     await drainFormattedSystemEvents({
       cfg: {},
@@ -126,7 +124,7 @@ describe("drainFormattedSystemEvents trace context", () => {
   it("omits traceparent for untraced drained entries", async () => {
     const events: SystemEvent[] = [{ text: "[continuation:resume] untraced", ts: 1 }];
     mocks.peekSystemEventEntries.mockReturnValue(events);
-    mocks.consumeSelectedSystemEventEntries.mockReturnValue(events);
+    mocks.adoptSelectedSystemEventEntries.mockReturnValue(events);
 
     await drainFormattedSystemEvents({
       cfg: {},
@@ -153,7 +151,7 @@ describe("drainFormattedSystemEvents trace context", () => {
       },
     };
     mocks.peekSystemEventEntries.mockReturnValue([event]);
-    mocks.consumeSelectedSystemEventEntries.mockImplementation(
+    mocks.adoptSelectedSystemEventEntries.mockImplementation(
       (_sessionKey: string, entries: SystemEvent[]) => entries,
     );
     mocks.loadSessionEntry.mockReturnValue({ sessionId: "new-session-incarnation" });
@@ -188,7 +186,7 @@ describe("drainFormattedSystemEvents trace context", () => {
       },
     };
     mocks.peekSystemEventEntries.mockReturnValue([event]);
-    mocks.consumeSelectedSystemEventEntries.mockImplementation(
+    mocks.adoptSelectedSystemEventEntries.mockImplementation(
       (_sessionKey: string, entries: SystemEvent[]) => entries,
     );
     mocks.loadSessionEntry.mockReturnValue({ sessionId: "replacement-session" });
@@ -215,7 +213,9 @@ describe("drainFormattedSystemEvents trace context", () => {
         }),
       }),
     );
-    expect(mocks.consumeSelectedSystemEventEntries).toHaveBeenCalledWith(MAIN_QUEUE_KEY, [event]);
+    expect(mocks.adoptSelectedSystemEventEntries).toHaveBeenCalledWith(MAIN_QUEUE_KEY, [event], {
+      deferredEventIds: undefined,
+    });
   });
 
   it("acknowledges only deliveries evidenced by the persisted recipient turn", async () => {

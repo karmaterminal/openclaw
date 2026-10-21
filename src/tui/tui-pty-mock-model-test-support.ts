@@ -155,6 +155,11 @@ export async function startRoutedMockModelServer(
       .filter(([, behavior]) => behavior.holdFirstResponse)
       .map(([modelId]) => [modelId, createDeferred()] as const),
   );
+  const repeatedInvalidResponseGates = new Map(
+    Object.entries(behaviors)
+      .filter(([, behavior]) => behavior.invalidEditLoop)
+      .map(([modelId]) => [modelId, createDeferred()] as const),
+  );
   const server = createServer((req, res) => {
     void (async () => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -197,6 +202,15 @@ export async function startRoutedMockModelServer(
           requests.push(request);
           modelRequests.push(request);
           if (behavior.invalidEditLoop) {
+            if (requestIndex > 0) {
+              const gate = repeatedInvalidResponseGates.get(modelId);
+              // The active abort owns this request; keep later identical failures pending.
+              res.once("close", () => gate?.resolve());
+              await gate?.promise;
+              if (res.destroyed) {
+                return;
+              }
+            }
             writeInvalidEditCallSse(res, requestIndex);
             return;
           }
@@ -240,6 +254,9 @@ export async function startRoutedMockModelServer(
     stop: async () => {
       // Never leave a held request owning the shared server during failure cleanup.
       for (const gate of firstResponseGates.values()) {
+        gate.resolve();
+      }
+      for (const gate of repeatedInvalidResponseGates.values()) {
         gate.resolve();
       }
       await new Promise<void>((resolve, reject) => {

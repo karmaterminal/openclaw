@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 import type { SessionEntry } from "../../config/sessions.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { AgentTurnCompaction } from "./agent-runner-execution.types.js";
 import type { FollowupExecutionResult } from "./followup-turn-execution.js";
+import { createQueueTestRun } from "./queue.test-helpers.js";
 import type { AdmittedFollowupTurn, FollowupRunnerParams } from "./reply-agent-turn-preparation.js";
 
 const state = vi.hoisted(() => ({
@@ -13,25 +14,16 @@ const state = vi.hoisted(() => ({
   recordNoOpRearmOutcome: vi.fn(),
   refreshQueuedFollowupSession: vi.fn(),
   scheduleContinuation: vi.fn(),
-  resolveContextTokensForModel: vi.fn<() => number | undefined>(() => 200_000),
   resolveContinuationTraceparent: vi.fn<(value: string | undefined) => string | undefined>(),
 }));
 
-// mock-isolation: Context windows come from the test; the real lookup reads config and the model context cache.
+// mock-isolation: Queue accounting uses a fixed context limit without the process-wide model cache.
 vi.mock("../../agents/context.js", () => ({
-  resolveContextTokensForModel: () => state.resolveContextTokensForModel(),
+  resolveContextTokensForModel: () => 200_000,
 }));
 
 vi.mock("../../agents/fast-mode.js", () => ({
   resolveFastModeState: () => ({ enabled: false }),
-}));
-
-vi.mock("../../agents/model-selection.js", () => ({
-  isCliProvider: () => false,
-}));
-
-vi.mock("../../globals.js", () => ({
-  logVerbose: vi.fn(),
 }));
 
 // mock-isolation: Continuation scheduling is recorded without persisting chain state or queuing work.
@@ -52,10 +44,7 @@ vi.mock("../fallback-state.js", () => ({
 
 vi.mock("./agent-runner-core.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./agent-runner-core.js")>()),
-  resolveFallbackOriginModel: () => ({
-    provider: "anthropic",
-    model: "claude",
-  }),
+  resolveFallbackOriginModel: () => ({ provider: "anthropic", model: "claude" }),
 }));
 
 // mock-isolation: Compaction counts are recorded without writing the session store.
@@ -92,10 +81,6 @@ vi.mock("../../infra/continuation-tracer.js", () => ({
     state.resolveContinuationTraceparent(value),
 }));
 
-vi.mock("../../sessions/input-provenance.js", () => ({
-  shouldPreserveUserFacingSessionStateForInputProvenance: () => false,
-}));
-
 // mock-isolation: Followup refreshes are recorded without the process-wide followup queue.
 vi.mock("./queue.js", () => ({
   refreshQueuedFollowupSession: (...args: unknown[]) => state.refreshQueuedFollowupSession(...args),
@@ -106,7 +91,7 @@ vi.mock("./reply-usage-state.js", () => ({
   recordReplyUsageState: vi.fn(),
 }));
 
-const { accountFollowupTurn } = await import("./agent-runner-result-accounting.js");
+import { accountFollowupTurn } from "./agent-runner-result-accounting.js";
 
 // Callers arm continuation only after the terminal completion commits.
 async function accountFollowupTurnAndSchedule(params: Parameters<typeof accountFollowupTurn>[0]) {
@@ -233,7 +218,6 @@ beforeEach(() => {
   });
   state.incrementCompactionCount.mockResolvedValue(7);
   state.scheduleContinuation.mockResolvedValue(undefined);
-  state.resolveContextTokensForModel.mockReturnValue(200_000);
   state.formatCurrentSpanContinuationTraceparent.mockReturnValue(undefined);
   state.resolveContinuationTraceparent.mockReturnValue(undefined);
 });
@@ -241,46 +225,32 @@ beforeEach(() => {
 function createParams(
   authProfileOverrideCompactionCount?: number,
 ): Parameters<typeof accountFollowupTurn>[0] {
-  let entry: SessionEntry = {
+  const entry: SessionEntry = {
     sessionId: "session-1",
     updatedAt: 1,
     authProfileOverride: "openai:work",
-    ...(authProfileOverrideCompactionCount === undefined
-      ? {}
-      : { authProfileOverrideCompactionCount }),
+    authProfileOverrideCompactionCount,
   };
   const sessionStore = { main: entry };
   const turn = {
     runId: "run-1",
-    queued: {
-      prompt: "queued prompt",
-      enqueuedAt: 1,
-      run: {
-        agentId: "agent",
-        agentDir: "/tmp/agent",
+    queued: createQueueTestRun(
+      { prompt: "queued prompt", enqueuedAt: 1 },
+      {
         sessionId: "session-1",
         sessionKey: "main",
-        sessionFile: "main",
-        workspaceDir: "/tmp",
-        config: {},
         provider: "anthropic",
         model: "claude",
-        timeoutMs: 1_000,
-        blockReplyBreak: "message_end",
       },
-    },
+    ),
     operation: {},
     config: {},
     session: {
       kind: "session",
       key: "main",
-      current: () => entry,
-      publish: (next: SessionEntry | undefined) => {
-        if (next) {
-          entry = next;
-          sessionStore.main = next;
-        }
-      },
+      current: () => sessionStore.main,
+      publish: (next: SessionEntry | undefined) =>
+        next && Object.assign(sessionStore, { main: next }),
     },
     sessionStore,
     sendPolicy: "allow",
@@ -318,257 +288,245 @@ function createParams(
     runStartedAt: 1,
     sessionCtx: {},
     pendingToolTasks: new Set(),
-    progress: {
-      drain: vi.fn(async () => {}),
-    },
+    progress: { drain: async () => {} },
   } as FollowupExecutionResult;
   return { turn, defaults, execution };
 }
 
-describe("accountFollowupTurn", () => {
-  it("forwards queued continue_work requests into continuation scheduling", async () => {
-    const turn = createTurn();
-    const defaults = {
-      typing: {} as FollowupRunnerParams["typing"],
-      typingMode: "never",
-      defaultModel: "anthropic/claude",
-      opts: { isHeartbeat: true },
-    } satisfies FollowupRunnerParams;
+it("forwards queued continue_work requests into continuation scheduling", async () => {
+  const turn = createTurn();
+  const defaults = {
+    typing: {} as FollowupRunnerParams["typing"],
+    typingMode: "never",
+    defaultModel: "anthropic/claude",
+    opts: { isHeartbeat: true },
+  } satisfies FollowupRunnerParams;
 
-    await accountFollowupTurnAndSchedule({
-      turn,
-      defaults,
-      execution: createExecution(),
-    });
-
-    expect(state.scheduleContinuation).toHaveBeenCalledOnce();
-    expect(state.recordNoOpRearmOutcome).not.toHaveBeenCalled();
-    expect(state.scheduleContinuation).toHaveBeenCalledWith(
-      expect.objectContaining({
-        cfg: continuationConfig,
-        sessionKey: "main",
-        followupRun: turn.queued,
-        runId: "run-1",
-        usage: { input: 3, output: 4, cacheRead: 0, cacheWrite: 0 },
-        effectiveContinuationSignal: expect.objectContaining({
-          kind: "work",
-          delayMs: 30_000,
-        }),
-        effectiveContinueWorkRequests: [{ reason: "finish queued work", delaySeconds: 30 }],
-        continuationWorkReason: "finish queued work",
-      }),
-    );
+  await accountFollowupTurnAndSchedule({
+    turn,
+    defaults,
+    execution: createExecution(),
   });
 
-  it("prefers a delegate token retained only in raw terminal text over typed continue_work", async () => {
-    const turn = createTurn();
-    const currentTraceparent = "00-11111111111111111111111111111111-2222222222222222-01";
-    const inheritedTraceparent = "00-11111111111111111111111111111111-3333333333333333-01";
-    turn.queued.run.traceparent = inheritedTraceparent;
-    state.formatCurrentSpanContinuationTraceparent.mockReturnValue(currentTraceparent);
-    state.resolveContinuationTraceparent.mockReturnValue(inheritedTraceparent);
-    const defaults = {
-      typing: {} as FollowupRunnerParams["typing"],
-      typingMode: "never",
-      defaultModel: "anthropic/claude",
-      opts: { isHeartbeat: true },
-    } satisfies FollowupRunnerParams;
-    const execution = createExecution();
-    if (execution.execution.outcome.kind !== "settled") {
-      throw new Error("expected settled execution");
-    }
-    execution.execution.outcome.result.payloads = [{ text: "handoff queued" }];
-    execution.execution.outcome.rawContinuationText =
-      "handoff queued\n[[CONTINUE_DELEGATE: inspect followup state]]";
-
-    await accountFollowupTurnAndSchedule({ turn, defaults, execution });
-
-    expect(state.scheduleContinuation).toHaveBeenCalledWith(
-      expect.objectContaining({
-        effectiveContinuationSignal: expect.objectContaining({
-          kind: "delegate",
-          task: "inspect followup state",
-        }),
-        continuationExtractionFromBracket: true,
-        effectiveContinueWorkRequests: [{ reason: "finish queued work", delaySeconds: 30 }],
-        continuationWorkReason: undefined,
-        internalBracketTraceparent: currentTraceparent,
+  expect(state.scheduleContinuation).toHaveBeenCalledOnce();
+  expect(state.recordNoOpRearmOutcome).not.toHaveBeenCalled();
+  expect(state.scheduleContinuation).toHaveBeenCalledWith(
+    expect.objectContaining({
+      cfg: continuationConfig,
+      sessionKey: "main",
+      followupRun: turn.queued,
+      runId: "run-1",
+      usage: { input: 3, output: 4, cacheRead: 0, cacheWrite: 0 },
+      effectiveContinuationSignal: expect.objectContaining({
+        kind: "work",
+        delayMs: 30_000,
       }),
-    );
-  });
-
-  it.each([
-    {
-      name: "source-less legacy user pin",
-      authProfileOverrideCompactionCount: undefined,
-      expectedSource: "user",
-    },
-    {
-      name: "source-less compaction-marked auto pin",
-      authProfileOverrideCompactionCount: 0,
-      expectedSource: "auto",
-    },
-  ] as const)(
-    "forwards a $name with canonical provenance during fallback queue refresh",
-    async ({ authProfileOverrideCompactionCount, expectedSource }) => {
-      await accountFollowupTurn(createParams(authProfileOverrideCompactionCount));
-
-      expect(state.refreshQueuedFollowupSession).toHaveBeenCalledOnce();
-      expect(state.refreshQueuedFollowupSession).toHaveBeenCalledWith(
-        expect.objectContaining({
-          key: "main",
-          nextProvider: "openai",
-          nextModel: "gpt-4o",
-          nextAuthProfileId: "openai:work",
-          nextAuthProfileIdSource: expectedSource,
-        }),
-      );
-    },
+      effectiveContinueWorkRequests: [{ reason: "finish queued work", delaySeconds: 30 }],
+      continuationWorkReason: "finish queued work",
+    }),
   );
+});
 
-  it("forwards a work token retained only in raw terminal text", async () => {
-    const turn = createTurn();
-    const defaults = {
-      typing: {} as FollowupRunnerParams["typing"],
-      typingMode: "never",
-      defaultModel: "anthropic/claude",
-      opts: { isHeartbeat: true },
-    } satisfies FollowupRunnerParams;
-    const execution = createExecution({ continueWorkRequests: [] });
-    if (execution.execution.outcome.kind !== "settled") {
-      throw new Error("expected settled execution");
-    }
-    execution.execution.outcome.result.payloads = [{ text: "more remains" }];
-    execution.execution.outcome.rawContinuationText = "more remains\n[[CONTINUE_WORK:45]]";
+it("prefers a delegate token retained only in raw terminal text over typed continue_work", async () => {
+  const turn = createTurn();
+  const currentTraceparent = "00-11111111111111111111111111111111-2222222222222222-01";
+  const inheritedTraceparent = "00-11111111111111111111111111111111-3333333333333333-01";
+  turn.queued.run.traceparent = inheritedTraceparent;
+  state.formatCurrentSpanContinuationTraceparent.mockReturnValue(currentTraceparent);
+  state.resolveContinuationTraceparent.mockReturnValue(inheritedTraceparent);
+  const defaults = {
+    typing: {} as FollowupRunnerParams["typing"],
+    typingMode: "never",
+    defaultModel: "anthropic/claude",
+    opts: { isHeartbeat: true },
+  } satisfies FollowupRunnerParams;
+  const execution = createExecution();
+  if (execution.execution.outcome.kind !== "settled") {
+    throw new Error("expected settled execution");
+  }
+  execution.execution.outcome.result.payloads = [{ text: "handoff queued" }];
+  execution.execution.outcome.rawContinuationText =
+    "handoff queued\n[[CONTINUE_DELEGATE: inspect followup state]]";
 
-    await accountFollowupTurnAndSchedule({ turn, defaults, execution });
+  await accountFollowupTurnAndSchedule({ turn, defaults, execution });
 
-    expect(state.scheduleContinuation).toHaveBeenCalledWith(
+  expect(state.scheduleContinuation).toHaveBeenCalledWith(
+    expect.objectContaining({
+      effectiveContinuationSignal: expect.objectContaining({
+        kind: "delegate",
+        task: "inspect followup state",
+      }),
+      continuationExtractionFromBracket: true,
+      effectiveContinueWorkRequests: [{ reason: "finish queued work", delaySeconds: 30 }],
+      continuationWorkReason: undefined,
+      internalBracketTraceparent: currentTraceparent,
+    }),
+  );
+});
+
+it.each([
+  [undefined, "user"],
+  [0, "auto"],
+] as const)(
+  "forwards a source-less pin with compaction count %s as %s during fallback queue refresh",
+  async (authProfileOverrideCompactionCount, expectedSource) => {
+    await accountFollowupTurn(createParams(authProfileOverrideCompactionCount));
+
+    expect(state.refreshQueuedFollowupSession).toHaveBeenCalledOnce();
+    expect(state.refreshQueuedFollowupSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        effectiveContinuationSignal: { kind: "work", delayMs: 45_000 },
-        continuationExtractionFromBracket: true,
-        continuationWorkReason: undefined,
+        key: "main",
+        nextProvider: "openai",
+        nextModel: "gpt-4o",
+        nextAuthProfileId: "openai:work",
+        nextAuthProfileIdSource: expectedSource,
       }),
     );
+  },
+);
+
+it("forwards a work token retained only in raw terminal text", async () => {
+  const turn = createTurn();
+  const defaults = {
+    typing: {} as FollowupRunnerParams["typing"],
+    typingMode: "never",
+    defaultModel: "anthropic/claude",
+    opts: { isHeartbeat: true },
+  } satisfies FollowupRunnerParams;
+  const execution = createExecution({ continueWorkRequests: [] });
+  if (execution.execution.outcome.kind !== "settled") {
+    throw new Error("expected settled execution");
+  }
+  execution.execution.outcome.result.payloads = [{ text: "more remains" }];
+  execution.execution.outcome.rawContinuationText = "more remains\n[[CONTINUE_WORK:45]]";
+
+  await accountFollowupTurnAndSchedule({ turn, defaults, execution });
+
+  expect(state.scheduleContinuation).toHaveBeenCalledWith(
+    expect.objectContaining({
+      effectiveContinuationSignal: { kind: "work", delayMs: 45_000 },
+      continuationExtractionFromBracket: true,
+      continuationWorkReason: undefined,
+    }),
+  );
+});
+
+it("does not recover a non-terminal delegate token from raw text", async () => {
+  const turn = createTurn();
+  const defaults = {
+    typing: {} as FollowupRunnerParams["typing"],
+    typingMode: "never",
+    defaultModel: "anthropic/claude",
+    opts: { isHeartbeat: true },
+  } satisfies FollowupRunnerParams;
+  const execution = createExecution({ continueWorkRequests: [] });
+  if (execution.execution.outcome.kind !== "settled") {
+    throw new Error("expected settled execution");
+  }
+  execution.execution.outcome.result.payloads = [{ text: "final answer" }];
+  execution.execution.outcome.rawContinuationText =
+    "[[CONTINUE_DELEGATE: stale task]]\nfinal answer";
+
+  await accountFollowupTurnAndSchedule({ turn, defaults, execution });
+
+  expect(state.scheduleContinuation).toHaveBeenCalledWith(
+    expect.objectContaining({
+      effectiveContinuationSignal: null,
+      continuationExtractionFromBracket: false,
+    }),
+  );
+});
+
+it("does not recover selected raw text when the settled fallback result is replay-unsafe", async () => {
+  const turn = createTurn();
+  const defaults = {
+    typing: {} as FollowupRunnerParams["typing"],
+    typingMode: "never",
+    defaultModel: "anthropic/claude",
+    opts: { isHeartbeat: true },
+  } satisfies FollowupRunnerParams;
+  const execution = createExecution({ continueWorkRequests: [] });
+  if (execution.execution.outcome.kind !== "settled") {
+    throw new Error("expected settled execution");
+  }
+  execution.execution.outcome.result.payloads = [{ text: "partial" }];
+  execution.execution.outcome.result.meta.error = {
+    kind: "incomplete_turn",
+    message: "latest fallback interrupted",
+  };
+  execution.execution.outcome.result.meta.replayInvalid = true;
+  execution.execution.outcome.rawContinuationText =
+    "preferred\n[[CONTINUE_DELEGATE: stale selected task]]";
+
+  await accountFollowupTurnAndSchedule({ turn, defaults, execution });
+
+  expect(state.scheduleContinuation).toHaveBeenCalledWith(
+    expect.objectContaining({
+      effectiveContinuationSignal: null,
+      continuationExtractionFromBracket: false,
+      effectiveContinueWorkRequests: [],
+    }),
+  );
+});
+
+it("releases staged delegates before scheduling same-turn post-compaction work", async () => {
+  const turn = createTurn();
+  const defaults = {
+    typing: {} as FollowupRunnerParams["typing"],
+    typingMode: "never",
+    defaultModel: "anthropic/claude",
+    opts: { isHeartbeat: true },
+  } satisfies FollowupRunnerParams;
+  const order: string[] = [];
+  state.dispatchPostCompactionDelegates.mockImplementation(async () => {
+    order.push("release");
+    return { queuedDelegates: 1, droppedDelegates: 0 };
+  });
+  state.scheduleContinuation.mockImplementation(async () => {
+    order.push("schedule");
   });
 
-  it("does not recover a non-terminal delegate token from raw text", async () => {
-    const turn = createTurn();
-    const defaults = {
-      typing: {} as FollowupRunnerParams["typing"],
-      typingMode: "never",
-      defaultModel: "anthropic/claude",
-      opts: { isHeartbeat: true },
-    } satisfies FollowupRunnerParams;
-    const execution = createExecution({ continueWorkRequests: [] });
-    if (execution.execution.outcome.kind !== "settled") {
-      throw new Error("expected settled execution");
-    }
-    execution.execution.outcome.result.payloads = [{ text: "final answer" }];
-    execution.execution.outcome.rawContinuationText =
-      "[[CONTINUE_DELEGATE: stale task]]\nfinal answer";
-
-    await accountFollowupTurnAndSchedule({ turn, defaults, execution });
-
-    expect(state.scheduleContinuation).toHaveBeenCalledWith(
-      expect.objectContaining({
-        effectiveContinuationSignal: null,
-        continuationExtractionFromBracket: false,
-      }),
-    );
-  });
-
-  it("does not recover selected raw text when the settled fallback result is replay-unsafe", async () => {
-    const turn = createTurn();
-    const defaults = {
-      typing: {} as FollowupRunnerParams["typing"],
-      typingMode: "never",
-      defaultModel: "anthropic/claude",
-      opts: { isHeartbeat: true },
-    } satisfies FollowupRunnerParams;
-    const execution = createExecution({ continueWorkRequests: [] });
-    if (execution.execution.outcome.kind !== "settled") {
-      throw new Error("expected settled execution");
-    }
-    execution.execution.outcome.result.payloads = [{ text: "partial" }];
-    execution.execution.outcome.result.meta.error = {
-      kind: "incomplete_turn",
-      message: "latest fallback interrupted",
-    };
-    execution.execution.outcome.result.meta.replayInvalid = true;
-    execution.execution.outcome.rawContinuationText =
-      "preferred\n[[CONTINUE_DELEGATE: stale selected task]]";
-
-    await accountFollowupTurnAndSchedule({ turn, defaults, execution });
-
-    expect(state.scheduleContinuation).toHaveBeenCalledWith(
-      expect.objectContaining({
-        effectiveContinuationSignal: null,
-        continuationExtractionFromBracket: false,
-        effectiveContinueWorkRequests: [],
-      }),
-    );
-  });
-
-  it("releases staged delegates before scheduling same-turn post-compaction work", async () => {
-    const turn = createTurn();
-    const defaults = {
-      typing: {} as FollowupRunnerParams["typing"],
-      typingMode: "never",
-      defaultModel: "anthropic/claude",
-      opts: { isHeartbeat: true },
-    } satisfies FollowupRunnerParams;
-    const order: string[] = [];
-    state.dispatchPostCompactionDelegates.mockImplementation(async () => {
-      order.push("release");
-      return { queuedDelegates: 1, droppedDelegates: 0 };
-    });
-    state.scheduleContinuation.mockImplementation(async () => {
-      order.push("schedule");
-    });
-
-    await accountFollowupTurnAndSchedule({
-      turn,
-      defaults,
-      execution: createExecution({
-        autoCompactionCount: 1,
-        compaction: {
-          count: 1,
-          durable: [
-            {
-              kind: "durable",
-              count: 1,
-              currentContextSnapshot: { tokens: 100 },
-              target: {
-                agentId: "agent",
-                sessionId: "session-1",
-                sessionKey: "main",
-                storePath: "/tmp/sessions.json",
-              },
+  await accountFollowupTurnAndSchedule({
+    turn,
+    defaults,
+    execution: createExecution({
+      autoCompactionCount: 1,
+      compaction: {
+        count: 1,
+        durable: [
+          {
+            kind: "durable",
+            count: 1,
+            currentContextSnapshot: { tokens: 100 },
+            target: {
+              agentId: "agent",
+              sessionId: "session-1",
+              sessionKey: "main",
+              storePath: "/tmp/sessions.json",
             },
-          ],
-        },
-        compactionTraceparent: "00-trace",
-      }),
-    });
+          },
+        ],
+      },
+      compactionTraceparent: "00-trace",
+    }),
+  });
 
-    expect(order).toEqual(["release", "schedule"]);
-    expect(state.dispatchPostCompactionDelegates).toHaveBeenCalledWith(
-      expect.objectContaining({
-        cfg: continuationConfig,
-        compactionCount: 7,
-        continuationSignalKind: "work",
-        followupRun: turn.queued,
-        releaseTraceparent: "00-trace",
-        sessionKey: "main",
-        sessionStore: turn.sessionStore,
-      }),
-    );
-    expect(state.emitContinuationCompactionReleasedSpan).toHaveBeenCalledWith({
-      releasedCount: 1,
-      compactionId: 7,
-      traceparent: "00-trace",
-      log: expect.any(Function),
-    });
+  expect(order).toEqual(["release", "schedule"]);
+  expect(state.dispatchPostCompactionDelegates).toHaveBeenCalledWith(
+    expect.objectContaining({
+      cfg: continuationConfig,
+      compactionCount: 7,
+      continuationSignalKind: "work",
+      followupRun: turn.queued,
+      releaseTraceparent: "00-trace",
+      sessionKey: "main",
+      sessionStore: turn.sessionStore,
+    }),
+  );
+  expect(state.emitContinuationCompactionReleasedSpan).toHaveBeenCalledWith({
+    releasedCount: 1,
+    compactionId: 7,
+    traceparent: "00-trace",
+    log: expect.any(Function),
   });
 });

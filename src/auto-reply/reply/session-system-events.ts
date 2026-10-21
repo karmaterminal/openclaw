@@ -23,6 +23,7 @@ import {
 import {
   isExecCompletionSystemEvent,
   isHeartbeatDeliveryAwarenessEvent,
+  isHeartbeatWakeEvent,
 } from "../../infra/heartbeat-events-filter.js";
 import { ackSessionDelivery } from "../../infra/session-delivery-queue-storage.js";
 import {
@@ -35,7 +36,7 @@ import {
   resolveSystemEventQueueKey,
 } from "../../infra/system-event-ownership.js";
 import {
-  consumeSelectedSystemEventEntries,
+  adoptSelectedSystemEventEntries,
   isSystemEventTurnOwned,
   restoreConsumedSystemEventEntries,
   peekSystemEventEntries,
@@ -91,8 +92,7 @@ function compactSystemEvent(event: SystemEvent): string | null {
   if (
     lower.includes("reason periodic") ||
     lower.startsWith("read heartbeat.md") ||
-    lower.includes("heartbeat poll") ||
-    lower.includes("heartbeat wake")
+    isHeartbeatWakeEvent(trimmed)
   ) {
     return null;
   }
@@ -169,8 +169,10 @@ export async function prepareFormattedSystemEvents(params: {
   // are still formatted into this prompt but stay queued until that owner commits.
   // Consume before the first await, as upstream does: a concurrent drain or a
   // same-store resolver handoff must not observe (or re-select) these entries
-  // while this preparation waits on worker-backed reads below.
-  let queued = consumeSelectedSystemEventEntries(queueKey, selected, {
+  // while this preparation waits on worker-backed reads below. Consumption into a
+  // prompt is adoption (upstream #178650): it settles receipts as adopted, and an
+  // entry restored after a failed read below stays adopted while it is re-queued.
+  let queued = adoptSelectedSystemEventEntries(queueKey, selected, {
     deferredEventIds: params.deferredEventIds,
   });
   // Storage must resolve under the SAME agent the ownership filter selected for,
@@ -261,7 +263,7 @@ export async function prepareFormattedSystemEvents(params: {
   const turnHold = createDeliveryAdoptionTurnHold();
   const seenAdoptionScopedIds = new Set<string>();
   const alreadyAdoptedAckIds: { id: string; stateDir?: string }[] = [];
-  // Keyed by ack id, not object identity: consumeSelectedSystemEventEntries
+  // Keyed by ack id, not object identity: adoptSelectedSystemEventEntries
   // returns different instances than the peeked entries classified here.
   const excludedAdoptedAckIds = new Set<string>();
   for (const event of selected) {
