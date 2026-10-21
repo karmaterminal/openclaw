@@ -13,6 +13,7 @@ import type { HookRunner } from "../../plugins/hooks.js";
 import { createLazyRuntimeModule } from "../../shared/lazy-runtime.js";
 import { createDirectChatContext } from "../server-chat.agent-events.test-helpers.js";
 import { flushPendingSessionsChangedEvents } from "../server-methods/session-change-event.js";
+import { bindInProcessRequestMutationAuthority } from "../server-methods/session-mutation-guards.js";
 import {
   disposeSessionReadContexts,
   initializeSessionReadContext,
@@ -588,6 +589,8 @@ export async function directSessionReq<TPayload = unknown>(
     sessionMutationAuthorization?: SessionsHandlerOptions["sessionMutationAuthorization"];
     hasCurrentClientAuthority?: SessionsHandlerOptions["hasCurrentClientAuthority"];
     coercePayload?: (payload: unknown) => TPayload;
+    /** Bind prepared in-process request authority, as dispatch owners do for worker mutations. */
+    inProcessRequestAuthority?: boolean;
   },
 ): Promise<{
   ok: boolean;
@@ -643,8 +646,10 @@ export async function directSessionReq<TPayload = unknown>(
   ) {
     await initializeSessionReadContext(context);
   }
-  await handler({
-    req: {} as never,
+  const options: SessionsHandlerOptions = {
+    req: (opts?.inProcessRequestAuthority
+      ? { type: "req", id: method, method, params }
+      : {}) as SessionsHandlerOptions["req"],
     params,
     respond: (ok, payload, error) => {
       result = {
@@ -663,7 +668,12 @@ export async function directSessionReq<TPayload = unknown>(
     isWebchatConnect: opts?.isWebchatConnect ?? (() => false),
     sessionMutationAuthorization: opts?.sessionMutationAuthorization,
     hasCurrentClientAuthority: opts?.hasCurrentClientAuthority,
-  });
+  };
+  await handler(
+    opts?.inProcessRequestAuthority
+      ? bindInProcessRequestMutationAuthority(options, undefined, undefined)
+      : options,
+  );
   await flushPendingSessionsChangedEvents(context);
   if (!result) {
     throw new Error(`${method} did not respond`);

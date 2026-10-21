@@ -305,12 +305,14 @@ test("sessions.compact maxLines releases queued post-compaction delegates after 
   // `directSessionReq` awaits the whole handler, so this case owns its
   // post-compaction work and settles it here. Polling for the event after an
   // early response instead lets a slow release surface inside the next case.
+  // The trim commits through the worker, which needs the dispatch owner's prepared
+  // request authority (#174610), as the RPC router binds it.
   const compacted = await directSessionReq<{
     ok: true;
     key: string;
     compacted: boolean;
     kept?: number;
-  }>("sessions.compact", { key: "main", maxLines: 50 });
+  }>("sessions.compact", { key: "main", maxLines: 50 }, { inProcessRequestAuthority: true });
 
   expect(compacted.ok).toBe(true);
   expect(compacted.payload?.compacted).toBe(true);
@@ -400,6 +402,7 @@ test("sessions.compact releases staged post-compaction delegates", async () => {
   const compacted = await directSessionReq<{ ok: true; compacted: boolean; kept?: number }>(
     "sessions.compact",
     { key: "main", maxLines: 50 },
+    { inProcessRequestAuthority: true },
   );
 
   expect(compacted.ok).toBe(true);
@@ -427,6 +430,7 @@ test("sessions.compact keeps delegates staged when the post-trim row no longer m
     const compacted = await directSessionReq<{ ok: true; compacted: boolean; kept?: number }>(
       "sessions.compact",
       { key: "main", maxLines: 50 },
+      { inProcessRequestAuthority: true },
     );
 
     expect(compacted.ok).toBe(true);

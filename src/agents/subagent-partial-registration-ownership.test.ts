@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import "./subagents/registry/subagent-registry.mocks.shared.js";
 import "./subagents/registry/subagent-registry.persistence.mocks.test-support.js";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../config/io.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
 import { captureEnv, setTestEnvValue } from "../test-utils/env.js";
 import { runSpawnPipeline } from "./spawn-pipeline.js";
@@ -22,11 +23,14 @@ describe("partial subagent registration ownership", () => {
   let tempStateDir: string | undefined;
 
   beforeEach(async () => {
+    // #169714: runtime config reads only the published snapshot.
+    setRuntimeConfigSnapshot({});
     tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-partial-registration-"));
     setTestEnvValue("OPENCLAW_STATE_DIR", tempStateDir);
   });
 
   afterEach(async () => {
+    clearRuntimeConfigSnapshot();
     closeOpenClawStateDatabaseForTest();
     await resetSubagentRegistryForTests({ persist: false });
     if (tempStateDir) {
