@@ -442,11 +442,6 @@ export async function executePreparedReplyRun(
             { isCurrent: isCurrentOwner, ...cronOwner },
           )
       : undefined;
-  const managedTurn = bindManagedDeliveryReplyTurn({
-    deliveries: managedSystemEventDeliveries,
-    opts,
-    getPersistedMessage: () => userTurnTranscriptRecorder?.getPersistedMessage?.(),
-  });
   const followupRun = {
     createChannelCronAuthority,
     prompt: queuedBody,
@@ -470,7 +465,7 @@ export async function executePreparedReplyRun(
     explicitSkillSelections: params.explicitSkillSelections,
     ...(queuedFollowupAbortSignal ? { abortSignal: queuedFollowupAbortSignal } : {}),
     deliveryCorrelations: opts?.queuedDeliveryCorrelations,
-    turnAdoptionLifecycle: managedTurn.lifecycle,
+    turnAdoptionLifecycle: opts?.turnAdoptionLifecycle,
     runObservers: {
       awaitSessionDiffBaseline: opts?.awaitSessionDiffBaseline,
       onAgentRunStart: opts?.onAgentRunStart,
@@ -690,6 +685,16 @@ export async function executePreparedReplyRun(
     : undefined;
   const cronCreatorAuthorityCapability =
     inheritedCronCreatorAuthorityCapability ?? createdCronCreatorAuthorityCapability;
+  // Bind only once nothing but the run remains. A throw while the run is assembled
+  // (e.g. a provider plugin hook) leaves the adoption claims unbound: they lapse with
+  // their lease and the pending sweep replays each row once. Accepted edge: up to one
+  // lease of delay after a visible turn failure.
+  const managedTurn = bindManagedDeliveryReplyTurn({
+    deliveries: managedSystemEventDeliveries,
+    opts,
+    getPersistedMessage: () => userTurnTranscriptRecorder?.getPersistedMessage?.(),
+  });
+  followupRun.turnAdoptionLifecycle = managedTurn.lifecycle;
   const execute = () =>
     runReplyAgent({
       ...params,

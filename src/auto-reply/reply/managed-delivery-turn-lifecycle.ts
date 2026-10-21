@@ -3,9 +3,10 @@
 //
 // Adoption settles (acks) the deliveries. A turn that ends without adopting them
 // returns the consumed events to the head of the queue, in their original order:
-// otherwise the durable rows are re-read only at gateway restart. That covers
-// abandonment, settlement without adoption, and an immediate run that returns
-// before onAdopted without being handed to the followup queue.
+// otherwise a row waits for its adoption claim's lease to lapse and the pending
+// sweep to replay it. That covers abandonment, settlement without adoption, and an
+// immediate run that returns before onAdopted without being handed to the followup
+// queue.
 import type { TurnAdoptionLifecycle } from "../get-reply-options.types.js";
 import type { InternalGetReplyOptions } from "./get-reply.types.js";
 import {

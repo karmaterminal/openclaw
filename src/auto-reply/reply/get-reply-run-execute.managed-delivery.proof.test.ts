@@ -14,6 +14,7 @@ import {
 } from "../../infra/session-delivery-queue-storage.js";
 import { isDeliveryAdoptionClaimed } from "../../infra/system-event-delivery-claims.js";
 import { enqueueSystemEvent, peekSystemEventEntries } from "../../infra/system-events.js";
+import { resolveProviderReasoningOutputModeWithPlugin } from "../../plugins/provider-replay-runtime.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import { useContinuationCustodyTestState } from "../continuation/custody/custody.test-support.js";
 import { captureContinuationQueueContext } from "../continuation/queue-context.js";
@@ -71,6 +72,16 @@ vi.mock("../../infra/session-delivery-queue-storage.js", async (importOriginal) 
       runner.steps.push(`ack:${args[0]}`);
       return await actual.ackSessionDelivery(...args);
     }),
+  };
+});
+// Provider plugin edge: a case makes the reasoning-mode hook throw once.
+vi.mock("../../plugins/provider-replay-runtime.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../plugins/provider-replay-runtime.js")>();
+  return {
+    ...actual,
+    resolveProviderReasoningOutputModeWithPlugin: vi.fn(
+      actual.resolveProviderReasoningOutputModeWithPlugin,
+    ),
   };
 });
 // Process-external: a replayed return may request a heartbeat wake.
@@ -390,6 +401,33 @@ describe("managed delivery ack follows the committed user turn", () => {
     expect(isDeliveryAdoptionClaimed(id, custody.stateDir())).toBe(true);
     await replayAfterClaimLease(id);
     await expectDeliveredOnceAndSettled(entry, id, "RETURN-no-receipt");
+  });
+
+  it("lets the row replay when the turn throws after promotion, before its run starts", async () => {
+    const entry = await seedSession();
+    const id = await admitReturn("pre-run");
+    resetRunner();
+    // A provider plugin hook that throws while the queued run is being assembled.
+    vi.mocked(resolveProviderReasoningOutputModeWithPlugin).mockImplementationOnce(() => {
+      throw new Error("provider plugin reasoning hook failed");
+    });
+
+    const outcome = await runTurn(entry, commitAndAdopt).catch(
+      (error: unknown) => (error as Error).message,
+    );
+
+    expect(outcome).toBe("provider plugin reasoning hook failed");
+    expect(runner.calls).toEqual([]);
+    // Promotion consumed the return; nothing committed, adopted or acked it.
+    expect(await snapshot(id)).toEqual({
+      pending: [id],
+      queued: [],
+      committedReceipt: false,
+      acks: 0,
+    });
+    // No turn is in flight, so its claim must lapse with the lease.
+    await replayAfterClaimLease(id);
+    await expectDeliveredOnceAndSettled(entry, id, "RETURN-pre-run");
   });
 
   it("retires a return whose recipient owner changes between admission and promotion", async () => {
