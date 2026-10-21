@@ -247,10 +247,18 @@ it("delete orphans a pending-retained run; a sweep on either side of resolution 
   expect(displayStatus("elected")).toBe("killed");
   await writeSession(requester, "new-head", "new-head-revision");
 
-  // Sweep before resolution: both rows stay held, neither is acked.
-  for (const row of await returnRows("elected")) {
-    expect(await drain(row)).toBe("pending");
-  }
+  // Sweep before resolution: both rows stay held (pending, nothing queued), neither is acked.
+  const sweep = async () => {
+    const outcomes: string[] = [];
+    for (const row of await returnRows("elected")) {
+      outcomes.push(await drain(row));
+    }
+    return {
+      outcomes,
+      queued: [...queuedEvents(text, requester), ...queuedEvents(legacy, requester)],
+    };
+  };
+  expect(await sweep()).toEqual({ outcomes: ["pending", "pending"], queued: [] });
   await resolveContinuationResetRetentions({
     cfg: getRuntimeConfig(),
     markedBefore: Date.now() + 1,
@@ -259,14 +267,8 @@ it("delete orphans a pending-retained run; a sweep on either side of resolution 
 
   // Sweep after the mark settled, before any release reaches the rows (the reviewed gap): both
   // rows move to failed, neither is acked as delivered, and nothing reaches the new head.
-  const released = await returnRows("elected");
-  expect(released).toHaveLength(2);
-  for (const row of released) {
-    expect(await drain(row)).toBe("moved-to-failed");
-  }
+  expect(await sweep()).toEqual({ outcomes: ["moved-to-failed", "moved-to-failed"], queued: [] });
   expect(await returnRows("elected")).toEqual([]);
-  expect(queuedEvents(text, requester)).toEqual([]);
-  expect(queuedEvents(legacy, requester)).toEqual([]);
 });
 
 it("a return held seven days by an unresolved reset expires to failed, never delivered, and its run keeps running", async () => {
