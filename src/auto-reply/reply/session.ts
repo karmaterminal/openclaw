@@ -95,6 +95,7 @@ import {
 import { normalizeSessionDeliveryState } from "../../utils/delivery-context.shared.js";
 import { isInternalMessageChannel } from "../../utils/message-channel.js";
 import { resolveCommandTurnTargetSessionKey } from "../command-turn-context.js";
+import { prepareContinuationResetRetention } from "../continuation/session-reset-retention.js";
 import type { FinalizedTemplateContext as TemplateContext } from "../templating.js";
 import { resolveEffectiveResetTargetSessionKey } from "./acp-reset-target.js";
 import { readBeforeResetMessages } from "./commands-reset-hooks.js";
@@ -154,6 +155,8 @@ type InitSessionLifecycleMutation = {
   sessionKey: string;
   lifecycleRevision?: string;
   resetTriggered: boolean;
+  /** Continuation: the successor revision a reset's retention marks already name. */
+  nextLifecycleRevision?: string;
 };
 type InitSessionStateAttemptOutcome =
   | { kind: "complete"; result: SessionInitResult }
@@ -238,6 +241,15 @@ async function initSessionStateAttempt(params: InitSessionStateParams): Promise<
       await applyParentStop();
       return { stopped: 0, failed: 0 };
     };
+    // Continuation: an explicit reset keeps its continuation-elected delegate tree.
+    const continuationRetention = candidate.resetTriggered
+      ? prepareContinuationResetRetention({
+          cfg: params.cfg,
+          sessionKey: candidate.sessionKey,
+          agentId: attemptContext.agentId,
+          storePath: attemptContext.storePath,
+        })
+      : undefined;
     // Drain foreign owners before the rollover takes the writer lane. Holding
     // that lane while waiting would deadlock owners that release after a write.
     rollover = await runReplySessionRolloverMutation<InitSessionStateAttemptOutcome>({
@@ -283,13 +295,23 @@ async function initSessionStateAttempt(params: InitSessionStateParams): Promise<
               assertCurrent: () => params.signal?.throwIfAborted(),
             });
             try {
-              return await stopSessionResetSubagents({
-                cfg: params.cfg,
-                sessionKey: candidate.sessionKey,
-                agentId: attemptContext.agentId,
-                assertCurrent: cleanup.assertCurrent,
-                beforeKill: applyParentStop,
-              });
+              const stop = () =>
+                stopSessionResetSubagents({
+                  cfg: params.cfg,
+                  sessionKey: candidate.sessionKey,
+                  agentId: attemptContext.agentId,
+                  assertCurrent: cleanup.assertCurrent,
+                  beforeKill: applyParentStop,
+                });
+              return continuationRetention
+                ? await continuationRetention.stopSubagents(
+                    {
+                      fromRevision: current.lifecycleRevision,
+                      assertCurrent: cleanup.assertCurrent,
+                    },
+                    stop,
+                  )
+                : await stop();
             } finally {
               cleanup.release();
             }
@@ -298,7 +320,15 @@ async function initSessionStateAttempt(params: InitSessionStateParams): Promise<
       },
       // Check the current identity once at the commit instead of rebuilding the
       // complete initialization before and after draining.
-      run: async () => preparedOutcome ?? runLockedAttempt(candidate),
+      run: async () =>
+        preparedOutcome ??
+        runLockedAttempt(
+          continuationRetention
+            ? { ...candidate, nextLifecycleRevision: continuationRetention.successorRevision }
+            : candidate,
+        ),
+      // Inside the lifecycle mutation, so no later rollover can move the row first.
+      finalize: async () => await continuationRetention?.resolve(),
     });
   }
   return rollover.result;
@@ -659,7 +689,11 @@ async function initSessionStateAttemptLocked(
     ...preservedState,
     ...creationStamp,
     sessionId,
-    lifecycleRevision: isNewSession ? crypto.randomUUID() : baseEntry?.lifecycleRevision,
+    lifecycleRevision: isNewSession
+      ? ((lifecycleMutationMatches
+          ? lifecycleMutationIdentity?.nextLifecycleRevision
+          : undefined) ?? crypto.randomUUID())
+      : baseEntry?.lifecycleRevision,
     updatedAt: retainPendingResetMarker
       ? 0
       : recordedActivity

@@ -20,6 +20,7 @@ import {
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { defaultRuntime } from "../runtime.js";
 import { parseContinuationChainHop } from "./subagent-announce.continuation.accounting.js";
+import { findContinuationResetHold } from "./subagents/registry/subagent-continuation-reset-retention.js";
 
 const continuationLog = createSubsystemLogger("continuation/announce");
 
@@ -176,6 +177,8 @@ export async function routeSubagentContinuationReturn(params: {
             idempotencyKeyBase: `continuation-return:${params.announceId}`,
             wakeRecipients: params.wakeOnReturn === true || params.silentAnnounce !== true,
             childRunId: params.childRunId,
+            holdForReset: (sessionKey) =>
+              findContinuationResetHold(params.childRunId, sessionKey) !== undefined,
             ...(recipientAuthorities ? { recipientAuthorities } : {}),
             ...(params.continuationFanoutMode ? { fanoutMode: params.continuationFanoutMode } : {}),
             ...(completionTrace.chainStepRemaining !== undefined
@@ -190,7 +193,11 @@ export async function routeSubagentContinuationReturn(params: {
     // durable row for retry, not delivered.
     const deliveredSessionKeys = outcome?.deliveredSessionKeys ?? [];
     const heldSessionKeys = outcome?.heldSessionKeys ?? [];
-    if (deliveredSessionKeys.length > 0 || heldSessionKeys.length === 0) {
+    const resetHeldSessionKeys = outcome?.resetHeldSessionKeys ?? [];
+    if (
+      deliveredSessionKeys.length > 0 ||
+      (heldSessionKeys.length === 0 && resetHeldSessionKeys.length === 0)
+    ) {
       defaultRuntime.log(
         `[continuation:targeted-return] Delivered to ${deliveredSessionKeys.join(",")} from ${params.childSessionKey}`,
       );
@@ -198,6 +205,11 @@ export async function routeSubagentContinuationReturn(params: {
     if (heldSessionKeys.length > 0) {
       continuationLog.warn(
         `[continuation:targeted-return] Held for retry (system event queue full) to ${heldSessionKeys.join(",")} from ${params.childSessionKey}`,
+      );
+    }
+    if (resetHeldSessionKeys.length > 0) {
+      continuationLog.info(
+        `[continuation:targeted-return] Held for a pending session reset to ${resetHeldSessionKeys.join(",")} from ${params.childSessionKey}`,
       );
     }
     return { handled: true };

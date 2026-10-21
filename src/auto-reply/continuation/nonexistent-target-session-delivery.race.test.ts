@@ -240,6 +240,7 @@ describe("branch 3 — target deleted during dispatch race", () => {
       deliveryIds: [],
       deliveredSessionKeys: [],
       heldSessionKeys: [],
+      resetHeldSessionKeys: [],
     });
     expect(ackSessionDelivery).toHaveBeenCalledWith(
       "delivery-stale-authority",
@@ -313,6 +314,7 @@ describe("branch 3 — target deleted during dispatch race", () => {
       deliveryIds: [],
       deliveredSessionKeys: [],
       heldSessionKeys: [],
+      resetHeldSessionKeys: [],
     });
     expect(enqueueSystemEvent).toHaveBeenCalledTimes(1);
     expect(removeSystemEvents).toHaveBeenCalledWith(EXISTING_TARGET, expect.any(Function));

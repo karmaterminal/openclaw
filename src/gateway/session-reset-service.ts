@@ -17,6 +17,7 @@ import { createAgentRunDirectAbortError } from "../agents/run-termination.js";
 import { resolveSessionModelRef } from "../agents/session-model-ref.js";
 import { readRegistryWorktree } from "../agents/worktrees/registry-read.js";
 import { captureWorktreeRunEndContext } from "../agents/worktrees/run-end-lifecycle.js";
+import { prepareContinuationResetRetention } from "../auto-reply/continuation/session-reset-retention.js";
 import {
   prepareSessionResetCleanupGuard,
   SessionResetCleanupError,
@@ -430,6 +431,13 @@ async function performPreparedGatewaySessionReset({
   let preparedResetEntry: SessionEntry | undefined;
   let preparedLifecycle: SessionLifecycle.PreparedGatewaySessionLifecycle | undefined;
   let lifecyclePreparationCommitted = false;
+  // Continuation: the reset keeps its continuation-elected delegate tree.
+  const continuationRetention = prepareContinuationResetRetention({
+    cfg: resetTarget.cfg,
+    sessionKey: resetTarget.target.canonicalKey,
+    agentId: resetTarget.target.agentId,
+    storePath: resetTarget.storePath,
+  });
   try {
     return await runSessionMutation({
       diagnosticLabel: "reset",
@@ -457,13 +465,20 @@ async function performPreparedGatewaySessionReset({
             assertCurrent: assertReadAuthorized,
           });
           try {
-            return await stopSessionResetSubagents({
-              cfg: resetTarget.cfg,
-              sessionKey: resetTarget.target.canonicalKey,
-              agentId: resetTarget.target.agentId,
-              assertCurrent: cleanup.assertCurrent,
-              beforeKill: applyParentStop,
-            });
+            return await continuationRetention.stopSubagents(
+              {
+                fromRevision: preparedResetEntry?.lifecycleRevision,
+                assertCurrent: cleanup.assertCurrent,
+              },
+              () =>
+                stopSessionResetSubagents({
+                  cfg: resetTarget.cfg,
+                  sessionKey: resetTarget.target.canonicalKey,
+                  agentId: resetTarget.target.agentId,
+                  assertCurrent: cleanup.assertCurrent,
+                  beforeKill: applyParentStop,
+                }),
+            );
           } finally {
             cleanup.release();
           }
@@ -596,14 +611,17 @@ async function performPreparedGatewaySessionReset({
               params.assertCurrent?.();
               params.assertAuthorizedInstance?.();
             };
-        const runtimeCleanupError = await ensureSessionRuntimeCleanup({
-          cfg,
-          key: params.key,
-          target,
-          sessionId: entry?.sessionId,
-          sessionLifecycleRevision: resetLifecycleRevision,
-          reason: params.reason,
-        });
+        // This second reset kill honors the marks the preemption's kill wrote.
+        const runtimeCleanupError = await continuationRetention.runKill(() =>
+          ensureSessionRuntimeCleanup({
+            cfg,
+            key: params.key,
+            target,
+            sessionId: entry?.sessionId,
+            sessionLifecycleRevision: resetLifecycleRevision,
+            reason: params.reason,
+          }),
+        );
         if (runtimeCleanupError) {
           return { ok: false, error: runtimeCleanupError };
         }
@@ -870,7 +888,7 @@ async function performPreparedGatewaySessionReset({
                 : {};
             const nextEntry: InternalSessionEntry = {
               sessionId: nextSessionId,
-              lifecycleRevision: randomUUID(),
+              lifecycleRevision: continuationRetention.successorRevision,
               updatedAt: now,
               sessionStartedAt: now,
               systemSent: false,
@@ -1140,11 +1158,16 @@ async function performPreparedGatewaySessionReset({
         };
       },
       finalize: async () => {
-        if (!lifecyclePreparationCommitted) {
-          await rollbackGatewaySessionPreparation({
-            prepared: preparedLifecycle,
-            onError: reportLifecycleCleanupError,
-          });
+        try {
+          if (!lifecyclePreparationCommitted) {
+            await rollbackGatewaySessionPreparation({
+              prepared: preparedLifecycle,
+              onError: reportLifecycleCleanupError,
+            });
+          }
+        } finally {
+          // Inside the lifecycle mutation, so no later rollover can move the row first.
+          await continuationRetention.resolve();
         }
       },
     });

@@ -649,6 +649,9 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/subagents/registry/subagent-registry.test.ts",
   "src/agents/subagents/registry/subagent-registry-running-registration.native.test.ts",
   "src/agents/subagents/registry/subagent-registry.session-failure.test.ts",
+  // Continuation reset retention: the restart proof writes registry and delivery rows through
+  // shared state before its fresh processes boot, so it needs the host broker.
+  "src/agents/subagents/registry/subagent-reset.continuation-retention.restart.test.ts",
   "src/agents/subagents/spawn/subagent-spawn.test.ts",
   "src/agents/subagents/spawn/subagent-spawn.thinking-provenance.test.ts",
   "src/agents/subagents/spawn/subagent-spawn.continuation-delegate.test.ts",
