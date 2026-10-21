@@ -108,6 +108,11 @@ type QueuedSessionDeliveryGenericPayload =
        * which keep the generic restart-sentinel wake on replay.
        */
       returnWake?: ContinuationReturnWake;
+      /**
+       * Continuation returns only: the child run that produced this return. A run a session
+       * reset retained holds its returns here until the reset's successor is proven.
+       */
+      continuationSourceRunId?: string;
     } & QueuedSessionDeliveryPayloadMetadata)
   | ({
       kind: "agentTurn";
@@ -324,6 +329,7 @@ const QueuedPlainSystemEventSchema = z
           .strict(),
       ])
       .optional(),
+    continuationSourceRunId: z.string().trim().min(1).optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {

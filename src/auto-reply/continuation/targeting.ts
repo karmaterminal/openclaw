@@ -178,6 +178,11 @@ export async function enqueueContinuationReturnDeliveries(
      */
     returnWake?: ContinuationReturnWake;
     childRunId?: string;
+    /**
+     * True while a reset is replacing this recipient's head and has retained the child: the row
+     * is written but not queued, and the reset's resolution releases or terminalizes it.
+     */
+    holdForReset?: (sessionKey: string) => boolean;
     stateDir?: string;
     traceparent?: string;
     fanoutMode?: ContinuationDelegateFanoutMode;
@@ -194,7 +199,7 @@ export async function enqueueContinuationReturnDeliveries(
   deliveryIds: string[];
   /** Recipients whose event reached the queue now. */
   deliveredSessionKeys: string[];
-  /** Recipients whose return the full queue refused; their rows are held for retry. */
+  /** Recipients whose return the full queue refused or a pending reset holds; their rows wait. */
   heldSessionKeys: string[];
 }> {
   if (!params.ownerAgentId) {
@@ -257,6 +262,7 @@ export async function enqueueContinuationReturnDeliveries(
       awaitPromptAdoption: true,
       // A retry that admits a held return wakes as this producer would have.
       returnWake,
+      ...(params.childRunId ? { continuationSourceRunId: params.childRunId } : {}),
     };
     const deliveryId = await deps.enqueueSessionDelivery(
       payload,
@@ -267,6 +273,16 @@ export async function enqueueContinuationReturnDeliveries(
       await (deps.ackSessionDelivery ?? ackSessionDelivery)(
         deliveryId,
         captureContinuationQueueContext(params.stateDir),
+      );
+      continue;
+    }
+    // Checked after the awaited write, with no await before the queue below: a reset that marks
+    // the child later clears this event and its replay is deferred by the same mark.
+    if (params.holdForReset?.(sessionKey)) {
+      deliveryIds.push(deliveryId);
+      heldSessionKeys.push(sessionKey);
+      log.info(
+        `[continuation:return-held] session reset pending; deliveryId=${deliveryId} session=${sessionKey} waits for the reset to resolve`,
       );
       continue;
     }

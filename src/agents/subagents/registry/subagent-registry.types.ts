@@ -285,6 +285,8 @@ export type SubagentRunRecord = Omit<SubagentRunReadRecord, "execution" | "colle
   continuationFanoutMode?: "tree" | "all";
   /** Durable logical-mailbox authority captured before this run was accepted. */
   continuationRecipientAuthorityBinding?: import("../../../config/sessions/session-recipient-authority-types.js").ContinuationRecipientAuthorityBinding;
+  /** Continuation: a session reset retained this run; its results wait for the successor proof. */
+  continuationResetRetention?: import("./subagent-continuation-reset-active.js").ContinuationResetRetention;
   /** Continuation: producer span carrier available to child completion paths. */
   traceparent?: string;
   /** Spawner plus ancestor sessions authorized to wait, frozen when the collector is registered. */

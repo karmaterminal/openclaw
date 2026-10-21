@@ -25,6 +25,7 @@ import {
   matchesSubagentChildSessionOwner,
   resolveSubagentChildAgentId,
 } from "./subagent-child-owner-match.js";
+import { isContinuationRunRetainedByActiveReset } from "./subagent-continuation-reset-active.js";
 import type { ResolvedSubagentController } from "./subagent-control.types.js";
 import {
   readSubagentExecRequestController,
@@ -72,9 +73,11 @@ export async function prepareSessionSubagentKillSelection(params: {
 }) {
   const controller = { controllerSessionKey: params.sessionKey, controllerAgentId: params.agentId };
   const ownsRoot = (entry: SubagentRunRecord) =>
-    !ensureSubagentControllerOwnsRun({ cfg: params.cfg, controller, entry }) ||
-    (entry.requesterSessionKey === params.sessionKey &&
-      resolveSubagentRequesterAgentId(params.cfg, entry) === params.agentId);
+    // Continuation (karmaterminal): the reset in flight keeps the continuation runs it marked.
+    !isContinuationRunRetainedByActiveReset(entry) &&
+    (!ensureSubagentControllerOwnsRun({ cfg: params.cfg, controller, entry }) ||
+      (entry.requesterSessionKey === params.sessionKey &&
+        resolveSubagentRequesterAgentId(params.cfg, entry) === params.agentId));
   const runs = new Map(
     [
       ...listSubagentRunsForRequester(params.sessionKey, { requesterAgentId: params.agentId }),

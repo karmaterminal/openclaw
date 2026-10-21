@@ -286,7 +286,10 @@ async function runScheduledSessionDelivery(
           if (error instanceof SessionDeliveryDeferredError && error.capacity) {
             capacityDeferral = error.capacity;
           }
-          if (error instanceof SessionDeliveryDeferredError && error.awaitingAdoptionInMemory) {
+          if (
+            error instanceof SessionDeliveryDeferredError &&
+            (error.awaitingAdoptionInMemory || error.heldByOwner)
+          ) {
             awaitingAdoptionInMemory = true;
           }
           throw error;
@@ -322,7 +325,8 @@ async function runScheduledSessionDelivery(
   if (pending && awaitingAdoptionInMemory) {
     // Delivered into memory; only prompt adoption is outstanding. Polling it
     // would only re-read the row, so the periodic pending sweep re-checks it
-    // instead (and re-queues it if the in-memory copy was lost).
+    // instead (and re-queues it if the in-memory copy was lost). An owner-held
+    // row (continuation reset hold) is scheduled by its owner on release.
     return;
   }
   if (pending) {

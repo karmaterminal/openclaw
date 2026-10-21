@@ -20,6 +20,7 @@ import {
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { defaultRuntime } from "../runtime.js";
 import { parseContinuationChainHop } from "./subagent-announce.continuation.accounting.js";
+import { isContinuationResultHeldForReset } from "./subagents/registry/subagent-continuation-reset-retention.js";
 
 const continuationLog = createSubsystemLogger("continuation/announce");
 
@@ -176,6 +177,8 @@ export async function routeSubagentContinuationReturn(params: {
             idempotencyKeyBase: `continuation-return:${params.announceId}`,
             wakeRecipients: params.wakeOnReturn === true || params.silentAnnounce !== true,
             childRunId: params.childRunId,
+            holdForReset: (sessionKey) =>
+              isContinuationResultHeldForReset(params.childRunId, sessionKey),
             ...(recipientAuthorities ? { recipientAuthorities } : {}),
             ...(params.continuationFanoutMode ? { fanoutMode: params.continuationFanoutMode } : {}),
             ...(completionTrace.chainStepRemaining !== undefined
@@ -186,8 +189,8 @@ export async function routeSubagentContinuationReturn(params: {
             ownerAgentId: params.childAgentId,
           })
         : undefined;
-    // Report custody as it is: a return the full queue refused is held by its
-    // durable row for retry, not delivered.
+    // Report custody as it is: a return the full queue refused, or a pending
+    // reset holds, waits on its durable row; it is not delivered.
     const deliveredSessionKeys = outcome?.deliveredSessionKeys ?? [];
     const heldSessionKeys = outcome?.heldSessionKeys ?? [];
     if (deliveredSessionKeys.length > 0 || heldSessionKeys.length === 0) {
@@ -197,7 +200,7 @@ export async function routeSubagentContinuationReturn(params: {
     }
     if (heldSessionKeys.length > 0) {
       continuationLog.warn(
-        `[continuation:targeted-return] Held for retry (system event queue full) to ${heldSessionKeys.join(",")} from ${params.childSessionKey}`,
+        `[continuation:targeted-return] Held (system event queue full or session reset pending) to ${heldSessionKeys.join(",")} from ${params.childSessionKey}`,
       );
     }
     return { handled: true };

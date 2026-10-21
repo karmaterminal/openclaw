@@ -61,10 +61,19 @@ export class SessionDeliveryDeferredError extends Error {
    * leaves the row to its periodic pending sweep instead of polling it.
    */
   readonly awaitingAdoptionInMemory?: true;
+  /**
+   * Continuation: the row's owner holds it and schedules it on release, so the retry runtime
+   * leaves it to the periodic pending sweep instead of polling it.
+   */
+  readonly heldByOwner?: true;
 
   constructor(
     message?: string,
-    options?: { capacity?: SessionDeliveryCapacityDeferral; awaitingAdoptionInMemory?: true },
+    options?: {
+      capacity?: SessionDeliveryCapacityDeferral;
+      awaitingAdoptionInMemory?: true;
+      heldByOwner?: true;
+    },
   ) {
     super(message);
     if (options?.capacity) {
@@ -72,6 +81,9 @@ export class SessionDeliveryDeferredError extends Error {
     }
     if (options?.awaitingAdoptionInMemory) {
       this.awaitingAdoptionInMemory = true;
+    }
+    if (options?.heldByOwner) {
+      this.heldByOwner = true;
     }
   }
 }

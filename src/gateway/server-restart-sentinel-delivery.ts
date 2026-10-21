@@ -1,5 +1,6 @@
 import type { RuntimeContextFragment } from "../agents/internal-runtime-context.js";
 import { resolveCorrelatedSubagentDelivery } from "../agents/subagents/completion/subagent-completion-delivery.js";
+import { isContinuationResultHeldForReset } from "../agents/subagents/registry/subagent-continuation-reset-retention.js";
 import { finalizeInboundContext } from "../auto-reply/reply/inbound-context.js";
 import { deliverQueuedPostCompactionDelegate } from "../auto-reply/reply/post-compaction-delegate-delivery.js";
 import { dispatchReplyWithBufferedBlockDispatcherCore } from "../auto-reply/reply/provider-dispatcher.js";
@@ -265,6 +266,13 @@ async function deliverResolvedQueuedSessionDelivery(params: {
         queueId: params.entry.id,
       });
       return;
+    }
+    // Continuation: a reset replacing this head retained the source run. Its resolution releases
+    // (schedules) or terminalizes the row once the successor is proven or the reset is known void.
+    if (isContinuationResultHeldForReset(params.entry.continuationSourceRunId, canonicalKey)) {
+      throw new SessionDeliveryDeferredError("continuation return is held by a pending reset", {
+        heldByOwner: true,
+      });
     }
     // A continuation return settles only on prompt adoption, whether or not it
     // carries recipient authority; rows written before that rule replay the same way.
