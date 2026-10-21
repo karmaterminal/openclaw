@@ -17,7 +17,6 @@ import {
 import { deliverQueuedSessionDelivery } from "../../gateway/server-restart-sentinel.js";
 import {
   ackSessionDelivery,
-  enqueueSessionDelivery,
   loadPendingSessionDeliveries,
 } from "../../infra/session-delivery-queue-storage.js";
 import {
@@ -75,58 +74,35 @@ async function seedSession(scope: Scope): Promise<void> {
   });
 }
 
-/** The real continuation-return producer: a durable row plus its fast-path event. */
-async function produce(scope: Scope, text: string): Promise<string> {
-  const result = await enqueueContinuationReturnDeliveries({
+/**
+ * The real continuation-return producer: a durable row plus its fast-path event.
+ * With an authority it binds the return to the recipient session's current owner.
+ */
+function runProducer(
+  scope: Scope,
+  text: string,
+  authority?: Awaited<ReturnType<typeof captureSessionRecipientAuthority>>,
+) {
+  return enqueueContinuationReturnDeliveries({
     targetSessionKeys: [scope.sessionKey],
     recipientAgentIds: new Map([[scope.sessionKey, scope.agentId]]),
+    ...(authority ? { recipientAuthorities: new Map([[scope.sessionKey, authority]]) } : {}),
     text,
     idempotencyKeyBase: `continuation-return:${text}`,
     ownerAgentId: scope.agentId,
     stateDir: custody.stateDir(),
   });
-  expect(result.delivered).toBe(1);
-  return expectDefined(result.deliveryIds[0], "delivery id");
 }
 
-/**
- * What the producer writes for an authority-bound return: its own pre-check
- * cannot scope an unqualified key to its recipient agent, so write the row and
- * event directly for the global-scope cases.
- */
-async function produceBound(scope: Scope, text: string): Promise<string> {
-  const stateDir = custody.stateDir();
-  const recipientAuthority = await captureSessionRecipientAuthority(scope);
-  const id = await enqueueSessionDelivery(
-    {
-      kind: "systemEvent",
-      sessionKey: scope.sessionKey,
-      agentId: scope.agentId,
-      text,
-      idempotencyKey: `continuation-return:${text}:${scope.sessionKey}`,
-      recipientAuthority,
-      awaitPromptAdoption: true,
-      returnWake: false,
-    },
-    captureContinuationQueueContext(stateDir),
-  );
-  expect(
-    enqueueSystemEvent(
-      text,
-      withSystemEventOwner(
-        {
-          sessionKey: scope.sessionKey,
-          trusted: true,
-          recipientAuthority,
-          sessionDeliveryAckId: id,
-          sessionDeliveryAckStateDir: stateDir,
-          sessionDeliveryAwaitsTurnAdoption: true,
-        },
-        scope.agentId,
-      ),
-    ),
-  ).toBe(true);
-  return id;
+async function produce(
+  scope: Scope,
+  text: string,
+  options: { bound?: boolean } = {},
+): Promise<string> {
+  const authority = options.bound ? await captureSessionRecipientAuthority(scope) : undefined;
+  const result = await runProducer(scope, text, authority);
+  expect(result.delivered).toBe(1);
+  return expectDefined(result.deliveryIds[0], "delivery id");
 }
 
 /** Production admission: prepare, then resolve final adoption as get-reply-run-admission does. */
@@ -321,10 +297,36 @@ describe("managed system-event delivery (non-default agent, global scope)", () =
   const ops = { agentId: "ops", sessionKey: "global" };
   const main = { agentId: "main", sessionKey: "global" };
 
+  it("producer: judges a bound return against its recipient agent's store, not the same-named session of another agent", async () => {
+    await seedSession(ops);
+    await seedSession(main);
+    const authority = await captureSessionRecipientAuthority(ops);
+    const reassign = (scope: Scope) =>
+      assignSessionOwner(scope, {
+        owner: { type: "human", id: "owner-b" },
+        assignedBy: ownerA,
+        assignedAt: Date.now(),
+      });
+
+    // Another agent's owner change on the same-named session leaves the return current.
+    expect(reassign(main)).not.toBeNull();
+    const current = await runProducer(ops, "OPS-CURRENT-RETURN", authority);
+    expect(current.delivered).toBe(1);
+    expect(await pendingIds()).toEqual(current.deliveryIds);
+    expect(queuedTexts(ops)).toEqual(["OPS-CURRENT-RETURN"]);
+
+    // The recipient's own owner change makes it stale: no row, no event.
+    expect(reassign(ops)).not.toBeNull();
+    const stale = await runProducer(ops, "OPS-STALE-RETURN", authority);
+    expect(stale.delivered).toBe(0);
+    expect(await pendingIds()).toEqual(current.deliveryIds);
+    expect(queuedTexts(ops)).toEqual(["OPS-CURRENT-RETURN"]);
+  });
+
   it("positive and negative: only the owning agent's turn admits the delivery, judged against its own store", async () => {
     await seedSession(ops);
     await seedSession(main);
-    const id = await produceBound(ops, "OPS-GLOBAL-RETURN");
+    const id = await produce(ops, "OPS-GLOBAL-RETURN", { bound: true });
     enqueueSystemEvent(
       "MAIN-GLOBAL-NOTICE",
       withSystemEventOwner({ sessionKey: "global" }, "main"),
@@ -350,7 +352,7 @@ describe("managed system-event delivery (non-default agent, global scope)", () =
   it("interleaving: a writer on the default agent's same-named session cannot stale the held delivery, but its own owner change does", async () => {
     await seedSession(ops);
     await seedSession(main);
-    const kept = await produceBound(ops, "OPS-KEPT-RETURN");
+    const kept = await produce(ops, "OPS-KEPT-RETURN", { bound: true });
     const prepared = await prepareFormattedSystemEvents({
       cfg: {},
       ...ops,

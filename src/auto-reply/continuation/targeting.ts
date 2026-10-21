@@ -227,7 +227,11 @@ export async function enqueueContinuationReturnDeliveries(
       !recipientAuthority ||
       (
         deps.isRecipientAuthorityCurrent ??
-        ((key, authority) => isSessionRecipientAuthorityCurrent({ sessionKey: key }, authority))
+        ((key, authority) =>
+          isSessionRecipientAuthorityCurrent(
+            { agentId: recipientAgentId, sessionKey: key },
+            authority,
+          ))
       )(sessionKey, recipientAuthority);
     if (!recipientAuthorityCurrent()) {
       continue;
