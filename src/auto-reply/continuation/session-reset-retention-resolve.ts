@@ -13,7 +13,10 @@ import { readSessionEntryReadOnlyInWorker } from "../../config/sessions/session-
 import { resolveAllAgentSessionStoreTargetsSync } from "../../config/sessions/targets.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import { loadPendingSessionDeliveries } from "../../infra/session-delivery-queue-storage.js";
+import {
+  loadPendingSessionDeliveries,
+  moveSessionDeliveryToFailed,
+} from "../../infra/session-delivery-queue-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import { parseContinuationRecipientAuthorityBinding } from "./recipient-authority-binding.js";
@@ -140,39 +143,56 @@ export async function resolveContinuationResetRetentions(params: {
     }
     outcomes.set(entry.runId, { expected: entry, state });
   }
-  const settled = await settleContinuationResetRetentions(outcomes);
-  if (settled.length === 0) {
+  if (outcomes.size === 0) {
     return;
   }
-  await releaseHeldContinuationResults(params.cfg, settled, outcomes);
-}
-
-async function releaseHeldContinuationResults(
-  cfg: OpenClawConfig,
-  settledRunIds: readonly string[],
-  outcomes: ReadonlyMap<
-    string,
-    { expected: SubagentRunRecord; state: ContinuationResetRetentionOutcome }
-  >,
-): Promise<void> {
   const context = captureOpenClawStateWorkerContext();
-  const settled = new Set(settledRunIds);
   // Only the reset session's own returns were held (the producer and replay gates key on it).
   const heldRows = (await loadPendingSessionDeliveries(context)).filter((row) => {
     const runId = row.kind === "systemEvent" ? row.continuationSourceRunId : undefined;
-    const mark = runId && settled.has(runId) ? outcomes.get(runId)?.expected : undefined;
-    return mark?.continuationResetRetention?.sessionKey === row.sessionKey;
+    const mark = runId ? outcomes.get(runId)?.expected.continuationResetRetention : undefined;
+    return mark?.sessionKey === row.sessionKey;
   });
+  const sourceState = (row: (typeof heldRows)[number]) =>
+    row.kind === "systemEvent" && row.continuationSourceRunId
+      ? outcomes.get(row.continuationSourceRunId)?.state
+      : undefined;
+  // Orphaned results go to failed while their marks are still pending, so the replay fence holds
+  // them until then and no sweep can deliver one in between. A failure here throws before any mark
+  // settles; the next resolution retries. A row written after this load is caught by the durable
+  // orphan fence at replay instead.
+  const orphanedRows = heldRows.filter((row) => sourceState(row) === "orphaned");
+  for (const row of orphanedRows) {
+    await moveSessionDeliveryToFailed(row.id, context);
+  }
+  if (orphanedRows.length > 0) {
+    log.warn(
+      `[continuation:reset-retention] moved ${orphanedRows.length} held continuation return(s) to failed: their reset orphaned the source run (rows ${orphanedRows.map((row) => row.id).join(", ")})`,
+    );
+  }
+  const settled = new Set(await settleContinuationResetRetentions(outcomes));
   const { scheduleSessionDelivery } = await import("../../infra/session-delivery-queue-runtime.js");
-  // The settled mark decides each row at replay: delivered for adopted, aborted and superseded,
-  // moved to failed for orphaned (the durable fence in server-restart-sentinel-delivery.ts). One
-  // path terminalizes, so a sweep racing this release reaches the same outcome.
   for (const row of heldRows) {
+    const runId = row.kind === "systemEvent" ? row.continuationSourceRunId : undefined;
+    if (!runId || !settled.has(runId) || sourceState(row) === "orphaned") {
+      continue;
+    }
     if (!(await scheduleSessionDelivery(row.id, context))) {
       // No delivery runtime here; the Gateway's pending sweep replays the released row.
       log.info(`[continuation:reset-retention] released row ${row.id} awaits the pending sweep`);
     }
   }
+  await stopOrphanedContinuationRuns(params.cfg, settled, outcomes);
+}
+
+async function stopOrphanedContinuationRuns(
+  cfg: OpenClawConfig,
+  settled: ReadonlySet<string>,
+  outcomes: ReadonlyMap<
+    string,
+    { expected: SubagentRunRecord; state: ContinuationResetRetentionOutcome }
+  >,
+): Promise<void> {
   for (const runId of settled) {
     const outcome = outcomes.get(runId);
     if (outcome?.state !== "orphaned" || outcome.expected.cleanupCompletedAt !== undefined) {
