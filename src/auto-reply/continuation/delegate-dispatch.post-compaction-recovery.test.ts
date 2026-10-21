@@ -402,7 +402,7 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
         lifecycleRevision: "revision-2",
         continuationChainCount: 0,
       });
-      await cancelSessionContinuations(sessionKey);
+      await cancelSessionContinuations(sessionKey, () => {});
       return {
         status: "accepted",
         childSessionKey: "agent:main:subagent:pc-finalization-child",
@@ -574,7 +574,7 @@ describe("recoverAndReleaseStagedPostCompactionDelegates", () => {
     });
     beforeAdmissionReadHook.current = async () => {
       beforeAdmissionReadHook.current = undefined;
-      await cancelSessionContinuations(sessionKey);
+      await cancelSessionContinuations(sessionKey, () => {});
     };
 
     const result = await recoverAndReleaseStagedPostCompactionDelegates({

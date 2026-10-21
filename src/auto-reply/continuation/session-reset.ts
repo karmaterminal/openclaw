@@ -50,8 +50,15 @@ function resetPatch(record: ContinuationRecord, now: number): ContinuationRecord
   return isUnacceptedPostCompactionHandoff(record) ? { cancelRequestedAt: now } : undefined;
 }
 
-/** Terminalize durable continuation work owned by one reset session. */
-export async function cancelSessionContinuations(sessionKey: string): Promise<void> {
+/**
+ * Terminalize durable continuation work owned by one reset session.
+ * `assertCurrent` is the reset's incarnation fence; it throws once a newer
+ * incarnation owns the session.
+ */
+export async function cancelSessionContinuations(
+  sessionKey: string,
+  assertCurrent: () => void,
+): Promise<void> {
   const now = Date.now();
   const records = await listContinuationRecords({ ownerSessionKey: sessionKey });
   for (const initial of records) {
@@ -61,6 +68,11 @@ export async function cancelSessionContinuations(sessionKey: string): Promise<vo
       if (!patch) {
         break;
       }
+      // Check at the effect: a replacement that won while this reset awaited keeps
+      // its custody. Not atomic with the write: a replacement committing between
+      // this check and the worker applying it is still cancelled, and the caller's
+      // post-loop check then fails the reset visibly. Accepted race (worker round trip).
+      assertCurrent();
       let result: Awaited<ReturnType<typeof updateContinuationRecords>>;
       try {
         result = await updateContinuationRecords(

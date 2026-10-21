@@ -206,8 +206,8 @@ describe("post-compaction delegate staging", () => {
 
     // The fence alone never drives either record; reset terminalizes them and
     // the same commit releases their payloads (RFC §5.4.4 "Reset at any boundary").
-    await cancelSessionContinuations(queuedSessionKey);
-    await cancelSessionContinuations(runningSessionKey);
+    await cancelSessionContinuations(queuedSessionKey, () => {});
+    await cancelSessionContinuations(runningSessionKey, () => {});
     for (const recordId of [queuedRecord.recordId, runningDelegate.flowId]) {
       const cancelled = await readRecord(recordId);
       expect(cancelled.status).toBe("cancelled");

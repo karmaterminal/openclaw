@@ -152,7 +152,7 @@ export async function clearSessionResetRuntimeState(
     // Durable authority must close before timers, waiters, or queues are destroyed.
     // A persistence failure leaves every transient claim path intact for retry.
     for (const key of normalizedKeys) {
-      await cancelSessionContinuations(key);
+      await cancelSessionContinuations(key, opts.assertCurrent);
     }
     opts.assertCurrent();
   }

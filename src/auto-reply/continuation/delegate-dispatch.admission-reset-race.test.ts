@@ -113,7 +113,7 @@ describe("delegate dispatch admission reset race", () => {
       config: continuationConfig(),
     });
     await reachedSpawn;
-    await cancelSessionContinuations(sessionKey);
+    await cancelSessionContinuations(sessionKey, () => {});
     abortContinuationDispatchClaims(sessionKey);
     releaseSpawn();
 

@@ -203,7 +203,7 @@ describe("delegate store — continuation custody", () => {
 
     // The fence alone never drives the record; reset terminalizes it and the
     // same commit releases the payload (RFC §5.4.4 "Reset at any boundary").
-    await cancelSessionContinuations(sessionKey);
+    await cancelSessionContinuations(sessionKey, () => {});
     const cancelled = await readRecord(queued.recordId);
     expect(cancelled.status).toBe("cancelled");
     expect(cancelled.attachmentId).toBeUndefined();

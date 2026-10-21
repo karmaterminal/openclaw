@@ -33,8 +33,9 @@ import {
   prepareSessionResetCleanupGuard,
 } from "./session-reset-cleanup.js";
 
-// Timing seam over the real custody store: the hook runs after the real write.
+// Timing seam over the real custody store: each hook runs beside the real read or write.
 const custodyWrites = vi.hoisted(() => ({
+  afterOwnerRead: undefined as (() => Promise<void>) | undefined,
   afterWrite: undefined as (() => Promise<void>) | undefined,
 }));
 
@@ -42,6 +43,15 @@ vi.mock("../continuation/custody/custody-store.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../continuation/custody/custody-store.js")>();
   return {
     ...actual,
+    listContinuationRecords: async (...args: Parameters<typeof actual.listContinuationRecords>) => {
+      const records = await actual.listContinuationRecords(...args);
+      const after = args[0].ownerSessionKey ? custodyWrites.afterOwnerRead : undefined;
+      if (after) {
+        custodyWrites.afterOwnerRead = undefined;
+        await after();
+      }
+      return records;
+    },
     updateContinuationRecords: async (
       ...args: Parameters<typeof actual.updateContinuationRecords>
     ) => {
@@ -59,6 +69,7 @@ const promptHandles: Array<ReturnType<typeof retainEmbeddedSessionPromptState>> 
 const retainedTimerKeys: string[] = [];
 
 afterEach(() => {
+  custodyWrites.afterOwnerRead = undefined;
   custodyWrites.afterWrite = undefined;
   for (const timer of timers.splice(0)) {
     clearTimeout(timer);
@@ -201,5 +212,23 @@ it("interleaving: a replacement winning after the durable write keeps its prompt
     expect(peekSystemEvents(scope.sessionKey)).toEqual(["replacement work"]);
     using current = retainEmbeddedSessionPromptState(replacement.sessionId);
     expect(current.state).toBe(newerPromptState);
+  });
+});
+
+it("interleaving: a replacement winning after the custody read, before its write, keeps that custody", async () => {
+  await withResetState(async (scope) => {
+    await replaceSessionEntry(scope, retiring);
+    const delegate = await enqueuePendingDelegate(scope.sessionKey, {
+      task: "carried by the replacement",
+      delayMs: 60_000,
+    });
+    custodyWrites.afterOwnerRead = async () => {
+      // Cleanup listed the record; the newer incarnation commits before the write.
+      await replaceSessionEntry(scope, replacement);
+    };
+
+    await expect(resetWithGuard(scope)).rejects.toThrow("session changed before cleanup");
+
+    expect((await readCustodyRecordForTest(delegate.recordId))?.status).toBe("queued");
   });
 });

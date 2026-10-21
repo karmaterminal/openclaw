@@ -252,7 +252,7 @@ describe("continuation custody readiness (phase A)", () => {
     const committed = await seedCommittedDelegate(OWNER_A, "committed earlier");
 
     // A reset before anything else has triggered phase A.
-    await cancelSessionContinuations(OWNER_A);
+    await cancelSessionContinuations(OWNER_A, () => {});
 
     const [record] = await listContinuationRecords({ recordIds: [committed] });
     expect(record?.status).toBe("cancelled");

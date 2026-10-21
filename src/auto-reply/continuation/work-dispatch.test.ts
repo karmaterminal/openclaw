@@ -711,7 +711,7 @@ describe("durable continuation_work dispatch", () => {
     loadSessionEntryMock.mockImplementationOnce((scope: { sessionKey: string }) => {
       providerCalledAtReset = getReplyFromConfigMock.mock.calls.length > 0;
       claimedStatusAtReset = firstWorkRecord().then((record) => record?.status);
-      reset = cancelSessionContinuations(sessionKey);
+      reset = cancelSessionContinuations(sessionKey, () => {});
       clearContinuationWorkDispatch(sessionKey);
       return defaultSessionRead?.(scope);
     });
