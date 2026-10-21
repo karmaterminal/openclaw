@@ -1,4 +1,4 @@
-import { it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { sanitizeToolCallInputs } from "./session-transcript-repair.js";
 import { castAgentMessages } from "./test-helpers/agent-message-fixtures.js";
 
