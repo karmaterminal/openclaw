@@ -87,7 +87,7 @@ type Fixture = {
 async function withWakeFixture(
   label: string,
   run: (fixture: Fixture) => Promise<void>,
-  options: { session?: false; chainCount?: number } = {},
+  options: { session?: false; sessionKey?: string } = {},
 ) {
   await withOpenClawTestState({ label, env: { OPENCLAW_TEST_FAST: "0" } }, async (state) => {
     const config: OpenClawConfig = completionConfig(state.workspaceDir);
@@ -124,7 +124,7 @@ async function withWakeFixture(
         ...channels.channelSetups,
       ],
     });
-    const sessionKey = `agent:main:wake-${label}`;
+    const sessionKey = options.sessionKey ?? `agent:main:wake-${label}`;
     if (options.session !== false) {
       await replaceSessionEntry(
         { agentId: AGENT_ID, sessionKey },
@@ -133,7 +133,7 @@ async function withWakeFixture(
           lifecycleRevision: "original",
           permissionMode: "full",
           delivery: normalizeSessionDeliveryState({ context: ROUTE }),
-          continuationChainCount: options.chainCount ?? 2,
+          continuationChainCount: 2,
           continuationChainTokens: 1_000,
           continuationChainStartedAt: 1,
           continuationChainId: "chain-before-wake",
@@ -271,6 +271,31 @@ it("coalesces several pending returns into one turn without merging their rows",
     expect(await rowPending(first)).toBe(false);
     expect(await rowPending(second)).toBe(false);
   });
+});
+
+it("wakes a same-agent subagent session, as a nested delegate's return needs", async ({
+  signal,
+}) => {
+  await withWakeFixture(
+    "subagent",
+    async ({ sessionKey, prompts }) => {
+      answerTurns(prompts, "Nested result reviewed.");
+      const row = await produceReturn(sessionKey, "nested delegate finished");
+
+      await withinTest(settleContinuationWakesForTest(), signal);
+
+      // The retired heartbeat runner needed a trusted exception to target a subagent session;
+      // the session-event handoff admits it as any session, with the chain budget intact.
+      expect(prompts).toHaveLength(1);
+      expect(prompts[0]).toContain("nested delegate finished");
+      expect(await rowPending(row)).toBe(false);
+      expect(await readSessionEntryInWorker({ agentId: AGENT_ID, sessionKey })).toMatchObject({
+        continuationChainCount: 2,
+        continuationChainId: "chain-before-wake",
+      });
+    },
+    { sessionKey: "agent:main:subagent:wake-nested-parent" },
+  );
 });
 
 it("waits behind a busy session and acknowledges only once its turn is adopted", async ({
