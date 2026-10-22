@@ -350,7 +350,8 @@ describe("empty-reply decision with queued delegate counts", () => {
     resolveQueuedCounts.mockResolvedValue({ pending: 0, stagedPostCompaction: 0 });
     // A turn with nothing to send: no payloads, no yield, no spawns, no
     // required terminal reply, with continuation enabled for the session.
-    context = createContext({});
+    // beforeEach's context owns the session's only active reply operation.
+    result.meta = { durationMs: 0 };
     context.followupRun.run.terminalReplyExpectation = "optional";
     context.execution.result.acceptedSessionSpawns = undefined;
     context.cfg = { agents: { defaults: { continuation: { enabled: true } } } };
