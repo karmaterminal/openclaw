@@ -291,11 +291,11 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // ControlUiChannelSettingsView for plugin-owned channel Settings presentations.
       // +1: the shared message-tool source-reply finality resolver.
       // +1: awaited web_search policy preparation for harnesses; the sync resolver stays.
-      // +3 (upstream 79ab1c4904): shared Decisions support/evaluation functions and the canonical
-      // capability schema. +11: the continuation feature's public contracts (runtime, trace,
-      // channel-ingress, system-event, diagnostics); measured +11 over base 3758 on b51feb98eb.
-      // Measured on the 79ab1c4904 merge: upstream 3813, merged tree 3824 (+11).
-      3824,
+      // +3: shared Decisions support/evaluation functions and the canonical capability schema.
+      // +2: openRecord and ToolArgumentValidationError on the existing tool-plugin facade.
+      // +11: the continuation feature's public contracts (runtime, trace, channel-ingress,
+      // system-event, diagnostics). Provisional upstream 3815 + 11; re-measured after the jump-3 merge.
+      3826,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -338,10 +338,11 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: maintainer-requested context-engine transcript watermark reader.
       // +1: the shared message-tool source-reply finality resolver, so harnesses apply a run's default.
       // +1: the same awaited web_search policy preparation.
-      // +2 (upstream 79ab1c4904): the same shared Decisions support predicate and evaluator.
-      // +4: the continuation feature's callable contracts; measured +4 over base 2187 on b51feb98eb.
-      // Measured on the 79ab1c4904 merge: upstream 2210, merged tree 2214 (+4).
-      2214,
+      // +2: the same shared Decisions support predicate and evaluator.
+      // +1: the same openRecord helper; ToolArgumentValidationError is construct-only.
+      // +4: the continuation feature's callable contracts. Provisional upstream 2211 + 4; re-measured
+      // after the jump-3 merge.
+      2215,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(

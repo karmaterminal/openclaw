@@ -33,14 +33,20 @@ import {
   createScopedMigrationSnapshotSync,
   inspectScopedMigrationSnapshot,
   inspectScopedMigrationTables,
+  scopedMigrationTablesMatchFullBackup,
   ScopedMigrationSnapshotUnsupportedError,
   type ScopedMigrationInspection,
 } from "../infra/sqlite-migration-scoped-snapshot.js";
 import { resolveSqliteInspectionSignal } from "../infra/sqlite-readonly-worker.js";
+import { hashPublishedFileSync } from "../infra/sqlite-snapshot-file.js";
 import type { PublishedSqliteFileGuard } from "../infra/sqlite-snapshot.types.js";
 import type { AgentDatabaseMigrationTarget } from "../infra/state-migrations.media-persistence-targets.js";
 import type { MigrationMessages } from "../infra/state-migrations.types.js";
-import { hasUpdateDoctorMigrationCapture } from "../infra/update-doctor-migration-attribution.js";
+import {
+  getDoctorMigrationFullBackup,
+  hasUpdateDoctorMigrationCapture,
+  recordDoctorMigrationFullBackup,
+} from "../infra/update-doctor-migration-attribution.js";
 import { DoctorMaintenanceRefusalError } from "../infra/update-doctor-result.js";
 import { OPENCLAW_AGENT_SCHEMA_VERSION } from "../state/openclaw-agent-db-contract.js";
 import { agentEngineInput } from "../state/openclaw-agent-db-engine.js";
@@ -49,6 +55,7 @@ import { isAgentFleetSchema26Migration } from "../state/openclaw-agent-fleet-sch
 import type { OpenClawDatabaseSchemaPreflight } from "../state/openclaw-database-preflight.types.js";
 import { getOpenClawDatabaseMaintenanceScope } from "../state/openclaw-state-db-async-lifecycle.js";
 import {
+  CLIENT_CREDENTIAL_CUTOVER_SCHEMA_VERSION,
   OPENCLAW_SQLITE_BUSY_TIMEOUT_MS,
   OPENCLAW_STATE_SCHEMA_VERSION,
 } from "../state/openclaw-state-db-contract.js";
@@ -89,12 +96,37 @@ export function captureFreshDoctorMigrationTables(
   };
   assertCurrent();
   const backupId = randomUUID();
-  const backup = createScopedMigrationSnapshotSync(db, {
-    sourcePath: options.path,
-    targetPath: `${options.path}.pre-startup-migration-${backupId}.scoped.bak`,
-    tables: options.tables,
-    assertCurrent,
-  });
+  let backup: { path: string; generation: string };
+  try {
+    backup = createScopedMigrationSnapshotSync(db, {
+      sourcePath: options.path,
+      targetPath: `${options.path}.pre-startup-migration-${backupId}.scoped.bak`,
+      tables: options.tables,
+      assertCurrent,
+    });
+  } catch (error) {
+    const full = getDoctorMigrationFullBackup(options.path);
+    if (!(error instanceof ScopedMigrationSnapshotUnsupportedError) || !full) {
+      throw error;
+    }
+    if (!scopedMigrationTablesMatchFullBackup(db, options.path, full.path, options.tables)) {
+      throw new DoctorMaintenanceRefusalError(
+        `Pre-migration backup no longer contains current credentials: ${full.path}. Preserve the database and its backup before retrying.`,
+        { kind: "data-at-risk", reason: "incomplete-migration" },
+      );
+    }
+    assertCurrent();
+    return {
+      capture: {
+        path: options.path,
+        generation:
+          full.generation ??
+          hashPublishedFileSync(full.path, lstatSync(full.path, { bigint: true })).sha256,
+        assertCurrent,
+      },
+      backupPath: full.path,
+    };
+  }
   recordDoctorMigrationBackups(
     options.env,
     backupId,
@@ -147,6 +179,16 @@ export async function backupDoctorMigrationDatabases(params: {
   if (!maintenance?.ownsSchemaMaintenance) {
     throw new Error("Pre-migration SQLite backups require Doctor maintenance ownership.");
   }
+  // Archive-only coverage cannot serve a fresh credential capture inside its transaction.
+  const verifiedSnapshots =
+    !hasUpdateDoctorMigrationCapture() &&
+    params.pendingMigrations?.some(
+      (migration) =>
+        migration.kind === "state" &&
+        migration.foundVersion < CLIENT_CREDENTIAL_CUTOVER_SCHEMA_VERSION,
+    )
+      ? params.verifiedSnapshots?.filter((snapshot) => snapshot.role !== "global")
+      : params.verifiedSnapshots;
   const integrityChecks = new Map<string, SqliteIntegrityCheckOptions>();
   for (const pathname of new Set([...pending, ...params.databasePaths, sharedPath])) {
     const engine = pathname === sharedPath ? stateEngineInput() : agentEngineInput();
@@ -197,6 +239,7 @@ export async function backupDoctorMigrationDatabases(params: {
     }
     const native = await backupDoctorSqliteDatabases({
       ...params,
+      verifiedSnapshots,
       pendingDatabasePaths: nativePaths,
       databasePaths: params.databasePaths.filter((pathname) => !postgresPaths.has(pathname)),
       authority: { assertCurrent: () => maintenance.assertAdmission() },
@@ -259,6 +302,7 @@ export async function backupDoctorMigrationDatabases(params: {
     }
     return backupDoctorSqliteDatabases({
       ...params,
+      verifiedSnapshots,
       pendingDatabasePaths: [...pending],
       authority: { assertCurrent: () => maintenance.assertAdmission() },
       migrationTables: migrationTables.size > 0 ? migrationTables : undefined,
@@ -522,6 +566,7 @@ export async function backupDoctorSqliteDatabases(params: {
   const afterPublish = (guard: PublishedSqliteFileGuard) => {
     const verified = guard.assertTargetUnchanged();
     verification.set(`${verified.stat.dev}:${verified.stat.ino}`, verified);
+    return verified.content.sha256;
   };
   for (const { path: sourcePath } of inventory) {
     assertCapture();
@@ -560,6 +605,9 @@ export async function backupDoctorSqliteDatabases(params: {
           { cause },
         );
       }
+      if (targetPath === fullTargetFor(sourcePath)) {
+        recordDoctorMigrationFullBackup(sourcePath, { path: targetPath });
+      }
       changes.push(`Reused pre-migration SQLite backup: ${targetPath}`);
       continue;
     }
@@ -586,7 +634,11 @@ export async function backupDoctorSqliteDatabases(params: {
           integrity: params.integrityChecks?.get(sourcePath),
           transform: sanitizeOpenClawStateLeaseRows,
           beforePublish: assertCapture,
-          afterPublish,
+          afterPublish: (guard) =>
+            recordDoctorMigrationFullBackup(sourcePath, {
+              path: targetPath,
+              generation: afterPublish(guard),
+            }),
           validate: params.repair?.validate,
         });
     assertCapture();

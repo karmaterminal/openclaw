@@ -182,7 +182,7 @@ export async function clearSessionResetRuntimeState(
     undefined,
     opts.assertCurrent,
   );
-  for (const key of cleared.keys) {
+  for (const key of cleared) {
     opts.assertCurrent();
     if (interruptContinuations) {
       abortContinuationDispatchClaims(key);
@@ -207,7 +207,7 @@ export async function clearSessionResetRuntimeState(
       operation &&
       ownerAgentId === normalizeAgentId(opts.agentId) &&
       operation.sessionId === opts.activeReplySessionId &&
-      cleared.keys.some(
+      cleared.some(
         (key) =>
           key !== opts.activeReplySessionId &&
           agentSessionKeysMatchByRequestKey(operation.key, key),

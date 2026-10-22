@@ -101,10 +101,8 @@ async function send(
   method: "sessions.send" | "sessions.steer" = "sessions.send",
 ) {
   const respond = vi.fn<RespondFn>();
-  await expectDefined(
-    sessionMessagingHandlers[method],
-    method,
-  )({
+  const handler = expectDefined(sessionMessagingHandlers[method], method);
+  await handler({
     req: { type: "req", id: method, method },
     params,
     respond,
@@ -145,6 +143,12 @@ function completedRun(childSessionKey: string) {
   mocks.live.mockReturnValue(run);
 }
 
+function respondWith(payload: unknown, cached?: true) {
+  mocks.send.mockImplementation(async ({ respond }: { respond: RespondFn }) => {
+    respond(true, payload, undefined, cached ? { cached } : undefined);
+  });
+}
+
 describe("sessions.send completed subagent follow-up status", () => {
   afterEach(() => flushPendingSessionsChangedEvents());
 
@@ -179,9 +183,7 @@ describe("sessions.send completed subagent follow-up status", () => {
       mock.mockReset();
     }
     mocks.deletedAgent.mockReturnValue(null);
-    mocks.send.mockImplementation(async ({ respond }: { respond: RespondFn }) => {
-      respond(true, { ...started }, undefined, undefined);
-    });
+    respondWith({ ...started });
   });
 
   it("rejects keys belonging to a deleted agent", async () => {
@@ -275,9 +277,7 @@ describe("sessions.send completed subagent follow-up status", () => {
   it("sessions.steer replaying a cached idempotency key leaves the active run alone", async () => {
     const sessionKey = "agent:main:main";
     loadSession(sessionKey, "sess-unrelated-run");
-    mocks.send.mockImplementation(async ({ respond }: { respond: RespondFn }) => {
-      respond(true, { runId: "steer-retry", status: "completed" }, undefined, { cached: true });
-    });
+    respondWith({ runId: "steer-retry", status: "completed" }, true);
     context.dedupe.set("chat:steer-retry", {
       ts: 1,
       ok: true,
@@ -301,9 +301,7 @@ describe("sessions.send completed subagent follow-up status", () => {
       messageSeq: 4,
       interruptedActiveRun: true,
     };
-    mocks.send.mockImplementation(async ({ respond }: { respond: RespondFn }) => {
-      respond(true, payload);
-    });
+    respondWith(payload);
     const params = {
       agentId: "work",
       message: "@Bob follow-up",

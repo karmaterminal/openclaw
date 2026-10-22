@@ -96,7 +96,6 @@ export function createTestFinalizationContext(
     }),
     getActiveSessionEntry,
     setActiveSessionEntry,
-    isHeartbeat: false,
     noOpRearmWakeClass: undefined,
     pendingToolTasks: new Set(),
     preflightCompactionApplied: false,
@@ -127,7 +126,6 @@ export function createTestFinalizationContext(
     typingSignals: createTypingSignaler({
       typing: reply.typing,
       mode: "never",
-      isHeartbeat: false,
     }),
   };
 }
@@ -314,14 +312,17 @@ export async function createAgentAccountingPersistenceFixture({
       ...meta,
     };
   };
+  const read = () => loadSessionEntry({ storePath, sessionKey, readConsistency: "latest" });
+  const replace = (next: InternalSessionEntry) =>
+    replaceSessionEntry({ storePath, sessionKey }, next);
   return {
     sessionId,
     context,
     turn,
     withCompletion,
     setMeta,
-    deliverQueued: async () => {
-      return withAccountingProvider(async () => {
+    deliverQueued: async () =>
+      withAccountingProvider(async () => {
         const delivered: ReplyPayload[] = [];
         const decision = await withCompletion(async (completion) => {
           const accounting = await accountQueued(context.execution, completion);
@@ -349,8 +350,7 @@ export async function createAgentAccountingPersistenceFixture({
           runFollowup: async () => {},
         });
         return delivered;
-      });
-    },
+      }),
     recordCompaction,
     accountAborted: (reason: "user" | "restart") => {
       const compaction =
@@ -362,8 +362,13 @@ export async function createAgentAccountingPersistenceFixture({
       }
       return accountQueued({ kind: "aborted", reason, compaction });
     },
-    read: () => loadSessionEntry({ storePath, sessionKey, readConsistency: "latest" }),
-    replace: (next: InternalSessionEntry) => replaceSessionEntry({ storePath, sessionKey }, next),
+    read,
+    replace,
+    patch: async (patch: Partial<InternalSessionEntry>) => {
+      const next = { ...read()!, ...patch };
+      await replace(next);
+      return next;
+    },
     account: async (lane: "ordinary" | "followup", meta: Partial<EmbeddedAgentMeta>) => {
       setMeta({ contextTokens: 1_000, contextBudgetStatus: diagnostic, ...meta });
       if (lane === "ordinary") {

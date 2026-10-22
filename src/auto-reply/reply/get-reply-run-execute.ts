@@ -43,7 +43,6 @@ import { isReasoningTagProvider } from "../../utils/provider-utils.js";
 import { isConfiguredCommandOwner } from "../command-auth.js";
 import { bindCommandOwnerAuthority, getCommandOwnerAuthority } from "../command-owner-authority.js";
 import { getGroupThreadTurn } from "../group-thread-context.js";
-import { resolveInternalTurnTranscript } from "../internal-turn-source.js";
 import { getRequesterProfile } from "../requester-profile.js";
 import type { OriginatingChannelType } from "../templating.js";
 import { resolveReplyScheduledToolPolicy } from "./agent-runner-run-params.js";
@@ -59,6 +58,7 @@ import { hasInboundAudio } from "./inbound-media.js";
 import * as managedDeliveryTurn from "./managed-delivery-turn-lifecycle.js";
 import { normalizeMessageTimestampMs } from "./message-timestamp.js";
 import { resolveOriginMessageProvider } from "./origin-routing.js";
+import { resolveReplySteeringIntent } from "./reply-steering-intent.js";
 import { resolveReplyToMode } from "./reply-threading.js";
 import { resolveInboundReplyToolAuthorityOverlay } from "./reply-tool-authority-inbound.js";
 import { resolveRoutedDeliveryThreadId } from "./routed-delivery-thread.js";
@@ -105,7 +105,6 @@ export async function executePreparedReplyRun(
   const {
     params,
     runtimePolicySessionKey,
-    isHeartbeat,
     traceRunPhase,
     promptSessionCtx,
     inboundEventKind,
@@ -199,7 +198,6 @@ export async function executePreparedReplyRun(
   const freshChannelCronAuthorityTurn = isFreshChannelCronAuthorityTurn({
     messageProvider,
     senderId: sessionCtx.SenderId,
-    isHeartbeat,
     isRoomEvent,
     inputProvenance,
     spawnedBy: preparedSessionState.sessionEntry?.spawnedBy,
@@ -330,15 +328,7 @@ export async function executePreparedReplyRun(
           requesterOrigin,
           ...(inputIdempotencyKey ? { idempotencyKey: inputIdempotencyKey } : {}),
           ...managedDeliveryTurn.resolveManagedDeliveryAckInput(managedSystemEventDeliveries),
-          ...(inputProvenance && !isHeartbeat ? { provenance: inputProvenance } : {}),
-          ...(isHeartbeat
-            ? {
-                provenance: resolveInternalTurnTranscript({
-                  InputProvenance: inputProvenance,
-                  InternalTurnSource: ctx.InternalTurnSource ?? sessionCtx.InternalTurnSource,
-                }).provenance,
-              }
-            : {}),
+          ...(inputProvenance ? { provenance: inputProvenance } : {}),
           ...(Object.keys(transport).length > 0 ? { transport } : {}),
           ...(userTurnMediaForPersistence.length > 0 ? { media: userTurnMediaForPersistence } : {}),
           ...(mediaImageLayout ? { mediaImageLayout } : {}),
@@ -700,6 +690,10 @@ export async function executePreparedReplyRun(
   const execute = () =>
     runReplyAgent({
       ...params,
+      steeringIntent: resolveReplySteeringIntent({
+        directives: params.directives,
+        resetTriggered: effectiveResetTriggered,
+      }),
       commandBody: prefixedCommandBody,
       transcriptCommandBody,
       followupRun,

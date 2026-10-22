@@ -59,7 +59,6 @@ const nonProductionPluginSdkSubpathSet = new Set([
   "channel-test-helpers",
   "compiled-subprocess-testing",
   "continuation-test-runtime",
-  "mcp-enterprise-test-runtime",
   "plugin-test-api",
   "plugin-test-contracts",
   "plugin-state-test-runtime",

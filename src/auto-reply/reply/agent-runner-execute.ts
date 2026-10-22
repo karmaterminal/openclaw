@@ -171,7 +171,7 @@ export async function executePreparedReplyAgentRun(
       }
     : context.opts;
   const activitySummaryCompletion =
-    !context.isHeartbeat && context.sessionKey && context.storePath
+    context.sessionKey && context.storePath
       ? getGatewayContextResolver(
           context.replyOperation,
         )?.()?.sessionActivitySummaries?.beginCompletion(
@@ -334,8 +334,7 @@ async function executePreparedReplyAgentRunWithCompletion(
   // New input and its recovery claim share admission; otherwise lifecycle start owns the claim.
   await admitFollowupRunLifecycle(followupRun);
   const runWithGoalReturn = createGoalContinuationReturn(
-    !context.isHeartbeat &&
-      sessionKey &&
+    sessionKey &&
       storePath &&
       activeSessionEntry?.goal?.status === "active" &&
       (activeSessionEntry.agentHarnessId === undefined ||
@@ -415,7 +414,7 @@ async function executePreparedReplyAgentRunWithCompletion(
         }
         await checkpointBeforeAgentReply(hookCheckpoint);
         activeSessionEntry = getActiveSessionEntry();
-        return { ...hookResult, reply: hookReply };
+        return hookResult;
       },
     },
     () =>

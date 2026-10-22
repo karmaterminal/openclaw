@@ -5,8 +5,11 @@ import {
   resolveSessionDeliveryAckStateDir,
   type ManagedSystemEventOptions,
 } from "./system-event-managed-delivery.js";
-import { consumeSelectedSystemEventEntries, peekSystemEventEntries } from "./system-events.js";
-import type { SystemEvent } from "./system-events.types.js";
+import {
+  consumeSelectedSystemEventEntries,
+  peekSystemEventEntries,
+  type SystemEvent,
+} from "./system-events.js";
 
 /**
  * Whether the queue already holds the in-memory copy of one durable delivery

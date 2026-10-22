@@ -52,7 +52,6 @@ type AgentTurnAccountingContext = Pick<
   | "defaultModel"
   | "followupRun"
   | "getActiveSessionEntry"
-  | "isHeartbeat"
   | "noOpRearmWakeClass"
   | "opts"
   | "pendingToolTasks"
@@ -109,7 +108,6 @@ export async function accountAgentTurn(context: AgentTurnAccountingContext) {
     defaultModel,
     followupRun,
     getActiveSessionEntry,
-    isHeartbeat,
     noOpRearmWakeClass,
     opts,
     pendingToolTasks,
@@ -182,7 +180,6 @@ export async function accountAgentTurn(context: AgentTurnAccountingContext) {
   if (pendingToolTasks.size > 0) {
     await drainPendingToolTasks({
       tasks: pendingToolTasks,
-      onTimeout: logVerbose,
     });
   }
 
@@ -483,7 +480,6 @@ export async function accountAgentTurn(context: AgentTurnAccountingContext) {
     lastCallUsage,
     currentContextSnapshot,
     promptTokens,
-    isHeartbeat,
     preserveRuntimeModel:
       fallbackExhausted ||
       (fallbackTransition.stateChanged
@@ -519,7 +515,7 @@ export async function accountAgentTurn(context: AgentTurnAccountingContext) {
       }
     });
   }
-  if (!isHeartbeat && !preserveUserFacingSessionState && !fallbackExhausted) {
+  if (!preserveUserFacingSessionState && !fallbackExhausted) {
     // A completed run that executed the persisted selection consumes the
     // pending live-switch flag; CLI harness runs never hit the embedded
     // attempt-recovery clear, so /status would report the switch forever.
@@ -628,7 +624,6 @@ export async function accountFollowupTurn(params: {
     defaultModel: defaults.defaultModel,
     followupRun: turn.queued,
     getActiveSessionEntry,
-    isHeartbeat: false,
     noOpRearmWakeClass: undefined,
     opts: defaults.opts,
     pendingToolTasks: execution.pendingToolTasks,

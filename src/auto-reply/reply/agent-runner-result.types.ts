@@ -46,7 +46,6 @@ export type FinalizeReplyAgentRunInput = Pick<
   cfg: OpenClawConfig;
   continuation: ReplyContinuationController;
   getActiveSessionEntry: () => SessionEntry | undefined;
-  isHeartbeat: boolean;
   noOpRearmWakeClass: NoOpRearmWakeClass | undefined;
   pendingToolTasks: Set<Promise<void>>;
   preflightCompactionApplied: boolean | undefined;

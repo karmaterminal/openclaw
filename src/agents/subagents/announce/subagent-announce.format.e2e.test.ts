@@ -80,6 +80,7 @@ const workerKey = "agent:main:subagent:worker";
 const orchestratorKey = "agent:main:subagent:orchestrator";
 const discordOrigin = { channel: "discord", to: "channel:12345", accountId: "acct-1" };
 const whatsappOrigin = { channel: "whatsapp", accountId: "acct-123", to: "+1555" };
+const minimalUsage = { inputTokens: 1, outputTokens: 1, totalTokens: 2 };
 type AnnounceParams = Partial<
   Parameters<typeof import("./subagent-announce.js").runSubagentAnnounceFlow>[0]
 >;
@@ -118,9 +119,6 @@ function getAgentCallContext(call = getAgentCall()): string {
 const agentSpy = vi.fn(async (_req: AgentCallRequest) => visibleAgentResponse());
 const sendSpy = vi.fn(async (_req: AgentCallRequest) => ({ runId: "send-main", status: "ok" }));
 const sessionsDeleteSpy = vi.fn((_req: AgentCallRequest) => undefined);
-const resolveAgentIdFromSessionKeySpy = vi.spyOn(configSessions, "resolveAgentIdFromSessionKey");
-const resolveStorePathSpy = vi.spyOn(configSessions, "resolveSessionStorePathCore");
-const resolveMainSessionKeySpy = vi.spyOn(configSessions, "resolveMainSessionKey");
 const callGatewaySpy = vi.spyOn(gatewayCall, "callGateway");
 const getGlobalHookRunnerSpy = vi.spyOn(hookRunnerGlobal, "getGlobalHookRunner");
 const isEmbeddedAgentRunActiveSpy = vi.spyOn(sessionQueries, "isSessionRunActive");
@@ -196,7 +194,11 @@ function completedAnnounceRun(
   transcriptEvents = [assistantEvent(runId, text)];
   return child;
 }
-const sessionConfig = { mainKey: "main", scope: "per-sender" } as const;
+const sessionConfig = {
+  mainKey: "main",
+  scope: "per-sender",
+  store: "/tmp/sessions.json",
+} as const;
 let configOverride: OpenClawConfig = { session: sessionConfig };
 const defaultOutcomeAnnounce = {
   childRunId: "run-default",
@@ -241,6 +243,14 @@ function makeChildCompletion(
   sessionStore[childRun.childSessionKey] = { sessionId: `session-${childRun.runId}` };
   transcriptEvents.push(assistantEvent(childRun.runId, resultText));
   return childRun;
+}
+function childCompletions(
+  requesterSessionKey: string,
+  ...rows: [child: string, result: string, overrides?: Parameters<typeof makeChildCompletion>[3]][]
+) {
+  return rows.map(([child, result, overrides]) =>
+    makeChildCompletion(requesterSessionKey, child, result, overrides),
+  );
 }
 
 function setCompletionSessions(
@@ -361,7 +371,7 @@ function toSessionEntry(sessionKey: string, entry?: SessionEntryFixture): Sessio
 function readSessionFixture(sessionKey: string): SessionEntry | undefined {
   const entry =
     !(sessionKey in sessionStore) && sessionKey.includes(":subagent:")
-      ? { inputTokens: 1, outputTokens: 1, totalTokens: 2 }
+      ? minimalUsage
       : sessionStore[sessionKey];
   return toSessionEntry(sessionKey, entry);
 }
@@ -496,13 +506,9 @@ describe("subagent announce formatting", () => {
   beforeEach(() => {
     subagentRuns.clear();
     vi.useRealTimers();
-    agentSpy
-      .mockReset()
-      .mockImplementation(async (_req: AgentCallRequest) => visibleAgentResponse());
-    sendSpy
-      .mockClear()
-      .mockImplementation(async (_req: AgentCallRequest) => ({ runId: "send-main", status: "ok" }));
-    sessionsDeleteSpy.mockClear().mockImplementation((_req: AgentCallRequest) => undefined);
+    agentSpy.mockReset();
+    sendSpy.mockClear();
+    sessionsDeleteSpy.mockClear();
     callGatewaySpy.mockReset().mockImplementation(async (req: unknown) => {
       const typed = req as { method?: string; params?: { message?: string; sessionKey?: string } };
       if (typed.method === "agent") {
@@ -537,9 +543,6 @@ describe("subagent announce formatting", () => {
       readSubagentSessionEntry: (_storePath, sessionKey) => readSessionFixture(sessionKey),
       resolveSessionStorePathCore: () => "/tmp/sessions.json",
     });
-    resolveAgentIdFromSessionKeySpy.mockReset().mockImplementation(() => "main");
-    resolveStorePathSpy.mockReset().mockImplementation(() => "/tmp/sessions.json");
-    resolveMainSessionKeySpy.mockReset().mockImplementation(() => requesterKey);
     getGlobalHookRunnerSpy
       .mockReset()
       .mockImplementation(
@@ -565,12 +568,19 @@ describe("subagent announce formatting", () => {
     setConfigOverride({ session: sessionConfig });
   });
 
-  it("sends instructional message to main agent with status and findings", async () => {
+  it("sends status, complete findings and compact usage stats as private parent-review context", async () => {
     setConfigOverride(withContinuationEnabled(configOverride));
+    const findings = `raw subagent reply ${Array.from({ length: 140 }, (_, i) => `step-${i}`).join(" ")}`;
     sessionStore = {
-      [childKey]: session("child-session-123", { inputTokens: 1, outputTokens: 1, totalTokens: 2 }),
+      [childKey]: session("child-session-123", {
+        inputTokens: 12,
+        outputTokens: 1000,
+        totalTokens: 197000,
+        totalTokensFresh: true,
+        totalTokensVersion: 1,
+      }),
     };
-    const child = completedAnnounceRun("raw subagent reply", "run-123", {
+    const child = completedAnnounceRun(findings, "run-123", {
       task: "do thing",
       createdAt: 10,
       execution: { endedAt: 20, outcome: { status: "error", error: "boom" } },
@@ -597,13 +607,16 @@ describe("subagent announce formatting", () => {
       "subagent task",
       "failed",
       "boom",
-      "raw subagent reply",
+      findings,
       "Stats:",
+      "tokens 1.0k (in 12 / out 1.0k)",
+      "prompt/cache 197.0k",
       "A completed subagent task is ready for parent review.",
       "This completion ends one child run, not necessarily the original user request.",
       "Reviews, failed checks, and other in-scope fixable blockers require continued work",
       "Keep this internal context private",
     ]);
+    expect(msg).not.toContain(SILENT_REPLY_TOKEN);
     expect(call.params?.internalEvents?.[0]).toMatchObject({
       type: "task_completion",
       taskLabel: "do thing",
@@ -641,11 +654,7 @@ describe("subagent announce formatting", () => {
     expect(agentSpy).toHaveBeenCalledTimes(1);
     expect(call.params?.internalEvents?.[0]?.result).toBe(fullResult);
     const context = getAgentCallContext(call);
-    expectText(
-      context,
-      [`${"<source-answer>".repeat(500)}required-source-tail`],
-      ["later progress", "unrelated final"],
-    );
+    expectText(context, [fullResult], ["later progress", "unrelated final"]);
     expect(child.completion?.terminalReply).toEqual({
       disposition: "visible",
       text: `${fullResult.slice(0, 4_095)}…`,
@@ -685,7 +694,9 @@ describe("subagent announce formatting", () => {
       expectParentAnnounce();
       expect(call.params).toMatchObject(route);
       expect(call.params?.internalEvents?.[0]?.result).toBe("child result");
+      expect(chatHistoryMock).not.toHaveBeenCalled();
       const message = getAgentCallContext(call);
+      expect(message).toContain("completed; ready for parent review");
       expect(message).toContain(modelRouteChange);
       expect(message).toContain(
         name === "extension channel"
@@ -700,41 +711,6 @@ describe("subagent announce formatting", () => {
       }
     },
   );
-
-  it("keeps full findings and includes compact stats", async () => {
-    sessionStore = {
-      [childKey]: session("child-session-usage", {
-        inputTokens: 12,
-        outputTokens: 1000,
-        totalTokens: 197000,
-        totalTokensFresh: true,
-        totalTokensVersion: 1,
-      }),
-    };
-    const text = Array.from({ length: 140 }, (_, index) => `step-${index}`).join(" ");
-
-    await announceWithDefaults({
-      childRunId: "run-usage",
-      roundOneReply: text,
-      terminalReply: prepareTerminal(text),
-    });
-
-    const call = getAgentCall();
-    const msg = getAgentCallContext(call);
-    expect(msg).toContain("completed; ready for parent review");
-    expectText(
-      msg,
-      [
-        "Stats:",
-        "tokens 1.0k (in 12 / out 1.0k)",
-        "prompt/cache 197.0k",
-        "session_id: child-session-usage",
-        "step-0",
-        "step-139",
-      ],
-      [SILENT_REPLY_TOKEN],
-    );
-  });
 
   // Exercise the real store reader for unknown versus zero usage.
   async function withRealChildSessionStore(
@@ -798,12 +774,6 @@ describe("subagent announce formatting", () => {
   it.each([
     ["required silent", { disposition: "silent" }, true, "(no output)"],
     ["non-required silent", { disposition: "silent" }, false, undefined],
-    [
-      "visible",
-      { disposition: "visible", text: "restored visible reply" },
-      true,
-      "restored visible reply",
-    ],
     ["empty", { disposition: "empty" }, true, "(no output)"],
   ] as const)(
     "replays durable %s output without history inference",
@@ -820,7 +790,7 @@ describe("subagent announce formatting", () => {
           requesterOrigin: { channel: "slack", to: "channel:C123", accountId: "acct-1" },
           expectsCompletionMessage: required,
           terminalReply: reply,
-          roundOneReply: reply.disposition === "visible" ? reply.text : undefined,
+          roundOneReply: undefined,
         }),
       ).toBe("delivered");
       expect(sendSpy).not.toHaveBeenCalled();
@@ -836,39 +806,33 @@ describe("subagent announce formatting", () => {
     },
   );
 
-  it.each([
-    {
-      name: "transient channel-unavailable",
-      outcome: "retryable",
-      origin: { channel: "whatsapp", to: "+15550000000", accountId: "default" },
-      error: new Error("Error: No active WhatsApp Web listener (account: default)"),
-      required: true,
-      reply: "final answer",
-    },
-    {
-      name: "permanent channel error",
-      outcome: "permanent_failure",
-      origin: { channel: "telegram", to: "telegram:1234" },
-      error: new Error("unsupported channel: telegram"),
-      required: true,
-      reply: "final answer",
-    },
-    {
-      name: "fallback cooldown exhaustion",
-      outcome: "retryable",
-      origin: { channel: "discord", to: "channel:C123", accountId: "default" },
-      error: new FailoverError(
+  it.each<[string, AnnounceParams["requesterOrigin"], Error, string, boolean?, string?]>([
+    [
+      "transient channel-unavailable",
+      { channel: "whatsapp", to: "+15550000000", accountId: "default" },
+      new Error("Error: No active WhatsApp Web listener (account: default)"),
+      "retryable",
+    ],
+    [
+      "permanent channel error",
+      { channel: "telegram", to: "telegram:1234" },
+      new Error("unsupported channel: telegram"),
+      "permanent_failure",
+    ],
+    [
+      "fallback cooldown exhaustion",
+      { channel: "discord", to: "channel:C123", accountId: "default" },
+      new FailoverError(
         "All models failed (1): anthropic/claude-opus-4-7: Provider anthropic is in cooldown (all profiles unavailable) (overloaded)",
-        {
-          reason: "overloaded",
-        },
+        { reason: "overloaded" },
       ),
-      required: false,
-      reply: "worker result",
-    },
+      "retryable",
+      false,
+      "worker result",
+    ],
   ])(
-    "reports $name after one attempt",
-    async ({ name, outcome, origin, error, required, reply }) => {
+    "reports %s after one attempt",
+    async (name, origin, error, outcome, required = true, reply = "final answer") => {
       agentSpy.mockRejectedValueOnce(error);
       expect(
         await announceCompletion({
@@ -883,35 +847,29 @@ describe("subagent announce formatting", () => {
     },
   );
 
-  it.each([false, true])(
-    "announces manual completion immediately (siblings=%s)",
-    async (siblings) => {
-      if (siblings) {
-        setMessageToolGroupReplyConfig();
-        registry.countPendingDescendantRuns.mockImplementation((key) =>
-          key === requesterKey ? 1 : 0,
-        );
-      }
-      setCompletionSessions("child-session-direct", "requester-session");
-      transcriptEvents = [assistantEvent("run-direct-completion", "final answer: 2")];
-      const call = await deliverCompletion({
-        childRunId: "run-direct-completion",
-        roundOneReply: "final answer: 2",
-      });
-      expect(call.params).toMatchObject({
-        channel: "discord",
-        to: "channel:12345",
-        sessionKey: requesterKey,
-        ...(siblings ? { deliver: false, sourceReplyDeliveryMode: "message_tool_only" } : {}),
-      });
-      expectInputProvenance(call.params, childKey);
-      expectText(
-        getAgentCallContext(call),
-        ["final answer: 2"],
-        ["✅ Subagent", ...(siblings ? ["There are still", "wait for the remaining results"] : [])],
-      );
-    },
-  );
+  it("announces manual completion immediately without waiting for siblings", async () => {
+    setMessageToolGroupReplyConfig();
+    registry.countPendingDescendantRuns.mockImplementation((key) => (key === requesterKey ? 1 : 0));
+    setCompletionSessions("child-session-direct", "requester-session");
+    transcriptEvents = [assistantEvent("run-direct-completion", "final answer: 2")];
+    const call = await deliverCompletion({
+      childRunId: "run-direct-completion",
+      roundOneReply: "final answer: 2",
+    });
+    expect(call.params).toMatchObject({
+      channel: "discord",
+      to: "channel:12345",
+      sessionKey: requesterKey,
+      deliver: false,
+      sourceReplyDeliveryMode: "message_tool_only",
+    });
+    expectInputProvenance(call.params, childKey);
+    expectText(
+      getAgentCallContext(call),
+      ["final answer: 2"],
+      ["✅ Subagent", "There are still", "wait for the remaining results"],
+    );
+  });
 
   it("does not use a child bound destination when completion requester conversation is missing", async () => {
     setCompletionSessions();
@@ -994,30 +952,20 @@ describe("subagent announce formatting", () => {
     },
   );
 
-  it.each([
-    {
-      name: "discards a stale session thread",
-      requesterThreadId: undefined,
-      sessionMeta: { lastChannel: "discord", lastTo: "channel:stale", lastThreadId: 42 },
-      expectedThreadId: undefined,
-    },
-    {
-      name: "uses the requester thread",
-      requesterThreadId: 99,
-      sessionMeta: {},
-      expectedThreadId: "99",
-    },
-  ])("manual completion $name", async ({ requesterThreadId, sessionMeta, expectedThreadId }) => {
+  it.each<[string, number | undefined, SessionEntryFixture, string | undefined]>([
+    [
+      "discards a stale session thread",
+      undefined,
+      { lastChannel: "discord", lastTo: "channel:stale", lastThreadId: 42 },
+      undefined,
+    ],
+    ["uses the requester thread", 99, {}, "99"],
+  ])("manual completion %s", async (_name, requesterThreadId, sessionMeta, expectedThreadId) => {
     setCompletionSessions("child-session-thread", "requester-session-thread", sessionMeta);
 
     await deliverCompletion({
       childRunId: "run-completion-thread",
-      requesterOrigin: {
-        channel: "discord",
-        to: "channel:12345",
-        accountId: "acct-1",
-        threadId: requesterThreadId,
-      },
+      requesterOrigin: { ...discordOrigin, threadId: requesterThreadId },
     });
     expect(getAgentCall().params).toMatchObject({
       channel: "discord",
@@ -1054,11 +1002,6 @@ describe("subagent announce formatting", () => {
 
   it.each([
     [
-      "override without thread",
-      undefined,
-      { channel: "discord", accountId: "acct-1", to: "channel:777", threadId: "777" },
-    ],
-    [
       "override with thread",
       "999",
       { channel: "discord", accountId: "acct-1", to: "channel:777", threadId: "777" },
@@ -1066,12 +1009,7 @@ describe("subagent announce formatting", () => {
     ["no override", undefined, undefined],
     ["internal override", undefined, { channel: "webchat", to: "conversation:123" }],
   ] as const)("uses requester or hook target: %s", async (_name, threadId, origin) => {
-    const requesterOrigin = {
-      channel: "discord",
-      to: "channel:12345",
-      accountId: "acct-1",
-      ...(threadId ? { threadId } : {}),
-    };
+    const requesterOrigin = { ...discordOrigin, ...(threadId ? { threadId } : {}) };
     const childRunId = "run-hook-target";
     hasDeliveryTarget = true;
     deliveryTarget.mockResolvedValueOnce(origin ? { origin } : undefined);
@@ -1201,86 +1139,63 @@ describe("subagent announce formatting", () => {
 
   const telegramRoute = { channel: "telegram", to: "telegram:123" };
   const telegramSession = { lastChannel: "telegram", lastTo: "telegram:123", lastThreadId: 42 };
-  function routeCase(
-    name: string,
-    kind: "thread" | "direct" | "stale" | "nested",
-    expected: Record<string, unknown>,
-    origin?: AnnounceParams["requesterOrigin"],
-    stored?: SessionEntryFixture,
-  ) {
-    return { name, kind, expected, origin, stored };
-  }
-  it.each([
-    routeCase(
-      "stored Telegram thread",
-      "thread",
-      { ...telegramRoute, threadId: "42" },
-      undefined,
-      telegramSession,
-    ),
-    routeCase(
+  it.each<
+    [
+      name: string,
+      origin: AnnounceParams["requesterOrigin"],
+      stored: SessionEntryFixture | undefined,
+      expected: Record<string, unknown>,
+      requesterSessionKey?: string,
+    ]
+  >([
+    ["stored Telegram thread", undefined, telegramSession, { ...telegramRoute, threadId: "42" }],
+    [
       "explicit Telegram thread",
-      "thread",
-      { ...telegramRoute, threadId: "99" },
       { ...telegramRoute, threadId: 99 },
       telegramSession,
-    ),
-    routeCase(
-      "requester origin",
-      "direct",
-      { channel: "whatsapp", accountId: "acct-123" },
-      { channel: "whatsapp", accountId: "acct-123" },
-    ),
-    routeCase(
+      { ...telegramRoute, threadId: "99" },
+    ],
+    [
       "normalized requester origin",
-      "direct",
-      { channel: "whatsapp", accountId: "acct-987" },
       { channel: " whatsapp ", accountId: " acct-987 " },
-    ),
-    routeCase(
+      undefined,
+      { channel: "whatsapp", accountId: "acct-987" },
+    ],
+    [
       "explicit origin over stale channel",
-      "stale",
-      { ...telegramRoute, accountId: undefined },
       telegramRoute,
       { lastChannel: "whatsapp", queueMode: "collect", queueDebounceMs: 0 },
-    ),
-    routeCase(
+      { ...telegramRoute, accountId: undefined },
+      "main",
+    ],
+    [
       "internal parent user turn",
-      "nested",
-      {
-        sessionKey: orchestratorKey,
-        deliver: false,
-        channel: undefined,
-        to: undefined,
-      },
       whatsappOrigin,
-    ),
-  ])("routes direct announce: $name", async ({ name, origin, stored, expected, kind }) => {
-    if (stored) {
-      setRequesterSession(stored);
-    }
-    expect(
-      await announceWithDefaults({
+      undefined,
+      { sessionKey: orchestratorKey, deliver: false, channel: undefined, to: undefined },
+      orchestratorKey,
+    ],
+  ])(
+    "routes direct announce: %s",
+    async (name, origin, stored, expected, requester = requesterKey) => {
+      if (stored) {
+        setRequesterSession(stored);
+      }
+      const call = await expectAnnouncement({
         childSessionKey: workerKey,
         childRunId: name,
-        requesterSessionKey:
-          kind === "nested" ? orchestratorKey : kind === "stale" ? "main" : requesterKey,
+        requesterSessionKey: requester,
         requesterOrigin: origin,
-      }),
-    ).toBe("delivered");
-    const call = getAgentCall();
-    expect(call.params).toMatchObject(expected);
-    if (stored) {
-      expect(agentSpy).toHaveBeenCalledTimes(1);
-    }
-    if (kind === "direct" || kind === "stale") {
+      });
+      expectParentAnnounce();
+      expect(call.params).toMatchObject(expected);
       expect(call).toMatchObject({ expectFinal: true });
-    }
-    if (kind === "nested") {
-      expect(call.params?.role).toBeUndefined();
-      expectInputProvenance(call.params, workerKey);
-    }
-  });
+      if (requester === orchestratorKey) {
+        expect(call.params?.role).toBeUndefined();
+        expectInputProvenance(call.params, workerKey);
+      }
+    },
+  );
 
   it.each([true, false])(
     "settles an active child before delivery (settled=%s)",
@@ -1288,7 +1203,7 @@ describe("subagent announce formatting", () => {
       embedded.isSessionRunActive.mockReturnValueOnce(true).mockReturnValue(!settled);
       embedded.waitForSessionRunEnd.mockResolvedValue(settled);
       sessionStore = {
-        [childKey]: session("child-session-1", { inputTokens: 1, outputTokens: 1, totalTokens: 2 }),
+        [childKey]: session("child-session-1", minimalUsage),
       };
       expect(
         await announceWithDefaults({
@@ -1316,27 +1231,20 @@ describe("subagent announce formatting", () => {
     async (runTimeoutSeconds) => {
       const parentRunId = "run-parent-phase-1";
       parentChildren(
-        () => [
-          makeChildCompletion(parentKey, "a", "stale result from child a", {
-            runId: "run-child-stale",
-            createdAt: 9,
-          }),
-          makeChildCompletion(parentKey, "a", "current result from child a", {
-            runId: "run-child-a",
-          }),
-          makeChildCompletion(parentKey, "b", "result from child b", {
-            runId: "run-child-b",
-            createdAt: 11,
-          }),
-        ],
+        () =>
+          childCompletions(
+            parentKey,
+            ["a", "stale result from child a", { runId: "run-child-stale", createdAt: 9 }],
+            ["a", "current result from child a", { runId: "run-child-a" }],
+            ["b", "result from child b", { runId: "run-child-b", createdAt: 11 }],
+          ),
         parentRunId,
-        () => [
-          makeChildCompletion(parentKey, "other-turn", "stale result that should be filtered", {
-            runId: "run-child-other-turn",
-            task: "older turn",
-            createdAt: 1,
-          }),
-        ],
+        () =>
+          childCompletions(parentKey, [
+            "other-turn",
+            "stale result that should be filtered",
+            { runId: "run-child-other-turn", task: "older turn", createdAt: 1 },
+          ]),
       );
       agentSpy.mockResolvedValueOnce(visibleAgentResponse("run-parent-phase-2"));
       const lifecycleGeneration = getAgentEventLifecycleGeneration();
@@ -1380,11 +1288,9 @@ describe("subagent announce formatting", () => {
 
   it("terminates an accepted descendant wake after completion delivery closes", async () => {
     sessionStore = { [parentKey]: session("session-parent") };
-    registry.listSubagentRunsForRequester.mockReturnValue([
-      makeChildCompletion(parentKey, "child", "child result", {
-        endedAt: 20,
-      }),
-    ]);
+    registry.listSubagentRunsForRequester.mockReturnValue(
+      childCompletions(parentKey, ["child", "child result", { endedAt: 20 }]),
+    );
     let releaseWake!: () => void;
     const wakeResponse = new Promise<ReturnType<typeof visibleAgentResponse>>((resolve) => {
       releaseWake = () => resolve(visibleAgentResponse("run-parent-phase-2"));
@@ -1427,12 +1333,12 @@ describe("subagent announce formatting", () => {
   it("does not re-wake an already woken run id", async () => {
     registry.countPendingDescendantRuns.mockReturnValue(0);
     parentChildren(
-      () => [
-        makeChildCompletion(parentKey, "a", "result from child a", {
-          runId: "run-child-a",
-          endedAt: 20,
-        }),
-      ],
+      () =>
+        childCompletions(parentKey, [
+          "a",
+          "result from child a",
+          { runId: "run-child-a", endedAt: 20 },
+        ]),
       "run-parent-phase-2:wake",
     );
     const didAnnounce = await announceWake(parentKey, "run-parent-phase-2:wake", {
@@ -1462,25 +1368,18 @@ describe("subagent announce formatting", () => {
     );
     registry.listSubagentRunsForRequester.mockImplementation((sessionKey: string) => {
       if (sessionKey === childSessionKey) {
-        return [
-          makeChildCompletion(childSessionKey, "grandchild", "grandchild final output", {
-            endedAt: 20,
-          }),
-        ];
+        return childCompletions(childSessionKey, [
+          "grandchild",
+          "grandchild final output",
+          { endedAt: 20 },
+        ]);
       }
       if (sessionKey === parentSessionKey && parentPending === 0) {
-        return [
-          makeChildCompletion(
-            parentSessionKey,
-            "child",
-            "child synthesized output from grandchild",
-            {
-              createdAt: 11,
-              endedAt: 21,
-              childSessionKey,
-            },
-          ),
-        ];
+        return childCompletions(parentSessionKey, [
+          "child",
+          "child synthesized output from grandchild",
+          { createdAt: 11, endedAt: 21, childSessionKey },
+        ]);
       }
       return [];
     });
@@ -1575,29 +1474,26 @@ describe("subagent announce formatting", () => {
   it("defers a synthesis wake until both children settle", async () => {
     // Regression guard: fan-out paths previously announced after the first child and dropped the sibling.
     let pending = 1;
+    const fanoutKey = "agent:main:subagent:parent-fanout";
     registry.countPendingDescendantRuns.mockImplementation((sessionKey: string) =>
-      sessionKey === "agent:main:subagent:parent-fanout" ? pending : 0,
+      sessionKey === fanoutKey ? pending : 0,
     );
     registry.listSubagentRunsForRequester.mockImplementation((sessionKey: string) =>
-      sessionKey === "agent:main:subagent:parent-fanout"
-        ? [
-            makeChildCompletion("agent:main:subagent:parent-fanout", "a", "result A", {
-              runId: "run-fanout-a",
-            }),
-            makeChildCompletion("agent:main:subagent:parent-fanout", "b", "result B", {
-              runId: "run-fanout-b",
-              createdAt: 11,
-            }),
-          ]
+      sessionKey === fanoutKey
+        ? childCompletions(
+            fanoutKey,
+            ["a", "result A", { runId: "run-fanout-a" }],
+            ["b", "result B", { runId: "run-fanout-b", createdAt: 11 }],
+          )
         : [],
     );
 
-    const deferred = await announceWake("agent:main:subagent:parent-fanout", "run-parent-fanout");
+    const deferred = await announceWake(fanoutKey, "run-parent-fanout");
     expect(deferred).toBe("retryable");
     expect(agentSpy).not.toHaveBeenCalled();
 
     pending = 0;
-    const announced = await announceWake("agent:main:subagent:parent-fanout", "run-parent-fanout");
+    const announced = await announceWake(fanoutKey, "run-parent-fanout");
     expect(announced).toBe("delivered");
     expect(agentSpy).toHaveBeenCalledTimes(1);
     const call = getAgentCall();

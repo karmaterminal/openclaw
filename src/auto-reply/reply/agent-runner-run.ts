@@ -18,9 +18,9 @@ import {
   claimSessionControllerInput,
   releaseSessionControllerClaim,
   submitSessionControllerInput,
-  tryClaimSessionControllerTask,
   type SessionControllerMailboxClaim,
 } from "../../sessions/session-controller.mailbox.js";
+import { hasReplySteeringRequesterMismatch } from "../../sessions/session-controller.message-join.js";
 import { captureReplyOperationSessionReader } from "../../sessions/session-controller.session-reader.js";
 import { isExplicitFollowupCommandTurn } from "../command-turn-context.js";
 import { markReplyPayloadForSourceSuppressionDelivery } from "../reply-payload.js";
@@ -38,7 +38,6 @@ import {
   executePreparedReplyAgentRun,
   prependCompactionNotices,
 } from "./agent-runner-execute.js";
-import { hasReplySteeringRequesterMismatch } from "./agent-runner-fallback-authority.js";
 import { createShouldEmitToolOutput, createShouldEmitToolResult } from "./agent-runner-helpers.js";
 import {
   prepareReplyRunOptions,
@@ -64,7 +63,7 @@ import { prepareReplyAgentTurn } from "./reply-agent-turn-preparation.js";
 import * as replyRunState from "./reply-operation-run-state.js";
 import { bindReplyOperationTyping } from "./reply-run-typing.js";
 import { bindReplySourceToFollowup, retireUnadoptedReplySource } from "./reply-source-binding.js";
-import { prepareReplyToolAuthority } from "./reply-tool-authority.js";
+import { prepareReplyRunToolAuthority } from "./reply-tool-authority.js";
 import { runWithReplyOperationLifecycleAdmission } from "./reply-turn-admission-lifecycle.js";
 import { resolveReplyTurnKind } from "./reply-turn-kind.js";
 import { createReplyTurnRotationEvidence } from "./reply-turn-rotation.js";
@@ -129,7 +128,6 @@ export async function runReplyAgent(
     let activeSessionEntry = sessionEntry;
     let activeSessionStore = sessionStore;
 
-    const isHeartbeat = opts?.isHeartbeat === true;
     const replyExpectation = (followupRun.run.terminalReplyExpectation ??=
       resolveSourceReplyExpectation({
         ctx: {
@@ -138,7 +136,7 @@ export async function runReplyAgent(
           InputProvenance: followupRun.run.inputProvenance ?? sessionCtx.InputProvenance,
         },
         cfg: followupRun.run.config,
-        isHeartbeat,
+        scheduledAutomation: followupRun.run.scheduledAutomation !== undefined,
       }));
     const explicitFollowup = isExplicitFollowupCommandTurn(sessionCtx);
     if (explicitFollowup) {
@@ -155,7 +153,7 @@ export async function runReplyAgent(
           "reply:partial_delivered",
         ),
     });
-    if (replyOperationRunState && !isHeartbeat && isRequiredReplyExpectation(replyExpectation)) {
+    if (replyOperationRunState && isRequiredReplyExpectation(replyExpectation)) {
       // Preparation has not transferred the accepted input into an executable turn yet.
       replyOperationRunState.continueStalledTurn = () => false;
     }
@@ -171,7 +169,6 @@ export async function runReplyAgent(
     const traceAttributes = {
       provider: followupRun.run.provider,
       hasSessionKey: Boolean(sessionKey ?? followupRun.run.sessionKey),
-      isHeartbeat,
       queueMode: resolvedQueue.mode,
       isActive,
       blockStreamingEnabled,
@@ -204,7 +201,7 @@ export async function runReplyAgent(
       return undefined;
     }
 
-    const effectiveShouldSteer = !isHeartbeat && !resetTriggered && shouldSteer;
+    const effectiveShouldSteer = !resetTriggered && shouldSteer;
     const isActiveSteer = effectiveShouldSteer && isActive;
     const messageInjectionDisposition = opts?.messageInjectionDisposition ?? "none";
     const activeReplyOperation = controllerInput.mailbox.owner.active;
@@ -227,7 +224,6 @@ export async function runReplyAgent(
     const typingSignals = createTypingSignaler({
       typing,
       mode: typingMode,
-      isHeartbeat,
     });
     // New steering must not reuse a terminal source claim. Compare the active
     // source identity so unrelated retained tombstones still permit steering.
@@ -309,6 +305,7 @@ export async function runReplyAgent(
     ) {
       bindReplyOperationQueueDisposition(followupRun, replyOperationRunState);
       const result = await runActiveReplySteer({
+        steeringIntent: params.steeringIntent,
         followupRun,
         opts,
         providedReplyOperation: activeReplyOperation,
@@ -332,18 +329,9 @@ export async function runReplyAgent(
       hasQueuedFollowups,
       interrupt: resolvedQueue.mode === "interrupt",
       isActive: isActive || questionRequesterMismatch,
-      isHeartbeat,
       shouldFollowup: shouldFollowup || shouldQueueUnavailableSteer || questionRequesterMismatch,
       resetTriggered,
     });
-    if (activeRunQueueAction === "drop") {
-      if (replyOperationRunState) {
-        replyOperationRunState.admission = { status: "skipped", reason: "active-run" };
-      }
-      typing.cleanup();
-      return undefined;
-    }
-
     if (activeRunQueueAction === "enqueue-followup") {
       bindReplyOperationQueueDisposition(followupRun, replyOperationRunState);
       const enqueued = enqueueFollowupRun(
@@ -453,9 +441,7 @@ export async function runReplyAgent(
         : async () => {
             const observation = rotationEvidence?.observeAdmission();
             try {
-              immediateClaim = await (isHeartbeat
-                ? tryClaimSessionControllerTask(controllerInput, "heartbeat")
-                : claimSessionControllerInput(followupRun));
+              immediateClaim = await claimSessionControllerInput(followupRun);
               return immediateClaim;
             } catch (error) {
               if (!resolveFollowupAbortSignal(followupRun)?.aborted) {
@@ -545,7 +531,7 @@ export async function runReplyAgent(
       shouldDrainQueuedFollowupsAfterClear = true;
       return value;
     };
-    if (replyOperationRunState && !isHeartbeat && isRequiredReplyExpectation(replyExpectation)) {
+    if (replyOperationRunState && isRequiredReplyExpectation(replyExpectation)) {
       // Dispatch owns the stall notice; this owner holds the queue facts needed to answer
       // instead. The same sender's next queued request inherits the guidance; otherwise one
       // recovery run bound to this turn's route and authority is queued.
@@ -599,9 +585,9 @@ export async function runReplyAgent(
         throw turn.preflightError;
       }
       await replyOperation.bindToolAuthoritySnapshotAsync(
-        prepareReplyToolAuthority(
+        prepareReplyRunToolAuthority(
           followupRun,
-          undefined,
+          activeSessionEntry,
           captureReplyOperationSessionReader(replyOperation),
         ),
       );
@@ -621,7 +607,6 @@ export async function runReplyAgent(
           activeIsNewSession: isNewSession,
           getActiveSessionEntry: () => activeSessionEntry,
           isContinuationWake: isContinuationWake === true,
-          isHeartbeat,
           isRestartRecoveryArmed,
           opts: runOpts,
           onCompactionNoticePayload: (payload) => {
@@ -658,7 +643,6 @@ export async function runReplyAgent(
       const result = await handleReplyAgentRunError(error, {
         resolveVisibleReplyDelivery,
         userTurnAccepted: followupRun.userTurnTranscriptRecorder?.hasPersisted() === true,
-        isHeartbeat,
         replyExpectation,
         isRestartRecoveryArmed,
         replyOperation,
@@ -674,7 +658,6 @@ export async function runReplyAgent(
           clearRestartRecoveryDeliveryClaim,
           postCompactionDelegatesToPreserve: continuation.postCompactionDelegatesToPreserve,
           releaseSourceAdmission: turn.releaseSourceAdmission,
-          isHeartbeat,
           providedReplyOperation: callerOwnedReplyOperation,
           queueKey,
           replyOperation,

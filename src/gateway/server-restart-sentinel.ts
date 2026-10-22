@@ -64,6 +64,7 @@ import {
   recordUpdateRunNoticeSkipped,
   resolveUpdateRunNoticeTarget,
 } from "./update-run-notice-target.js";
+import { appendUpdateRunFinishedNotice } from "./update-run-notice.runtime.js";
 
 const log = createSubsystemLogger("gateway/restart-sentinel");
 const RESTART_CONTINUATION_BUSY_RETRY_DELAY_MS = process.env.VITEST ? 1 : 6_000;
@@ -360,7 +361,10 @@ async function loadRestartSentinelStartupTask(params: {
       internalNoticeWritten = true;
     } else if (sessionKey && target.kind === "internal") {
       const { agentId, entry: internalEntry, storePath } = target.session;
-      const notice = await appendAssistantMessageToSessionTranscript({
+      const append = updateRunId
+        ? appendUpdateRunFinishedNotice
+        : appendAssistantMessageToSessionTranscript;
+      const notice = await append({
         agentId,
         sessionKey: canonicalKey,
         expectedSessionId: internalEntry.sessionId,

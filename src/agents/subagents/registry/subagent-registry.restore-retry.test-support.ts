@@ -29,8 +29,6 @@ export function registerRegistryRestoreRetryTest({
         sessionId: "sess-child",
         lifecycleRevision: "revision-child",
       },
-      task: "retry registry restore",
-      cleanup: "keep",
       pauseReason: "sessions_yield",
       createdAt: Date.now(),
     });

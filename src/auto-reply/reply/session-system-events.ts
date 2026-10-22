@@ -20,11 +20,6 @@ import {
   formatZonedTimestamp,
   resolveTimezone,
 } from "../../infra/format-time/format-datetime.ts";
-import {
-  isExecCompletionSystemEvent,
-  isHeartbeatDeliveryAwarenessEvent,
-  isHeartbeatWakeEvent,
-} from "../../infra/heartbeat-events-filter.js";
 import { ackSessionDelivery } from "../../infra/session-delivery-queue-storage.js";
 import {
   claimSystemEventDeliveryAdoption,
@@ -38,8 +33,8 @@ import {
 import {
   adoptSelectedSystemEventEntries,
   isSystemEventTurnOwned,
+  peekDeliverableSystemEventEntries,
   restoreConsumedSystemEventEntries,
-  peekSystemEventEntries,
   type SystemEvent,
 } from "../../infra/system-events.js";
 import { defaultRuntime } from "../../runtime.js";
@@ -58,26 +53,6 @@ import {
   type PreparedSystemEventBlock,
 } from "./session-system-event-adoption.js";
 
-function isCronContextSystemEvent(event: SystemEvent): boolean {
-  return event.contextKey?.startsWith("cron:") ?? false;
-}
-
-function selectGenericSystemEvents(
-  events: readonly SystemEvent[],
-  options?: { suppressHeartbeatOwnedEvents?: boolean },
-): SystemEvent[] {
-  // Exec/cron events own dedicated heartbeat prompts. Heartbeat delivery
-  // awareness stays queued for the next ordinary target turn.
-  return events.filter(
-    (event) =>
-      !isExecCompletionSystemEvent(event) &&
-      !(
-        options?.suppressHeartbeatOwnedEvents === true &&
-        (isCronContextSystemEvent(event) || isHeartbeatDeliveryAwarenessEvent(event))
-      ),
-  );
-}
-
 function compactSystemEvent(event: SystemEvent): string | null {
   const trimmed = event.text.trim();
   if (!trimmed) {
@@ -92,7 +67,7 @@ function compactSystemEvent(event: SystemEvent): string | null {
   if (
     lower.includes("reason periodic") ||
     lower.startsWith("read heartbeat.md") ||
-    isHeartbeatWakeEvent(trimmed)
+    /^heartbeat (?:poll|wake)/i.test(trimmed)
   ) {
     return null;
   }
@@ -145,27 +120,20 @@ export async function prepareFormattedSystemEvents(params: {
   sessionKey: string;
   isMainSession: boolean;
   isNewSession: boolean;
-  suppressHeartbeatOwnedEvents?: boolean;
   events?: readonly SystemEvent[];
   deferredEventIds?: readonly string[];
   onEventsAdmitted?: (events: readonly SystemEvent[]) => void;
 }): Promise<PreparedFormattedSystemEvents> {
   const blocks: PreparedSystemEventBlock[] = [];
   const queueKey = resolveSystemEventQueueKey(params.sessionKey, params.agentId);
-  // Exec completions have a dedicated heartbeat prompt; leave those entries queued
-  // so the heartbeat path can consume and deliver them.
+  // Passive selection leaves held notices with their delivery owner.
   // The queue is keyed by the owning agent, so peeking the resolved queue key is
   // the ownership filter; our delivery-ack/session filtering runs after it.
-  // Heartbeat turns pass a prepared generic selection so dedicated reminders
-  // never leak into this consume window.
   // Claimed turns retain their own execution and delivery owner (#167113).
-  let selected = selectGenericSystemEvents(
-    (params.events ?? peekSystemEventEntries(queueKey)).filter(
-      (event) => !isSystemEventTurnOwned(queueKey, event),
-    ),
-    { suppressHeartbeatOwnedEvents: params.suppressHeartbeatOwnedEvents },
+  let selected = (params.events ?? peekDeliverableSystemEventEntries(queueKey)).filter(
+    (event) => !isSystemEventTurnOwned(queueKey, event),
   );
-  // Heartbeat admission may defer captured occurrences to a delivery owner: they
+  // Prompt admission may defer captured occurrences to a delivery owner: they
   // are still formatted into this prompt but stay queued until that owner commits.
   // Consume before the first await, as upstream does: a concurrent drain or a
   // same-store resolver handoff must not observe (or re-select) these entries
@@ -332,7 +300,7 @@ export async function prepareFormattedSystemEvents(params: {
       (!event.expectedSessionId || event.expectedSessionId === currentSessionId),
   );
   // Upstream's admission hook sees every consumed entry (deferred ones included)
-  // so the heartbeat can retire its ordinary generic events after delivery.
+  // so the admitting owner can retire its ordinary generic events after delivery.
   params.onEventsAdmitted?.(queued);
   const sessionStateNotices = promptEvents.flatMap((event) => {
     const targetSessionKey = event.contextKey

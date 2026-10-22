@@ -9,7 +9,6 @@ import {
   releaseSystemEventDeliveryAdoption,
 } from "./system-event-delivery-claims.js";
 import { getSystemEventStorePath, isSystemEventStoreCurrent } from "./system-event-ownership.js";
-import type { SystemEvent } from "./system-events.types.js";
 
 export { resetSystemEventDeliveryAdoptionClaimsForTest as resetForTest } from "./system-event-delivery-claims.js";
 
@@ -33,15 +32,36 @@ export type ManagedSystemEventOptions = {
   traceparent?: string;
 };
 
-type ManagedFields = Pick<
-  SystemEvent,
-  | "sessionDeliveryAckId"
-  | "sessionDeliveryAckStateDir"
-  | "sessionDeliveryAwaitsTurnAdoption"
-  | "expectedSessionId"
-  | "recipientAuthority"
-  | "traceparent"
->;
+/** Managed-delivery provenance a queued system event carries (see SystemEvent in system-events.ts). */
+export type ManagedSystemEventFields = {
+  sessionDeliveryAckId?: string;
+  sessionDeliveryAckStateDir?: string;
+  /**
+   * Acknowledge the durable row only once the prepared turn is durably adopted,
+   * instead of during prompt preparation, for events whose producer cannot
+   * reconstruct the notice after the durable row is gone.
+   */
+  sessionDeliveryAwaitsTurnAdoption?: boolean;
+  expectedSessionId?: string;
+  recipientAuthority?: SessionRecipientAuthority;
+  /**
+   * W3C `traceparent` captured at enqueue-time so the substrate-queue drain can
+   * reconstruct the producer trace at announce/deliver time. Per RFC §6.7
+   * (docs/design/continue-work-signal-v2.md) the substrate queue is an asynchronous
+   * boundary (enqueue turn != drain turn, possibly across a gateway restart), so
+   * trace context rides on the payload itself rather than on a runtime ambient.
+   * Optional and additive — invalid traceparent values are silently dropped at
+   * enqueue-time so producers never fail-the-write on a malformed header.
+   */
+  traceparent?: string;
+};
+
+/** The queued-event shape these helpers read; system-events.ts passes its SystemEvent. */
+type ManagedEvent = ManagedSystemEventFields & {
+  id?: string;
+  text: string;
+  sessionStorePath?: string | null;
+};
 
 export function resolveSessionDeliveryAckStateDir(
   options: Pick<ManagedSystemEventOptions, "sessionDeliveryAckId" | "sessionDeliveryAckStateDir">,
@@ -55,7 +75,9 @@ export function resolveSessionDeliveryAckStateDir(
 }
 
 /** Managed fields of a new event. A keyed replacement never defers its ack to turn adoption. */
-export function fields(options: ManagedSystemEventOptions & { replace?: boolean }): ManagedFields {
+export function fields(
+  options: ManagedSystemEventOptions & { replace?: boolean },
+): ManagedSystemEventFields {
   const sessionDeliveryAckStateDir = resolveSessionDeliveryAckStateDir(options);
   const traceparent = normalizeDiagnosticTraceparent(options.traceparent);
   const trusted = options.trusted === true;
@@ -89,7 +111,11 @@ function areRecipientAuthoritiesEqual(
  * Same durable row, expected session and recipient authority: the managed half of duplicate
  * detection. A keyed replacement and a consumed snapshot also compare the traceparent.
  */
-export function isSame(left: ManagedFields, right: ManagedFields, compareTraceparent = false) {
+export function isSame(
+  left: ManagedSystemEventFields,
+  right: ManagedSystemEventFields,
+  compareTraceparent = false,
+) {
   return (
     left.sessionDeliveryAckId === right.sessionDeliveryAckId &&
     left.sessionDeliveryAckStateDir === right.sessionDeliveryAckStateDir &&
@@ -100,11 +126,11 @@ export function isSame(left: ManagedFields, right: ManagedFields, compareTracepa
 }
 
 /** Whether a queued event duplicates this enqueue: same text, the queue's own match, same delivery. */
-export function sameAs(
+export function sameAs<E extends ManagedEvent>(
   options: ManagedSystemEventOptions & { replace?: boolean },
   text: string,
-  matches: (event: SystemEvent) => boolean,
-): (event: SystemEvent) => boolean {
+  matches: (event: E) => boolean,
+): (event: E) => boolean {
   const incoming = fields(options);
   return (event) =>
     event.text === text && matches(event) && isSame(event, incoming, options.replace === true);
@@ -116,11 +142,11 @@ export function sameAs(
  * surface the same delivery in a second prompt. A slot: the queued copy of the same row, which
  * the new event replaces in place, past duplicate and capacity checks. undefined: no durable copy.
  */
-export function resolveSlot(
+export function resolveSlot<E extends ManagedEvent>(
   options: ManagedSystemEventOptions & { replace?: boolean },
-  queue: readonly SystemEvent[],
-  same: (queued: SystemEvent) => boolean,
-): { index: number; existing: SystemEvent } | null | undefined {
+  queue: readonly E[],
+  same: (queued: E) => boolean,
+): { index: number; existing: E } | null | undefined {
   const ackId = options.sessionDeliveryAckId;
   if (options.replace || !ackId) {
     return undefined;
@@ -151,13 +177,13 @@ export function resolveSlot(
  * durable-backed entry from memory would lose the return until gateway restart, so the queue may
  * exceed the cap only by such entries.
  */
-export function restore(
+export function restore<E extends ManagedEvent>(
   sessionKey: string,
-  entry: { queue: SystemEvent[] },
-  events: readonly SystemEvent[],
-  clone: (event: SystemEvent) => SystemEvent,
+  entry: { queue: E[] },
+  events: readonly E[],
+  clone: (event: E) => E,
   maxEvents: number,
-): SystemEvent[] {
+): E[] {
   for (const event of events) {
     releaseSystemEventDeliveryAdoption(event, { settled: false });
   }
@@ -177,7 +203,7 @@ export function restore(
   );
   entry.queue.unshift(...restored.map(clone));
   let overflow = entry.queue.length - maxEvents;
-  const evicted: SystemEvent[] = [];
+  const evicted: E[] = [];
   if (overflow > 0) {
     entry.queue = entry.queue.filter((event) => {
       if (overflow > 0 && !event.sessionDeliveryAckId) {

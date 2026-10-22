@@ -18,7 +18,6 @@ import { resolveCronRunToolsAllow } from "../../cron/tools-allow.js";
 import type { AgentFallbackCandidateCommonParams } from "./agent-runner-fallback-cycle.types.js";
 import type { FollowupRun } from "./queue.js";
 import { resolveReplyRunTrigger } from "./reply-turn-kind.js";
-import { getReplySystemEventContext } from "./system-event-session-key.js";
 
 export function resolveReplyScheduledToolPolicy(
   run: Pick<FollowupRun["run"], "scheduledAutomation" | "scheduledToolPolicy">,
@@ -149,10 +148,7 @@ export function buildFallbackCandidateTurnParams(params: AgentFallbackCandidateC
     awaitSessionDiffBaseline: turn.opts?.awaitSessionDiffBaseline,
     preparedRunAdmission: params.preparedRunAdmission,
     messageActionTurnCapability: params.messageActionTurnCapability,
-    // Continuation wakes are heartbeat-equivalent; everything else is upstream's user/event.
-    trigger: turn.hookTrigger === "heartbeat" ? "heartbeat" : resolveReplyRunTrigger(turn),
-    heartbeatEventQueueSessionKey: getReplySystemEventContext(turn.opts)
-      ?.heartbeatEventQueueSessionKey,
+    trigger: resolveReplyRunTrigger(turn),
     lane: params.runLane,
     fastModeStartedAtMs: params.fastModeStartedAtMs,
     fastModeAutoProgressState: params.fastModeAutoProgressState,
@@ -171,11 +167,7 @@ export function buildFallbackCandidateTurnParams(params: AgentFallbackCandidateC
     currentInboundContext: turn.followupRun.currentInboundContext,
     extraSystemPrompt: turn.followupRun.run.extraSystemPrompt,
     sourceReplyDeliveryMode: turn.followupRun.run.sourceReplyDeliveryMode,
-    ...(turn.followupRun.run.scheduledAutomation
-      ? { requireExplicitMessageTarget: true }
-      : turn.isHeartbeat
-        ? { requireExplicitMessageTarget: turn.opts?.requireExplicitMessageTarget ?? true }
-        : {}),
+    ...(turn.followupRun.run.scheduledAutomation ? { requireExplicitMessageTarget: true } : {}),
     cleanupBundleMcpOnRunEnd: turn.opts?.cleanupBundleMcpOnRunEnd,
     silentReplyPromptMode: turn.followupRun.run.silentReplyPromptMode,
     suppressNextUserMessagePersistence: params.suppressQueuedUserPersistenceForCandidate,
@@ -185,7 +177,6 @@ export function buildFallbackCandidateTurnParams(params: AgentFallbackCandidateC
     disableTools: turn.opts?.disableTools,
     forceRestartSafeTools: turn.opts?.forceRestartSafeTools,
     forceCodeModeTools: turn.opts?.forceCodeModeTools,
-    continuesConversation: turn.opts?.continuesConversation,
     bootstrapContextMode: turn.opts?.bootstrapContextMode,
     bootstrapContextRunKind: params.bootstrapContextRunKind,
     images: params.currentTurnImages.images,

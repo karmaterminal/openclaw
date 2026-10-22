@@ -24,16 +24,6 @@ export function captureSessionDeliveryQueueContext(stateDir: string): OpenClawSt
   });
 }
 
-export async function settleSessionDelivery(id: string, stateDir: string): Promise<void> {
-  const context = captureSessionDeliveryQueueContext(stateDir);
-  const entry = await loadPendingSessionDelivery(id, context);
-  if (!entry) {
-    throw new Error(`Expected pending session delivery ${id}`);
-  }
-  await markSessionDeliverySettlement(entry, "recovered", context);
-  await completeSessionDelivery(id, context);
-}
-
 export function readSessionQueueStatus(tempDir: string, id: string): string | undefined {
   const { db } = openOpenClawStateDatabase({
     env: { ...process.env, OPENCLAW_STATE_DIR: tempDir },
