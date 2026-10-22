@@ -134,16 +134,6 @@ describe("classifyNoOpRearmWake", () => {
     expect(wake.kind).toBe("structured_completion");
   });
 
-  it("treats a plain heartbeat timer as an exempt backend wake", () => {
-    const wake = classifyNoOpRearmWake({ sessionKey: "s", isHeartbeat: true });
-    expect(wake).toEqual({ kind: "exempt_backend_wake", source: "heartbeat" });
-  });
-
-  it("treats a heartbeat that carries room-event work as neutral room life", () => {
-    const wake = classifyNoOpRearmWake(roomEventWake({ isHeartbeat: true }));
-    expect(wake).toEqual({ kind: "neutral", reason: "room-event" });
-  });
-
   it("classifies only continuation-owned wakes as self-rearm sources", () => {
     expect(classifyNoOpRearmWake(continuationWake({ sessionKey: "s" }))).toEqual({
       kind: "self_rearm",
@@ -426,7 +416,7 @@ describe("NoOpRearmGuard admission + recording", () => {
     expect(guard.peekStreak({ sessionKey })).toBe(1);
   });
 
-  it("does not accrue a streak for no-op outcomes on fresh-edge or heartbeat wakes", () => {
+  it("does not accrue a streak for no-op outcomes on fresh-edge wakes", () => {
     const t = 1_000;
     const guard = makeGuard(() => t);
     const sessionKey = "s";
@@ -434,12 +424,6 @@ describe("NoOpRearmGuard admission + recording", () => {
       sessionKey,
       wakeClass: { kind: "fresh_human_edge", messageId: "m" },
       runId: "a",
-      result: noOpResult(),
-    });
-    guard.record({
-      sessionKey,
-      wakeClass: { kind: "exempt_backend_wake", source: "heartbeat" },
-      runId: "b",
       result: noOpResult(),
     });
     expect(guard.peekStreak({ sessionKey })).toBe(0);

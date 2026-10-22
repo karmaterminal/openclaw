@@ -44,7 +44,6 @@ import {
   resolveReplyOperationRunState,
 } from "./reply-operation-run-state.js";
 import { createReplyRestartRecoveryClaimController } from "./restart-recovery-claim.js";
-import { resolveReplyHookTrigger } from "./run-provenance.js";
 import { buildStalledTurnRecoveryRun, STALLED_TURN_GUIDANCE } from "./stalled-turn-recovery.js";
 
 export function prependCompactionNotices(
@@ -216,7 +215,6 @@ async function executePreparedReplyAgentRunWithCompletion(
     followupRun,
     getActiveSessionEntry,
     isContinuationWake,
-    isHeartbeat,
     opts,
     replyOperation,
     replyThreadingOverride,
@@ -317,7 +315,6 @@ async function executePreparedReplyAgentRunWithCompletion(
       inboundEventKind: followupRun.currentInboundEventKind,
       messageId: followupRun.messageId,
       eventTimestampMs: followupRun.currentInboundEventTimestampMs,
-      isHeartbeat,
       isContinuationWake,
     });
     noOpRearmWakeClass = admission.wake;
@@ -423,7 +420,6 @@ async function executePreparedReplyAgentRunWithCompletion(
           runWithGoalReturn(() =>
             executeAgentTurn({
               ...context,
-              hookTrigger: resolveReplyHookTrigger(opts),
               opts: executionOpts,
               resolveVisibleReplyDelivery: context.resolveVisibleReplyDelivery,
               replyThreading: replyThreadingOverride ?? sessionCtx.ReplyThreading,

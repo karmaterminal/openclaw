@@ -705,8 +705,9 @@ export function restoreConsumedSystemEventEntries(
   events: readonly SystemEvent[],
 ): void {
   const key = requireSessionKey(sessionKey);
-  const entry = getOrCreateSessionQueue(key);
+  const entry = getSessionQueue(key) ?? { queue: [], lastContextKey: null };
   retireSystemEvents(managedDelivery.restore(key, entry, events, cloneSystemEvent, MAX_EVENTS));
+  queues.set(key, entry);
   resetQueueState(key, entry);
 }
 

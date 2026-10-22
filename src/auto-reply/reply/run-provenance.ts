@@ -1,12 +1,10 @@
 import type { DiagnosticRunFireReason } from "../../infra/diagnostic-events.js";
 import type { GetReplyOptions } from "../types.js";
 
-// Continuation work/delegate wakes are heartbeat-like for hooks and model
-// overrides, but must not flip `isHeartbeat` because admission treats that as
-// skippable background work under active-run pressure. `subagent-return` (an
-// ordinary inter-session subagent completion) is also a system-injected wake,
-// so it stays heartbeat-like here even though it is NOT a mid-chain continuation
-// wake at the chain-budget reset gate (see get-reply-run `isContinuationWake`).
+// Continuation work/delegate wakes and `subagent-return` (an ordinary inter-session subagent
+// completion) are system-injected wakes, so their trigger travels with the queued return even
+// though `subagent-return` is NOT a mid-chain continuation wake at the chain-budget reset gate
+// (see get-reply-run `isContinuationWake`).
 export function isContinuationHeartbeatEquivalent(
   continuationTrigger:
     | Pick<GetReplyOptions, "continuationTrigger">["continuationTrigger"]
@@ -19,16 +17,8 @@ export function isContinuationHeartbeatEquivalent(
   );
 }
 
-export function resolveReplyHookTrigger(
-  opts?: Pick<GetReplyOptions, "continuationTrigger" | "isHeartbeat">,
-): "heartbeat" | "user" {
-  return opts?.isHeartbeat === true || isContinuationHeartbeatEquivalent(opts?.continuationTrigger)
-    ? "heartbeat"
-    : "user";
-}
-
 export function resolveReplyRunFireReason(params: {
-  opts?: Pick<GetReplyOptions, "continuationTrigger" | "isHeartbeat">;
+  opts?: Pick<GetReplyOptions, "continuationTrigger">;
   drainsContinuationDelegateQueue?: boolean;
 }): DiagnosticRunFireReason {
   if (
@@ -38,7 +28,7 @@ export function resolveReplyRunFireReason(params: {
   ) {
     return "continuation-chain";
   }
-  if (params.opts?.continuationTrigger === "work-wake" || params.opts?.isHeartbeat === true) {
+  if (params.opts?.continuationTrigger === "work-wake") {
     return "timer";
   }
   return "external-trigger";

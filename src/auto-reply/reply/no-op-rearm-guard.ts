@@ -62,7 +62,6 @@ type NoOpRearmSelfRearmSource = "continuation";
 export type NoOpRearmWakeClass =
   | { kind: "fresh_human_edge"; messageId?: string }
   | { kind: "structured_completion"; source: string }
-  | { kind: "exempt_backend_wake"; source: "heartbeat" }
   | { kind: "neutral"; reason: string; messageId?: string }
   | { kind: "self_rearm"; source: NoOpRearmSelfRearmSource };
 
@@ -74,7 +73,6 @@ export type NoOpRearmWakeInput = {
   provenance?: InputProvenance | undefined;
   inboundEventKind?: InboundEventKind | undefined;
   messageId?: string | number | undefined;
-  isHeartbeat?: boolean;
   isContinuationWake?: boolean;
   /** Structured awaited-completion marker (concrete child/process/job completion). */
   awaitedCompletion?: boolean;
@@ -130,12 +128,6 @@ export function classifyNoOpRearmWake(input: NoOpRearmWakeInput): NoOpRearmWakeC
     return messageId
       ? { kind: "neutral", reason: "room-event", messageId }
       : { kind: "neutral", reason: "room-event" };
-  }
-
-  // A plain heartbeat timer wake is an explicit periodic backend-wake exception.
-  // It is admitted and never accrues or trips the self-rearm streak.
-  if (input.isHeartbeat === true) {
-    return { kind: "exempt_backend_wake", source: "heartbeat" };
   }
 
   // Unmarked/internal/recovery/system wakes are neutral unless the caller supplies
@@ -407,10 +399,6 @@ export class NoOpRearmGuard {
     if (wake.kind === "structured_completion") {
       this.resetEntry(entry);
       return { admit: true, reason: "structured-completion", wake };
-    }
-
-    if (wake.kind === "exempt_backend_wake") {
-      return { admit: true, reason: "exempt-backend-wake", wake };
     }
 
     if (wake.kind === "neutral") {

@@ -70,7 +70,6 @@ import {
   runSuccessfulReplyModelFixture,
 } from "./agent-runner.runreplyagent.fixture.test-support.js";
 import { registerFollowupDrainCases } from "./agent-runner.runreplyagent.followup-drain.cases.js";
-import { registerHeartbeatProvenanceCases } from "./agent-runner.runreplyagent.heartbeat-provenance.cases.js";
 import { createReplyQueueFixture } from "./agent-runner.runreplyagent.queue.test-support.js";
 import { registerRequiredReplyCompletionCases } from "./agent-runner.runreplyagent.required-reply.cases.js";
 import { registerSteeringReceiptCases } from "./agent-runner.runreplyagent.steering-receipts.cases.js";
@@ -1530,8 +1529,6 @@ describe("runReplyAgent admission and cleanup", () => {
     });
     active?.complete();
   });
-
-  registerHeartbeatProvenanceCases(createMinimalRun, state.runEmbeddedAgentMock);
 
   registerReplyAdmissionCases({
     createMinimalRun,

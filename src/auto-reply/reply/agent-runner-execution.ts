@@ -168,9 +168,7 @@ async function executeAgentTurnInternalLoop(
       sessionId: params.followupRun.run.sessionId,
       agentId: params.followupRun.run.agentId,
       channel: messageProvider,
-      // Continuation wakes are heartbeat-equivalent; everything else is upstream's user/event.
-      trigger:
-        params.hookTrigger === "heartbeat" ? "heartbeat" : trigger === "cron" ? "event" : trigger,
+      trigger: trigger === "cron" ? "event" : trigger,
     });
   }
   let replyMediaContext: ReplyMediaContext;

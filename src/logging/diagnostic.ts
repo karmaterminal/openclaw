@@ -74,7 +74,6 @@ import {
   pruneDiagnosticSessionStates,
   touchDiagnosticSessionState,
   type SessionRef,
-  type SessionState,
 } from "./diagnostic-session-state.js";
 import {
   installDiagnosticStabilityFatalHook,

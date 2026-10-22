@@ -1,11 +1,6 @@
 import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
-import {
-  completeSessionDelivery,
-  loadPendingSessionDelivery,
-  markSessionDeliverySettlement,
-} from "./session-delivery-queue-storage.js";
 
 type SessionQueueRow = {
   status: string;
