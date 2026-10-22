@@ -824,8 +824,8 @@ export function emitContinuationDelegateFireSpan(args: {
  * Emit a `continuation.work.fire` span at the bracket-work timer-callback
  * seam. Symmetric to `emitContinuationDelegateFireSpan`
  * but scope-narrower: WORK-fire has NO fire-time divergence in current bytes
- * (`enqueueSystemEvent` and `requestHeartbeatNow` are synchronous and
- * non-divergent), so 5c emits a single span with no `continuation.disabled`
+ * (`enqueueSystemEvent` is synchronous and non-divergent), so 5c emits a
+ * single span with no `continuation.disabled`
  * sibling.
  *
  * `continuation.work.fire` uses a separate helper because work-fire has no

@@ -27,6 +27,7 @@ import type { SystemEvent } from "../../infra/system-events.js";
 import type { ReplyOperationObservation } from "../../sessions/reply-operation-state.js";
 import type { UserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.types.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
+import type { GetReplyOptions } from "../get-reply-options.types.js";
 import type { NormalizeReplySkipReason } from "./normalize-reply-skip-reason.js";
 
 type SessionEventSource =
@@ -38,7 +39,9 @@ type SessionEventSource =
   | "session"
   | "device"
   | "plugin"
-  | "cron";
+  | "cron"
+  // Continuation (karmaterminal): delegate returns and notices (continuation/continuation-wake.ts).
+  | "continuation";
 export type SessionEventOutcome = {
   status: "completed" | "failed" | "cancelled";
   executionStarted: boolean;
@@ -111,6 +114,11 @@ export type SessionEventOptions = {
   readmissionAttempt?: number;
   /** An explicitly silent source records its result without transport delivery. */
   deliver?: boolean;
+  /**
+   * Continuation (karmaterminal): wake lineage the turn's reply options carry, so a delegate
+   * return keeps its chain budget (see continuation/continuation-wake.ts).
+   */
+  continuation?: Readonly<Pick<GetReplyOptions, "continuationTrigger" | "parentRunId">>;
   /** Host producer remains live through admission, execution and delivery. */
   assertCurrent?: () => void;
 };

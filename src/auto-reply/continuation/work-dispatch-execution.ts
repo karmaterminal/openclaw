@@ -7,7 +7,6 @@ import {
 } from "../../infra/continuation-tracer.js";
 import { runWithDiagnosticTraceparent } from "../../infra/diagnostic-trace-context.js";
 import { formatErrorMessage } from "../../infra/errors.js";
-import { isRetryableHeartbeatBusySkipReason } from "../../infra/heartbeat-wake.js";
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { evaluateNoOpRearmAdmission, type NoOpRearmDecision } from "../reply/no-op-rearm-guard.js";
@@ -114,7 +113,8 @@ type ContinuationWorkFoldPolicy = Readonly<{
 
 function isRetryableContinuationSkipReason(reason: string): boolean {
   return (
-    isRetryableHeartbeatBusySkipReason(reason) ||
+    // Reply-turn admission's busy refusal; the other busy reasons left with heartbeat turns.
+    reason === "active-run" ||
     reason === CONTINUATION_TURN_DRAINING_REASON ||
     reason === CONTINUATION_TURN_COMMAND_QUEUE_BUSY_REASON ||
     reason === CONTINUATION_TURN_LIFECYCLE_CHANGED_REASON

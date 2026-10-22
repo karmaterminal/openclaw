@@ -147,7 +147,7 @@ const mocks = vi.hoisted(() => {
     withStableDeliveryPreparation: vi.fn(),
     // `true` is the queue's admission contract; the replay acts on the result.
     enqueueSystemEvent: vi.fn((..._args: unknown[]) => true),
-    requestHeartbeat: vi.fn(),
+    requestContinuationWake: vi.fn(),
     enqueueSessionDelivery: vi.fn(),
     advanceSessionDeliveryAgentRun: vi.fn<AdvanceSessionDeliveryAgentRunMock>(async () => {}),
     deferSessionDelivery: vi.fn<DeferSessionDeliveryMock>(async () => {}),
@@ -506,15 +506,9 @@ vi.mock("../infra/system-event-managed-delivery-queue.js", () => ({
   hasQueuedSystemEventDelivery: () => false,
 }));
 
-vi.mock("../infra/heartbeat-wake.js", async () => {
-  const actual = await vi.importActual<typeof import("../infra/heartbeat-wake.js")>(
-    "../infra/heartbeat-wake.js",
-  );
-  return {
-    ...actual,
-    requestHeartbeat: mocks.requestHeartbeat,
-  };
-});
+vi.mock("../auto-reply/continuation/continuation-wake.js", () => ({
+  requestContinuationWake: mocks.requestContinuationWake,
+}));
 
 vi.mock("../logging/subsystem.js", async () => {
   const actual =

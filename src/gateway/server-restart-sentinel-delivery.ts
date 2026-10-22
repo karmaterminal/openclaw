@@ -4,6 +4,7 @@ import {
   CONTINUATION_RESET_HOLD_MAX_MS,
   findContinuationResetHold,
 } from "../agents/subagents/registry/subagent-continuation-reset-retention.js";
+import { requestContinuationWake } from "../auto-reply/continuation/continuation-wake.js";
 import { finalizeInboundContext } from "../auto-reply/reply/inbound-context.js";
 import { deliverQueuedPostCompactionDelegate } from "../auto-reply/reply/post-compaction-delegate-delivery.js";
 import { dispatchReplyWithBufferedBlockDispatcherCore } from "../auto-reply/reply/provider-dispatcher.js";
@@ -14,11 +15,6 @@ import { getRuntimeConfig } from "../config/io.js";
 import { isSessionRecipientAuthorityCurrent } from "../config/sessions/session-accessor.js";
 import type { SessionRecipientAuthority } from "../config/sessions/session-recipient-authority-types.js";
 import { toErrorObject } from "../infra/errors.js";
-import {
-  markTrustedContinuationHeartbeatWake,
-  requestHeartbeat,
-  requestHeartbeatNow,
-} from "../infra/heartbeat-wake.js";
 import {
   type ContinuationReturnWake,
   markSessionDeliveryAttemptStarted,
@@ -106,7 +102,7 @@ function enqueueRestartSentinelWake(params: {
 }): RestartSentinelWakeOutcome {
   const eventOptions = {
     sessionKey: params.sessionKey,
-    // Recovered work keeps its ordinary turn budget when delivered by heartbeat.
+    // Recovered work keeps its ordinary turn budget when its wake runs the turn.
     contextKey: `task:restart-sentinel:${params.entryId}`,
     trusted: true,
     // The durable row owns this contract; a replayed event must carry it too, or
@@ -141,27 +137,28 @@ function enqueueRestartSentinelWake(params: {
     // session). Only the latter is delivered; neither needs another wake.
     return hasQueuedSystemEventDelivery(ownedOptions) ? "queued" : "refused";
   }
+  const deliveryIds = params.sessionDeliveryAckId ? [params.sessionDeliveryAckId] : [];
   if (params.returnWake !== undefined) {
     // Replay wakes exactly as the producer's fast-path admission would have:
-    // a trusted continuation wake with the producer's reason, or none at all.
+    // a continuation wake with the producer's reason, or none at all.
     if (params.returnWake) {
-      requestHeartbeatNow(
-        markTrustedContinuationHeartbeatWake({
-          sessionKey: params.sessionKey,
-          agentId: params.agentId,
-          reason: params.returnWake.reason,
-          ...(params.returnWake.parentRunId ? { parentRunId: params.returnWake.parentRunId } : {}),
-        }),
-      );
+      requestContinuationWake({
+        sessionKey: params.sessionKey,
+        agentId: params.agentId,
+        reason: params.returnWake.reason,
+        ...(params.returnWake.parentRunId ? { parentRunId: params.returnWake.parentRunId } : {}),
+        deliveryIds,
+      });
     }
     return "queued";
   }
-  requestHeartbeat({
-    source: "restart-sentinel",
-    intent: "immediate",
-    reason: "wake",
-    agentId: params.agentId,
+  // A continuation-owned row without its own wake (a durable notice, or a row written before
+  // return wakes were recorded) wakes one ordinary event turn for the session.
+  requestContinuationWake({
     sessionKey: params.sessionKey,
+    agentId: params.agentId,
+    reason: "restart-sentinel",
+    deliveryIds,
   });
   return "queued";
 }
@@ -299,9 +296,8 @@ async function deliverResolvedQueuedSessionDelivery(params: {
     // carries recipient authority; rows written before that rule replay the same way.
     const awaitsTurnAdoption = params.entry.awaitPromptAdoption === true || isContinuationReturn;
     if (awaitsTurnAdoption && !entry && isSubagentSessionKey(canonicalKey)) {
-      // A heartbeat wake for a subagent key runs the agent's main session, which
-      // never reads this queue, so the row could not be adopted and would replay
-      // on every restart without ever settling.
+      // A missing subagent session cannot adopt the row: the wake's handoff refuses an absent
+      // origin, so the row would replay on every restart without ever settling.
       throw new SessionDeliveryDeadLetteredError(
         "adoption-scoped delivery targets a subagent session that no longer exists",
       );

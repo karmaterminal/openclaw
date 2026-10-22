@@ -1,3 +1,4 @@
+import { requestContinuationWake } from "../auto-reply/continuation/continuation-wake.js";
 import {
   captureContinuationRecipientAuthorities,
   continuationRecipientAuthorityMap,
@@ -13,10 +14,6 @@ import { listSessionEntriesCore } from "../config/sessions/session-accessor.js";
 import type { ContinuationRecipientAuthorityBinding } from "../config/sessions/session-recipient-authority-types.js";
 import { resolveAllAgentSessionStoreTargetsSync } from "../config/sessions/targets.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import {
-  markTrustedContinuationHeartbeatWake,
-  requestHeartbeatNow,
-} from "../infra/heartbeat-wake.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { defaultRuntime } from "../runtime.js";
 import { parseContinuationChainHop } from "./subagent-announce.continuation.accounting.js";
@@ -272,14 +269,13 @@ export async function routeSubagentContinuationReturn(params: {
       `[continuation:enrichment-return] Delivered to ${params.targetRequesterSessionKey} from ${params.childSessionKey}`,
     );
     if (params.wakeOnReturn) {
-      requestHeartbeatNow(
-        markTrustedContinuationHeartbeatWake({
-          sessionKey: params.targetRequesterSessionKey,
-          ...(params.targetRequesterAgentId ? { agentId: params.targetRequesterAgentId } : {}),
-          reason: "silent-wake-enrichment",
-          parentRunId: params.childRunId,
-        }),
-      );
+      requestContinuationWake({
+        sessionKey: params.targetRequesterSessionKey,
+        ...(params.targetRequesterAgentId ? { agentId: params.targetRequesterAgentId } : {}),
+        reason: "silent-wake-enrichment",
+        parentRunId: params.childRunId,
+        deliveryIds: outcome.deliveryIds,
+      });
     }
     return { handled: true };
   }

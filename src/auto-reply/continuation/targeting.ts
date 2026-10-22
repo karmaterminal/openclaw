@@ -1,10 +1,6 @@
 import { isSessionRecipientAuthorityCurrent } from "../../config/sessions/session-accessor.js";
 import type { SessionRecipientAuthority } from "../../config/sessions/session-recipient-authority-types.js";
 import { emitContinuationFanoutSpan } from "../../infra/continuation-tracer.js";
-import {
-  markTrustedContinuationHeartbeatWake,
-  requestHeartbeatNow,
-} from "../../infra/heartbeat-wake.js";
 import type { scheduleSessionDelivery } from "../../infra/session-delivery-queue-runtime.js";
 import {
   ackSessionDelivery,
@@ -22,6 +18,7 @@ import {
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { normalizeAgentId, resolveAgentIdFromSessionKey } from "../../routing/session-key.js";
+import { requestContinuationWake } from "./continuation-wake.js";
 import { captureContinuationQueueContext } from "./queue-context.js";
 import { withContinuationOwner } from "./system-event-ownership.js";
 import {
@@ -77,7 +74,7 @@ type ContinuationReturnDeliveryDeps = {
   /** Test seam proving queued durable delivery is not acknowledged before prompt adoption. */
   ackSessionDelivery?: typeof import("../../infra/session-delivery-queue-storage.js").ackSessionDelivery;
   enqueueSystemEvent: typeof enqueueSystemEvent;
-  requestHeartbeatNow: typeof requestHeartbeatNow;
+  requestContinuationWake: typeof requestContinuationWake;
   isRecipientAuthorityCurrent?: (
     sessionKey: string,
     authority: SessionRecipientAuthority,
@@ -92,7 +89,7 @@ const log = createSubsystemLogger("continuation/targeting");
 const defaultContinuationReturnDeliveryDeps: ContinuationReturnDeliveryDeps = {
   enqueueSessionDelivery,
   enqueueSystemEvent,
-  requestHeartbeatNow,
+  requestContinuationWake,
 };
 
 // A held return whose retry could not be armed (no delivery runtime owns this
@@ -340,18 +337,17 @@ export async function enqueueContinuationReturnDeliveries(
       continue;
     }
     if (params.wakeRecipients) {
-      deps.requestHeartbeatNow(
-        markTrustedContinuationHeartbeatWake({
-          sessionKey,
-          agentId: recipientAgentId,
-          reason: "delegate-return",
-          parentRunId: params.childRunId,
-        }),
-      );
+      deps.requestContinuationWake({
+        sessionKey,
+        agentId: recipientAgentId,
+        reason: "delegate-return",
+        ...(params.childRunId ? { parentRunId: params.childRunId } : {}),
+        deliveryIds: [deliveryId],
+      });
     }
     // For a queued event, do NOT ack the durable file here. The in-memory event
-    // carries the ack id and the prompt-drain path acknowledges it only after
-    // recipient consumption; non-attached recipients still need restart recovery
+    // carries the ack id; the woken turn (or the prompt-drain path) acknowledges it
+    // only after adoption, and non-attached recipients still need restart recovery
     // to replay this file.
     delivered += 1;
     deliveredSessionKeys.push(sessionKey);

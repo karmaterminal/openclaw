@@ -4,23 +4,20 @@
 // The row owns delivery; the in-memory event is only the fast path and carries
 // the row's ack id, so the row settles only once a prompt adopts it and a
 // restart before that replays the row instead of losing the notice.
-import {
-  markTrustedContinuationHeartbeatWake,
-  requestHeartbeatNow,
-} from "../../infra/heartbeat-wake.js";
 import type { scheduleSessionDelivery } from "../../infra/session-delivery-queue-runtime.js";
 import { withSystemEventOwner } from "../../infra/system-event-ownership.js";
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.types.js";
+import { requestContinuationWake } from "./continuation-wake.js";
 
 const log = createSubsystemLogger("continuation/notice-surface");
 
 export type ContinuationNoticeSurfaceDeps = {
   scheduleSessionDelivery: typeof scheduleSessionDelivery;
   enqueueSystemEvent: typeof enqueueSystemEvent;
-  requestHeartbeatNow: typeof requestHeartbeatNow;
+  requestContinuationWake: typeof requestContinuationWake;
 };
 
 export const defaultContinuationNoticeSurfaceDeps: ContinuationNoticeSurfaceDeps = {
@@ -32,7 +29,7 @@ export const defaultContinuationNoticeSurfaceDeps: ContinuationNoticeSurfaceDeps
       await import("../../infra/session-delivery-queue-runtime.js")
     ).scheduleSessionDelivery(...args),
   enqueueSystemEvent,
-  requestHeartbeatNow,
+  requestContinuationWake,
 };
 
 /**
@@ -81,14 +78,12 @@ export async function surfaceDurableContinuationNotice(
   // Startup scans the delivery queue before continuation recovery runs, so a
   // row created now would otherwise wait for unrelated traffic.
   await scheduleCommittedContinuationNotice(params.entryId, params, deps);
-  deps.requestHeartbeatNow(
-    markTrustedContinuationHeartbeatWake({
-      sessionKey: params.sessionKey,
-      source: "other" as const,
-      intent: "immediate" as const,
-      reason: params.reason,
-    }),
-  );
+  deps.requestContinuationWake({
+    sessionKey: params.sessionKey,
+    ...(params.ownerAgentId ? { agentId: params.ownerAgentId } : {}),
+    reason: params.reason,
+    deliveryIds: [params.entryId],
+  });
   return true;
 }
 

@@ -550,6 +550,7 @@ export function enqueueSessionEventForHost(
             }
           },
           queueModeOverride: "followup",
+          ...options.continuation,
           suppressTyping: true,
           typingPolicy: "system_event",
           onReplyOperationAdmitted: (owned) => {
