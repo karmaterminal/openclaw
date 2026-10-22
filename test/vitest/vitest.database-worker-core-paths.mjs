@@ -328,6 +328,8 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/reply/reply-run-registry.question-registration.test.ts",
   "src/auto-reply/reply/reply-tool-authority.worker.test.ts",
   "src/auto-reply/reply/session-event-automation-result.test.ts",
+  // Continuation wakes run the real session-event handoff and durable rows.
+  "src/auto-reply/continuation/continuation-wake.test.ts",
   "src/auto-reply/reply/session-event-config-readmission.test.ts",
   "src/auto-reply/reply/session-event-handoff.test.ts",
   "src/auto-reply/reply/session-event-permissions.test.ts",

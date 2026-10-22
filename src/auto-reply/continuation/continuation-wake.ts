@@ -232,7 +232,7 @@ export async function settleContinuationWakesForTest(): Promise<void> {
     clearTimeout(wake.timer);
     runPendingWake(key);
   }
-  await Promise.allSettled([...inFlightWakes]);
+  await Promise.allSettled(inFlightWakes);
 }
 
 /** Drops queued wakes without running them. Test-only. */

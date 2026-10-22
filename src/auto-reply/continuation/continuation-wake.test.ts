@@ -1,0 +1,404 @@
+// Continuation wake over upstream's session-event handoff (continuation-wake.ts).
+//
+// Real: the continuation producer (durable row + managed system event), the wake's
+// coalescing and claims, the session-event handoff, ordinary reply admission, the
+// continuation chain-budget gate, restart replay and the durable session-delivery queue.
+// Only the model decision (runEmbeddedAgent) is synthetic.
+import { expectDefined } from "@openclaw/normalization-core/expect";
+import { afterEach, expect, it, vi } from "vitest";
+import { createDeferred, withinTest } from "../../../test/helpers/promise.js";
+import {
+  admitModelTurn,
+  completionConfig,
+} from "../../agents/bash-tools.lifecycle.test-support.js";
+import type { RunEmbeddedAgentParams } from "../../agents/embedded-agent-runner/run/params.js";
+import { runEmbeddedAgent } from "../../agents/embedded-agent.js";
+import type { ChannelOutboundAdapter } from "../../channels/plugins/outbound.types.js";
+import type { ChannelPlugin } from "../../channels/plugins/types.public.js";
+import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
+import { assignSessionOwner, replaceSessionEntry } from "../../config/sessions/session-accessor.js";
+import { readSessionEntryInWorker } from "../../config/sessions/session-entry-read-writable.js";
+import { captureSessionRecipientAuthority } from "../../config/sessions/session-sharing-store.async.js";
+import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { recoverPendingRestartContinuationDeliveries } from "../../gateway/server-restart-sentinel.js";
+import { loadPendingSessionDelivery } from "../../infra/session-delivery-queue-storage.js";
+import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
+import {
+  isSystemEventTurnOwned,
+  peekSystemEventEntries,
+  resetSystemEventsForTest,
+} from "../../infra/system-events.js";
+import {
+  captureActivePluginRegistrySnapshot,
+  restoreActivePluginRegistrySnapshot,
+  setActivePluginRegistry,
+} from "../../plugins/runtime.js";
+import { openOpenClawStateDatabase } from "../../state/openclaw-state-db.js";
+import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
+import {
+  createChannelTestPluginBase,
+  createTestRegistry,
+} from "../../test-utils/channel-plugins.js";
+import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
+import { normalizeSessionDeliveryState } from "../../utils/delivery-context.shared.js";
+import { enqueueSessionEventForHost } from "../reply/session-event-handoff.js";
+import {
+  requestContinuationWake,
+  resetContinuationWakesForTest,
+  settleContinuationWakesForTest,
+} from "./continuation-wake.js";
+import { enqueueContinuationReturnDeliveries } from "./targeting.js";
+
+// mock-isolation: Synthetic model decisions; admission, queue, handoff and durable rows stay real.
+vi.mock("../../agents/embedded-agent-runner/run.js", () => ({
+  runEmbeddedAgent: vi.fn(),
+}));
+const runEmbeddedAgentMock = vi.mocked(runEmbeddedAgent);
+// Match Gateway startup: activate the real reply runtimes before admitting turns.
+await Promise.all([
+  import("../dispatch.js"),
+  import("../reply/get-reply-from-config.runtime.js").then((runtime) =>
+    runtime.prewarmConfigDrivenReplyRuntime(),
+  ),
+]);
+
+const AGENT_ID = "main";
+const ROUTE = { channel: "telegram", to: "-100001", accountId: "default" };
+
+afterEach(() => {
+  resetContinuationWakesForTest();
+  resetSystemEventsForTest();
+  runEmbeddedAgentMock.mockReset();
+});
+
+type Fixture = {
+  sessionKey: string;
+  sendText: ReturnType<typeof vi.fn<NonNullable<ChannelOutboundAdapter["sendText"]>>>;
+  prompts: string[];
+};
+
+/** A continuation-enabled session with a mid-chain budget and a transport route. */
+async function withWakeFixture(
+  label: string,
+  run: (fixture: Fixture) => Promise<void>,
+  options: { session?: false; chainCount?: number } = {},
+) {
+  await withOpenClawTestState({ label, env: { OPENCLAW_TEST_FAST: "0" } }, async (state) => {
+    const config: OpenClawConfig = completionConfig(state.workspaceDir);
+    config.agents = {
+      ...config.agents,
+      defaults: { ...config.agents?.defaults, continuation: { enabled: true } },
+    };
+    setRuntimeConfigSnapshot(config);
+    await state.writeConfig(config);
+    openOpenClawStateDatabase();
+    const registry = captureActivePluginRegistrySnapshot();
+    const current = expectDefined(registry.activeRegistry, "active plugin registry");
+    const sendText = vi
+      .fn<NonNullable<ChannelOutboundAdapter["sendText"]>>()
+      .mockResolvedValue({ channel: "telegram", messageId: "wake-reply" });
+    const channels = createTestRegistry([
+      {
+        pluginId: "telegram",
+        source: "test",
+        plugin: {
+          ...createChannelTestPluginBase({ id: "telegram" }),
+          outbound: { deliveryMode: "direct", sendText },
+        } satisfies ChannelPlugin,
+      },
+    ]);
+    setActivePluginRegistry({
+      ...current,
+      channels: [
+        ...current.channels.filter((entry) => entry.plugin.id !== "telegram"),
+        ...channels.channels,
+      ],
+      channelSetups: [
+        ...current.channelSetups.filter((entry) => entry.plugin.id !== "telegram"),
+        ...channels.channelSetups,
+      ],
+    });
+    const sessionKey = `agent:main:wake-${label}`;
+    if (options.session !== false) {
+      await replaceSessionEntry(
+        { agentId: AGENT_ID, sessionKey },
+        {
+          sessionId: `session-${label}`,
+          lifecycleRevision: "original",
+          permissionMode: "full",
+          delivery: normalizeSessionDeliveryState({ context: ROUTE }),
+          continuationChainCount: options.chainCount ?? 2,
+          continuationChainTokens: 1_000,
+          continuationChainStartedAt: 1,
+          continuationChainId: "chain-before-wake",
+          updatedAt: Date.now(),
+        },
+      );
+    }
+    const prompts: string[] = [];
+    try {
+      await run({ sessionKey, sendText, prompts });
+    } finally {
+      restoreActivePluginRegistrySnapshot(registry);
+    }
+  });
+}
+
+/** What the embedded runner settles when the model ends its turn with `NO_REPLY`. */
+const SILENT_TERMINAL = {
+  payloads: [],
+  meta: { durationMs: 1, terminalReply: { disposition: "silent" } },
+} as const;
+
+/** The model answers every turn with `reply`, or ends it silently for `NO_REPLY`. */
+function answerTurns(prompts: string[], reply: string) {
+  runEmbeddedAgentMock.mockImplementation(async (params: RunEmbeddedAgentParams) => {
+    prompts.push(params.prompt);
+    await admitModelTurn(params);
+    return reply === "NO_REPLY"
+      ? SILENT_TERMINAL
+      : {
+          payloads: [{ text: reply }],
+          meta: { durationMs: 1, terminalReply: { disposition: "visible", text: reply } },
+        };
+  });
+}
+
+/** One durable delegate return through the real producer, waking its recipient. */
+async function produceReturn(
+  sessionKey: string,
+  text: string,
+  extra: Partial<Parameters<typeof enqueueContinuationReturnDeliveries>[0]> = {},
+) {
+  const outcome = await enqueueContinuationReturnDeliveries({
+    targetSessionKeys: [sessionKey],
+    text,
+    // Restart replay recognizes a continuation return by its producer's key prefix.
+    idempotencyKeyBase: `continuation-return:${text}`,
+    wakeRecipients: true,
+    childRunId: `child-run:${text}`,
+    recipientAgentIds: new Map([[sessionKey, AGENT_ID]]),
+    ownerAgentId: AGENT_ID,
+    ...extra,
+  });
+  return expectDefined(outcome.deliveryIds[0], "durable return row");
+}
+
+async function rowPending(id: string) {
+  return (await loadPendingSessionDelivery(id, captureOpenClawStateWorkerContext())) !== null;
+}
+
+it("hands a delegate return to one adopted turn that keeps the chain budget", async ({
+  signal,
+}) => {
+  await withWakeFixture("delegate-return", async ({ sessionKey, sendText, prompts }) => {
+    answerTurns(prompts, "Delegate result reviewed.");
+    const row = await produceReturn(sessionKey, "delegate alpha finished");
+    expect(await rowPending(row)).toBe(true);
+
+    await withinTest(settleContinuationWakesForTest(), signal);
+
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain("delegate alpha finished");
+    // Adopted, then acknowledged: the durable row settled and nothing is left queued.
+    expect(await rowPending(row)).toBe(false);
+    expect(
+      peekSystemEventEntries(resolveSystemEventQueueKey(sessionKey, AGENT_ID)).map(
+        (event) => event.sessionDeliveryAckId,
+      ),
+    ).toEqual([]);
+    // A visible delegate return delivers to the session's route.
+    expect(sendText).toHaveBeenCalledOnce();
+    // continuationTrigger reached run context: the mid-chain return did not reset the budget.
+    const entry = await readSessionEntryInWorker({ agentId: AGENT_ID, sessionKey });
+    expect(entry).toMatchObject({
+      continuationChainCount: 2,
+      continuationChainId: "chain-before-wake",
+    });
+  });
+});
+
+it("keeps silent-wake enrichment transport-silent and mid-chain", async ({ signal }) => {
+  await withWakeFixture("silent-wake", async ({ sessionKey, sendText, prompts }) => {
+    answerTurns(prompts, "Noted the enrichment.");
+    const row = await produceReturn(sessionKey, "enrichment from delegate", {
+      wakeRecipients: false,
+      returnWake: { reason: "silent-wake-enrichment", parentRunId: "child-silent" },
+    });
+    requestContinuationWake({
+      sessionKey,
+      agentId: AGENT_ID,
+      reason: "silent-wake-enrichment",
+      parentRunId: "child-silent",
+      deliveryIds: [row],
+    });
+
+    await withinTest(settleContinuationWakesForTest(), signal);
+
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain("enrichment from delegate");
+    expect(await rowPending(row)).toBe(false);
+    // Recorded in the transcript, never sent to the channel.
+    expect(sendText).not.toHaveBeenCalled();
+    // A delegate return, not an external subagent-return: the chain budget carries forward.
+    expect(await readSessionEntryInWorker({ agentId: AGENT_ID, sessionKey })).toMatchObject({
+      continuationChainCount: 2,
+      continuationChainId: "chain-before-wake",
+    });
+  });
+});
+
+it("coalesces several pending returns into one turn without merging their rows", async ({
+  signal,
+}) => {
+  await withWakeFixture("multiple", async ({ sessionKey, prompts }) => {
+    answerTurns(prompts, "Both results reviewed.");
+    const first = await produceReturn(sessionKey, "delegate one finished");
+    const second = await produceReturn(sessionKey, "delegate two finished");
+    const queued = peekSystemEventEntries(resolveSystemEventQueueKey(sessionKey, AGENT_ID));
+    expect(queued.map((event) => event.sessionDeliveryAckId)).toEqual([first, second]);
+
+    await withinTest(settleContinuationWakesForTest(), signal);
+
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain("delegate one finished");
+    expect(prompts[0]).toContain("delegate two finished");
+    expect(await rowPending(first)).toBe(false);
+    expect(await rowPending(second)).toBe(false);
+  });
+});
+
+it("waits behind a busy session and acknowledges only once its turn is adopted", async ({
+  signal,
+}) => {
+  await withWakeFixture("busy", async ({ sessionKey, prompts }) => {
+    const firstStarted = createDeferred();
+    const releaseFirst = createDeferred();
+    runEmbeddedAgentMock.mockImplementation(async (params: RunEmbeddedAgentParams) => {
+      prompts.push(params.prompt);
+      await admitModelTurn(params);
+      if (prompts.length === 1) {
+        firstStarted.resolve();
+        await releaseFirst.promise;
+      }
+      return SILENT_TERMINAL;
+    });
+    const busy = enqueueSessionEventForHost("unrelated work in progress", {
+      agentId: AGENT_ID,
+      sessionKey,
+      source: "task",
+      deliver: false,
+    });
+    await withinTest(firstStarted.promise, signal);
+    const row = await produceReturn(sessionKey, "delegate behind busy turn");
+
+    const wakes = settleContinuationWakesForTest();
+    await withinTest(
+      vi.waitFor(() =>
+        expect(
+          peekSystemEventEntries(resolveSystemEventQueueKey(sessionKey, AGENT_ID)).some((event) =>
+            isSystemEventTurnOwned(resolveSystemEventQueueKey(sessionKey, AGENT_ID), event),
+          ),
+        ).toBe(true),
+      ),
+      signal,
+    );
+    // Deferred behind the active run: handed off, not yet adopted, row still pending.
+    expect(prompts).toHaveLength(1);
+    expect(await rowPending(row)).toBe(true);
+
+    releaseFirst.resolve();
+    await withinTest(busy.settled, signal);
+    await withinTest(wakes, signal);
+
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toContain("delegate behind busy turn");
+    expect(await rowPending(row)).toBe(false);
+  });
+});
+
+it("replays a pending return after restart and wakes as its producer would", async ({ signal }) => {
+  await withWakeFixture("restart", async ({ sessionKey, prompts }) => {
+    answerTurns(prompts, "Recovered result reviewed.");
+    const row = await produceReturn(sessionKey, "delegate before restart");
+    // The process dies before the wake runs: the in-memory event and wake are gone, the row stays.
+    resetContinuationWakesForTest();
+    resetSystemEventsForTest();
+    expect(await rowPending(row)).toBe(true);
+
+    await recoverPendingRestartContinuationDeliveries({
+      deps: {},
+      queueContext: captureOpenClawStateWorkerContext(),
+    });
+    await withinTest(settleContinuationWakesForTest(), signal);
+
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain("delegate before restart");
+    expect(await rowPending(row)).toBe(false);
+    expect(await readSessionEntryInWorker({ agentId: AGENT_ID, sessionKey })).toMatchObject({
+      continuationChainCount: 2,
+    });
+  });
+});
+
+it("leaves a return for a missing target queued and its row pending", async ({ signal }) => {
+  await withWakeFixture(
+    "missing-target",
+    async ({ sessionKey, prompts }) => {
+      answerTurns(prompts, "unreachable");
+      const row = await produceReturn(sessionKey, "delegate for a missing session");
+
+      await withinTest(settleContinuationWakesForTest(), signal);
+
+      // The handoff refuses an absent origin: no turn, no ack, and the occurrence is
+      // passive again so a later turn or replay still owns it.
+      expect(prompts).toEqual([]);
+      expect(await rowPending(row)).toBe(true);
+      const queueKey = resolveSystemEventQueueKey(sessionKey, AGENT_ID);
+      const queued = peekSystemEventEntries(queueKey);
+      expect(queued.map((event) => event.sessionDeliveryAckId)).toEqual([row]);
+      expect(queued.some((event) => isSystemEventTurnOwned(queueKey, event))).toBe(false);
+    },
+    { session: false },
+  );
+});
+
+it("retires a return whose recipient authority a reset or owner change advanced", async ({
+  signal,
+}) => {
+  await withWakeFixture("stale-authority", async ({ sessionKey, prompts }) => {
+    answerTurns(prompts, "unreachable");
+    const scope = { agentId: AGENT_ID, sessionKey };
+    const recipientAuthority = await captureSessionRecipientAuthority(scope);
+    const row = await produceReturn(sessionKey, "delegate for the old owner", {
+      recipientAuthorities: new Map([[sessionKey, recipientAuthority]]),
+    });
+    // The session changes hands before the wake runs.
+    assignSessionOwner(scope, {
+      owner: { type: "human", id: "new-owner" },
+      assignedBy: { type: "human", id: "operator" },
+    });
+
+    await withinTest(settleContinuationWakesForTest(), signal);
+
+    expect(prompts).toEqual([]);
+    // Retired, never delivered: the row settles and the event leaves the queue.
+    expect(await rowPending(row)).toBe(false);
+    expect(peekSystemEventEntries(resolveSystemEventQueueKey(sessionKey, AGENT_ID))).toEqual([]);
+  });
+});
+
+it("adopts and acknowledges a return whose turn ends in an intentional silent reply", async ({
+  signal,
+}) => {
+  await withWakeFixture("silent-terminal", async ({ sessionKey, sendText, prompts }) => {
+    answerTurns(prompts, "NO_REPLY");
+    const row = await produceReturn(sessionKey, "delegate with nothing to say");
+
+    await withinTest(settleContinuationWakesForTest(), signal);
+
+    expect(prompts).toHaveLength(1);
+    expect(sendText).not.toHaveBeenCalled();
+    expect(await rowPending(row)).toBe(false);
+  });
+});
