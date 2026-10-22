@@ -254,7 +254,7 @@ describe("Twitch durable ingress", () => {
 
   it("keeps an aged row at the retry ceiling recoverable when its reply-lane turn is cancelled", async () => {
     await withTwitchIngressTestQueue(async (queue, createIngress) => {
-      const message = createTwitchIngressTestMessage({ id: "aged-cancelled" });
+      const message = createTwitchIngressTestMessage("aged-cancelled");
       // Received long before the dead-letter age floor, with one try left.
       await queue.enqueue(
         "aged-cancelled",

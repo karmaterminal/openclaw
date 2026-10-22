@@ -13,6 +13,9 @@ const onFlushCallbacks: Array<
 > = [];
 const prepareSlackMessageMock = vi.fn(async () => ({ ctxPayload: {} }));
 const dispatchPreparedSlackMessageMock = vi.fn(async () => {});
+const replayClaimMock = vi.fn(async (_claim: { keys: readonly string[] }): Promise<unknown> => {
+  throw new Error("replay claim not stubbed");
+});
 const { createSlackMessageHandler } = await import("./message-handler.js");
 
 vi.mock("openclaw/plugin-sdk/channel-inbound", async () => {
@@ -44,6 +47,10 @@ vi.mock("./thread-resolution.js", async (importOriginal) => ({
   createSlackThreadTsResolver: () => ({
     resolve: async ({ message }: { message: Record<string, unknown> }) => message,
   }),
+}));
+vi.mock("./message-dispatch-dedupe.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./message-dispatch-dedupe.js")>()),
+  createSlackMessageDispatchReplayGuard: () => ({ claim: replayClaimMock }),
 }));
 vi.mock("./message-handler/pipeline.runtime.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./message-handler/pipeline.runtime.js")>()),
@@ -96,14 +103,8 @@ describe("Slack duplicate wait admission", () => {
       prepared = value as typeof prepared;
       prepared?.turnAdoptionLifecycle?.onDeferred();
     });
-    const handler = createSlackMessageHandler({
-      ctx: createContext(),
-      dispatchReplayGuard: {
-        claim: async () => ({ kind: "claimed", handle }),
-      } as unknown as NonNullable<
-        Parameters<typeof createSlackMessageHandler>[0]["dispatchReplayGuard"]
-      >,
-    });
+    replayClaimMock.mockResolvedValueOnce({ kind: "claimed", handle });
+    const handler = createSlackMessageHandler({ ctx: createContext() });
     await handler(
       { type: "message", channel: "C_TEST", user: "U_TEST", ts: "1709000000.008001" } as never,
       { source: "message", turnAdoptionLifecycle },
