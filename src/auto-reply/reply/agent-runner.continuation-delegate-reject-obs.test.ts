@@ -112,6 +112,7 @@ vi.mock("../../runtime.js", () => ({
   },
 }));
 
+// mock-isolation: Continuation wakes are recorded without running the session-event handoff.
 vi.mock("../continuation/continuation-wake.js", () => ({
   requestContinuationWake: (...args: unknown[]) => requestContinuationWakeMock(...args),
 }));

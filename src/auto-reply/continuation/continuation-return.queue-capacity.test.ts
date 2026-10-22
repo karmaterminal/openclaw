@@ -55,7 +55,7 @@ import { useContinuationCustodyTestState } from "./custody/custody.test-support.
 import { captureContinuationQueueContext } from "./queue-context.js";
 import { enqueueContinuationReturnDeliveries } from "./targeting.js";
 
-// The continuation wake is process-external: record requests, run nothing.
+// mock-isolation: The continuation wake is process-external: record requests, run nothing.
 vi.mock("./continuation-wake.js", () => ({ requestContinuationWake: vi.fn() }));
 
 // The in-process delivery timer: record what was armed, then run the real

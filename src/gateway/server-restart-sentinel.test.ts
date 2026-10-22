@@ -520,9 +520,11 @@ vi.mock("../infra/system-events.js", () => ({
   enqueueSystemEvent: mocks.enqueueSystemEvent,
   enqueueSystemEventRaw: mocks.enqueueSystemEvent,
 }));
+// mock-isolation: The system-event queue above is synthetic, so its managed-delivery lookups are too.
 vi.mock("../infra/system-event-managed-delivery-queue.js", () => ({
   hasQueuedSystemEventDelivery: () => false,
 }));
+// mock-isolation: Continuation wakes are recorded without running the session-event handoff.
 vi.mock("../auto-reply/continuation/continuation-wake.js", () => ({
   requestContinuationWake: mocks.requestContinuationWake,
 }));

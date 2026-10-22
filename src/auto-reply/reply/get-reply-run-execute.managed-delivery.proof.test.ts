@@ -84,7 +84,7 @@ vi.mock("../../plugins/provider-replay-runtime.js", async (importOriginal) => {
     ),
   };
 });
-// Process-external: a replayed return may request a heartbeat wake.
+// mock-isolation: A replayed return may request a continuation wake; record it, run nothing.
 vi.mock("../continuation/continuation-wake.js", () => ({
   requestContinuationWake: vi.fn(),
 }));

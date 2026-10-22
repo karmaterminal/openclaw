@@ -45,6 +45,7 @@ import { useContinuationCustodyTestState } from "./custody/custody.test-support.
 import { captureContinuationQueueContext } from "./queue-context.js";
 import { enqueueContinuationReturnDeliveries } from "./targeting.js";
 
+// mock-isolation: Continuation wakes are recorded without running the session-event handoff.
 vi.mock("./continuation-wake.js", () => ({ requestContinuationWake: vi.fn() }));
 
 vi.mock("../../infra/session-delivery-queue-runtime.js", async (importOriginal) => {

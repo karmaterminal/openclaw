@@ -165,6 +165,7 @@ vi.mock("../auto-reply/continuation/config.js", () => ({
 vi.mock("../infra/system-events.js", () => ({
   enqueueSystemEventRaw: (text: string, options?: unknown) => enqueueSystemEventMock(text, options),
 }));
+// mock-isolation: The system-event queue above is synthetic, so its managed-delivery lookups are too.
 vi.mock("../infra/system-event-managed-delivery-queue.js", () => ({
   hasQueuedSystemEventDelivery: () => false,
   removeSystemEvents: () => [],
