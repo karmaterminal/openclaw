@@ -15,12 +15,12 @@ import type {
   ChainState,
   ContinuationRuntimeConfig,
 } from "../../../auto-reply/continuation/types.js";
-import {
-  deliverQueuedPostCompactionDelegate,
-  type PostCompactionDelegateDeliveryDeps,
-  type PostCompactionDelegateSpawn,
-  type QueuedPostCompactionDelegateDelivery,
-} from "../../../auto-reply/reply/post-compaction-delegate-delivery.js";
+import { deliverQueuedPostCompactionDelegate } from "../../../auto-reply/reply/post-compaction-delegate-delivery.js";
+import type {
+  PostCompactionDelegateDeliveryDeps,
+  PostCompactionDelegateSpawn,
+  QueuedPostCompactionDelegateDelivery,
+} from "../../../auto-reply/reply/post-compaction-delegate-delivery.types.js";
 import * as sessionAccessorModule from "../../../config/sessions/session-accessor.js";
 import { formatContinuationChildRunId } from "../../../shared/continuation-run-key.js";
 import { closeOpenClawStateDatabaseForTest } from "../../../state/openclaw-state-db.js";

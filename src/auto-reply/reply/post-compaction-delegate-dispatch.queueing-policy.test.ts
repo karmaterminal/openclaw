@@ -20,9 +20,11 @@ import {
   deliverQueuedPostCompactionDelegate,
   persistPendingPostCompactionDelegates,
   takePendingPostCompactionDelegates,
-  type PostCompactionDelegateDeliveryDeps,
-  type QueuedPostCompactionDelegateDelivery,
 } from "./post-compaction-delegate-delivery.js";
+import type {
+  PostCompactionDelegateDeliveryDeps,
+  QueuedPostCompactionDelegateDelivery,
+} from "./post-compaction-delegate-delivery.types.js";
 import {
   buildPostCompactionLifecycleEvent,
   drainPostCompactionDelegateDeliveries as drainPostCompactionDelegateDeliveriesDispatch,

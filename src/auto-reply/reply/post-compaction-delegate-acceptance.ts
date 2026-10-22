@@ -23,7 +23,7 @@ import type { ChainState } from "../continuation/types.js";
 import type {
   PostCompactionDelegateDeliveryDeps,
   QueuedPostCompactionDelegateDelivery,
-} from "./post-compaction-delegate-delivery.js";
+} from "./post-compaction-delegate-delivery.types.js";
 import { assertPostCompactionSourceLifecycle } from "./post-compaction-source-lifecycle.js";
 
 export async function enqueueQueueEntryInterruptedNotice(params: {

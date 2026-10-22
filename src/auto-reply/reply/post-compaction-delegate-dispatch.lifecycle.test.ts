@@ -37,11 +37,11 @@ import {
 import { POST_COMPACTION_DELEGATE_TTL_MS } from "../continuation/post-compaction-staleness.js";
 import { captureContinuationQueueContext } from "../continuation/queue-context.js";
 import type { ChainState, ContinuationRuntimeConfig } from "../continuation/types.js";
-import {
-  deliverQueuedPostCompactionDelegate,
-  type PostCompactionDelegateDeliveryDeps,
-  type QueuedPostCompactionDelegateDelivery,
-} from "./post-compaction-delegate-delivery.js";
+import { deliverQueuedPostCompactionDelegate } from "./post-compaction-delegate-delivery.js";
+import type {
+  PostCompactionDelegateDeliveryDeps,
+  QueuedPostCompactionDelegateDelivery,
+} from "./post-compaction-delegate-delivery.types.js";
 import { drainPostCompactionDelegateDeliveries } from "./post-compaction-delegate-dispatch.js";
 
 const mockRegistryState = vi.hoisted(() => ({

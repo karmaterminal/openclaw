@@ -1,11 +1,7 @@
 import { resolveSessionAgentId } from "../../agents/agent-scope.js";
 import { deriveContinuationDelegateChildSessionKey } from "../../agents/subagent-continuation-ids.js";
 import { getSubagentRunByChildSessionKey } from "../../agents/subagents/registry/subagent-registry-read.js";
-import {
-  spawnSubagentDirect,
-  type SpawnSubagentContext,
-  type SpawnSubagentParams,
-} from "../../agents/subagents/spawn/subagent-spawn.js";
+import { spawnSubagentDirect } from "../../agents/subagents/spawn/subagent-spawn.js";
 import { getRuntimeConfig } from "../../config/config.js";
 import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
 import {
@@ -14,14 +10,12 @@ import {
   resolveSessionEntryFromStore,
 } from "../../config/sessions/session-accessor.js";
 import type { SessionEntry, SessionPostCompactionDelegate } from "../../config/sessions/types.js";
-import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { generateChainId } from "../../infra/secure-random.js";
 import {
   markSessionDeliveryAttemptStarted,
   SessionDeliveryDeadLetteredError,
   SessionDeliveryDeferredError,
   SessionDeliverySafeRetryError,
-  type QueuedSessionDelivery,
   type SessionDeliveryContext,
 } from "../../infra/session-delivery-queue-storage.js";
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
@@ -37,7 +31,6 @@ import {
   markPendingDelegateSpawnAccepted,
   revalidatePendingDelegateForSpawn,
   spawnResultNeverDispatched,
-  type DelegateSpawnFenceResult,
 } from "../continuation/delegate-store.js";
 import { reserveAcceptedPostCompactionChainHop } from "../continuation/post-compaction-chain-charge.js";
 import { failReleasedPostCompactionDelegate } from "../continuation/post-compaction-rejection.js";
@@ -49,7 +42,6 @@ import {
 import { captureContinuationQueueContext } from "../continuation/queue-context.js";
 import { withContinuationOwner } from "../continuation/system-event-ownership.js";
 import { hasCrossSessionDelegateTargeting } from "../continuation/targeting-pure.js";
-import type { ChainState, ContinuationRuntimeConfig } from "../continuation/types.js";
 import {
   enqueueQueueEntryInterruptedNotice,
   commitAcceptedPostCompactionChainCharge,
@@ -59,71 +51,13 @@ import {
   resolveQueuedPostCompactionTraceparent,
   settleInterruptedQueuedDelivery,
 } from "./post-compaction-delegate-acceptance.js";
+import type {
+  PostCompactionDelegateDeliveryDeps,
+  PostCompactionDelegateSpawn,
+  QueuedPostCompactionDelegateDelivery,
+} from "./post-compaction-delegate-delivery.types.js";
 import { normalizePostCompactionDelegate } from "./post-compaction-delegate-normalize.js";
 import { assertPostCompactionSourceLifecycle } from "./post-compaction-source-lifecycle.js";
-
-export type QueuedPostCompactionDelegateDelivery = Extract<
-  QueuedSessionDelivery,
-  { kind: "postCompactionDelegate" }
->;
-
-type PostCompactionDelegateSpawnResult = Awaited<ReturnType<typeof spawnSubagentDirect>>;
-
-export type PostCompactionDelegateSpawn = (
-  params: SpawnSubagentParams,
-  context: SpawnSubagentContext,
-) => Promise<PostCompactionDelegateSpawnResult>;
-
-export type PostCompactionDelegateDeliveryDeps = {
-  enqueueSystemEvent(
-    text: string,
-    options: { sessionKey: string; traceparent?: string; trusted?: boolean },
-  ): void;
-  getRuntimeConfig(): OpenClawConfig;
-  loadSessionEntry(params: { storePath: string; sessionKey: string }): SessionEntry | undefined;
-  log(message: string): void;
-  now(): number;
-  patchSessionEntryCore: typeof patchSessionEntryCore;
-  resolveContinuationRuntimeConfig(cfg: OpenClawConfig): ContinuationRuntimeConfig;
-  resolveSessionAgentId(params: { sessionKey?: string; config?: OpenClawConfig }): string;
-  resolveSessionStorePathCore(
-    store?: string,
-    opts?: { agentId?: string; env?: NodeJS.ProcessEnv },
-  ): string;
-  spawnSubagentDirect: PostCompactionDelegateSpawn;
-  revalidatePendingDelegateForSpawn(
-    delegate: { flowId?: string; expectedRevision?: number; task: string },
-    controller: "post-compaction",
-  ): Promise<DelegateSpawnFenceResult>;
-  markPendingDelegateSpawnAccepted(
-    delegate: { flowId?: string; expectedRevision?: number; task: string },
-    childSessionKey: string,
-  ): Promise<boolean>;
-  failReleasedPostCompactionDelegate(
-    delegate: { flowId?: string; expectedRevision?: number; task: string },
-    failureReason: string,
-    phase?: string,
-  ): Promise<boolean>;
-  reserveAcceptedPostCompactionChainHop(
-    delegate: { flowId?: string; expectedRevision?: number; task: string },
-    plannedChainState: ChainState,
-  ): Promise<{ chainState: ChainState; expectedRevision: number | undefined }>;
-  /** Registry evidence under the entry's attempt keys (RFC §5.4.4). */
-  readAdmissionEvidence(params: {
-    runIds: readonly string[];
-    requesterSessionKey: string;
-  }): Promise<DelegateAdmissionEvidence>;
-  /** Persist attempt ownership on the entry before any spawn begins. */
-  markAttemptStarted(
-    entry: QueuedPostCompactionDelegateDelivery,
-    queueContext: OpenClawStateWorkerContext,
-  ): Promise<void>;
-  /** Enqueue the entry's interrupted notice and surface it (idempotent per entry). */
-  enqueueInterruptedNotice(params: {
-    entry: QueuedPostCompactionDelegateDelivery;
-    queueContext?: OpenClawStateWorkerContext;
-  }): Promise<void>;
-};
 
 const defaultPostCompactionDelegateDeliveryDeps: PostCompactionDelegateDeliveryDeps = {
   enqueueSystemEvent,

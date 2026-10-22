@@ -37,8 +37,8 @@ import {
   persistPendingPostCompactionDelegates,
   resolvePostCompactionDelegateDeliveryContext,
   takePendingPostCompactionDelegates,
-  type PostCompactionDelegateDeliveryDeps,
 } from "./post-compaction-delegate-delivery.js";
+import type { PostCompactionDelegateDeliveryDeps } from "./post-compaction-delegate-delivery.types.js";
 import { normalizePostCompactionDelegate } from "./post-compaction-delegate-normalize.js";
 import { isFollowupRunAborted, type FollowupRun } from "./queue/types.js";
 
