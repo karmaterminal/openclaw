@@ -7,6 +7,10 @@ import { DatabaseSync } from "node:sqlite";
 import { setTimeout as waitForProcessTick } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it, type TestFunction } from "vitest";
 import {
+  GATEWAY_CLIENT_MODES,
+  GATEWAY_CLIENT_NAMES,
+} from "../../packages/gateway-protocol/src/client-info.js";
+import {
   createOpenClawTestInstance,
   type OpenClawTestInstance,
 } from "../../test/helpers/openclaw-test-instance.js";
@@ -131,6 +135,16 @@ const GATEWAY_SCENARIOS = {
   collect: {
     agentId: SHARED_GATEWAY_AGENT_ID,
     modelId: "tui-pty-collect",
+    toolsProfile: "minimal",
+    replyText: "FIRST_RUN_ACTIVE",
+    holdFirstResponse: true,
+    followupReplyText: "FOLLOWUP_RUN_COMPLETE",
+  },
+  // The mock model holds only the first response per model id for the shared
+  // server's life, so the Gateway-client collect case needs its own model id.
+  collectGatewayClient: {
+    agentId: SHARED_GATEWAY_AGENT_ID,
+    modelId: "tui-pty-gw-collect",
     toolsProfile: "minimal",
     replyText: "FIRST_RUN_ACTIVE",
     holdFirstResponse: true,
@@ -2477,6 +2491,108 @@ export default {
         expect(JSON.stringify(requests[2]?.body)).toContain("collect prompt beta");
       } finally {
         await queueClient.stop();
+        await fixture.cleanup();
+      }
+    },
+    LOCAL_TEST_TIMEOUT_MS,
+  );
+
+  registerGatewayTest(
+    "collects two Gateway-client prompts into one real Gateway followup turn",
+    async ({ onTestFinished }) => {
+      const fixture = await startGatewayModeTui("collectGatewayClient", onTestFinished);
+      const terminalObserver = createChatTerminalObserver();
+      // Only human turns mint the per-turn skill-authoring capability that forces an
+      // individual drain. External-user provenance is not a human turn, so these
+      // authorized prompts still collect into one followup turn.
+      const queueClient = await connectGatewayClient({
+        url: fixture.gateway.url,
+        token: fixture.gateway.gatewayToken,
+        clientName: GATEWAY_CLIENT_NAMES.TUI,
+        clientDisplayName: "tui-collect-source",
+        mode: GATEWAY_CLIENT_MODES.UI,
+        scopes: ["operator.admin", "operator.read", "operator.write"],
+        onEvent: ({ event, payload }) => {
+          if (event) {
+            terminalObserver.onEvent({ event, payload });
+          }
+        },
+      });
+      try {
+        await queueClient.request("sessions.subscribe", {});
+        await fixture.run.write("/queue collect debounce:250ms\r", { delay: false });
+        await fixture.waitForOutput("Queue mode set to collect.");
+        await fixture.run.write("slow collect parent\r");
+        await waitFor({
+          timeoutMs: LOCAL_OUTPUT_TIMEOUT_MS,
+          read: () => (fixture.mockModel.requests().length === 1 ? true : null),
+          onTimeout: () =>
+            new Error(
+              `first prompt did not reach the model\n` +
+                `rejected model requests=${JSON.stringify(fixture.mockModel.rejectedRequests())}\n` +
+                fixture.run.output(),
+            ),
+        });
+        // Admit alpha before submitting beta so the collected turn has a defined order.
+        const queuedRunIds: string[] = [];
+        for (const message of ["collect prompt alpha", "collect prompt beta"]) {
+          const idempotencyKey = randomUUID();
+          const response = await queueClient.request<{ runId?: unknown; status?: unknown }>(
+            "chat.send",
+            {
+              sessionKey: fixture.sessionKey,
+              message,
+              idempotencyKey,
+              systemInputProvenance: { kind: "external_user", sourceChannel: "webchat" },
+            },
+          );
+          expect(response.status).toBe("started");
+          queuedRunIds.push(typeof response.runId === "string" ? response.runId : idempotencyKey);
+        }
+        const queuedTerminalPromises = queuedRunIds.map((runId) =>
+          terminalObserver.waitForFinal({
+            runId,
+            sessionKey: fixture.sessionKey,
+            timeoutMs: LOCAL_OUTPUT_TIMEOUT_MS,
+            onTimeout: () =>
+              new Error(
+                `queued prompt did not complete: expected ${runId}; ` +
+                  `observed ${JSON.stringify(terminalObserver.readFinals(fixture.sessionKey))}\n${fixture.gateway.logs()}\n` +
+                  fixture.run.output(),
+              ),
+          }),
+        );
+        fixture.mockModel.releaseFirstResponse();
+        await Promise.all(queuedTerminalPromises);
+        await fixture.waitForOutput("FOLLOWUP_RUN_COMPLETE");
+        const completedOffset = fixture.lastOutputIndex("FOLLOWUP_RUN_COMPLETE");
+        await waitForOutputAfter(fixture.run, "| idle", completedOffset);
+        const completedRows = await waitForSynchronizedFrameRows(
+          fixture.run,
+          (frame) => frame.some((row) => row.includes("FOLLOWUP_RUN_COMPLETE")),
+          LOCAL_OUTPUT_TIMEOUT_MS,
+        );
+        expect(completedRows.filter((row) => row.includes("FOLLOWUP_RUN_COMPLETE"))).toHaveLength(
+          1,
+        );
+
+        const requests = fixture.mockModel.requests();
+        expect(
+          requests,
+          `collect emitted ${requests.length} model requests\n${JSON.stringify(
+            requests.map((request) => request.body.input),
+            null,
+            2,
+          )}\n${fixture.gateway.logs()}`,
+        ).toHaveLength(2);
+        const collectedBody = JSON.stringify(requests[1]?.body);
+        expect(collectedBody).toContain("collect prompt alpha");
+        expect(collectedBody).toContain("collect prompt beta");
+        expect(collectedBody.indexOf("collect prompt alpha")).toBeLessThan(
+          collectedBody.indexOf("collect prompt beta"),
+        );
+      } finally {
+        await queueClient.stopAndWait();
         await fixture.cleanup();
       }
     },
