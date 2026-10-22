@@ -21,6 +21,11 @@ import { readSessionEntryInWorker } from "../../config/sessions/session-entry-re
 import { captureSessionRecipientAuthority } from "../../config/sessions/session-sharing-store.async.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { recoverPendingRestartContinuationDeliveries } from "../../gateway/server-restart-sentinel.js";
+import {
+  resetContinuationTracer,
+  setContinuationTracer,
+  type StartSpanOptions,
+} from "../../infra/continuation-tracer.js";
 import { loadPendingSessionDelivery } from "../../infra/session-delivery-queue-storage.js";
 import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import {
@@ -400,5 +405,47 @@ it("adopts and acknowledges a return whose turn ends in an intentional silent re
     expect(prompts).toHaveLength(1);
     expect(sendText).not.toHaveBeenCalled();
     expect(await rowPending(row)).toBe(false);
+  });
+});
+
+it("emits the queue drain for the returns it hands off, parented by their traceparent", async ({
+  signal,
+}) => {
+  await withWakeFixture("traced", async ({ sessionKey, prompts }) => {
+    answerTurns(prompts, "Traced result reviewed.");
+    const spans: Array<{ name: string } & StartSpanOptions> = [];
+    setContinuationTracer({
+      startSpan(name, options) {
+        spans.push({ name, ...options });
+        return { setAttributes() {}, setStatus() {}, recordException() {}, end() {} };
+      },
+    });
+    try {
+      const traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+      await produceReturn(sessionKey, "[continuation:enrichment-return] traced delegate", {
+        traceparent,
+      });
+
+      await withinTest(settleContinuationWakesForTest(), signal);
+
+      expect(prompts).toHaveLength(1);
+      // The woken turn drains no passive events, so this is the return's only drain span.
+      expect(
+        spans.filter(
+          (span) => span.name === "continuation.queue.drain" && span.traceparent === traceparent,
+        ),
+      ).toEqual([
+        {
+          name: "continuation.queue.drain",
+          traceparent,
+          attributes: {
+            "queue.drained_count": 1,
+            "queue.drained_continuation_count": 1,
+          },
+        },
+      ]);
+    } finally {
+      resetContinuationTracer();
+    }
   });
 });

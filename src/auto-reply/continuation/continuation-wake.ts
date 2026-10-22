@@ -15,6 +15,7 @@ import {
 // delivery scheduler or a restart replay still owns them.
 import { isSessionRecipientAuthorityCurrent } from "../../config/sessions/session-accessor.js";
 import { readSessionEntryReadOnlyInWorker } from "../../config/sessions/session-entry-read-runtime.js";
+import { emitContinuationQueueDrainSpan } from "../../infra/continuation-tracer.js";
 import { ackSessionDelivery } from "../../infra/session-delivery-queue-storage.js";
 import {
   claimSystemEventDeliveryAdoption,
@@ -189,6 +190,15 @@ async function handOffContinuationWake(wake: PendingWake): Promise<void> {
       },
       onAdopted: async () => {
         adopted = true;
+        // Handed-off occurrences skip the passive queue drain; their adoption is the drain.
+        emitContinuationQueueDrainSpan({
+          drainedCount: occurrences.length,
+          drainedContinuationCount: occurrences.filter((event) =>
+            event.text.startsWith("[continuation:"),
+          ).length,
+          traceparent: occurrences.find((event) => event.traceparent)?.traceparent,
+          log: (message) => log.warn(message),
+        });
         await acknowledgeAdoptedReturns(occurrences);
       },
     });

@@ -196,9 +196,9 @@ If `delaySeconds` is 30 and the current turn is still active, the 30-second time
 
 **Current custody:** a `work` record in the continuation custody store owns the `continue_work` election (§5.4). That store is the only transactional authority for elections: election, replacement of parked work, claim, the delivered mark, requeue, terminalization and the terminal-notice obligation are all compare-and-set writes in that one store. Session pending inputs and cron are **not** election authorities (§5.4.3). Every field listed above keeps its meaning and moves as listed in §5.4.2.
 
-When a `continuation_work` row matures while the session is idle, the dispatcher grants a turn to the **same session** directly through the universal reply executor (`getReplyFromConfig`) with a `[continuation:wake]` system event and provenance banner. When the semantic due time arrives while a later turn for the same session is already active, the row does not stack a naked later wake and does not re-anchor its delay. Instead, the dispatcher delivers one trusted `[system:continuation-note]` into the active turn, quotes the original reason as prior intent, includes age/overdue and origin provenance, instructs the successor to re-evaluate before acting, and terminalizes the row only after durable note delivery succeeds. It does not call `requestHeartbeatNow()` or `runHeartbeatOnce()`, because heartbeat registration, active-hours, deferral, and busy skip gates are heartbeat policy rather than same-session continuation policy. The session-store entry must still exist when the row matures, so sub-agent cleanup and archive sweeps retain child sessions with live or recently granted continuation work.
+When a `continuation_work` row matures while the session is idle, the dispatcher grants a turn to the **same session** directly through the universal reply executor (`getReplyFromConfig`) with a `[continuation:wake]` system event and provenance banner. When the semantic due time arrives while a later turn for the same session is already active, the row does not stack a naked later wake and does not re-anchor its delay. Instead, the dispatcher delivers one trusted `[system:continuation-note]` into the active turn, quotes the original reason as prior intent, includes age/overdue and origin provenance, instructs the successor to re-evaluate before acting, and terminalizes the row only after durable note delivery succeeds. It does not use the continuation wake (§3.2), which hands queued delegate returns to a session-event turn; a matured row grants its own turn. (Historical: before upstream retired the heartbeat runner in upstream #180192 and #180563, this path likewise avoided `requestHeartbeatNow()` and `runHeartbeatOnce()`, because heartbeat registration, active-hours, deferral, and busy skip gates were heartbeat policy rather than same-session continuation policy.) The session-store entry must still exist when the row matures, so sub-agent cleanup and archive sweeps retain child sessions with live or recently granted continuation work.
 
-**Safety model:** the scheduled continuation remains subject to chain-length and token-budget guards. If the current self-continuation chain has already exhausted its configured `maxChainLength` or `costCapTokens` budget within the unbroken self-chain, the call is rejected and the agent may stop, persist state to files, or choose another recovery path. (A fresh non-continuation turn-entry — genuine user message, heartbeat, or external system event — resets the chain budget per the per-turn chain-reset semantic in §3.3; the budgets bound unattended-loop depth, not session lifetime.)
+**Safety model:** the scheduled continuation remains subject to chain-length and token-budget guards. If the current self-continuation chain has already exhausted its configured `maxChainLength` or `costCapTokens` budget within the unbroken self-chain, the call is rejected and the agent may stop, persist state to files, or choose another recovery path. (A fresh non-continuation turn-entry — genuine user message, scheduled (cron) turn, or external system event — resets the chain budget per the per-turn chain-reset semantic in §3.3; the budgets bound unattended-loop depth, not session lifetime.)
 
 ### 2.4 `continue_delegate()` semantics and return modes
 
@@ -234,7 +234,7 @@ The `attachments` and `attachAs` fields are an input contract, not an attachment
 
 Probes that test for task-routing semantics (for example, asking the named target to reply with a unique nonce on its bound channel) will observe zero nonce hits and a reply emitted from a fresh subagent UUID. That observation is consistent with the shipped contract; it is not evidence of a routing bug. Cross-session task delivery — addressing an existing session's run loop with a new prompt — is a separate primitive that is out of scope for this RFC.
 
-On the recipient's next turn, the reply runner drains that session-scoped system-event queue and prepends the completion envelope as `System:` context. In `silent-wake` mode the return also requests a `delegate-return` heartbeat for every targeted recipient, so a dormant channel-bound session can wake, consume its own enrichment copy, and produce normal turn output informed by that context. The target is not expected to echo the completion nonce verbatim unless its next turn independently chooses to do so.
+On the recipient's next turn, the reply runner drains that session-scoped system-event queue and prepends the completion envelope as `System:` context. In `silent-wake` mode the return also requests a `delegate-return` continuation wake for every targeted recipient, so a dormant channel-bound session can wake, consume its own enrichment copy, and produce normal turn output informed by that context. The wake hands the queued envelope itself to the woken turn as its input (§3.2), so the copy is consumed once, not drained again as `System:` context. The target is not expected to echo the completion nonce verbatim unless its next turn independently chooses to do so.
 
 The shipped return-target modes are:
 
@@ -263,7 +263,7 @@ The delegate return modes are:
 
 **`silent:`** the sub-agent result is delivered through `enqueueSystemEvent()` instead of the normal announce path. Internally, the `silentAnnounce` flag threads through spawn and registry paths to gate the delivery decision point. The parent absorbs the result on a later turn but is not woken.
 
-**`silent-wake:`** channel output remains suppressed, but the return triggers a generation cycle through `requestHeartbeatNow()`. This enables quiet background processing without visible channel noise.
+**`silent-wake:`** channel output remains suppressed, but the return triggers a generation cycle through `requestContinuationWake()`: one session-event turn with transport delivery off, which records its result in the transcript and keeps the chain budget (§3.2). This enables quiet background processing without visible channel noise. (Historical: before upstream retired the heartbeat runner, the cycle came from `requestHeartbeatNow()`.)
 
 **`post-compaction:`** the delegate is staged on the session until compaction completes, then released into the successor session alongside workspace boot files and post-compaction lifecycle context.
 
@@ -412,7 +412,7 @@ The implementation hooks into existing gateway layers rather than adding a paral
 6. **Return routing:** delegate completions resolve default, explicit, multi-recipient, tree, or host-wide return targets and deliver same-host targeted returns through `session-delivery-queue`.
 7. **Lifecycle dispatch:** post-compaction delegates are staged as durable records and released through the compaction completion path into `session-delivery-queue` delivery. **Custody revision:** staging is a `post_compaction` record in the continuation custody store. Release enqueues the queue entry and marks the record handed off in one state-database transaction (§5.4.4).
 
-No new transport layer is introduced. Continuation uses system events, existing sub-agent dispatch, same-host session delivery, and the standard reply executor. Same-session `continue_work` deliberately avoids the heartbeat wake substrate; silent delegate returns still use their existing wake path.
+No new transport layer is introduced. Continuation uses system events, existing sub-agent dispatch, same-host session delivery, and the standard reply executor. Same-session `continue_work` grants its turn directly through the reply executor. Delegate returns that wake their recipient use the continuation wake (`src/auto-reply/continuation/continuation-wake.ts`), a thin bridge to upstream's session-event handoff (`enqueueSessionEventForHost`). (Historical: earlier revisions woke delegate returns through the heartbeat wake path, `requestHeartbeatNow()`, which upstream retired in #180192 and #180563.)
 
 ### 3.2 Delegate dispatch walkthrough
 
@@ -492,10 +492,12 @@ sequenceDiagram
         Child-->>Target: byte-identical system-event return via session-delivery-queue
     end
     alt silent-wake default return
-        Parent->>Parent: requestHeartbeatNow(parentRunId)
+        Parent->>Parent: requestContinuationWake(silent-wake-enrichment, parentRunId=childRunId, return rows)
+        Parent->>Parent: session-event handoff, one adopted turn, delivery off, rows acked on adoption
         Parent->>Diag: successor run fireReason=continuation-chain
     else silent-wake targeted return
-        Target->>Target: requestHeartbeatNow(childRunId)
+        Target->>Target: requestContinuationWake(delegate-return, parentRunId=childRunId, return rows)
+        Target->>Target: session-event handoff, one adopted turn, rows acked on adoption
         Target->>Diag: successor run fireReason=continuation-chain
     end
 ```
@@ -508,7 +510,17 @@ Between scheduling and spawn, the parent session is idle while a durable custody
 
 When the timer fires, `spawnSubagentDirect()` creates the child session, materializes any typed attachments under the child's private `.openclaw/attachments/<id>` receipt directory, carries forward delivery context, records `[continuation:delegate-spawned]`, and advances accepted chain state. Attachment names, encodings, sizes, and mount hints pass through the same validation and limits as `sessions_spawn`.
 
-When the child completes, the existing announce path delivers untargeted results back to the dispatching session. Targeted returns resolve one or more same-host recipient session keys and deliver a byte-identical completion envelope through `session-delivery-queue`; `silent-wake` targets also request a heartbeat wake for those recipients. The wake is classified through structured continuation metadata such as `continuationTrigger: "delegate-return"`, allowing a successor turn to distinguish internal continuation from unrelated user input.
+When the child completes, the existing announce path delivers untargeted results back to the dispatching session. Targeted returns resolve one or more same-host recipient session keys and deliver a byte-identical completion envelope through `session-delivery-queue`; `silent-wake` targets also request a continuation wake for those recipients. The wake is classified through structured continuation metadata such as `continuationTrigger: "delegate-return"`, allowing a successor turn to distinguish internal continuation from unrelated user input.
+
+**Continuation wake.** `requestContinuationWake({ sessionKey, reason, parentRunId, deliveryIds })` names the durable return rows it was raised for, never their payloads. Its contract:
+
+- **Turns coalesce, payloads never merge.** Requests for one session and delivery class within 250 ms become one ordinary session-event turn (`enqueueSessionEventForHost`) that carries every named queued occurrence with its own identity. A silent wake never shares a turn with a visible one.
+- **Acknowledge on adoption.** Each occurrence is claimed while the turn owns it. Rows are acknowledged only once ordinary reply admission adopts the turn. A refused, deferred-then-abandoned or never-adopted turn releases its claims and leaves its occurrences queued as passive events with their rows pending, so the next ordinary turn, the delivery scheduler or a restart replay still owns them. A return whose recipient authority advanced is retired, never delivered.
+- **Lineage through admission.** A `delegate-return` or `silent-wake-enrichment` wake carries `continuationTrigger: "delegate-return"` and `parentRunId` into the turn's reply options, so the woken turn keeps the chain budget instead of resetting it as a fresh turn-entry would.
+- **Silent stays silent.** A `silent-wake-enrichment` wake runs with transport delivery off; it records its result in the transcript only. It is distinct from an external sub-agent return, which announces visibly.
+- **Restart replay.** A row records its producer's wake (`returnWake`), and replay wakes exactly as the producer would have.
+
+(Historical: earlier revisions requested a heartbeat wake here, `requestHeartbeatNow()`, which drained the recipient's queue on a heartbeat turn. Upstream retired the heartbeat runner in #180192 and #180563.)
 
 A representative timeline is:
 
@@ -539,7 +551,7 @@ t=0s    continue_delegate(task="inspect leaf state", fanoutMode="tree", mode="si
 t=10s   depth-3 child completes
         → resolver expands tree to root + ancestors
         → one completion envelope is enqueued to each ancestor session
-        → recipients receive silent enrichment; wakeable recipients get delegate-return heartbeats
+        → recipients receive silent enrichment; wakeable recipients get delegate-return continuation wakes
 ```
 
 ### 3.3 Announce payloads and chain tracking
@@ -819,7 +831,7 @@ The relay pattern proved the need for `continue_work()`, but it also clarified w
 | Observability        | spread across sessions             | one chain in one session |
 | Role in final design | precursor and fallback pattern     | first-class primitive    |
 
-A lighter precursor also existed: `requestHeartbeatNow()` could ring the parent session like a doorbell, but it still lacked task payload, chain tracking, and typed continuation semantics.
+A lighter precursor also existed (historical; upstream has since retired the heartbeat runner): `requestHeartbeatNow()` could ring the parent session like a doorbell, but it still lacked task payload, chain tracking, and typed continuation semantics.
 
 For `post-compaction` delegates, the release semantics are intentionally fixed: staged work is delivered as silent-wake work. Release does not mean "spawn already happened"; the after-compaction path first consumes staged delegates, drops stale work older than the TTL, applies the combined `maxDelegatesPerTurn` budget, enqueues accepted delegates into `session-delivery-queue`, and then drains that queue asynchronously.
 
@@ -975,7 +987,7 @@ agents:
 Operational notes:
 
 - `enabled: false` means explicit opt-in is required in `openclaw.json`.
-- `maxChainLength` is a recursion guard bounding _unattended self-continuation chain depth_. The chain-count resets to zero on any non-continuation turn-entry (genuine user input, heartbeat, or external system event), so the guard bounds only one unbroken self-driven burst between human (or external) re-engagements, not session-lifetime budget. See §3.3 for the chain-state lifecycle.
+- `maxChainLength` is a recursion guard bounding _unattended self-continuation chain depth_. The chain-count resets to zero on any non-continuation turn-entry (genuine user input, scheduled (cron) turn, or external system event), so the guard bounds only one unbroken self-driven burst between human (or external) re-engagements, not session-lifetime budget. See §3.3 for the chain-state lifecycle.
 - `costCapTokens` is a per-chain token-cost leash accumulating across `continue_work()` and tool-path delegate hops within a single unbroken self-continuation chain. The accumulated chain tokens reset to zero on the same non-continuation turn-entry trigger as `continuationChainCount`, keeping the cap as a per-burst guard rather than a session-lifetime quota.
 - `crossSessionTargeting: disabled` is the default-deny gate for explicit cross-session delegate return targeting.
 - `contextPressureThreshold` is optional and must be `> 0` and `<= 1` when configured.
@@ -991,7 +1003,7 @@ Operational notes:
 
 Both `maxChainLength` and `costCapTokens` budgets accumulate _within an unbroken self-continuation chain_ and reset to zero on the first non-continuation turn-entry (`!isContinuationWake` gate at turn-entry, pre-inference, before `loadContinuationChainState` reads the SessionEntry). A "chain" is the run of self-elected successor turns from `continue_work` / `continue_delegate` between two human (or external) re-engagements; the budgets bound the unattended-loop depth and cost, not the session lifetime.
 
-`/status` displays `chain N/maxChainLength` reflecting current chain depth, which **sawtooths**: climbs within an unbroken self-chain, drops to 0 the moment a fresh chain starts (user message, heartbeat, system event). The default for `maxChainLength` thus reflects "how deep a single unattended self-loop can run before the gateway stops it," not "how many continuations a session gets in its lifetime."
+`/status` displays `chain N/maxChainLength` reflecting current chain depth, which **sawtooths**: climbs within an unbroken self-chain, drops to 0 the moment a fresh chain starts (user message, scheduled (cron) turn, system event). The default for `maxChainLength` thus reflects "how deep a single unattended self-loop can run before the gateway stops it," not "how many continuations a session gets in its lifetime."
 
 Four fields reset together as a unit at the chain-break: `continuationChainCount`, `continuationChainTokens`, `continuationChainStartedAt`, and a freshly minted `continuationChainId`. The chain-id rotation ensures trace-correlation discriminates one self-continuation arc from the next. Only mid-chain continuation-wake turns preserve the accumulating chain state so a genuine runaway self-loop still hits the cap: `work-wake` and an in-chain `delegate-return` (a `[continuation:chain-hop:N]` return). Every other turn-entry resets — including an ordinary inter-session subagent completion, which is classified as `subagent-return` (not a mid-chain `delegate-return`) precisely so the reset fires for it.
 
@@ -1309,7 +1321,9 @@ The implementation emits stable log anchors for the major continuation lifecycle
 | `[continuation:enrichment-return]`                | `subagent-announce.ts`                                      | silent return injected as system event                                                                                                        |
 | `[session-delivery-queue:retry-budget-exhausted]` | `session-delivery-queue-recovery.ts`                        | queued post-compaction delegate hit retry cap before accepted spawn                                                                           |
 | `[continuation:delegate-spawn-interrupted]`       | continuation custody recovery and the post-compaction drain | a claimed spawn whose admission could not be proven, or a queue entry with no recorded attempt, was terminalized, not re-spawned (Q3, §5.4.4) |
-| `requestHeartbeatNow`                             | heartbeat wake path                                         | generation cycle requested after a silent-wake return                                                                                         |
+| `[continuation:wake-not-adopted]`                 | `continuation-wake.ts`                                      | a woken turn ended without adoption; its claims are released and its rows stay pending for the next turn or replay                            |
+| `[continuation:wake-ack-failed]`                  | `continuation-wake.ts`                                      | an adopted return's row could not be acknowledged; it replays after its adoption lease                                                        |
+| `[continuation:wake-failed]`                      | `continuation-wake.ts`                                      | the wake's handoff threw; unadopted claims are released and the rows stay pending                                                             |
 
 These anchors make the full pipeline grepable end to end.
 
@@ -1561,7 +1575,7 @@ The `diagnostics-otel` adapter already consumes `StartSpanOptions.traceparent` a
 
 **Return-side OUT: default, targeted, multi-recipient, and fan-out paths MUST preserve the child-return `traceparent`.** When a delegate completes, the return delivery SHALL carry a `traceparent` that names the producing span as parent so the receiver can stitch the return into the same trace tree:
 
-- **Default/silent return** (silent / silent-wake / direct visible reply): the return system event and the wake heartbeat carry `traceparent`; queue drain and successor-turn span emission consume it as parent.
+- **Default/silent return** (silent / silent-wake / direct visible reply): the return system event carries `traceparent`; `continuation.queue.drain` consumes it as parent, emitted by the passive queue drain or, for a woken return, by the continuation wake when its turn is adopted. The wake itself carries only row ids. (Historical: earlier revisions also named the wake heartbeat as a carrier.)
 - **Targeted single-recipient return** (`targetSessionKey` set): the resolved recipient's queued payload AND immediate system-event carry the same `traceparent`. This is the exact RFC §3.3 audit seam and is the byte-anchor for the §3.3 TODO replacement.
 - **Multi-recipient explicit return** (`targetSessionKeys` array): every recipient receives the same `traceparent` on its queued payload AND its system event. All recipients preserve trace continuity, not none.
 - **Fan-out return** (`fanoutMode: "tree" | "all"`): the resolved recipient set (ancestors or all-known-sessions) receives identical `traceparent` per recipient, with the producer-side `continuation.queue.fanout` parent span absorbing the chain-step cost (see §6.7 chain-budget cap below).
@@ -1880,7 +1894,7 @@ None of these systems combine agent-elected continuation with persistent convers
 | Return semantics  | normal announce                                          | default, explicit target, multi-recipient, tree/all fan-out, silent, wake-on-return, lifecycle release       |
 | Best fit          | explicit visible tasks                                   | background enrichment and continuation-carrying work                                                         |
 
-`requestHeartbeatNow()` remains lighter than either, but it carries no task payload and no chain state. It is a wake signal, not a continuation-bearing result channel.
+`requestHeartbeatNow()` (historical; retired upstream) was lighter than either, but it carried no task payload and no chain state. It was a wake signal, not a continuation-bearing result channel. Its continuation successor, `requestContinuationWake()`, is likewise only a wake: it names return rows and never carries payloads.
 
 Model-override parity closes the last first-class capability gap between the two primitives: `continue_delegate(model)` accepts the same provider/model ref shape as `sessions_spawn(model)`, normalizes the `"default"` sentinel to "inherit parent," and forwards the resolved override to the shared spawn endpoint. The remaining differences are intentional (chain/cost guards, silent and post-compaction return modes, multi-recipient fan-out) rather than missing features.
 
