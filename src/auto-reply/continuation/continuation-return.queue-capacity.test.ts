@@ -1048,8 +1048,14 @@ describe("capacity-deferred returns: observability, backoff, restart, producer w
     expect(peekSystemEventEntries(SESSION_KEY).map((event) => event.sessionDeliveryAckId)).toEqual([
       legacyId,
     ]);
+    // No recorded producer wake: the replay's generic restart-sentinel wake, for this row only.
     expect(wakesFor(SESSION_KEY)).toEqual([
-      expect.objectContaining({ source: "restart-sentinel", reason: "wake" }),
+      {
+        sessionKey: SESSION_KEY,
+        agentId: "main",
+        reason: "restart-sentinel",
+        deliveryIds: [legacyId],
+      },
     ]);
   });
 

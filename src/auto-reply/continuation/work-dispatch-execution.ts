@@ -113,8 +113,7 @@ type ContinuationWorkFoldPolicy = Readonly<{
 
 function isRetryableContinuationSkipReason(reason: string): boolean {
   return (
-    // Reply-turn admission's busy refusal; the other busy reasons left with heartbeat turns.
-    reason === "active-run" ||
+    reason === CONTINUATION_TURN_BUSY_REASON ||
     reason === CONTINUATION_TURN_DRAINING_REASON ||
     reason === CONTINUATION_TURN_COMMAND_QUEUE_BUSY_REASON ||
     reason === CONTINUATION_TURN_LIFECYCLE_CHANGED_REASON
