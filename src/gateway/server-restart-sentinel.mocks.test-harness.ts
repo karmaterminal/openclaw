@@ -501,6 +501,8 @@ vi.mock("./server-restart-update-run.js", async () => {
 vi.mock("../infra/system-events.js", () => ({
   enqueueSystemEvent: mocks.enqueueSystemEvent,
   enqueueSystemEventRaw: mocks.enqueueSystemEvent,
+}));
+vi.mock("../infra/system-event-managed-delivery-queue.js", () => ({
   hasQueuedSystemEventDelivery: () => false,
 }));
 

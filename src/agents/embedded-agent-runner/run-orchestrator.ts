@@ -1,5 +1,4 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { resetContinueDelegateTurnBudget } from "../../auto-reply/continuation/delegate-turn-admission.js";
 import {
   createAgentLifecycleTerminalBackstop,
   resolveAgentLifecycleTerminalMetadata,
@@ -78,6 +77,7 @@ import { log } from "./logger.js";
 import { createEmbeddedAgentPluginRuntimeRefresh } from "./plugin-runtime-refresh.js";
 import { runPreparedEmbeddedLoop } from "./run-loop.js";
 import { createEmbeddedRunStageSummaryEmitter } from "./run/attempt-stage-timing.js";
+import { withContinueDelegateTurnBudget } from "./run/continue-delegate-turn-budget.js";
 import { withExecutionPhaseDiagnostics } from "./run/execution-phase-diagnostics.js";
 import type {
   RunEmbeddedAgentInternalParams,
@@ -216,7 +216,6 @@ async function runEmbeddedAgentForSession(
   const requestOwners = captureExecRequestOwners(params);
   const runSession = async () => {
     throwIfAborted();
-    resetContinueDelegateTurnBudget(params.sessionKey);
     // Same-session reads below must see any prior deferred transcript rewrite.
     // Checkpoint before the global lane so unrelated sessions can still start
     // while this session waits on its own maintenance lane.
@@ -742,7 +741,7 @@ async function runEmbeddedAgentForSession(
         owners: requestOwners,
         abortSignal: params.abortSignal,
       },
-      runSession,
+      withContinueDelegateTurnBudget(params.sessionKey, runSession),
     ),
   ).finally(() => {
     revokeMessageActionTurnCapability(recoveryMessageActionTurnCapability);

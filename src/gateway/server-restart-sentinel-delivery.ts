@@ -28,12 +28,12 @@ import {
   SessionDeliverySafeRetryError,
   type QueuedSessionDelivery,
 } from "../infra/session-delivery-queue-storage.js";
-import { withSystemEventOwner } from "../infra/system-event-ownership.js";
 import {
-  enqueueSystemEvent,
   hasQueuedSystemEventDelivery,
   removeSystemEvents,
-} from "../infra/system-events.js";
+} from "../infra/system-event-managed-delivery-queue.js";
+import { withSystemEventOwner } from "../infra/system-event-ownership.js";
+import { enqueueSystemEvent } from "../infra/system-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
 import { isSubagentSessionKey } from "../sessions/session-key-utils.js";

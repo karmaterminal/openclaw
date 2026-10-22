@@ -56,10 +56,7 @@ import {
   updateRoomEventAmbientTranscriptWatermark,
 } from "./get-reply-run-helpers.js";
 import { hasInboundAudio } from "./inbound-media.js";
-import {
-  bindManagedDeliveryReplyTurn,
-  resolveManagedDeliveryAckInput,
-} from "./managed-delivery-turn-lifecycle.js";
+import * as managedDeliveryTurn from "./managed-delivery-turn-lifecycle.js";
 import { normalizeMessageTimestampMs } from "./message-timestamp.js";
 import { resolveOriginMessageProvider } from "./origin-routing.js";
 import { resolveReplyToMode } from "./reply-threading.js";
@@ -109,7 +106,6 @@ export async function executePreparedReplyRun(
     params,
     runtimePolicySessionKey,
     isHeartbeat,
-    isContinuationWake,
     traceRunPhase,
     promptSessionCtx,
     inboundEventKind,
@@ -333,7 +329,7 @@ export async function executePreparedReplyRun(
           senderIsOwner: command.senderIsOwner,
           requesterOrigin,
           ...(inputIdempotencyKey ? { idempotencyKey: inputIdempotencyKey } : {}),
-          ...resolveManagedDeliveryAckInput(managedSystemEventDeliveries),
+          ...managedDeliveryTurn.resolveManagedDeliveryAckInput(managedSystemEventDeliveries),
           ...(inputProvenance && !isHeartbeat ? { provenance: inputProvenance } : {}),
           ...(isHeartbeat
             ? {
@@ -695,7 +691,7 @@ export async function executePreparedReplyRun(
   // (e.g. a provider plugin hook) leaves the adoption claims unbound: they lapse with
   // their lease and the pending sweep replays each row once. Accepted edge: up to one
   // lease of delay after a visible turn failure.
-  const managedTurn = bindManagedDeliveryReplyTurn({
+  const managedTurn = managedDeliveryTurn.bindManagedDeliveryReplyTurn({
     deliveries: managedSystemEventDeliveries,
     opts,
     getPersistedMessage: () => userTurnTranscriptRecorder?.getPersistedMessage?.(),
@@ -731,7 +727,7 @@ export async function executePreparedReplyRun(
       typingMode,
       resetTriggered: effectiveResetTriggered,
       replyThreadingOverride,
-      isContinuationWake,
+      isContinuationWake: context.isContinuationWake,
       replyOperation: providedReplyOperation,
     });
   // The scope surrounds the whole immediate turn, including provider fallbacks.

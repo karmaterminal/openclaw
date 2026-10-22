@@ -16,10 +16,10 @@ import type {
   SessionDeliveryContext,
 } from "../../infra/session-delivery-queue-storage.js";
 import {
-  enqueueSystemEventRaw as enqueueSystemEvent,
   hasQueuedSystemEventDelivery,
   removeSystemEvents,
-} from "../../infra/system-events.js";
+} from "../../infra/system-event-managed-delivery-queue.js";
+import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { normalizeAgentId, resolveAgentIdFromSessionKey } from "../../routing/session-key.js";
 import { captureContinuationQueueContext } from "./queue-context.js";
