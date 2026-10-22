@@ -13,6 +13,7 @@ import {
 } from "discord-api-types/v10";
 import { asSafeIntegerInRange, MAX_TIMER_TIMEOUT_MS } from "openclaw/plugin-sdk/number-runtime";
 import { asOptionalRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { WebSocket } from "openclaw/plugin-sdk/websocket-runtime";
 import type * as ws from "ws";
 import type { Client } from "./client.js";
 import {
@@ -22,7 +23,6 @@ import {
 import { canResumeAfterGatewayClose, isFatalGatewayCloseCode } from "./gateway-close-codes.js";
 import { mapGatewayDispatchData } from "./gateway-dispatch.js";
 import { sharedGatewayIdentifyLimiter } from "./gateway-identify-limiter.js";
-import { GatewayHeartbeatTimers, GatewayReconnectTimer } from "./gateway-lifecycle.js";
 import { decodeGatewayMessage, ensureGatewayParams } from "./gateway-payload.js";
 import { GatewaySendLimiter } from "./gateway-rate-limit.js";
 import { DiscordGatewayVoiceStateCache } from "./gateway-voice-state-cache.js";
@@ -32,7 +32,6 @@ import type {
   GatewayPluginOptions,
   UpdatePresenceData,
 } from "./plugin-contract.js";
-import { WebSocket } from "./ws-runtime.js";
 
 export { GatewayCloseCodes };
 export const GatewayIntents = GatewayIntentBits;
@@ -81,8 +80,9 @@ export class GatewayPlugin implements GatewayPluginContract {
   private consecutiveResumeFailures = 0;
   private shouldReconnect = false;
   protected isConnecting = false;
-  private readonly heartbeatTimers = new GatewayHeartbeatTimers();
-  private readonly reconnectTimer = new GatewayReconnectTimer();
+  private heartbeatInterval?: NodeJS.Timeout;
+  private firstHeartbeatTimeout?: NodeJS.Timeout;
+  private reconnectTimeout?: NodeJS.Timeout;
   private readonly voiceStateCache = new DiscordGatewayVoiceStateCache();
   private readonly channelInventory = new DiscordGatewayChannelInventory();
   private outboundLimiter = new GatewaySendLimiter(
@@ -132,8 +132,8 @@ export class GatewayPlugin implements GatewayPluginContract {
   }
 
   connect(resume = false): void {
-    this.reconnectTimer.stop();
-    this.heartbeatTimers.stop();
+    this.stopReconnectTimer();
+    this.stopHeartbeat();
     if (this.isConnecting) {
       return;
     }
@@ -152,8 +152,8 @@ export class GatewayPlugin implements GatewayPluginContract {
 
   disconnect(): void {
     this.shouldReconnect = false;
-    this.reconnectTimer.stop();
-    this.heartbeatTimers.stop();
+    this.stopReconnectTimer();
+    this.stopHeartbeat();
     this.outboundLimiter.clear();
     this.ws?.close(1000, "Client disconnect");
     this.ws = null;
@@ -198,7 +198,7 @@ export class GatewayPlugin implements GatewayPluginContract {
         return;
       }
       const closeCode = code as GatewayCloseCodes;
-      this.heartbeatTimers.stop();
+      this.stopHeartbeat();
       this.outboundLimiter.clear();
       this.isConnecting = false;
       this.isConnected = false;
@@ -297,15 +297,41 @@ export class GatewayPlugin implements GatewayPluginContract {
   };
 
   private startHeartbeat(intervalMs: number): void {
-    this.heartbeatTimers.start({
-      intervalMs,
-      isAcked: () => this.lastHeartbeatAck,
-      onHeartbeat: () => this.sendHeartbeat(),
-      onAckTimeout: () => {
-        this.emitter.emit("error", new Error("Gateway heartbeat ACK timeout"));
-        this.scheduleReconnect({ reason: "zombie", preferResume: true });
+    this.stopHeartbeat();
+    const scheduleHeartbeatCycle = () => {
+      this.heartbeatInterval = setTimeout(() => {
+        this.heartbeatInterval = undefined;
+        if (!this.lastHeartbeatAck) {
+          this.emitter.emit("error", new Error("Gateway heartbeat ACK timeout"));
+          this.scheduleReconnect({ reason: "zombie", preferResume: true });
+          return;
+        }
+        this.sendHeartbeat();
+        scheduleHeartbeatCycle();
+      }, intervalMs);
+      this.heartbeatInterval.unref?.();
+    };
+    this.firstHeartbeatTimeout = setTimeout(
+      () => {
+        this.firstHeartbeatTimeout = undefined;
+        this.sendHeartbeat();
+        scheduleHeartbeatCycle();
       },
-    });
+      Math.max(0, intervalMs * Math.random()),
+    );
+    this.firstHeartbeatTimeout.unref?.();
+  }
+
+  private stopHeartbeat(): void {
+    for (const key of ["heartbeatInterval", "firstHeartbeatTimeout"] as const) {
+      clearTimeout(this[key]);
+      this[key] = undefined;
+    }
+  }
+
+  private stopReconnectTimer(): void {
+    clearTimeout(this.reconnectTimeout);
+    this.reconnectTimeout = undefined;
   }
 
   private sendHeartbeat(): void {
@@ -424,8 +450,8 @@ export class GatewayPlugin implements GatewayPluginContract {
     if (!this.shouldReconnect) {
       return;
     }
-    this.heartbeatTimers.stop();
-    this.reconnectTimer.stop();
+    this.stopHeartbeat();
+    this.stopReconnectTimer();
     this.ws?.close();
     this.ws = null;
     this.isConnecting = false;
@@ -465,9 +491,12 @@ export class GatewayPlugin implements GatewayPluginContract {
       "debug",
       `Gateway reconnect scheduled in ${delay}ms (${options.reason}, resume=${String(shouldResume)})`,
     );
-    this.reconnectTimer.schedule(delay, () => {
+    this.stopReconnectTimer();
+    this.reconnectTimeout = setTimeout(() => {
+      this.reconnectTimeout = undefined;
       this.connect(shouldResume);
-    });
+    }, delay);
+    this.reconnectTimeout.unref?.();
   }
 
   updatePresence(data: UpdatePresenceData): void {
@@ -476,9 +505,5 @@ export class GatewayPlugin implements GatewayPluginContract {
 
   updateVoiceState(data: GatewayVoiceStateUpdateData): void {
     this.send({ op: GatewayOpcodes.VoiceStateUpdate, d: data }, true);
-  }
-
-  getRateLimitStatus() {
-    return this.outboundLimiter.getStatus();
   }
 }

@@ -16,7 +16,6 @@ describe("ingress listing access", () => {
       async ({ stateDir, statePath }) => {
         const sqlitePath = statePath("state", "openclaw.sqlite");
         await expect(fs.access(sqlitePath)).rejects.toThrow();
-
         const reader = createChannelIngressQueue<{ text: string }>({
           channelId: "line",
           accountId: "default",
@@ -31,12 +30,10 @@ describe("ingress listing access", () => {
           await listChannelIngressQueueAccountIdsReadOnly({ channelId: "line", stateDir }),
         ).toEqual([]);
         await expect(fs.access(sqlitePath)).rejects.toThrow();
-
         expect(await reader.listPending({ limit: "all" })).toEqual([]);
         expect(await reader.listClaims()).toEqual([]);
         expect(await reader.listFailed?.({ limit: "all" })).toEqual([]);
         await expect(fs.access(sqlitePath)).rejects.toThrow();
-
         // A read-write queue is what actually creates it, and the read-only reader then
         // sees the same rows - so the empty results above are the access mode, not a
         // broken reader.
@@ -47,7 +44,6 @@ describe("ingress listing access", () => {
         }).enqueue("evt-1", { text: "hello" });
         await fs.access(sqlitePath);
         await closeOpenClawStateDatabaseByPathAsync(sqlitePath);
-
         const after = createChannelIngressQueue<{ text: string }>({
           channelId: "line",
           accountId: "default",

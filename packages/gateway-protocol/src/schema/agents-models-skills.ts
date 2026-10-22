@@ -18,8 +18,22 @@ import { GitHubSetupHandleSchema } from "./secrets.js";
 import { SessionPermissionModeSchema } from "./sessions-row.js";
 import { SkillsDetailResultSchema } from "./skill-detail.js";
 
+export {
+  AgentsAvatarGenerateParamsSchema,
+  AgentsAvatarGenerateResultSchema,
+} from "./agents-avatar-generate.js";
+export type {
+  AgentsAvatarGenerateParams,
+  AgentsAvatarGenerateResult,
+} from "./agents-avatar-generate.js";
 export { SkillsDetailResultSchema } from "./skill-detail.js";
 export { AgentKindSchema, AgentOwnershipSchema };
+export {
+  AgentsCreateParamsSchema,
+  AgentsCreateResultSchema,
+  type AgentsCreateParams,
+  type AgentsCreateResult,
+} from "./agents-create.js";
 export { AgentsListParamsSchema, type AgentsListParams } from "./agents-list-session-placement.js";
 
 export { SkillsSearchParamsSchema, SkillsSearchResultSchema } from "./skills-search.js";
@@ -94,26 +108,6 @@ export const AgentsListResultSchema = closedObject({
   mainKey: NonEmptyString,
   scope: Type.Union([Type.Literal("per-sender"), Type.Literal("global")]),
   agents: Type.Array(AgentSummarySchema),
-});
-
-/** Creates a configured agent; the server supplies an omitted workspace. */
-export const AgentsCreateParamsSchema = closedObject({
-  name: NonEmptyString,
-  expectedOwnerId: Type.Optional(NonEmptyString),
-  workspace: Type.Optional(NonEmptyString),
-  model: Type.Optional(NonEmptyString),
-  emoji: Type.Optional(Type.String()),
-  avatar: Type.Optional(Type.String()),
-});
-
-/** Result returned after creating an agent. */
-export const AgentsCreateResultSchema = closedObject({
-  ok: Type.Literal(true),
-  agentId: NonEmptyString,
-  name: NonEmptyString,
-  workspace: NonEmptyString,
-  agentDir: Type.Optional(NonEmptyString),
-  model: Type.Optional(NonEmptyString),
 });
 
 /** Updates mutable agent identity, workspace, and model fields; null clears the model override. */
@@ -394,6 +388,19 @@ export const SkillsSecurityVerdictsResultSchema = closedObject({
       ),
     }),
   ),
+});
+
+/** Reads the current SKILL.md for a discovered, agent-scoped local skill. */
+export const SkillsFileGetParamsSchema = closedObject({
+  agentId: Type.Optional(NonEmptyString),
+  path: NonEmptyString,
+});
+
+/** Full source for the skill file preview. */
+export const SkillsFileGetResultSchema = closedObject({
+  path: NonEmptyString,
+  name: NonEmptyString,
+  content: Type.String(),
 });
 
 /** Reads the rendered skill card for one installed skill. */
@@ -758,8 +765,6 @@ export const ToolsInvokeResultSchema = closedObject({
 export type AgentKind = Static<typeof AgentKindSchema>;
 export type AgentSummary = Static<typeof AgentSummarySchema>;
 export type GatewayAgentRuntime = Static<typeof GatewayAgentRuntimeSchema>;
-export type AgentsCreateParams = Static<typeof AgentsCreateParamsSchema>;
-export type AgentsCreateResult = Static<typeof AgentsCreateResultSchema>;
 export type AgentsUpdateParams = Static<typeof AgentsUpdateParamsSchema>;
 export type AgentsUpdateResult = Static<typeof AgentsUpdateResultSchema>;
 export type AgentsDeleteParams = Static<typeof AgentsDeleteParamsSchema>;
@@ -819,6 +824,8 @@ export type SkillsWorkshopUndoParams = Static<typeof SkillsWorkshopUndoParamsSch
 export type SkillsWorkshopUndoResult = Static<typeof SkillsWorkshopUndoResultSchema>;
 export type SkillsSecurityVerdictsParams = Static<typeof SkillsSecurityVerdictsParamsSchema>;
 export type SkillsSecurityVerdictsResult = Static<typeof SkillsSecurityVerdictsResultSchema>;
+export type SkillsFileGetParams = Static<typeof SkillsFileGetParamsSchema>;
+export type SkillsFileGetResult = Static<typeof SkillsFileGetResultSchema>;
 export type SkillsSkillCardParams = Static<typeof SkillsSkillCardParamsSchema>;
 export type SkillsSkillCardResult = Static<typeof SkillsSkillCardResultSchema>;
 export type SkillsUploadBeginParams = Static<typeof SkillsUploadBeginParamsSchema>;
