@@ -12,6 +12,7 @@ import {
   completionConfig,
 } from "../../agents/bash-tools.lifecycle.test-support.js";
 import type { RunEmbeddedAgentParams } from "../../agents/embedded-agent-runner/run/params.js";
+import type { EmbeddedAgentRunResult } from "../../agents/embedded-agent-runner/types.js";
 import { runEmbeddedAgent } from "../../agents/embedded-agent.js";
 import type { ChannelOutboundAdapter } from "../../channels/plugins/outbound.types.js";
 import type { ChannelPlugin } from "../../channels/plugins/types.public.js";
@@ -150,10 +151,9 @@ async function withWakeFixture(
 }
 
 /** What the embedded runner settles when the model ends its turn with `NO_REPLY`. */
-const SILENT_TERMINAL = {
-  payloads: [],
-  meta: { durationMs: 1, terminalReply: { disposition: "silent" } },
-} as const;
+function silentTerminal(): EmbeddedAgentRunResult {
+  return { payloads: [], meta: { durationMs: 1, terminalReply: { disposition: "silent" } } };
+}
 
 /** The model answers every turn with `reply`, or ends it silently for `NO_REPLY`. */
 function answerTurns(prompts: string[], reply: string) {
@@ -161,7 +161,7 @@ function answerTurns(prompts: string[], reply: string) {
     prompts.push(params.prompt);
     await admitModelTurn(params);
     return reply === "NO_REPLY"
-      ? SILENT_TERMINAL
+      ? silentTerminal()
       : {
           payloads: [{ text: reply }],
           meta: { durationMs: 1, terminalReply: { disposition: "visible", text: reply } },
@@ -286,7 +286,7 @@ it("waits behind a busy session and acknowledges only once its turn is adopted",
         firstStarted.resolve();
         await releaseFirst.promise;
       }
-      return SILENT_TERMINAL;
+      return silentTerminal();
     });
     const busy = enqueueSessionEventForHost("unrelated work in progress", {
       agentId: AGENT_ID,
