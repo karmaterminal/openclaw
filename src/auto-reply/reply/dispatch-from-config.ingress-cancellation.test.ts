@@ -11,6 +11,10 @@ import {
   withTempState,
 } from "../../channels/message/ingress-drain.test-helpers.js";
 import { fanInChannelIngressLifecycles } from "../../plugin-sdk/channel-ingress-runtime.js";
+import {
+  markGatewayRestartDraining,
+  resetGatewayWorkAdmission,
+} from "../../process/gateway-work-admission.js";
 import { testing as controllerTesting } from "../../sessions/session-controller.test-support.js";
 import { createInboundDebouncer } from "../inbound-debounce.js";
 import type { MsgContext } from "../templating.js";
@@ -293,6 +297,78 @@ describe("queued ingress cancellation through the reply terminal path", () => {
       } finally {
         drain.dispose();
         clearSessionQueues([key]);
+      }
+    });
+  });
+
+  it("cancels a waiting durable turn on gateway restart without charging its retry budget", async () => {
+    // Bind the mailbox restart listener to a fresh drain signal for this case.
+    resetGatewayWorkAdmission();
+    await withTempState(async (stateDir) => {
+      const key = "agent:main:discord:direct:ingress-restart";
+      const queue = createTestIngressQueue(stateDir);
+      await queue.enqueue("restart-waiting", { text: "a" }, { laneKey: "lane-a" });
+      const cancelled = vi.fn();
+      const abandoned = vi.fn();
+      const drain = createChannelIngressDrain({
+        queue,
+        retryPolicy: ONE_ATTEMPT,
+        dispatchClaimedEvent: async (event, lifecycle) => {
+          // Counted at the durable owner, behind the real bound reply lifecycle.
+          const observed: ChannelIngressDispatchLifecycle = {
+            ...lifecycle,
+            onCancelled: async () => {
+              cancelled();
+              await lifecycle.onCancelled?.();
+            },
+            onAbandoned: async () => {
+              abandoned();
+              await lifecycle.onAbandoned();
+            },
+          };
+          const run: FollowupRun = {
+            ...createQueueTestRun({ prompt: event.id, messageId: event.id }),
+            turnAdoptionLifecycle:
+              bindIngressLifecycleToReplyOptions(observed).turnAdoptionLifecycle,
+          };
+          expect(enqueueFollowupRun(key, run, QUEUE_SETTINGS, "message-id", undefined, false)).toBe(
+            true,
+          );
+          return { kind: "deferred" };
+        },
+      });
+
+      try {
+        await drain.drainOnce();
+        await drain.waitForIdle();
+        expect(await queue.listClaims()).toEqual([
+          expect.objectContaining({ id: "restart-waiting", attempts: 0 }),
+        ]);
+
+        // Restart relinquishes the waiting turn on purpose. With one attempt and
+        // no age floor, an abandonment here would dead-letter the row at once.
+        const settled = Promise.race([
+          observeChannelIngressQueueWrite(queue, "release", "restart-waiting").then(
+            (written) => written && "release",
+          ),
+          observeChannelIngressQueueWrite(queue, "fail", "restart-waiting").then(
+            (written) => written && "fail",
+          ),
+        ]);
+        markGatewayRestartDraining();
+        await expect(settled).resolves.toBe("release");
+        expect(cancelled).toHaveBeenCalledOnce();
+        expect(abandoned).not.toHaveBeenCalled();
+        expect(await queue.listClaims()).toEqual([]);
+        expect(await queue.listFailed?.()).toEqual([]);
+        expect(await queue.listPending()).toEqual([
+          expect.objectContaining({ id: "restart-waiting", attempts: 0 }),
+        ]);
+        expect((await queue.listPending())[0]?.lastError).toBeUndefined();
+      } finally {
+        drain.dispose();
+        clearSessionQueues([key]);
+        resetGatewayWorkAdmission();
       }
     });
   });
