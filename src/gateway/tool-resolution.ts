@@ -469,9 +469,7 @@ export async function resolveGatewayScopedTools(
     // stub callbacks so the catalog reflects the full continuation surface and
     // the openclaw-tools.ts partial-registration warning is satisfied honestly
     // (not suppressed).
-    ...buildInventoryContinuationToolOpts(
-      params.cfg?.agents?.defaults?.continuation?.enabled === true,
-    ),
+    ...buildInventoryContinuationToolOpts(params.cfg),
   };
   const openClawTools = await createOpenClawToolsAsync(openClawToolOptions, { assertCurrent });
   assertCurrent();

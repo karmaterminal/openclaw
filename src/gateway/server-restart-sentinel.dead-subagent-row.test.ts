@@ -25,11 +25,7 @@ import {
   loadPendingSessionDelivery,
 } from "../infra/session-delivery-queue-storage.js";
 import { resolveSystemEventQueueKey } from "../infra/system-event-ownership.js";
-import {
-  peekDeliverableSystemEventEntries,
-  peekSystemEventEntries,
-  resetSystemEventsForTest,
-} from "../infra/system-events.js";
+import { peekSystemEventEntries, resetSystemEventsForTest } from "../infra/system-events.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import {

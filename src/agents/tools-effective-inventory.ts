@@ -333,7 +333,6 @@ export async function resolveEffectiveToolInventory(
       agentAccountId: params.accountId,
     }));
   const diagnostics = createToolAccessDiagnostics({ profiles: capabilityProfile.policy.profiles });
-  const continuationEnabled = params.cfg?.agents?.defaults?.continuation?.enabled === true;
   const effectiveTools = await createOpenClawCodingToolsInternalAsync(
     {
       ...params,
@@ -358,7 +357,7 @@ export async function resolveEffectiveToolInventory(
       // enabled so /status and tools-effective reflect the full
       // docs/design/continue-work-signal-v2.md §2.1 surface.
       // Runtime side effects still only run on live runner paths.
-      ...buildInventoryContinuationToolOpts(continuationEnabled),
+      ...buildInventoryContinuationToolOpts(params.cfg),
     },
     undefined,
     diagnostics.onFilter,

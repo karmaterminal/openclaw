@@ -1,3 +1,4 @@
+import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { ToolInputError } from "./common.js";
 
 /**
@@ -15,9 +16,10 @@ import { ToolInputError } from "./common.js";
  *   - continue_work's requestContinuation throws a clear ToolInputError.
  *   - request_compaction's getContextUsage returns null, which the tool turns
  *     into a clear structured rejection before any compaction is enqueued.
- * Real runners pass their own live closures instead.
+ * Real runners pass their own live closures instead. Returns no callbacks unless
+ * `agents.defaults.continuation.enabled` is true in `cfg`.
  */
-export function buildInventoryContinuationToolOpts(continuationEnabled: boolean): {
+export function buildInventoryContinuationToolOpts(cfg: OpenClawConfig | undefined): {
   continueWorkOpts?: { requestContinuation: () => void };
   requestCompactionOpts?: {
     sessionId: string;
@@ -26,7 +28,7 @@ export function buildInventoryContinuationToolOpts(continuationEnabled: boolean)
     triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason: string }>;
   };
 } {
-  if (!continuationEnabled) {
+  if (cfg?.agents?.defaults?.continuation?.enabled !== true) {
     return {};
   }
   return {

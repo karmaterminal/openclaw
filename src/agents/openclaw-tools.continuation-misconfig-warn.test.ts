@@ -182,7 +182,9 @@ describe("createOpenClawTools — silent partial-registration guard", () => {
         session: { mainKey: "main", scope: "per-sender" },
         agents: { defaults: { continuation: { enabled: true } } },
       } as never,
-      ...buildInventoryContinuationToolOpts(true),
+      ...buildInventoryContinuationToolOpts({
+        agents: { defaults: { continuation: { enabled: true } } },
+      }),
     });
 
     expect(warnSpy).not.toHaveBeenCalled();
@@ -197,7 +199,9 @@ describe("createOpenClawTools — silent partial-registration guard", () => {
         session: { mainKey: "main", scope: "per-sender" },
         agents: { defaults: { continuation: { enabled: true } } },
       } as never,
-      ...buildInventoryContinuationToolOpts(true),
+      ...buildInventoryContinuationToolOpts({
+        agents: { defaults: { continuation: { enabled: true } } },
+      }),
     });
 
     const names = tools.map((t) => t.name);

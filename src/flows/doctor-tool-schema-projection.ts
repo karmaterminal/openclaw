@@ -137,9 +137,7 @@ export async function collectAgentRuntimeToolSchemaFindings(
         modelContextWindowTokens: params.model.contextWindow,
         allowGatewaySubagentBinding: true,
         emitBeforeToolCallDiagnostics: false,
-        ...buildInventoryContinuationToolOpts(
-          params.cfg.agents?.defaults?.continuation?.enabled === true,
-        ),
+        ...buildInventoryContinuationToolOpts(params.cfg),
       }),
     );
   } catch (error) {

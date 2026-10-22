@@ -122,9 +122,7 @@ export async function resolveCommandsSystemPromptBundle(params: HandleCommandsPa
 
     return skillsSnapshot.prompt;
   })();
-  const continuationToolOpts = buildInventoryContinuationToolOpts(
-    params.cfg?.agents?.defaults?.continuation?.enabled === true,
-  );
+  const continuationToolOpts = buildInventoryContinuationToolOpts(params.cfg);
   const tools = await createOpenClawCodingToolsAsync({
     config: params.cfg,
     agentId: sessionAgentId,

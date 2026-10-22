@@ -12,9 +12,7 @@ export function resolveOpenClawContinuationToolParamsForRun(params: {
 }): Parameters<typeof createOpenClawContinuationTools>[0] {
   const { resolvedConfig, options } = params;
   const inventoryContinuationOpts = options?.beforeToolCallHookContext?.skillCommand
-    ? buildInventoryContinuationToolOpts(
-        resolvedConfig?.agents?.defaults?.continuation?.enabled === true,
-      )
+    ? buildInventoryContinuationToolOpts(resolvedConfig)
     : {};
   return {
     config: resolvedConfig,
