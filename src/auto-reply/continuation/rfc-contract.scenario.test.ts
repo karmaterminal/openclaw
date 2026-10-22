@@ -29,7 +29,7 @@ function makeReturnDeliveryDeps() {
     void options;
     return true;
   });
-  const requestHeartbeatNow = vi.fn((request: Record<string, unknown>) => {
+  const requestContinuationWake = vi.fn((request: Record<string, unknown>) => {
     void request;
   });
   const ackSessionDelivery = vi.fn(async (id: string) => {
@@ -38,7 +38,7 @@ function makeReturnDeliveryDeps() {
   return {
     enqueueSessionDelivery,
     enqueueSystemEvent,
-    requestHeartbeatNow,
+    requestContinuationWake,
     ackSessionDelivery,
   };
 }
@@ -387,7 +387,7 @@ describe("continuation RFC contract scenarios", () => {
           enqueueSessionDelivery: deps.enqueueSessionDelivery as never,
           ackSessionDelivery: deps.ackSessionDelivery as never,
           enqueueSystemEvent: deps.enqueueSystemEvent as never,
-          requestHeartbeatNow: deps.requestHeartbeatNow as never,
+          requestContinuationWake: deps.requestContinuationWake as never,
         },
       );
 
@@ -442,25 +442,27 @@ describe("continuation RFC contract scenarios", () => {
         },
       ]);
 
-      expect(deps.requestHeartbeatNow).toHaveBeenCalledTimes(2);
-      expect(deps.requestHeartbeatNow.mock.calls.map(([request]) => request)).toEqual([
+      expect(deps.requestContinuationWake).toHaveBeenCalledTimes(2);
+      expect(deps.requestContinuationWake.mock.calls.map(([request]) => request)).toEqual([
         {
           agentId: "main",
           sessionKey: ROOT_SESSION,
           reason: "delegate-return",
           parentRunId: "child-run-contract",
+          deliveryIds: [`delivery:${ROOT_SESSION}`],
         },
         {
           agentId: "main",
           sessionKey: SIBLING_SESSION,
           reason: "delegate-return",
           parentRunId: "child-run-contract",
+          deliveryIds: [`delivery:${SIBLING_SESSION}`],
         },
       ]);
       expect(deps.ackSessionDelivery).not.toHaveBeenCalled();
     });
 
-    it("silent non-wake delivery queues enrichment without heartbeat requests", async () => {
+    it("silent non-wake delivery queues enrichment without wake requests", async () => {
       const deps = makeReturnDeliveryDeps();
 
       await enqueueContinuationReturnDeliveries(
@@ -475,13 +477,13 @@ describe("continuation RFC contract scenarios", () => {
           enqueueSessionDelivery: deps.enqueueSessionDelivery as never,
           ackSessionDelivery: deps.ackSessionDelivery as never,
           enqueueSystemEvent: deps.enqueueSystemEvent as never,
-          requestHeartbeatNow: deps.requestHeartbeatNow as never,
+          requestContinuationWake: deps.requestContinuationWake as never,
         },
       );
 
       expect(deps.enqueueSessionDelivery).toHaveBeenCalledTimes(2);
       expect(deps.enqueueSystemEvent).toHaveBeenCalledTimes(2);
-      expect(deps.requestHeartbeatNow).not.toHaveBeenCalled();
+      expect(deps.requestContinuationWake).not.toHaveBeenCalled();
       expect(deps.ackSessionDelivery).not.toHaveBeenCalled();
     });
 
@@ -500,7 +502,7 @@ describe("continuation RFC contract scenarios", () => {
           enqueueSessionDelivery: deps.enqueueSessionDelivery as never,
           ackSessionDelivery: deps.ackSessionDelivery as never,
           enqueueSystemEvent: deps.enqueueSystemEvent as never,
-          requestHeartbeatNow: deps.requestHeartbeatNow as never,
+          requestContinuationWake: deps.requestContinuationWake as never,
         },
       );
 
@@ -511,7 +513,7 @@ describe("continuation RFC contract scenarios", () => {
       expect(
         expectDefined(deps.enqueueSystemEvent.mock.calls.at(0)?.at(1), "system event options"),
       ).not.toHaveProperty("traceparent");
-      expect(deps.requestHeartbeatNow).toHaveBeenCalledTimes(1);
+      expect(deps.requestContinuationWake).toHaveBeenCalledTimes(1);
     });
   });
 

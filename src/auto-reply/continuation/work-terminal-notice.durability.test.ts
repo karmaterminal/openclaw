@@ -6,14 +6,13 @@
 // deliberately avoid mocking either store or the delivery executor: they persist
 // a terminal row, discard all process-local state, reload from disk, and then
 // assert through the production recovery/delivery/acknowledgement path.
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveSessionStorePathCore } from "../../config/sessions.js";
 import {
   appendTranscriptMessage,
   replaceSessionEntry,
 } from "../../config/sessions/session-accessor.js";
 import { deliverQueuedSessionDelivery } from "../../gateway/server-restart-sentinel.js";
-import { requestHeartbeatNow } from "../../infra/heartbeat-wake.js";
 import { recoverPendingSessionDeliveries } from "../../infra/session-delivery-queue-recovery.js";
 import { scheduleSessionDelivery } from "../../infra/session-delivery-queue-runtime.js";
 import { loadPendingSessionDeliveries } from "../../infra/session-delivery-queue-storage.js";
@@ -26,6 +25,7 @@ import { closeOpenClawStateDatabaseAsync } from "../../state/openclaw-state-db.j
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import { settleManagedSystemEventsAfterTurnAdoption } from "../reply/session-system-event-adoption.js";
 import { prepareFormattedSystemEvents } from "../reply/session-system-events.js";
+import { requestContinuationWake, resetContinuationWakesForTest } from "./continuation-wake.js";
 import { resetContinuationCustodyProjection } from "./custody/custody-projection.js";
 import {
   hydrateContinuationCustody,
@@ -67,7 +67,7 @@ function realDeps(stateDir: string) {
     settleContinuationNotice,
     scheduleSessionDelivery,
     enqueueSystemEvent,
-    requestHeartbeatNow,
+    requestContinuationWake,
     queueContext,
     stateDir,
   };
@@ -247,6 +247,10 @@ async function pendingDeliveryTexts(stateDir: string): Promise<string[]> {
   return pending.map((entry) => (entry.kind === "systemEvent" ? entry.text : entry.kind));
 }
 
+// The real wake would hand off 250 ms later against a torn-down state; drop queued wakes, as the
+// retired wake stayed inert without a runner.
+afterEach(() => resetContinuationWakesForTest());
+
 describe("continuation_work terminal notice durability", () => {
   it("persists the terminal failure and its pending notice across a restart", async () => {
     await withDurableState(async () => {
@@ -370,9 +374,9 @@ describe("continuation_work terminal notice durability", () => {
           scheduled.push(id);
           return true;
         },
-        requestHeartbeatNow: (() => {
+        requestContinuationWake: (() => {
           wakes.push(true);
-        }) as typeof requestHeartbeatNow,
+        }) as typeof requestContinuationWake,
       });
 
       // The tombstone settled this key: release the flag, surface nothing.
@@ -525,9 +529,9 @@ describe("continuation_work terminal notice durability", () => {
           scheduled.push(id);
           return true;
         },
-        requestHeartbeatNow: ((opts?: { sessionKey?: string }) => {
-          wakes.push(opts ?? {});
-        }) as typeof requestHeartbeatNow,
+        requestContinuationWake: ((request: { sessionKey: string }) => {
+          wakes.push(request);
+        }) as typeof requestContinuationWake,
       });
 
       expect(handed).toBe(1);
@@ -625,9 +629,9 @@ describe("continuation_work terminal notice durability", () => {
             scheduled.push(id);
             return true;
           },
-          requestHeartbeatNow: (() => {
+          requestContinuationWake: (() => {
             wakes.push(true);
-          }) as typeof requestHeartbeatNow,
+          }) as typeof requestContinuationWake,
         };
 
         expect(await deliverPendingTerminalNoticeWithRetry(owed, deps)).toBe(false);

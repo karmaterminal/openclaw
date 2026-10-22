@@ -287,17 +287,6 @@ vi.mock("../reply/get-reply.js", () => ({
   }),
 }));
 
-// mock-isolation: Loading the heartbeat runner fails the test: work dispatch must never use it.
-vi.mock("../../infra/heartbeat-runner.js", () => {
-  throw new Error("continuation_work dispatch must not use the heartbeat runner");
-});
-
-// mock-isolation: Heartbeat wake requests are recorded without the process-wide wake handler.
-vi.mock("../../infra/heartbeat-wake.js", () => ({
-  isRetryableHeartbeatBusySkipReason: (reason: string) => reason === "requests-in-flight",
-  requestHeartbeatNow: vi.fn(),
-}));
-
 // mock-isolation: System events are captured instead of entering the process-wide event queue.
 vi.mock("../../infra/system-events.js", () => ({
   consumeSelectedSystemEventEntries: () => [],

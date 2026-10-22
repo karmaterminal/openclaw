@@ -164,7 +164,7 @@ const mocks = vi.hoisted(() => {
     withStableDeliveryPreparation: vi.fn(),
     // `true` is the queue's admission contract; the replay acts on the result.
     enqueueSystemEvent: vi.fn((..._args: unknown[]) => true),
-    requestHeartbeat: vi.fn(),
+    requestContinuationWake: vi.fn(),
     loadSessionEntryInWorker:
       vi.fn<
         typeof import("./session-utils-store-worker.js").loadGatewaySessionEntryReadOnlyInWorker
@@ -522,6 +522,9 @@ vi.mock("../infra/system-events.js", () => ({
 }));
 vi.mock("../infra/system-event-managed-delivery-queue.js", () => ({
   hasQueuedSystemEventDelivery: () => false,
+}));
+vi.mock("../auto-reply/continuation/continuation-wake.js", () => ({
+  requestContinuationWake: mocks.requestContinuationWake,
 }));
 
 // mock-isolation: These producer tests use supplied rows; worker authority has its own boundary suite.

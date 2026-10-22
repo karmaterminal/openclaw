@@ -299,7 +299,7 @@ it("forwards queued continue_work requests into continuation scheduling", async 
     typing: {} as FollowupRunnerParams["typing"],
     typingMode: "never",
     defaultModel: "anthropic/claude",
-    opts: { isHeartbeat: true },
+    opts: {},
   } satisfies FollowupRunnerParams;
 
   await accountFollowupTurnAndSchedule({
@@ -338,7 +338,7 @@ it("prefers a delegate token retained only in raw terminal text over typed conti
     typing: {} as FollowupRunnerParams["typing"],
     typingMode: "never",
     defaultModel: "anthropic/claude",
-    opts: { isHeartbeat: true },
+    opts: {},
   } satisfies FollowupRunnerParams;
   const execution = createExecution();
   if (execution.execution.outcome.kind !== "settled") {
@@ -391,7 +391,7 @@ it("forwards a work token retained only in raw terminal text", async () => {
     typing: {} as FollowupRunnerParams["typing"],
     typingMode: "never",
     defaultModel: "anthropic/claude",
-    opts: { isHeartbeat: true },
+    opts: {},
   } satisfies FollowupRunnerParams;
   const execution = createExecution({ continueWorkRequests: [] });
   if (execution.execution.outcome.kind !== "settled") {
@@ -417,7 +417,7 @@ it("does not recover a non-terminal delegate token from raw text", async () => {
     typing: {} as FollowupRunnerParams["typing"],
     typingMode: "never",
     defaultModel: "anthropic/claude",
-    opts: { isHeartbeat: true },
+    opts: {},
   } satisfies FollowupRunnerParams;
   const execution = createExecution({ continueWorkRequests: [] });
   if (execution.execution.outcome.kind !== "settled") {
@@ -443,7 +443,7 @@ it("does not recover selected raw text when the settled fallback result is repla
     typing: {} as FollowupRunnerParams["typing"],
     typingMode: "never",
     defaultModel: "anthropic/claude",
-    opts: { isHeartbeat: true },
+    opts: {},
   } satisfies FollowupRunnerParams;
   const execution = createExecution({ continueWorkRequests: [] });
   if (execution.execution.outcome.kind !== "settled") {
@@ -475,7 +475,7 @@ it("releases staged delegates before scheduling same-turn post-compaction work",
     typing: {} as FollowupRunnerParams["typing"],
     typingMode: "never",
     defaultModel: "anthropic/claude",
-    opts: { isHeartbeat: true },
+    opts: {},
   } satisfies FollowupRunnerParams;
   const order: string[] = [];
   state.dispatchPostCompactionDelegates.mockImplementation(async () => {

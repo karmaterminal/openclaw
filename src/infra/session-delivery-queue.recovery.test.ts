@@ -213,7 +213,7 @@ describe("session-delivery queue recovery", () => {
       }
 
       expect(deliver).not.toHaveBeenCalled();
-      await expect(loadPendingSessionDeliveries(queueContext)).resolves.toEqual([]);
+      await expect(listPending(queueContext)).resolves.toEqual([]);
     });
   });
 
@@ -301,7 +301,7 @@ describe("session-delivery queue recovery", () => {
 
       await recoverPendingSessionDeliveries({ deliver, onSettled, queueContext, log });
 
-      const [pending] = await loadPendingSessionDeliveries(queueContext);
+      const [pending] = await listPending(queueContext);
       expect(pending).toMatchObject({
         id,
         settlementOutcome: "recovered",
@@ -313,7 +313,7 @@ describe("session-delivery queue recovery", () => {
 
       await recoverPendingSessionDeliveries({ deliver, onSettled, queueContext, log });
       expect(deliver).toHaveBeenCalledTimes(1);
-      expect(await loadPendingSessionDeliveries(queueContext)).toEqual([]);
+      expect(await listPending(queueContext)).toEqual([]);
     });
   });
 

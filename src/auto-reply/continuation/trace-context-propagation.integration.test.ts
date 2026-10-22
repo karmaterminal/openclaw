@@ -222,7 +222,7 @@ describe("continuation trace-context propagation integration", () => {
           });
           return true;
         }),
-        requestHeartbeatNow: vi.fn(),
+        requestContinuationWake: vi.fn(),
       },
     );
 
@@ -249,7 +249,7 @@ describe("continuation trace-context propagation integration", () => {
         enqueueSessionDelivery: vi.fn(async (_payload: QueuedSessionDeliveryPayload) => "fanout"),
         ackSessionDelivery: vi.fn(async () => undefined),
         enqueueSystemEvent: vi.fn(() => true),
-        requestHeartbeatNow: vi.fn(),
+        requestContinuationWake: vi.fn(),
       },
     );
     const fanoutSpan = spans.find((span) => span.name === "continuation.queue.fanout");

@@ -5,7 +5,7 @@
 // system-event queue, durable session-delivery rows, the production delivery
 // scheduler (session-delivery-queue-runtime) on a manual gateway clock, the
 // restart-sentinel executor, prompt preparation and adoption settlement.
-// Observed only: heartbeat wake requests (process-external), the scheduler arm
+// Observed only: continuation wake requests (process-external), the scheduler arm
 // call, the targeting warning log, and a pass-through count of durable acks
 // (the real ack runs).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,11 +15,6 @@ import {
   deliverQueuedSessionDelivery,
   recoverPendingRestartContinuationDeliveries,
 } from "../../gateway/server-restart-sentinel.js";
-import {
-  hasTrustedContinuationHeartbeatWake,
-  requestHeartbeat,
-  requestHeartbeatNow,
-} from "../../infra/heartbeat-wake.js";
 import {
   scheduleSessionDelivery,
   startSessionDeliveryRuntime,
@@ -45,14 +40,12 @@ import {
 import { bindManagedDeliveryReplyTurn } from "../reply/managed-delivery-turn-lifecycle.js";
 import { settleManagedSystemEventsAfterTurnAdoption } from "../reply/session-system-event-adoption.js";
 import { prepareFormattedSystemEvents } from "../reply/session-system-events.js";
+import { requestContinuationWake } from "./continuation-wake.js";
 import { useContinuationCustodyTestState } from "./custody/custody.test-support.js";
 import { captureContinuationQueueContext } from "./queue-context.js";
 import { enqueueContinuationReturnDeliveries } from "./targeting.js";
 
-vi.mock("../../infra/heartbeat-wake.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../infra/heartbeat-wake.js")>();
-  return { ...actual, requestHeartbeat: vi.fn(), requestHeartbeatNow: vi.fn() };
-});
+vi.mock("./continuation-wake.js", () => ({ requestContinuationWake: vi.fn() }));
 
 vi.mock("../../infra/session-delivery-queue-runtime.js", async (importOriginal) => {
   const actual =
@@ -207,12 +200,12 @@ async function runAdoptedTurn() {
 }
 
 function wakesFor(sessionKey: string): unknown[] {
-  return [
-    ...vi.mocked(requestHeartbeat).mock.calls.map(([options]) => options),
-    ...vi.mocked(requestHeartbeatNow).mock.calls.map(([options]) => options),
-  ].filter(
-    (options) => (options as { sessionKey?: string } | undefined)?.sessionKey === sessionKey,
-  );
+  return vi
+    .mocked(requestContinuationWake)
+    .mock.calls.map(([options]) => options)
+    .filter(
+      (options) => (options as { sessionKey?: string } | undefined)?.sessionKey === sessionKey,
+    );
 }
 
 /** The admitting replay wakes exactly as the producer's fast path would have. */
@@ -221,7 +214,7 @@ function expectReplayWake(expected: {
   reason: "delegate-return";
   parentRunId: string;
 }): void {
-  const wakes = wakesFor(SESSION_KEY) as Array<{ source?: string }>;
+  const wakes = wakesFor(SESSION_KEY) as Array<{ reason?: string }>;
   expect(wakes).toHaveLength(1);
   expect(wakes[0]).toMatchObject({
     reason: expected.reason,
@@ -229,13 +222,13 @@ function expectReplayWake(expected: {
     agentId: "main",
     sessionKey: SESSION_KEY,
   });
-  expect(wakes[0]?.source).not.toBe("restart-sentinel");
-  expect(hasTrustedContinuationHeartbeatWake(wakes[0])).toBe(true);
+  // The producer's own wake, never the replay's generic restart-sentinel wake, for this one row.
+  expect(wakes[0]?.reason).not.toBe("restart-sentinel");
+  expect(wakes[0]).toMatchObject({ deliveryIds: [expect.any(String)] });
 }
 
 function resetObservers(): void {
-  vi.mocked(requestHeartbeat).mockClear();
-  vi.mocked(requestHeartbeatNow).mockClear();
+  vi.mocked(requestContinuationWake).mockClear();
   vi.mocked(scheduleSessionDelivery).mockClear();
   targetingWarnings.length = 0;
 }

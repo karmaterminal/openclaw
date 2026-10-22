@@ -41,7 +41,7 @@ test.each(["new", "reset"] as const)(
 
     const enqueueSessionDelivery = vi.fn(async () => `delivery-${reason}`);
     const enqueueSystemEvent = vi.fn(() => true);
-    const requestHeartbeatNow = vi.fn();
+    const requestContinuationWake = vi.fn();
     const result = await enqueueContinuationReturnDeliveries(
       {
         targetSessionKeys: [sessionKey],
@@ -54,7 +54,7 @@ test.each(["new", "reset"] as const)(
       {
         enqueueSessionDelivery,
         enqueueSystemEvent,
-        requestHeartbeatNow,
+        requestContinuationWake,
         isRecipientAuthorityCurrent: (resolvedKey, authority) =>
           isSessionRecipientAuthorityCurrent(
             { agentId: "main", sessionKey: resolvedKey, storePath },
@@ -83,6 +83,6 @@ test.each(["new", "reset"] as const)(
       }),
     );
     expect(enqueueSystemEvent).toHaveBeenCalledOnce();
-    expect(requestHeartbeatNow).toHaveBeenCalledOnce();
+    expect(requestContinuationWake).toHaveBeenCalledOnce();
   },
 );

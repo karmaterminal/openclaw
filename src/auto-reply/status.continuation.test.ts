@@ -85,6 +85,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   cliBackendsTesting.resetDepsForTest();
   listPluginCommands.mockReset();
@@ -94,6 +95,8 @@ afterEach(() => {
 
 describe("buildStatusMessage", () => {
   it("summarizes agent readiness and context usage", () => {
+    // Session age and last update render relative to now: 4 hours after epoch.
+    vi.useFakeTimers({ toFake: ["Date"], now: 4 * 60 * 60_000 });
     const text = buildStatusMessage({
       modelRefs: statusModelRefs({ provider: "anthropic", model: "test:opus" }),
       config: {
@@ -142,7 +145,6 @@ describe("buildStatusMessage", () => {
       queue: { mode: "collect", depth: 0 },
       pluginHealthLine: "🔌 Plugins: OK",
       subagentsLine: "🤖 Subagents: 1\n- active run",
-      now: 4 * 60 * 60_000, // 4 hours after epoch
     });
     const normalized = normalizeTestText(text);
 

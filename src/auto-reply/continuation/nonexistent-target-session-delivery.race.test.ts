@@ -17,7 +17,7 @@
  *
  * Test target: `enqueueContinuationReturnDeliveries` (targeting.ts) — the
  * single point where return-delivery hits the durable queue + in-memory
- * system-event bus + heartbeat wake. Race is modeled by mocking the deps
+ * system-event bus + continuation wake. Race is modeled by mocking the deps
  * directly; existing pattern matches cross-session-targeting.test.ts.
  */
 
@@ -85,7 +85,7 @@ describe("branch 1 — target session never existed (cold-start)", () => {
       systemEvents.push({ text, sessionKey: opts.sessionKey });
       return true;
     });
-    const requestHeartbeatNow = vi.fn();
+    const requestContinuationWake = vi.fn();
 
     const result = await enqueueContinuationReturnDeliveries(
       {
@@ -96,7 +96,7 @@ describe("branch 1 — target session never existed (cold-start)", () => {
         wakeRecipients: true,
         childRunId: "run-cold-start",
       },
-      { enqueueSessionDelivery, ackSessionDelivery, enqueueSystemEvent, requestHeartbeatNow },
+      { enqueueSessionDelivery, ackSessionDelivery, enqueueSystemEvent, requestContinuationWake },
     );
 
     // Substrate guarantees no panic and a clean structural return — the durable
@@ -108,7 +108,7 @@ describe("branch 1 — target session never existed (cold-start)", () => {
     expect(systemEvents).toEqual([
       { text: "[continuation:enrichment-return] cold-start delivery", sessionKey: NEVER_EXISTED },
     ]);
-    expect(requestHeartbeatNow).toHaveBeenCalledTimes(1);
+    expect(requestContinuationWake).toHaveBeenCalledTimes(1);
     // No ack on the durable file: the queue must persist so the recovery loop
     // can replay if the target session materializes on the next gateway boot.
     expect(ackSessionDelivery).not.toHaveBeenCalled();
@@ -118,7 +118,7 @@ describe("branch 1 — target session never existed (cold-start)", () => {
     const enqueueSessionDelivery = vi.fn(async () => "delivery-cold-N");
     const ackSessionDelivery = vi.fn(async () => undefined);
     const enqueueSystemEvent = vi.fn<EnqueueSystemEvent>(() => true);
-    const requestHeartbeatNow = vi.fn();
+    const requestContinuationWake = vi.fn();
 
     const result = await enqueueContinuationReturnDeliveries(
       {
@@ -127,7 +127,7 @@ describe("branch 1 — target session never existed (cold-start)", () => {
         text: "[continuation:enrichment-return] cold-start fanout",
         idempotencyKeyBase: "continuation-return:cold-start-fanout",
       },
-      { enqueueSessionDelivery, ackSessionDelivery, enqueueSystemEvent, requestHeartbeatNow },
+      { enqueueSessionDelivery, ackSessionDelivery, enqueueSystemEvent, requestContinuationWake },
     );
 
     expect(result.enqueued).toBe(2);
@@ -135,8 +135,8 @@ describe("branch 1 — target session never existed (cold-start)", () => {
     expect(result.deliveryIds).toHaveLength(2);
     expect(enqueueSessionDelivery).toHaveBeenCalledTimes(2);
     expect(enqueueSystemEvent).toHaveBeenCalledTimes(2);
-    // wakeRecipients omitted → heartbeat must not fire.
-    expect(requestHeartbeatNow).not.toHaveBeenCalled();
+    // wakeRecipients omitted → no wake fires.
+    expect(requestContinuationWake).not.toHaveBeenCalled();
   });
 });
 
@@ -145,7 +145,7 @@ describe("branch 2 — target session deleted before dispatch", () => {
     const enqueueSessionDelivery = vi.fn(async () => "delivery-deleted-before");
     const ackSessionDelivery = vi.fn(async () => undefined);
     const enqueueSystemEvent = vi.fn<EnqueueSystemEvent>(() => true);
-    const requestHeartbeatNow = vi.fn();
+    const requestContinuationWake = vi.fn();
 
     const result = await enqueueContinuationReturnDeliveries(
       {
@@ -156,13 +156,13 @@ describe("branch 2 — target session deleted before dispatch", () => {
         wakeRecipients: true,
         childRunId: "run-deleted-before",
       },
-      { enqueueSessionDelivery, ackSessionDelivery, enqueueSystemEvent, requestHeartbeatNow },
+      { enqueueSessionDelivery, ackSessionDelivery, enqueueSystemEvent, requestContinuationWake },
     );
 
     expect(result).toMatchObject({ enqueued: 1, delivered: 1 });
     expect(enqueueSessionDelivery).toHaveBeenCalledTimes(1);
     expect(enqueueSystemEvent).toHaveBeenCalledTimes(1);
-    expect(requestHeartbeatNow).toHaveBeenCalledTimes(1);
+    expect(requestContinuationWake).toHaveBeenCalledTimes(1);
     expect(ackSessionDelivery).not.toHaveBeenCalled();
   });
 
@@ -172,7 +172,7 @@ describe("branch 2 — target session deleted before dispatch", () => {
     });
     const ackSessionDelivery = vi.fn(async () => undefined);
     const enqueueSystemEvent = vi.fn<EnqueueSystemEvent>(() => true);
-    const requestHeartbeatNow = vi.fn();
+    const requestContinuationWake = vi.fn();
 
     await expect(
       enqueueContinuationReturnDeliveries(
@@ -182,7 +182,7 @@ describe("branch 2 — target session deleted before dispatch", () => {
           text: "[continuation:enrichment-return] enqueue fails",
           idempotencyKeyBase: "continuation-return:enqueue-fail",
         },
-        { enqueueSessionDelivery, ackSessionDelivery, enqueueSystemEvent, requestHeartbeatNow },
+        { enqueueSessionDelivery, ackSessionDelivery, enqueueSystemEvent, requestContinuationWake },
       ),
     ).rejects.toThrow("ENOENT: durable queue dir vanished mid-call");
 
@@ -190,7 +190,7 @@ describe("branch 2 — target session deleted before dispatch", () => {
     // enqueue succeeded — that would be a silent half-state where memory
     // claims delivery but the durable file never landed.
     expect(enqueueSystemEvent).not.toHaveBeenCalled();
-    expect(requestHeartbeatNow).not.toHaveBeenCalled();
+    expect(requestContinuationWake).not.toHaveBeenCalled();
     expect(ackSessionDelivery).not.toHaveBeenCalled();
   });
 });
@@ -204,7 +204,7 @@ describe("branch 3 — target deleted during dispatch race", () => {
     });
     const ackSessionDelivery = vi.fn(async () => undefined);
     const enqueueSystemEvent = vi.fn<EnqueueSystemEvent>(() => true);
-    const requestHeartbeatNow = vi.fn();
+    const requestContinuationWake = vi.fn();
     const isRecipientAuthorityCurrent = vi.fn(() => authorityCurrent);
     const recipientAuthorities = new Map([
       [
@@ -229,7 +229,7 @@ describe("branch 3 — target deleted during dispatch race", () => {
         enqueueSessionDelivery,
         ackSessionDelivery,
         enqueueSystemEvent,
-        requestHeartbeatNow,
+        requestContinuationWake,
         isRecipientAuthorityCurrent,
       },
     );
@@ -247,7 +247,7 @@ describe("branch 3 — target deleted during dispatch race", () => {
       expectProcessQueueContext(),
     );
     expect(enqueueSystemEvent).not.toHaveBeenCalled();
-    expect(requestHeartbeatNow).not.toHaveBeenCalled();
+    expect(requestContinuationWake).not.toHaveBeenCalled();
   });
 
   it("removes the trusted event and durable row when authority changes before wake", async () => {
@@ -256,14 +256,7 @@ describe("branch 3 — target deleted during dispatch race", () => {
     const enqueueSessionDelivery = vi.fn(async () => "delivery-stale-before-wake");
     const ackSessionDelivery = vi.fn(async () => undefined);
     const enqueueSystemEvent = vi.fn<EnqueueSystemEvent>((text, options) => {
-      // Mirror the queue's stored shape: only a conversation-turn origin is recorded (upstream).
-      const { fromConversationTurn, ...stored } = options;
-      systemEvents.push({
-        text,
-        ts: 2,
-        ...stored,
-        ...(fromConversationTurn ? { fromConversationTurn: true as const } : {}),
-      });
+      systemEvents.push({ text, ts: 2, ...options });
       return true;
     });
     const removeSystemEvents = vi.fn(
@@ -274,7 +267,7 @@ describe("branch 3 — target deleted during dispatch race", () => {
         return removed;
       },
     );
-    const requestHeartbeatNow = vi.fn();
+    const requestContinuationWake = vi.fn();
     const isRecipientAuthorityCurrent = vi.fn(() => {
       authorityChecks += 1;
       return authorityChecks < 3;
@@ -303,7 +296,7 @@ describe("branch 3 — target deleted during dispatch race", () => {
         ackSessionDelivery,
         enqueueSystemEvent,
         removeSystemEvents,
-        requestHeartbeatNow,
+        requestContinuationWake,
         isRecipientAuthorityCurrent,
       },
     );
@@ -323,7 +316,7 @@ describe("branch 3 — target deleted during dispatch race", () => {
       expectProcessQueueContext(),
     );
     expect(systemEvents).toEqual([{ text: "unrelated", ts: 1 }]);
-    expect(requestHeartbeatNow).not.toHaveBeenCalled();
+    expect(requestContinuationWake).not.toHaveBeenCalled();
   });
 
   it("propagates the underlying error as clean-error rather than panicking when a mid-loop dep throws", async () => {
@@ -337,7 +330,7 @@ describe("branch 3 — target deleted during dispatch race", () => {
     });
     const ackSessionDelivery = vi.fn(async () => undefined);
     const enqueueSystemEvent = vi.fn<EnqueueSystemEvent>(() => true);
-    const requestHeartbeatNow = vi.fn();
+    const requestContinuationWake = vi.fn();
 
     await expect(
       enqueueContinuationReturnDeliveries(
@@ -348,7 +341,7 @@ describe("branch 3 — target deleted during dispatch race", () => {
           idempotencyKeyBase: "continuation-return:race",
           wakeRecipients: true,
         },
-        { enqueueSessionDelivery, ackSessionDelivery, enqueueSystemEvent, requestHeartbeatNow },
+        { enqueueSessionDelivery, ackSessionDelivery, enqueueSystemEvent, requestContinuationWake },
       ),
     ).rejects.toThrow("ENOENT: session-delivery file deleted during race");
 
@@ -360,8 +353,8 @@ describe("branch 3 — target deleted during dispatch race", () => {
       "[continuation:enrichment-return] race fanout",
       expect.objectContaining({ sessionKey: EXISTING_TARGET }),
     );
-    expect(requestHeartbeatNow).toHaveBeenCalledTimes(1);
-    expect(requestHeartbeatNow).toHaveBeenCalledWith(
+    expect(requestContinuationWake).toHaveBeenCalledTimes(1);
+    expect(requestContinuationWake).toHaveBeenCalledWith(
       expect.objectContaining({ sessionKey: EXISTING_TARGET, reason: "delegate-return" }),
     );
     expect(ackSessionDelivery).not.toHaveBeenCalled();
@@ -373,7 +366,7 @@ describe("branch 3 — target deleted during dispatch race", () => {
     const enqueueSessionDelivery = vi.fn(async () => "delivery-race-ok");
     const ackSessionDelivery = vi.fn(async () => undefined);
     const enqueueSystemEvent = vi.fn<EnqueueSystemEvent>(() => true);
-    const requestHeartbeatNow = vi.fn();
+    const requestContinuationWake = vi.fn();
 
     const result = await enqueueContinuationReturnDeliveries(
       {
@@ -383,13 +376,13 @@ describe("branch 3 — target deleted during dispatch race", () => {
         idempotencyKeyBase: "continuation-return:race-ok",
         wakeRecipients: true,
       },
-      { enqueueSessionDelivery, ackSessionDelivery, enqueueSystemEvent, requestHeartbeatNow },
+      { enqueueSessionDelivery, ackSessionDelivery, enqueueSystemEvent, requestContinuationWake },
     );
 
     expect(result).toMatchObject({ enqueued: 3, delivered: 3 });
     expect(enqueueSessionDelivery).toHaveBeenCalledTimes(3);
     expect(enqueueSystemEvent).toHaveBeenCalledTimes(3);
-    expect(requestHeartbeatNow).toHaveBeenCalledTimes(3);
+    expect(requestContinuationWake).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -406,7 +399,7 @@ describe("branch 4 — happy-path control (sanity-check the mock harness)", () =
       systemEvents.push({ text, sessionKey: opts.sessionKey });
       return true;
     });
-    const requestHeartbeatNow = vi.fn();
+    const requestContinuationWake = vi.fn();
 
     const result = await enqueueContinuationReturnDeliveries(
       {
@@ -417,7 +410,7 @@ describe("branch 4 — happy-path control (sanity-check the mock harness)", () =
         wakeRecipients: true,
         childRunId: "run-happy",
       },
-      { enqueueSessionDelivery, ackSessionDelivery, enqueueSystemEvent, requestHeartbeatNow },
+      { enqueueSessionDelivery, ackSessionDelivery, enqueueSystemEvent, requestContinuationWake },
     );
 
     expect(result).toMatchObject({ enqueued: 1, delivered: 1 });
@@ -431,7 +424,7 @@ describe("branch 4 — happy-path control (sanity-check the mock harness)", () =
     expect(systemEvents).toEqual([
       { text: "[continuation:enrichment-return] happy path", sessionKey: EXISTING_TARGET },
     ]);
-    expect(requestHeartbeatNow).toHaveBeenCalledWith(
+    expect(requestContinuationWake).toHaveBeenCalledWith(
       expect.objectContaining({ sessionKey: EXISTING_TARGET, reason: "delegate-return" }),
     );
     expect(ackSessionDelivery).not.toHaveBeenCalled();

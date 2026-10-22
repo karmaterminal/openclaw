@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocked = vi.hoisted(() => ({
   spawnSubagentDirectMock: vi.fn(),
-  requestHeartbeatNowMock: vi.fn(),
+  requestContinuationWakeMock: vi.fn(),
   readLatestAssistantReplyMock: vi.fn(
     async (_sessionKey?: string): Promise<string | undefined> => "raw subagent reply",
   ),
@@ -25,10 +25,9 @@ vi.mock("./tools/agent-step.js", () => ({
   readLatestAssistantReply: mocked.readLatestAssistantReplyMock,
 }));
 
-// mock-isolation: Heartbeat wake requests are recorded without the process-wide wake handler.
-vi.mock("../infra/heartbeat-wake.js", () => ({
-  markTrustedContinuationHeartbeatWake: <T>(request: T) => request,
-  requestHeartbeatNow: (...args: unknown[]) => mocked.requestHeartbeatNowMock(...args),
+// mock-isolation: Continuation wakes are recorded without running the session-event handoff.
+vi.mock("../auto-reply/continuation/continuation-wake.js", () => ({
+  requestContinuationWake: (...args: unknown[]) => mocked.requestContinuationWakeMock(...args),
 }));
 
 // mock-isolation: Subagent depth is fixed by the test instead of read from the session store.
@@ -171,7 +170,7 @@ describe("subagent announce continuation chaining", () => {
       childSessionKey: "agent:main:subagent:spawned",
       runId: "run-spawned",
     });
-    mocked.requestHeartbeatNowMock.mockReset();
+    mocked.requestContinuationWakeMock.mockReset();
     mocked.readLatestAssistantReplyMock.mockReset().mockResolvedValue("raw subagent reply");
     mocked.countActiveDescendantRunsMock.mockReset().mockReturnValue(0);
     mocked.countPendingDescendantRunsMock.mockReset().mockReturnValue(0);
@@ -373,7 +372,7 @@ describe("subagent announce continuation chaining", () => {
     drainSystemEventEntries(childSessionKey);
   });
 
-  it("routes silent-wake heartbeat to the requester without changing child event ownership", async () => {
+  it("routes the silent-wake continuation wake to the requester without changing child event ownership", async () => {
     await runContinuationAnnounce({
       childSessionKey: "agent:main:subagent:silent-owned",
       childTaskPrefix: "",
@@ -385,7 +384,7 @@ describe("subagent announce continuation chaining", () => {
       multiAgent: true,
     });
 
-    expect(mocked.requestHeartbeatNowMock).toHaveBeenCalledWith(
+    expect(mocked.requestContinuationWakeMock).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionKey: "agent:main:main",
         agentId: "main",

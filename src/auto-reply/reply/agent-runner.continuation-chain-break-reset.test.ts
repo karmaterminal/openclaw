@@ -43,7 +43,7 @@ const refreshQueuedFollowupSessionMock = vi.fn();
 const compactState = vi.hoisted(() => ({
   compactEmbeddedAgentSessionMock: vi.fn(),
 }));
-const requestHeartbeatNowMock = vi.hoisted(() => vi.fn());
+const requestContinuationWakeMock = vi.hoisted(() => vi.fn());
 const spawnSubagentDirectMock = vi.hoisted(() => vi.fn());
 const patchSessionEntryMock = vi.hoisted(() => vi.fn());
 const loadSessionEntryMock = vi.hoisted(() => vi.fn());
@@ -128,9 +128,9 @@ vi.mock("../../runtime.js", () => ({
   },
 }));
 
-// mock-isolation: Heartbeat wake requests are recorded without the process-wide wake handler.
-vi.mock("../../infra/heartbeat-wake.js", () => ({
-  requestHeartbeatNow: (...args: unknown[]) => requestHeartbeatNowMock(...args),
+// mock-isolation: Continuation wakes are recorded without running the session-event handoff.
+vi.mock("../continuation/continuation-wake.js", () => ({
+  requestContinuationWake: (...args: unknown[]) => requestContinuationWakeMock(...args),
 }));
 
 // mock-isolation: Keep the process-wide followup queue and drain registry outside runner cases.
@@ -247,7 +247,7 @@ beforeEach(() => {
   refreshQueuedFollowupSessionMock.mockResolvedValue(undefined);
   loadCronStoreMock.mockClear();
   loadCronStoreMock.mockResolvedValue({ version: 1, jobs: [] });
-  requestHeartbeatNowMock.mockReset();
+  requestContinuationWakeMock.mockReset();
   spawnSubagentDirectMock.mockReset().mockResolvedValue({
     status: "accepted",
     childSessionKey: "agent:main:subagent:spawned",

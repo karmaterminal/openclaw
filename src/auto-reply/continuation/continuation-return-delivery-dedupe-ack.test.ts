@@ -18,12 +18,12 @@ function makeDeps(overrides: { enqueueSystemEvent: () => boolean }) {
   const enqueueSystemEvent = vi.fn<ReturnDeliveryDeps["enqueueSystemEvent"]>(() =>
     overrides.enqueueSystemEvent(),
   );
-  const requestHeartbeatNow = vi.fn<ReturnDeliveryDeps["requestHeartbeatNow"]>();
+  const requestContinuationWake = vi.fn<ReturnDeliveryDeps["requestContinuationWake"]>();
   return {
     enqueueSessionDelivery,
     ackSessionDelivery,
     enqueueSystemEvent,
-    requestHeartbeatNow,
+    requestContinuationWake,
   };
 }
 

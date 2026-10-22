@@ -11,15 +11,15 @@ import { createSubagentAnnounceDeliveryRuntimeMock } from "./subagents/announce/
 // 1. silentAnnounce:true, wakeOnReturn:true →
 //    - deliverSubagentAnnouncement NOT invoked
 //    - enqueueSystemEvent called with [continuation:enrichment-return] text + target session key
-//    - requestHeartbeatNow called with reason:"continuation"
+//    - requestContinuationWake called with reason:"silent-wake-enrichment"
 // 2. silentAnnounce:true, wakeOnReturn:false →
 //    - deliverSubagentAnnouncement NOT invoked
 //    - enqueueSystemEvent called (enrichment-return)
-//    - requestHeartbeatNow NOT called
+//    - requestContinuationWake NOT called
 // 3. silentAnnounce:false →
 //    - deliverSubagentAnnouncement invoked
 //    - no enrichment-return event
-//    - no heartbeat wake
+//    - no continuation wake
 
 const callGatewayMock = vi.fn(async (_request: unknown) => ({}));
 const loadSessionStoreMock = vi.fn((_storePath: string) => ({}) as Record<string, unknown>);
@@ -51,7 +51,7 @@ const resolveContinuationRuntimeConfigMock = vi.fn((_cfg?: unknown) => ({
 // for vi.mock to intercept the dynamic import.
 // `true` is the queue's admission contract; producers now act on the result.
 const enqueueSystemEventMock = vi.fn((_text: string, _options?: unknown) => true);
-const requestHeartbeatNowMock = vi.fn((_options: unknown) => undefined);
+const requestContinuationWakeMock = vi.fn((_options: unknown) => undefined);
 
 // Spy on the ordinary delivery path (not silent) so we can assert it
 // is NOT called when silentAnnounce is true.
@@ -170,10 +170,9 @@ vi.mock("../infra/system-event-managed-delivery-queue.js", () => ({
   removeSystemEvents: () => [],
 }));
 
-// mock-isolation: Heartbeat wake requests are recorded without the process-wide wake handler.
-vi.mock("../infra/heartbeat-wake.js", () => ({
-  markTrustedContinuationHeartbeatWake: <T>(request: T) => request,
-  requestHeartbeatNow: (options: unknown) => requestHeartbeatNowMock(options),
+// mock-isolation: Continuation wakes are recorded without running the session-event handoff.
+vi.mock("../auto-reply/continuation/continuation-wake.js", () => ({
+  requestContinuationWake: (options: unknown) => requestContinuationWakeMock(options),
 }));
 
 import { useContinuationCustodyTestState } from "../auto-reply/continuation/custody/custody.test-support.js";
@@ -236,7 +235,7 @@ describe("subagent-announce silent / silent-wake / wakeOnReturn routing (RFC §2
     queueEmbeddedAgentMessageMock.mockReset().mockReturnValue(false);
     waitForEmbeddedAgentRunEndMock.mockReset().mockResolvedValue(true);
     enqueueSystemEventMock.mockReset().mockReturnValue(true);
-    requestHeartbeatNowMock.mockReset();
+    requestContinuationWakeMock.mockReset();
     deliverSubagentAnnouncementMock
       .mockReset()
       .mockResolvedValue({ delivered: true, path: "direct" });
@@ -279,9 +278,9 @@ describe("subagent-announce silent / silent-wake / wakeOnReturn routing (RFC §2
     expect(eventOptions?.sessionKey).toBe(requesterSessionKey);
     expect(eventOptions?.traceparent).toBe(validTraceparent);
 
-    // Heartbeat wake fired with delegate-return provenance.
-    expect(requestHeartbeatNowMock).toHaveBeenCalledTimes(1);
-    const wakeOptions = requestHeartbeatNowMock.mock.calls[0]?.[0] as {
+    // Continuation wake fired with delegate-return provenance.
+    expect(requestContinuationWakeMock).toHaveBeenCalledTimes(1);
+    const wakeOptions = requestContinuationWakeMock.mock.calls[0]?.[0] as {
       sessionKey?: string;
       reason?: string;
       parentRunId?: string;
@@ -312,7 +311,7 @@ describe("subagent-announce silent / silent-wake / wakeOnReturn routing (RFC §2
     expect(eventOptions?.traceparent).toBeUndefined();
 
     // Critical: no wake when wakeOnReturn is false.
-    expect(requestHeartbeatNowMock).not.toHaveBeenCalled();
+    expect(requestContinuationWakeMock).not.toHaveBeenCalled();
   });
 
   it("omits traceparent from silent returns when chain-step budget is exhausted", async () => {
@@ -357,7 +356,7 @@ describe("subagent-announce silent / silent-wake / wakeOnReturn routing (RFC §2
     expect(didAnnounce).toBe("delivered");
     expect(deliverSubagentAnnouncementMock).not.toHaveBeenCalled();
     expect(enqueueSystemEventMock).toHaveBeenCalledTimes(1);
-    expect(requestHeartbeatNowMock).not.toHaveBeenCalled();
+    expect(requestContinuationWakeMock).not.toHaveBeenCalled();
   });
 
   it("silentAnnounce:true → system event text references the task label", async () => {
@@ -399,7 +398,7 @@ describe("subagent-announce silent / silent-wake / wakeOnReturn routing (RFC §2
 
     // No silent-path side effects.
     expect(enqueueSystemEventMock).not.toHaveBeenCalled();
-    expect(requestHeartbeatNowMock).not.toHaveBeenCalled();
+    expect(requestContinuationWakeMock).not.toHaveBeenCalled();
   });
 
   it("silentAnnounce omitted → ordinary delivery, no silent-path side effects", async () => {
@@ -410,6 +409,6 @@ describe("subagent-announce silent / silent-wake / wakeOnReturn routing (RFC §2
 
     expect(deliverSubagentAnnouncementMock).toHaveBeenCalledTimes(1);
     expect(enqueueSystemEventMock).not.toHaveBeenCalled();
-    expect(requestHeartbeatNowMock).not.toHaveBeenCalled();
+    expect(requestContinuationWakeMock).not.toHaveBeenCalled();
   });
 });

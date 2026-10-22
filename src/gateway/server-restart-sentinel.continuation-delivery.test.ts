@@ -219,7 +219,7 @@ describe("scheduleRestartSentinelWake", () => {
     mocks.reserveDeliveryAttempt.mockClear();
     mocks.withActiveDeliveryClaim.mockClear();
     mocks.enqueueSystemEvent.mockClear();
-    mocks.requestHeartbeat.mockClear();
+    mocks.requestContinuationWake.mockClear();
     mocks.enqueueSessionDelivery.mockClear();
     mocks.advanceSessionDeliveryAgentRun.mockClear();
     mocks.deferSessionDelivery.mockClear();
@@ -368,14 +368,13 @@ describe("scheduleRestartSentinelWake", () => {
       recipientAuthority,
       trusted: true,
     });
-    expect(mocks.requestHeartbeat).toHaveBeenCalledWith({
-      source: "restart-sentinel",
-      intent: "immediate",
-      reason: "wake",
-      // The wake is agent-qualified: continuation ownership travels with the
-      // heartbeat so a replayed recipient cannot wake another agent's session.
-      agentId: "main",
+    expect(mocks.requestContinuationWake).toHaveBeenCalledWith({
       sessionKey: "agent:main:main",
+      // The wake is agent-qualified: continuation ownership travels with the
+      // wake so a replayed recipient cannot wake another agent's session.
+      agentId: "main",
+      reason: "restart-sentinel",
+      deliveryIds: ["delivery-authority-rollover"],
     });
   });
 
@@ -472,7 +471,7 @@ describe("scheduleRestartSentinelWake", () => {
         recipientAuthority,
       );
       expect(mocks.enqueueSystemEvent).not.toHaveBeenCalled();
-      expect(mocks.requestHeartbeat).not.toHaveBeenCalled();
+      expect(mocks.requestContinuationWake).not.toHaveBeenCalled();
     },
   );
 
@@ -556,12 +555,11 @@ describe("scheduleRestartSentinelWake", () => {
     expect(() => resolveSystemEventQueueKey(helperQueueKey, "main")).toThrow(
       "System event owner does not match its session key.",
     );
-    expect(mocks.requestHeartbeat).toHaveBeenCalledWith({
-      source: "restart-sentinel",
-      intent: "immediate",
-      reason: "wake",
-      agentId: "helper",
+    expect(mocks.requestContinuationWake).toHaveBeenCalledWith({
       sessionKey,
+      agentId: "helper",
+      reason: "restart-sentinel",
+      deliveryIds: ["continuation-return-helper-replay"],
     });
   });
 
@@ -585,7 +583,7 @@ describe("scheduleRestartSentinelWake", () => {
       }),
     ).rejects.toThrow(/recipient owner (is unavailable|mismatches)/);
     expect(mocks.enqueueSystemEvent).not.toHaveBeenCalled();
-    expect(mocks.requestHeartbeat).not.toHaveBeenCalled();
+    expect(mocks.requestContinuationWake).not.toHaveBeenCalled();
   });
 
   it("does not dispatch a queued agentTurn continuation after the session key changes", async () => {
@@ -755,7 +753,7 @@ describe("scheduleRestartSentinelWake", () => {
         },
       }),
     );
-    // Plain notices no longer ride a heartbeat wake (#167113).
-    expect(mocks.requestHeartbeat).not.toHaveBeenCalled();
+    // Plain notices take no continuation wake (#167113).
+    expect(mocks.requestContinuationWake).not.toHaveBeenCalled();
   });
 });

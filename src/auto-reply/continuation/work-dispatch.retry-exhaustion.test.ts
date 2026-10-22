@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const turnGrants: unknown[] = [];
 const systemEvents: unknown[] = [];
 const scheduledDeliveries: string[] = [];
-const heartbeatWakes: { sessionKey?: string }[] = [];
+const continuationWakes: { sessionKey: string; deliveryIds: readonly string[] }[] = [];
 const sessionDeliveryAcks: string[] = [];
 const activeQueueDeliveries: unknown[] = [];
 const workTransitionEvents: string[] = [];
@@ -253,17 +253,10 @@ vi.mock("../reply/get-reply.js", () => ({
   }),
 }));
 
-// mock-isolation: Loading the heartbeat runner fails the test: work dispatch must never use it.
-vi.mock("../../infra/heartbeat-runner.js", () => {
-  throw new Error("continuation_work dispatch must not use the heartbeat runner");
-});
-
-// mock-isolation: Heartbeat wake requests are recorded without the process-wide wake handler.
-vi.mock("../../infra/heartbeat-wake.js", () => ({
-  isRetryableHeartbeatBusySkipReason: (reason: string) => reason === "requests-in-flight",
-  markTrustedContinuationHeartbeatWake: <T>(request: T) => request,
-  requestHeartbeatNow: (opts?: { sessionKey?: string }) => {
-    heartbeatWakes.push(opts ?? {});
+// mock-isolation: Continuation wakes are recorded without running the session-event handoff.
+vi.mock("./continuation-wake.js", () => ({
+  requestContinuationWake: (request: { sessionKey: string; deliveryIds: readonly string[] }) => {
+    continuationWakes.push(request);
   },
 }));
 
@@ -535,7 +528,7 @@ describe("continuation_work transient-error retry exhaustion", () => {
     systemEvents.length = 0;
     sessionDeliveryAcks.length = 0;
     scheduledDeliveries.length = 0;
-    heartbeatWakes.length = 0;
+    continuationWakes.length = 0;
     activeQueueDeliveries.length = 0;
     workTransitionEvents.length = 0;
     replyRegistryReceivers.clear();
@@ -725,7 +718,9 @@ describe("continuation_work transient-error retry exhaustion", () => {
     // The row is actively armed and the target woken, so the outcome does not
     // wait for unrelated traffic.
     expect(scheduledDeliveries).toEqual([rows[0]?.id]);
-    expect(heartbeatWakes).toEqual([expect.objectContaining({ sessionKey })]);
+    expect(continuationWakes).toEqual([
+      expect.objectContaining({ sessionKey, deliveryIds: [rows[0]?.id] }),
+    ]);
     expect(terminalEvent?.options).toMatchObject({ sessionDeliveryAckId: rows[0]?.id });
     // The obligation is released in the same commit as that row's insert.
     const settled = await workFlow();

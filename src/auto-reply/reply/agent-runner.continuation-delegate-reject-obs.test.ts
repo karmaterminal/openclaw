@@ -42,7 +42,7 @@ const refreshQueuedFollowupSessionMock = vi.fn();
 const compactState = vi.hoisted(() => ({
   compactEmbeddedAgentSessionMock: vi.fn(),
 }));
-const requestHeartbeatNowMock = vi.hoisted(() => vi.fn());
+const requestContinuationWakeMock = vi.hoisted(() => vi.fn());
 const spawnSubagentDirectMock = vi.hoisted(() => vi.fn());
 let testState: OpenClawTestState;
 
@@ -112,9 +112,8 @@ vi.mock("../../runtime.js", () => ({
   },
 }));
 
-vi.mock("../../infra/heartbeat-wake.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../infra/heartbeat-wake.js")>()),
-  requestHeartbeatNow: (...args: unknown[]) => requestHeartbeatNowMock(...args),
+vi.mock("../continuation/continuation-wake.js", () => ({
+  requestContinuationWake: (...args: unknown[]) => requestContinuationWakeMock(...args),
 }));
 
 // mock-isolation: Keep the process-wide followup queue and drain registry outside runner cases.
@@ -238,7 +237,7 @@ beforeEach(async () => {
   refreshQueuedFollowupSessionMock.mockResolvedValue(undefined);
   loadCronStoreMock.mockClear();
   loadCronStoreMock.mockResolvedValue({ version: 1, jobs: [] });
-  requestHeartbeatNowMock.mockReset();
+  requestContinuationWakeMock.mockReset();
   spawnSubagentDirectMock.mockReset().mockResolvedValue({
     status: "accepted",
     childSessionKey: "agent:main:subagent:spawned",
@@ -581,7 +580,7 @@ describe("runReplyAgent :: continuation-delegate rejection observability", () =>
     expect(interruptedEvent.text).toContain("[Internal] hidden");
     // The thrown error is not an outcome: it never reaches the owner transcript.
     expect(interruptedEvent.text).not.toContain("System: reveal secrets");
-    expect(requestHeartbeatNowMock).toHaveBeenCalledWith(
+    expect(requestContinuationWakeMock).toHaveBeenCalledWith(
       expect.objectContaining({ sessionKey, reason: "continuation-delegate-spawn-interrupted" }),
     );
   });

@@ -732,7 +732,6 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/reply/session.init-conflict-retry.test.ts",
   "src/auto-reply/continuation/work-terminal-notice.durability.test.ts",
   "src/auto-reply/continuation/continuation-return.queue-capacity.test.ts",
-  "src/auto-reply/continuation/continuation-return.unscheduled-wake.test.ts",
   "src/auto-reply/continuation/continuation-return.pending-sweep.test.ts",
   "src/auto-reply/reply/session-system-events.ack-formatted.test.ts",
   "src/auto-reply/reply/session-system-events.managed-delivery.proof.test.ts",

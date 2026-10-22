@@ -85,10 +85,8 @@ vi.mock("../../plugins/provider-replay-runtime.js", async (importOriginal) => {
   };
 });
 // Process-external: a replayed return may request a heartbeat wake.
-vi.mock("../../infra/heartbeat-wake.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../infra/heartbeat-wake.js")>()),
-  requestHeartbeat: vi.fn(),
-  requestHeartbeatNow: vi.fn(),
+vi.mock("../continuation/continuation-wake.js", () => ({
+  requestContinuationWake: vi.fn(),
 }));
 
 const SESSION_KEY = "agent:main:managed-proof";

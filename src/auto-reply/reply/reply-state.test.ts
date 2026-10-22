@@ -222,7 +222,7 @@ describe("incrementCompactionCount", () => {
     const storePath = path.join(sessionDirs.make(), "sessions.json");
     const sessionKey = "main";
     const sessionStore = { [sessionKey]: entry };
-    await seedSessionStore(storePath, sessionKey, entry);
+    await seedCompaction(storePath, sessionKey, entry);
 
     const count = await incrementCompactionCount({
       sessionEntry: entry,
@@ -270,7 +270,7 @@ describe("incrementCompactionCount", () => {
     const storePath = path.join(sessionDirs.make(), "sessions.json");
     const sessionKey = "main";
     const sessionStore = { [sessionKey]: entry };
-    await seedSessionStore(storePath, sessionKey, entry);
+    await seedCompaction(storePath, sessionKey, entry);
 
     await incrementCompactionCount({
       sessionEntry: entry,

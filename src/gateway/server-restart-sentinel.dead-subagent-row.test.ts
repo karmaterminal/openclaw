@@ -7,20 +7,18 @@
 // and 3 `pending` session-delivery rows (retry 0) addressed to a
 // `agent:main:subagent:continuation-…` session that no longer exists.
 //
+// (Historical: the heartbeat runner of that build resolved a subagent-targeted wake
+// to `agent:main:main`. Upstream retired heartbeat turns; a continuation wake now
+// hands the row's event to its own session through the session-event handoff.)
+//
 // Owner boundaries under test run for real: the durable session-delivery queue
-// (SQLite state DB), the restart-sentinel replay, the in-memory system-event
-// queue, the session-event wake queue, and heartbeat session resolution. The
-// only stand-in is the heartbeat wake handler (the model turn): it resolves the
-// wake's heartbeat session exactly as the runner does, records which queue the
-// turn would read, and ends the turn mute (`ran`, nothing adopted).
-import { setTimeout as sleep } from "node:timers/promises";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+// (SQLite state DB), the restart-sentinel replay and the in-memory system-event
+// queue. The only stand-in is the continuation wake (the model turn): it records
+// which session each wake targets and which row events that session's queue holds.
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setRuntimeConfigSnapshot } from "../config/config.js";
 import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { resolveHeartbeatSession } from "../infra/heartbeat-runner-session.js";
-import { setHeartbeatWakeHandler } from "../infra/heartbeat-wake.js";
-import type { HeartbeatWakeRequest } from "../infra/heartbeat-wake.js";
 import { drainPendingSessionDelivery } from "../infra/session-delivery-queue-recovery.js";
 import {
   enqueueSessionDelivery,
@@ -45,41 +43,38 @@ const MAIN_SESSION_KEY = "agent:main:main";
 const REPLAY_CYCLES = 3;
 
 type ObservedWake = {
-  requestedSessionKey: string | undefined;
-  source: string;
-  reason: string | undefined;
-  /** The session the heartbeat runner would execute for this wake. */
-  resolvedSessionKey: string;
+  requestedSessionKey: string;
+  reason: string;
+  deliveryIds: readonly string[];
   /** Ack ids visible in the queue the woken turn reads. */
   visibleAckIds: string[];
 };
 
+const wakes = vi.hoisted((): ObservedWake[] => []);
+// mock-isolation: The woken turn is the stand-in; the handoff itself is covered by continuation-wake tests.
+vi.mock("../auto-reply/continuation/continuation-wake.js", async () => {
+  const { peekDeliverableSystemEventEntries: peek } = await import("../infra/system-events.js");
+  const { resolveSystemEventQueueKey: queueKey } =
+    await import("../infra/system-event-ownership.js");
+  return {
+    requestContinuationWake: (request: {
+      sessionKey: string;
+      reason: string;
+      deliveryIds: readonly string[];
+    }) => {
+      wakes.push({
+        requestedSessionKey: request.sessionKey,
+        reason: request.reason,
+        deliveryIds: request.deliveryIds,
+        visibleAckIds: peek(queueKey(request.sessionKey, AGENT_ID)).flatMap((event) =>
+          event.sessionDeliveryAckId ? [event.sessionDeliveryAckId] : [],
+        ),
+      });
+    },
+  };
+});
+
 const silentLog = { info: () => {}, warn: () => {}, error: () => {} };
-
-function installMuteTurnWakeHandler(cfg: OpenClawConfig) {
-  const wakes: ObservedWake[] = [];
-  const dispose = setHeartbeatWakeHandler(async (request: HeartbeatWakeRequest) => {
-    // Same resolution the runner's preflight uses for a non-trusted wake.
-    const session = await resolveHeartbeatSession(cfg, AGENT_ID, undefined, request.sessionKey);
-    wakes.push({
-      requestedSessionKey: request.sessionKey,
-      source: request.source,
-      reason: request.reason,
-      resolvedSessionKey: session.sessionKey,
-      visibleAckIds: peekDeliverableSystemEventEntries(
-        resolveSystemEventQueueKey(session.sessionKey, AGENT_ID),
-      ).flatMap((event) => (event.sessionDeliveryAckId ? [event.sessionDeliveryAckId] : [])),
-    });
-    // The turn ends mute: message_tool_only, nothing delivered, nothing adopted.
-    return { status: "ran", durationMs: 0 };
-  });
-  return { wakes, dispose };
-}
-
-/** Let the session-event wake queue (250 ms coalesce) dispatch anything requested. */
-async function settleWakes(): Promise<void> {
-  await sleep(400);
-}
 
 async function replayInProcess(id: string) {
   const queueContext = captureOpenClawStateWorkerContext();
@@ -130,19 +125,16 @@ async function enqueueAdoptionScopedRow(
 }
 
 describe("restart-sentinel replay of adoption-scoped rows", () => {
-  let disposeWake: (() => void) | undefined;
-
   beforeEach(() => {
     resetSystemEventsForTest();
+    wakes.length = 0;
   });
 
   afterEach(() => {
-    disposeWake?.();
-    disposeWake = undefined;
     resetSystemEventsForTest();
   });
 
-  it("(a) characterizes a row for a LIVE subagent session whose woken turn ends mute", async () => {
+  it("(a) a row for a LIVE subagent session wakes that session, whose queue holds the row", async () => {
     await withOpenClawTestState(
       { layout: "state-only", label: "fossil-live-subagent-row" },
       async () => {
@@ -157,30 +149,25 @@ describe("restart-sentinel replay of adoption-scoped rows", () => {
           { agentId: AGENT_ID, sessionKey: MAIN_SESSION_KEY },
           { sessionId: "main-session", updatedAt: 1 },
         );
-        const handler = installMuteTurnWakeHandler(cfg);
-        disposeWake = handler.dispose;
         const id = await enqueueAdoptionScopedRow(liveKey, "delegate returned");
 
         await replayAfterGatewayRestart();
-        await settleWakes();
         for (let cycle = 0; cycle < REPLAY_CYCLES; cycle += 1) {
           await replayInProcess(id);
-          await settleWakes();
         }
 
-        // Characterization (recorded, not a contract): the replay targets the
-        // live subagent's own queue, and the wake asks for that session.
+        // The replay targets the live subagent's own queue, and one wake asks for
+        // that session; in-process replays of the still-queued row do not wake again.
         expect(
           peekSystemEventEntries(resolveSystemEventQueueKey(liveKey, AGENT_ID)).map(
             (event) => event.sessionDeliveryAckId,
           ),
         ).toEqual([id]);
-        expect(handler.wakes.map((wake) => wake.requestedSessionKey)).toEqual([liveKey]);
-        // The heartbeat runner does not honor a subagent target without
-        // allowSubagentSession, so even a LIVE subagent's row wakes main, and the
-        // woken main turn cannot see (and so never adopts) the row's event.
-        expect(handler.wakes.map((wake) => wake.resolvedSessionKey)).toEqual([MAIN_SESSION_KEY]);
-        expect(handler.wakes.map((wake) => wake.visibleAckIds)).toEqual([[]]);
+        expect(wakes.map((wake) => wake.requestedSessionKey)).toEqual([liveKey]);
+        // The wake names the row and the woken session's own queue holds it, so the
+        // handed-off turn can adopt it (the retired runner woke main instead).
+        expect(wakes.map((wake) => wake.deliveryIds)).toEqual([[id]]);
+        expect(wakes.map((wake) => wake.visibleAckIds)).toEqual([[id]]);
         expect(await loadPendingSessionDelivery(id, captureOpenClawStateWorkerContext())).toEqual(
           expect.objectContaining({ id, retryCount: 0 }),
         );
@@ -189,7 +176,7 @@ describe("restart-sentinel replay of adoption-scoped rows", () => {
   });
 
   it.each<RowShape>(["awaitPromptAdoption", "continuation-return"])(
-    "(b) %s row whose target subagent session no longer exists must not keep waking main",
+    "(b) %s row whose target subagent session no longer exists must not keep waking",
     async (shape) => {
       await withOpenClawTestState(
         { layout: "state-only", label: "fossil-dead-subagent-row" },
@@ -202,39 +189,28 @@ describe("restart-sentinel replay of adoption-scoped rows", () => {
             { agentId: AGENT_ID, sessionKey: MAIN_SESSION_KEY },
             { sessionId: "main-session", updatedAt: 1 },
           );
-          const handler = installMuteTurnWakeHandler(cfg);
-          disposeWake = handler.dispose;
           const id = await enqueueAdoptionScopedRow(deadKey, "orphaned continuation return", shape);
 
           // Each cycle is one gateway lifetime: boot recovery, then the in-process
           // scheduler/sweep replays the still-pending row.
           const wakesByPhase: Array<{ cycle: number; restart: number; sweep: number }> = [];
           for (let cycle = 0; cycle < REPLAY_CYCLES; cycle += 1) {
-            const beforeRestart = handler.wakes.length;
+            const beforeRestart = wakes.length;
             await replayAfterGatewayRestart();
-            await settleWakes();
-            const beforeSweep = handler.wakes.length;
+            const beforeSweep = wakes.length;
             await replayInProcess(id);
-            await settleWakes();
             wakesByPhase.push({
               cycle,
               restart: beforeSweep - beforeRestart,
-              sweep: handler.wakes.length - beforeSweep,
+              sweep: wakes.length - beforeSweep,
             });
           }
 
-          const mainWakes = handler.wakes.filter(
-            (wake) => wake.resolvedSessionKey === MAIN_SESSION_KEY,
-          );
           const pending = await loadPendingSessionDelivery(id, captureOpenClawStateWorkerContext());
           // Observed values, surfaced in the failure diff below.
           const observed = {
-            mainWakeCount: mainWakes.length,
-            requestedSessionKeys: [
-              ...new Set(handler.wakes.map((wake) => wake.requestedSessionKey)),
-            ],
-            resolvedSessionKeys: [...new Set(handler.wakes.map((wake) => wake.resolvedSessionKey))],
-            rowVisibleToWokenTurn: handler.wakes.some((wake) => wake.visibleAckIds.includes(id)),
+            wakeCount: wakes.length,
+            requestedSessionKeys: [...new Set(wakes.map((wake) => wake.requestedSessionKey))],
             rowStatus: pending ? "pending" : "settled",
             rowRetryCount: pending?.retryCount,
             wakesByPhase,
@@ -243,7 +219,7 @@ describe("restart-sentinel replay of adoption-scoped rows", () => {
           // Desired contract: a row whose target session no longer exists settles
           // or dead-letters instead of repeatedly waking a turn that cannot adopt it.
           expect(observed).toMatchObject({
-            mainWakeCount: expect.toBeOneOf([0, 1]),
+            wakeCount: expect.toBeOneOf([0, 1]),
             rowStatus: "settled",
           });
         },

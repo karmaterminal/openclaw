@@ -98,9 +98,9 @@ vi.mock("../../runtime.js", () => ({
   },
 }));
 
-// mock-isolation: Heartbeat wake requests are recorded without the process-wide wake handler.
-vi.mock("../../infra/heartbeat-wake.js", () => ({
-  requestHeartbeatNow: vi.fn(),
+// mock-isolation: Continuation wakes are recorded without running the session-event handoff.
+vi.mock("../continuation/continuation-wake.js", () => ({
+  requestContinuationWake: vi.fn(),
 }));
 
 // mock-isolation: Keep the process-wide followup queue and drain registry outside runner cases.

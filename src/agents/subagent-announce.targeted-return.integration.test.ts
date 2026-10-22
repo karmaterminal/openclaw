@@ -12,7 +12,7 @@ import { withTestDir } from "../test-helpers/temp-dir.js";
 
 const runtimeLogMock = vi.hoisted(() => vi.fn());
 const runtimeErrorMock = vi.hoisted(() => vi.fn());
-const requestHeartbeatNowMock = vi.hoisted(() => vi.fn());
+const requestContinuationWakeMock = vi.hoisted(() => vi.fn());
 const allSessionKeysMock = vi.hoisted(() => vi.fn(() => [] as string[]));
 const requesterDepthMock = vi.hoisted(() => vi.fn(() => 0));
 
@@ -46,10 +46,9 @@ vi.mock("../runtime.js", () => ({
   },
 }));
 
-// mock-isolation: Heartbeat wake requests are recorded without the process-wide wake handler.
-vi.mock("../infra/heartbeat-wake.js", () => ({
-  markTrustedContinuationHeartbeatWake: <T>(request: T) => request,
-  requestHeartbeatNow: (...args: unknown[]) => requestHeartbeatNowMock(...args),
+// mock-isolation: Continuation wakes are recorded without running the session-event handoff.
+vi.mock("../auto-reply/continuation/continuation-wake.js", () => ({
+  requestContinuationWake: (...args: unknown[]) => requestContinuationWakeMock(...args),
 }));
 
 vi.mock("../config/sessions/session-accessor.js", async (importOriginal) => {
@@ -143,7 +142,7 @@ describe("subagent announce targeted continuation return integration", () => {
   beforeEach(() => {
     runtimeLogMock.mockReset();
     runtimeErrorMock.mockReset();
-    requestHeartbeatNowMock.mockReset();
+    requestContinuationWakeMock.mockReset();
     requesterDepthMock.mockReset().mockReturnValue(0);
     resetSystemEventsForTest();
     mockConfig = {
@@ -227,7 +226,7 @@ describe("subagent announce targeted continuation return integration", () => {
       expect(promptContext).toContain("System:");
       expect(promptContext).toContain("[Internal task completion event]");
       expect(promptContext).toContain(nonce);
-      expect(requestHeartbeatNowMock).toHaveBeenCalledWith(
+      expect(requestContinuationWakeMock).toHaveBeenCalledWith(
         expect.objectContaining({
           agentId: "helper",
           sessionKey: targetSessionKey,
@@ -334,8 +333,8 @@ describe("subagent announce targeted continuation return integration", () => {
           expectDefined(peekSystemEventEntries(sessionKey).at(0), "system event").text,
         ).toContain(nonce);
       }
-      expect(requestHeartbeatNowMock).toHaveBeenCalledTimes(1);
-      expect(requestHeartbeatNowMock).toHaveBeenCalledWith(
+      expect(requestContinuationWakeMock).toHaveBeenCalledTimes(1);
+      expect(requestContinuationWakeMock).toHaveBeenCalledWith(
         expect.objectContaining({
           sessionKey: rootSessionKey,
           reason: "delegate-return",
@@ -378,7 +377,7 @@ describe("subagent announce targeted continuation return integration", () => {
         expect(didAnnounce).toBe("delivered");
         expect(await readQueuedSystemEventDeliveries(stateDir)).toHaveLength(0);
         expect(peekSystemEventEntries(requesterSessionKey)).toHaveLength(0);
-        expect(requestHeartbeatNowMock).not.toHaveBeenCalled();
+        expect(requestContinuationWakeMock).not.toHaveBeenCalled();
       },
     );
   });
@@ -419,8 +418,8 @@ describe("subagent announce targeted continuation return integration", () => {
       ).toEqual([liveSessionKey]);
       expect(peekSystemEventEntries(requesterSessionKey)).toEqual([]);
       expect(peekSystemEventEntries(liveSessionKey)).toHaveLength(1);
-      expect(requestHeartbeatNowMock).toHaveBeenCalledTimes(1);
-      expect(requestHeartbeatNowMock).toHaveBeenCalledWith(
+      expect(requestContinuationWakeMock).toHaveBeenCalledTimes(1);
+      expect(requestContinuationWakeMock).toHaveBeenCalledWith(
         expect.objectContaining({ sessionKey: liveSessionKey }),
       );
     });
@@ -530,7 +529,7 @@ describe("subagent announce targeted continuation return integration", () => {
       expect(didAnnounce).toBe("delivered");
       expect(await readQueuedSystemEventDeliveries(stateDir)).toEqual([]);
       expect(peekSystemEventEntries(requesterSessionKey)).toEqual([]);
-      expect(requestHeartbeatNowMock).not.toHaveBeenCalled();
+      expect(requestContinuationWakeMock).not.toHaveBeenCalled();
     });
   });
 
@@ -560,7 +559,7 @@ describe("subagent announce targeted continuation return integration", () => {
       expect(didAnnounce).toBe("delivered");
       expect(await readQueuedSystemEventDeliveries(stateDir)).toEqual([]);
       expect(peekSystemEventEntries(requesterSessionKey)).toEqual([]);
-      expect(requestHeartbeatNowMock).not.toHaveBeenCalled();
+      expect(requestContinuationWakeMock).not.toHaveBeenCalled();
       expect(runtimeLogMock).toHaveBeenCalledWith(
         expect.stringContaining("[continuation:targeted-return] Delivered to  from"),
       );
@@ -608,7 +607,7 @@ describe("subagent announce targeted continuation return integration", () => {
           expectDefined(peekSystemEventEntries(sessionKey).at(0), "system event").text,
         ).toContain(nonce);
       }
-      expect(requestHeartbeatNowMock).toHaveBeenCalledTimes(2);
+      expect(requestContinuationWakeMock).toHaveBeenCalledTimes(2);
     });
   });
 });

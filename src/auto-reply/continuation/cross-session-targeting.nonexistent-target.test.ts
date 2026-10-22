@@ -171,7 +171,7 @@ describe("nonexistent-target-session: delivery resilience (targeting.ts)", () =>
       systemEvents.push({ text, sessionKey: opts.sessionKey });
       return true;
     });
-    const requestHeartbeatNow = vi.fn();
+    const requestContinuationWake = vi.fn();
 
     const result = await enqueueContinuationReturnDeliveries(
       {
@@ -186,7 +186,7 @@ describe("nonexistent-target-session: delivery resilience (targeting.ts)", () =>
         enqueueSessionDelivery,
         ackSessionDelivery,
         enqueueSystemEvent: mockEnqueueSystemEvent,
-        requestHeartbeatNow,
+        requestContinuationWake,
       },
     );
 
@@ -202,7 +202,7 @@ describe("nonexistent-target-session: delivery resilience (targeting.ts)", () =>
         sessionKey: "agent:main:never-existed",
       },
     ]);
-    expect(requestHeartbeatNow).toHaveBeenCalledTimes(1);
+    expect(requestContinuationWake).toHaveBeenCalledTimes(1);
     expect(ackSessionDelivery).not.toHaveBeenCalled();
   });
 
@@ -212,7 +212,7 @@ describe("nonexistent-target-session: delivery resilience (targeting.ts)", () =>
       enqueued.push(payload);
       return `delivery-${enqueued.length}`;
     });
-    const requestHeartbeatNow = vi.fn();
+    const requestContinuationWake = vi.fn();
 
     const result = await enqueueContinuationReturnDeliveries(
       {
@@ -227,7 +227,7 @@ describe("nonexistent-target-session: delivery resilience (targeting.ts)", () =>
         enqueueSessionDelivery,
         ackSessionDelivery: vi.fn(async () => undefined),
         enqueueSystemEvent: vi.fn<EnqueueSystemEvent>(() => true),
-        requestHeartbeatNow,
+        requestContinuationWake,
       },
     );
 
@@ -238,12 +238,12 @@ describe("nonexistent-target-session: delivery resilience (targeting.ts)", () =>
       "agent:main:phantom",
       "agent:main:stale",
     ]);
-    expect(requestHeartbeatNow).toHaveBeenCalledTimes(3);
+    expect(requestContinuationWake).toHaveBeenCalledTimes(3);
   });
 
   it("returns zero enqueued/delivered when all target keys normalize to empty", async () => {
     const enqueueSessionDelivery = vi.fn(async () => "delivery-id");
-    const requestHeartbeatNow = vi.fn();
+    const requestContinuationWake = vi.fn();
 
     const targetSessionKeys = resolveContinuationReturnTargetSessionKeys({
       defaultSessionKey: "",
@@ -262,19 +262,19 @@ describe("nonexistent-target-session: delivery resilience (targeting.ts)", () =>
         enqueueSessionDelivery,
         ackSessionDelivery: vi.fn(async () => undefined),
         enqueueSystemEvent: vi.fn<EnqueueSystemEvent>(() => true),
-        requestHeartbeatNow,
+        requestContinuationWake,
       },
     );
 
     expect(result).toMatchObject({ enqueued: 0, delivered: 0, deliveryIds: [] });
     expect(enqueueSessionDelivery).not.toHaveBeenCalled();
-    expect(requestHeartbeatNow).not.toHaveBeenCalled();
+    expect(requestContinuationWake).not.toHaveBeenCalled();
   });
 
   it("persists a durable queue file for a nonexistent target (real I/O)", async () => {
     await withTestDir({ prefix: "openclaw-nonexistent-target-" }, async (stateDir) => {
       const mockEnqueueSystemEvent = vi.fn<EnqueueSystemEvent>(() => true);
-      const requestHeartbeatNow = vi.fn();
+      const requestContinuationWake = vi.fn();
 
       const result = await enqueueContinuationReturnDeliveries(
         {
@@ -290,7 +290,7 @@ describe("nonexistent-target-session: delivery resilience (targeting.ts)", () =>
           enqueueSessionDelivery: realEnqueueSessionDelivery,
           ackSessionDelivery: realAckSessionDelivery,
           enqueueSystemEvent: mockEnqueueSystemEvent,
-          requestHeartbeatNow,
+          requestContinuationWake,
         },
       );
 
@@ -310,7 +310,7 @@ describe("nonexistent-target-session: delivery resilience (targeting.ts)", () =>
   it("enqueues in-memory system event for a nonexistent target (real system events)", async () => {
     // Returns settle on prompt adoption, so the drain acks a real durable row.
     await withTestDir({ prefix: "openclaw-nonexistent-target-inmem-" }, async (stateDir) => {
-      const requestHeartbeatNow = vi.fn();
+      const requestContinuationWake = vi.fn();
 
       await enqueueContinuationReturnDeliveries(
         {
@@ -325,7 +325,7 @@ describe("nonexistent-target-session: delivery resilience (targeting.ts)", () =>
           enqueueSessionDelivery: realEnqueueSessionDelivery,
           ackSessionDelivery: realAckSessionDelivery,
           enqueueSystemEvent,
-          requestHeartbeatNow,
+          requestContinuationWake,
         },
       );
 

@@ -147,11 +147,8 @@ it("accepts whitespace-wrapped base64 and stages the decoded bytes", async () =>
 
   expect(result.status, result.error).toBe("accepted");
   expect(result.attachments?.count).toBe(1);
-  const relDir = expectDefined(result.attachments?.relDir, "attachment receipt");
-  const stagedFile = path.join(
-    resolveStagedDir(relDir, result.childSessionKey as string),
-    "wrapped.bin",
-  );
+  expectDefined(result.attachments?.relDir, "attachment receipt");
+  const stagedFile = path.join(stagedDir(result), "wrapped.bin");
   expect(fs.readFileSync(stagedFile)).toEqual(bytes);
 });
 
@@ -323,7 +320,12 @@ async function spawnWithForcedMaterializationFailure(params: {
     const childSessionKey = `agent:main:subagent:${attachmentId}`;
     // 0o700 so the private-file store admits the staged tree and the failure
     // is the intended target conflict, not an insecure-permissions rejection.
-    fs.mkdirSync(path.join(resolveStagedDir(attachmentId, childSessionKey), collisionName), {
+    const stagedRoot = resolveSubagentSessionAttachmentRootDir({
+      agentId: "main",
+      childSessionKey,
+      env: { ...process.env, OPENCLAW_STATE_DIR: stateDirOverride },
+    });
+    fs.mkdirSync(path.join(stagedRoot, attachmentId, collisionName), {
       recursive: true,
       mode: 0o700,
     });
@@ -446,10 +448,7 @@ it("materializes continuation delegate input in the staged attachment root", asy
   // Attachments stage under the Gateway-owned root, never the child workspace.
   const relDir = result.attachments?.relDir ?? "";
   expect(relDir).toMatch(/^\.openclaw\/attachments\/[0-9a-f-]{36}$/);
-  const stagedFile = path.join(
-    resolveStagedDir(relDir, result.childSessionKey as string),
-    "handoff.txt",
-  );
+  const stagedFile = path.join(stagedDir(result), "handoff.txt");
   expect(fs.readFileSync(stagedFile, "utf8")).toBe(attachmentContent);
   expect(fs.existsSync(path.join(workspaceDirOverride, ".openclaw", "attachments"))).toBe(false);
 });
