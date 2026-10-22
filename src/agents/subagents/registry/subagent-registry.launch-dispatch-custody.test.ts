@@ -267,7 +267,12 @@ it.each(["landed", "not-landed"] as const)(
       expect(abortCalls).toEqual([]);
       // Restored as an ordinary accepted (running) collector: the generic resume path
       // owns it (here: its child session is absent, so it settles as orphaned), not
-      // the failed-launch settlement and not a relaunch.
+      // the failed-launch settlement and not a relaunch. Since upstream #178791 that
+      // recovery is tracked sweeper work activation no longer awaits, so wait for its
+      // durable settlement (as upstream's restart-integration test does) before asserting.
+      await vi.waitFor(() => expect(durable().get(gatewayRunId)?.execution.outcome).toBeDefined(), {
+        timeout: 5_000,
+      });
       const resumed = durable().get(gatewayRunId);
       expect(resumed?.launchDispatch).toBeUndefined();
       expect(resumed?.execution.outcome).toMatchObject({
