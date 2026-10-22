@@ -1,0 +1,192 @@
+// Continuation (karmaterminal): managed delivery fields on system events. A continuation return
+// rides a durable session-delivery row (ack id + state dir) and may name the session and recipient
+// authority it was produced for. system-events.ts owns the queue and calls these at enqueue,
+// consume and restore; only restore rewrites the queue entry it is handed.
+import type { SessionRecipientAuthority } from "../config/sessions/session-recipient-authority-types.js";
+import { normalizeDiagnosticTraceparent } from "./diagnostic-trace-context.js";
+import {
+  isDeliveryAdoptionClaimed,
+  releaseSystemEventDeliveryAdoption,
+} from "./system-event-delivery-claims.js";
+import { getSystemEventStorePath, isSystemEventStoreCurrent } from "./system-event-ownership.js";
+import type { SystemEvent } from "./system-events.types.js";
+
+export { resetSystemEventDeliveryAdoptionClaimsForTest as resetForTest } from "./system-event-delivery-claims.js";
+
+export type ManagedSystemEventOptions = {
+  sessionDeliveryAckId?: string;
+  sessionDeliveryAckStateDir?: string;
+  /** Defer the durable ack to turn adoption; see the SystemEvent field. */
+  sessionDeliveryAwaitsTurnAdoption?: boolean;
+  expectedSessionId?: string;
+  recipientAuthority?: SessionRecipientAuthority;
+  /**
+   * Trusted-internal enrichment marker. Only core producers may attach managed
+   * delivery provenance such as expectedSessionId and recipientAuthority.
+   */
+  trusted?: boolean;
+  /**
+   * Optional W3C `traceparent` to attach to the queued event for cross-boundary
+   * trace correlation. Invalid values are silently dropped (additive contract:
+   * a malformed traceparent never prevents an enqueue).
+   */
+  traceparent?: string;
+};
+
+type ManagedFields = Pick<
+  SystemEvent,
+  | "sessionDeliveryAckId"
+  | "sessionDeliveryAckStateDir"
+  | "sessionDeliveryAwaitsTurnAdoption"
+  | "expectedSessionId"
+  | "recipientAuthority"
+  | "traceparent"
+>;
+
+export function resolveSessionDeliveryAckStateDir(
+  options: Pick<ManagedSystemEventOptions, "sessionDeliveryAckId" | "sessionDeliveryAckStateDir">,
+): string | undefined {
+  if (!options.sessionDeliveryAckId) {
+    return undefined;
+  }
+  // Explicit and ambient paths can name the same durable row across restart.
+  // Normalize before dedupe so concurrent recovery cannot create two prompt slots.
+  return options.sessionDeliveryAckStateDir ?? process.env.OPENCLAW_STATE_DIR;
+}
+
+/** Managed fields of a new event. A keyed replacement never defers its ack to turn adoption. */
+export function fields(options: ManagedSystemEventOptions & { replace?: boolean }): ManagedFields {
+  const sessionDeliveryAckStateDir = resolveSessionDeliveryAckStateDir(options);
+  const traceparent = normalizeDiagnosticTraceparent(options.traceparent);
+  const trusted = options.trusted === true;
+  return {
+    ...(options.sessionDeliveryAckId ? { sessionDeliveryAckId: options.sessionDeliveryAckId } : {}),
+    ...(sessionDeliveryAckStateDir ? { sessionDeliveryAckStateDir } : {}),
+    ...(trusted && options.sessionDeliveryAwaitsTurnAdoption && !options.replace
+      ? { sessionDeliveryAwaitsTurnAdoption: true }
+      : {}),
+    ...(trusted && options.expectedSessionId
+      ? { expectedSessionId: options.expectedSessionId }
+      : {}),
+    ...(trusted && options.recipientAuthority
+      ? { recipientAuthority: { ...options.recipientAuthority } }
+      : {}),
+    ...(traceparent ? { traceparent } : {}),
+  };
+}
+
+function areRecipientAuthoritiesEqual(
+  left?: SessionRecipientAuthority,
+  right?: SessionRecipientAuthority,
+): boolean {
+  return (
+    left?.state === right?.state &&
+    (left?.state !== "bound" || (right?.state === "bound" && left.epoch === right.epoch))
+  );
+}
+
+/**
+ * Same durable row, expected session and recipient authority: the managed half of duplicate
+ * detection. A keyed replacement and a consumed snapshot also compare the traceparent.
+ */
+export function isSame(left: ManagedFields, right: ManagedFields, compareTraceparent = false) {
+  return (
+    left.sessionDeliveryAckId === right.sessionDeliveryAckId &&
+    left.sessionDeliveryAckStateDir === right.sessionDeliveryAckStateDir &&
+    left.expectedSessionId === right.expectedSessionId &&
+    areRecipientAuthoritiesEqual(left.recipientAuthority, right.recipientAuthority) &&
+    (!compareTraceparent || (left.traceparent ?? undefined) === (right.traceparent ?? undefined))
+  );
+}
+
+/** Whether a queued event duplicates this enqueue: same text, the queue's own match, same delivery. */
+export function sameAs(
+  options: ManagedSystemEventOptions & { replace?: boolean },
+  text: string,
+  matches: (event: SystemEvent) => boolean,
+): (event: SystemEvent) => boolean {
+  const incoming = fields(options);
+  return (event) =>
+    event.text === text && matches(event) && isSame(event, incoming, options.replace === true);
+}
+
+/**
+ * Where an unkeyed enqueue of a durable row lands. null: refuse it, because a prepared turn is
+ * adopting (or already adopted) the row, or its queued copy already matches; re-queueing would
+ * surface the same delivery in a second prompt. A slot: the queued copy of the same row, which
+ * the new event replaces in place, past duplicate and capacity checks. undefined: no durable copy.
+ */
+export function resolveSlot(
+  options: ManagedSystemEventOptions & { replace?: boolean },
+  queue: readonly SystemEvent[],
+  same: (queued: SystemEvent) => boolean,
+): { index: number; existing: SystemEvent } | null | undefined {
+  const ackId = options.sessionDeliveryAckId;
+  if (options.replace || !ackId) {
+    return undefined;
+  }
+  const stateDir = resolveSessionDeliveryAckStateDir(options);
+  if (isDeliveryAdoptionClaimed(ackId, stateDir)) {
+    return null;
+  }
+  // An ack id + state dir identifies ONE persisted row, so the slot is located
+  // by that identity alone: a re-enqueue of the same durable row replaces its
+  // slot instead of double-queueing it.
+  const index = queue.findIndex(
+    (queued) =>
+      queued.sessionDeliveryAckId === ackId && queued.sessionDeliveryAckStateDir === stateDir,
+  );
+  const existing = queue[index];
+  if (!existing) {
+    return undefined;
+  }
+  return same(existing) ? null : { index, existing };
+}
+
+/**
+ * Consumed entries a consumer gives back, put at the head of the queue in their original order.
+ * The consuming turn's claims end whether or not an entry is restored (a replaced store leaves the
+ * row to replay); an entry already queued again (same id or durable row) is skipped. To bring the
+ * queue back to `maxEvents`, the oldest entries without a durable row are evicted: dropping a
+ * durable-backed entry from memory would lose the return until gateway restart, so the queue may
+ * exceed the cap only by such entries.
+ */
+export function restore(
+  sessionKey: string,
+  entry: { queue: SystemEvent[] },
+  events: readonly SystemEvent[],
+  clone: (event: SystemEvent) => SystemEvent,
+  maxEvents: number,
+): SystemEvent[] {
+  for (const event of events) {
+    releaseSystemEventDeliveryAdoption(event, { settled: false });
+  }
+  const restored = events.filter(
+    (event) =>
+      isSystemEventStoreCurrent(
+        sessionKey,
+        event.sessionStorePath ?? getSystemEventStorePath(sessionKey),
+      ) &&
+      !entry.queue.some(
+        (queued) =>
+          (event.id !== undefined && queued.id === event.id) ||
+          (event.sessionDeliveryAckId !== undefined &&
+            queued.sessionDeliveryAckId === event.sessionDeliveryAckId &&
+            queued.sessionDeliveryAckStateDir === event.sessionDeliveryAckStateDir),
+      ),
+  );
+  entry.queue.unshift(...restored.map(clone));
+  let overflow = entry.queue.length - maxEvents;
+  const evicted: SystemEvent[] = [];
+  if (overflow > 0) {
+    entry.queue = entry.queue.filter((event) => {
+      if (overflow > 0 && !event.sessionDeliveryAckId) {
+        overflow -= 1;
+        evicted.push(event);
+        return false;
+      }
+      return true;
+    });
+  }
+  return evicted;
+}

@@ -1,4 +1,3 @@
-// "RFC §" references herein cite docs/design/continue-work-signal-v2.md (Agent Self-Elected Turn Continuation / CONTINUE_WORK).
 // Lightweight in-memory queue for human-readable system events that should be
 // prefixed to the next prompt. We intentionally avoid persistence to keep
 // events ephemeral. Events are session-scoped and require an explicit key.
@@ -9,7 +8,6 @@ import {
   normalizeOptionalString,
 } from "@openclaw/normalization-core/string-coerce";
 import type { SessionEntryCreationOperation } from "../config/sessions/session-accessor.sqlite-entry-cache.types.js";
-import type { SessionRecipientAuthority } from "../config/sessions/session-recipient-authority-types.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { channelRouteDedupeKey } from "../plugin-sdk/channel-route.js";
 import { parseAgentSessionKey } from "../routing/session-key.js";
@@ -19,7 +17,6 @@ import {
   normalizeDeliveryContext,
 } from "../utils/delivery-context.shared.js";
 import type { DeliveryContext } from "../utils/delivery-context.types.js";
-import { normalizeDiagnosticTraceparent } from "./diagnostic-trace-context.js";
 import {
   execRequestMatches,
   readExecRequestOwners,
@@ -27,11 +24,7 @@ import {
   type ExecRequestIdentity,
 } from "./exec-request-context.js";
 import { generateSecureUuid } from "./secure-random.js";
-import {
-  isDeliveryAdoptionClaimed,
-  releaseSystemEventDeliveryAdoption,
-  resetSystemEventDeliveryAdoptionClaimsForTest,
-} from "./system-event-delivery-claims.js";
+import * as managedDelivery from "./system-event-managed-delivery.js";
 import {
   getSystemEventStorePath,
   isSystemEventStoreCurrent,
@@ -147,49 +140,18 @@ registerSystemEventStoreOwner(SYSTEM_EVENT_QUEUES_KEY, () => {
   }
 });
 
-type SystemEventOptions = {
+// Continuation (karmaterminal): managed delivery fields; see system-event-managed-delivery.ts.
+type SystemEventOptions = managedDelivery.ManagedSystemEventOptions & {
   sessionKey: string;
   sessionStorePath?: string | null;
   contextKey?: string | null;
   deliveryContext?: DeliveryContext;
-  sessionDeliveryAckId?: string;
-  sessionDeliveryAckStateDir?: string;
-  /** Defer the durable ack to turn adoption; see the SystemEvent field. */
-  sessionDeliveryAwaitsTurnAdoption?: boolean;
-  expectedSessionId?: string;
-  recipientAuthority?: SessionRecipientAuthority;
-  /**
-   * Trusted-internal enrichment marker. Only core producers may attach managed
-   * delivery provenance such as expectedSessionId and recipientAuthority.
-   */
-  trusted?: boolean;
-  /**
-   * Optional W3C `traceparent` to attach to the queued event for cross-boundary
-   * trace correlation. Invalid values are silently dropped (additive contract:
-   * a malformed traceparent never prevents an enqueue).
-   */
-  traceparent?: string;
   fromConversationTurn?: boolean;
   /** Replace the pending event for this context and delivery route. Requires contextKey. */
   replace?: boolean;
 };
 
-function normalizeTraceparent(traceparent?: string): string | undefined {
-  return normalizeDiagnosticTraceparent(traceparent);
-}
-
 type ReceiptOptions = { allowDuplicate?: boolean };
-
-function resolveSessionDeliveryAckStateDir(
-  options: Pick<SystemEventOptions, "sessionDeliveryAckId" | "sessionDeliveryAckStateDir">,
-): string | undefined {
-  if (!options.sessionDeliveryAckId) {
-    return undefined;
-  }
-  // Explicit and ambient paths can name the same durable row across restart.
-  // Normalize before dedupe so concurrent recovery cannot create two prompt slots.
-  return options.sessionDeliveryAckStateDir ?? process.env.OPENCLAW_STATE_DIR;
-}
 
 function requireSessionKey(key?: string | null): string {
   const trimmed = normalizeOptionalString(key) ?? "";
@@ -250,39 +212,6 @@ export function isSystemEventContextChanged(
   return normalized !== (existing?.lastContextKey ?? null);
 }
 
-function findDuplicateInQueue(
-  queue: readonly SystemEvent[],
-  text: string,
-  contextKey: string | null,
-  deliveryContext: DeliveryContext | undefined,
-  sessionDeliveryAckId: string | undefined,
-  sessionDeliveryAckStateDir: string | undefined,
-  expectedSessionId: string | undefined,
-  recipientAuthority: SessionRecipientAuthority | undefined,
-): boolean {
-  const incoming = {
-    text,
-    contextKey,
-    deliveryContext,
-    sessionDeliveryAckId,
-    sessionDeliveryAckStateDir,
-    expectedSessionId,
-    recipientAuthority,
-  };
-  // Deferred automation notices belong to one scheduled job, so ordinary text never coalesces into them.
-  const duplicate = (event: SystemEvent | undefined) =>
-    event !== undefined &&
-    !turnOwners.get(event)?.automation &&
-    isDuplicateSystemEvent(event, incoming);
-  return contextKey === null ? duplicate(queue.at(-1)) : queue.some(duplicate);
-}
-
-function applyContextKeyPolicy(entry: SessionQueue, incomingContextKey: string | null): void {
-  if (incomingContextKey !== null) {
-    entry.lastContextKey = incomingContextKey;
-  }
-}
-
 export function enqueueSystemEventEntry(
   text: string,
   options: SystemEventOptions,
@@ -323,17 +252,52 @@ function enqueueOwnedSystemEventEntry(
     return null;
   }
   const entry = getOrCreateSessionQueue(key);
-  if (options.replace) {
-    return replaceSystemEventEntry(text, options, entry, sessionStorePath, key, receiptOptions);
-  }
   const cleaned = text.trim();
   if (!cleaned) {
     return null;
   }
   const normalizedContextKey = normalizeContextKey(options.contextKey);
   const normalizedDeliveryContext = normalizeDeliveryContext(options.deliveryContext);
-  const normalizedTraceparent = normalizeTraceparent(options.traceparent);
-  const sessionDeliveryAckStateDir = resolveSessionDeliveryAckStateDir(options);
+  const matches = (event: SystemEvent) =>
+    (event.contextKey ?? null) === normalizedContextKey &&
+    areDeliveryContextsEqual(event.deliveryContext, normalizedDeliveryContext);
+  const same = managedDelivery.sameAs(options, cleaned, matches);
+  const slot = managedDelivery.resolveSlot(options, entry.queue, same);
+  if (options.replace) {
+    if (normalizedContextKey === null) {
+      throw new Error("replaced system events require a contextKey");
+    }
+    const matching = entry.queue.filter(matches);
+    if (matching.length === 1 && matching.every(same)) {
+      return null;
+    }
+  } else if (slot === null) {
+    return null;
+  } else if (!slot && receiptOptions?.allowDuplicate !== true) {
+    const duplicate = (event: SystemEvent | undefined) =>
+      event !== undefined && !turnOwners.get(event)?.automation && same(event);
+    if (
+      normalizedContextKey === null ? duplicate(entry.queue.at(-1)) : entry.queue.some(duplicate)
+    ) {
+      return null;
+    }
+  }
+  const atCapacity = !slot && entry.queue.length >= MAX_EVENTS;
+  if (atCapacity && !(options.replace && entry.queue.some(matches))) {
+    const error = new SystemEventQueueFullError();
+    log.warn(error.message, { sessionKey: key });
+    if (receiptOptions?.throwOnFull) {
+      throw error;
+    }
+    return null;
+  }
+  const replaced = options.replace ? entry.queue.filter(matches) : [];
+  if (replaced.length > 0) {
+    entry.queue = entry.queue.filter((event) => !matches(event));
+  }
+  if (normalizedContextKey !== null) {
+    entry.lastContextKey = normalizedContextKey;
+  }
   const event: SystemEvent = withExecRequestOwners(
     {
       id: generateSecureUuid(),
@@ -342,80 +306,15 @@ function enqueueOwnedSystemEventEntry(
       ...(sessionStorePath === undefined ? {} : { sessionStorePath }),
       contextKey: normalizedContextKey,
       deliveryContext: normalizedDeliveryContext,
-      ...(options.sessionDeliveryAckId
-        ? { sessionDeliveryAckId: options.sessionDeliveryAckId }
-        : {}),
-      ...(sessionDeliveryAckStateDir ? { sessionDeliveryAckStateDir } : {}),
-      ...(options.trusted === true && options.sessionDeliveryAwaitsTurnAdoption
-        ? { sessionDeliveryAwaitsTurnAdoption: true }
-        : {}),
-      ...(options.trusted === true && options.expectedSessionId
-        ? { expectedSessionId: options.expectedSessionId }
-        : {}),
-      ...(options.trusted === true && options.recipientAuthority
-        ? { recipientAuthority: { ...options.recipientAuthority } }
-        : {}),
-      ...(normalizedTraceparent ? { traceparent: normalizedTraceparent } : {}),
+      ...managedDelivery.fields(options),
       ...(options.fromConversationTurn ? { fromConversationTurn: true as const } : {}),
     },
     readExecRequestOwners(options),
   );
-  if (
-    event.sessionDeliveryAckId &&
-    isDeliveryAdoptionClaimed(event.sessionDeliveryAckId, event.sessionDeliveryAckStateDir)
-  ) {
-    // A prepared turn is adopting (or already adopted) this row: re-queueing it
-    // would surface the same delivery in a second prompt.
-    return null;
-  }
-  if (event.sessionDeliveryAckId) {
-    // An ack id + state dir identifies ONE persisted row, so the slot is located
-    // by that identity alone: a re-enqueue of the same durable row replaces its
-    // slot instead of double-queueing it.
-    const durableIndex = entry.queue.findIndex(
-      (queued) =>
-        queued.sessionDeliveryAckId === event.sessionDeliveryAckId &&
-        queued.sessionDeliveryAckStateDir === event.sessionDeliveryAckStateDir,
-    );
-    const existing = durableIndex >= 0 ? entry.queue[durableIndex] : undefined;
-    if (durableIndex >= 0 && existing) {
-      if (isDuplicateSystemEvent(existing, event)) {
-        return null;
-      }
-      entry.queue[durableIndex] = event;
-      applyContextKeyPolicy(entry, normalizedContextKey);
-      // Install the replacement before cancellation callbacks can enqueue more work.
-      retireSystemEvents([existing]);
-      // The live queued object: receipt settlement and automation ownership key on it.
-      return event;
-    }
-  }
-  // Dedupe runs after the event is built so it can compare ack ids, expected
-  // session and recipient authority, not only text, context and route.
-  if (
-    receiptOptions?.allowDuplicate !== true &&
-    findDuplicateInQueue(
-      entry.queue,
-      cleaned,
-      normalizedContextKey,
-      normalizedDeliveryContext,
-      event.sessionDeliveryAckId,
-      event.sessionDeliveryAckStateDir,
-      event.expectedSessionId,
-      event.recipientAuthority,
-    )
-  ) {
-    return null;
-  }
-  // A full queue refuses new work instead of silently dropping accepted events.
-  // Durable producers keep their row pending and replay it once the queue drains.
-  if (refuseWhenQueueFull(entry, key, receiptOptions)) {
-    return null;
-  }
-  // Only an admitted event becomes the last context: a refused or de-duplicated
-  // one never reached the queue, so a later change check must not compare to it.
-  applyContextKeyPolicy(entry, normalizedContextKey);
-  entry.queue.push(event);
+  // A durable row's re-enqueue takes its queued copy's slot; anything else appends.
+  entry.queue.splice(slot?.index ?? entry.queue.length, slot ? 1 : 0, event);
+  // Install the replacement before cancellation callbacks can enqueue more work.
+  retireSystemEvents(slot ? [slot.existing] : replaced);
   return event;
 }
 
@@ -424,35 +323,6 @@ export function enqueueSystemEvent(text: string, options: SystemEventOptions) {
 }
 
 export const enqueueSystemEventRaw = enqueueSystemEvent;
-
-/**
- * Whether the queue already holds the in-memory copy of one durable delivery
- * row. Producers call it after `enqueueSystemEvent` returned `false`, with the
- * same options, to tell a de-duplicated re-enqueue (the row is still riding a
- * queued event, or a prepared turn is adopting it) from a capacity refusal
- * (nothing queued; the row must be retried).
- */
-export function hasQueuedSystemEventDelivery(
-  options: Pick<
-    SystemEventOptions,
-    "sessionKey" | "sessionDeliveryAckId" | "sessionDeliveryAckStateDir"
-  >,
-): boolean {
-  if (!options.sessionDeliveryAckId) {
-    return false;
-  }
-  const stateDir = resolveSessionDeliveryAckStateDir(options);
-  if (isDeliveryAdoptionClaimed(options.sessionDeliveryAckId, stateDir)) {
-    return true;
-  }
-  return (
-    getSessionQueue(options.sessionKey)?.queue.some(
-      (event) =>
-        event.sessionDeliveryAckId === options.sessionDeliveryAckId &&
-        event.sessionDeliveryAckStateDir === stateDir,
-    ) ?? false
-  );
-}
 
 /** Transfer one bounded set of exact occurrences to ordinary session admission. */
 export function claimSystemEventTurn(
@@ -747,113 +617,6 @@ function areDeliveryContextsEqual(left?: DeliveryContext, right?: DeliveryContex
   return channelRouteDedupeKey(left) === channelRouteDedupeKey(right);
 }
 
-function areRecipientAuthoritiesEqual(
-  left?: SessionRecipientAuthority,
-  right?: SessionRecipientAuthority,
-): boolean {
-  return (
-    left?.state === right?.state &&
-    (left?.state !== "bound" || (right?.state === "bound" && left.epoch === right.epoch))
-  );
-}
-
-function replaceSystemEventEntry(
-  text: string,
-  options: SystemEventOptions,
-  entry: SessionQueue,
-  sessionStorePath: string | null | undefined,
-  sessionKey: string,
-  receiptOptions?: { throwOnFull?: boolean },
-): SystemEvent | null {
-  const cleaned = text.trim();
-  if (!cleaned) {
-    return null;
-  }
-  const normalizedContextKey = normalizeContextKey(options.contextKey);
-  if (normalizedContextKey === null) {
-    throw new Error("replaced system events require a contextKey");
-  }
-  const normalizedDeliveryContext = normalizeDeliveryContext(options.deliveryContext);
-  const normalizedTraceparent = normalizeTraceparent(options.traceparent);
-  const sessionDeliveryAckStateDir = resolveSessionDeliveryAckStateDir(options);
-  const replacement: SystemEvent = withExecRequestOwners(
-    {
-      id: generateSecureUuid(),
-      text: cleaned,
-      ts: Date.now(),
-      ...(sessionStorePath === undefined ? {} : { sessionStorePath }),
-      contextKey: normalizedContextKey,
-      deliveryContext: normalizedDeliveryContext,
-      ...(options.sessionDeliveryAckId
-        ? { sessionDeliveryAckId: options.sessionDeliveryAckId }
-        : {}),
-      ...(sessionDeliveryAckStateDir ? { sessionDeliveryAckStateDir } : {}),
-      ...(options.trusted === true && options.expectedSessionId
-        ? { expectedSessionId: options.expectedSessionId }
-        : {}),
-      ...(options.trusted === true && options.recipientAuthority
-        ? { recipientAuthority: { ...options.recipientAuthority } }
-        : {}),
-      ...(normalizedTraceparent ? { traceparent: normalizedTraceparent } : {}),
-      ...(options.fromConversationTurn ? { fromConversationTurn: true as const } : {}),
-    },
-    readExecRequestOwners(options),
-  );
-
-  const matches = (event: SystemEvent) =>
-    (event.contextKey ?? null) === normalizedContextKey &&
-    areDeliveryContextsEqual(event.deliveryContext, normalizedDeliveryContext);
-  const matching = entry.queue.filter(matches);
-  if (
-    matching.length === 1 &&
-    matching[0]?.text === replacement.text &&
-    matching[0]?.sessionDeliveryAckId === replacement.sessionDeliveryAckId &&
-    matching[0]?.sessionDeliveryAckStateDir === replacement.sessionDeliveryAckStateDir &&
-    matching[0]?.expectedSessionId === replacement.expectedSessionId &&
-    areRecipientAuthoritiesEqual(matching[0]?.recipientAuthority, replacement.recipientAuthority) &&
-    matching[0]?.traceparent === replacement.traceparent
-  ) {
-    return null;
-  }
-
-  // A matching slot is reused at capacity; a new keyed source is refused when full.
-  if (matching.length === 0 && refuseWhenQueueFull(entry, sessionKey, receiptOptions)) {
-    return null;
-  }
-  // One keyed source owns one queue slot. Moving a replacement to the end keeps
-  // event ordering current without allowing repeated updates to evict other sources.
-  entry.queue = entry.queue.filter((event) => !matches(event));
-  entry.queue.push(replacement);
-  entry.lastContextKey = normalizedContextKey;
-  // Install the replacement before cancellation callbacks can enqueue more work.
-  retireSystemEvents(matching);
-  return replacement;
-}
-
-function isDuplicateSystemEvent(
-  existing: SystemEvent,
-  incoming: Pick<
-    SystemEvent,
-    | "text"
-    | "contextKey"
-    | "deliveryContext"
-    | "sessionDeliveryAckId"
-    | "sessionDeliveryAckStateDir"
-    | "expectedSessionId"
-    | "recipientAuthority"
-  >,
-): boolean {
-  return (
-    existing.text === incoming.text &&
-    (existing.contextKey ?? null) === (incoming.contextKey ?? null) &&
-    existing.sessionDeliveryAckId === incoming.sessionDeliveryAckId &&
-    existing.sessionDeliveryAckStateDir === incoming.sessionDeliveryAckStateDir &&
-    existing.expectedSessionId === incoming.expectedSessionId &&
-    areRecipientAuthoritiesEqual(existing.recipientAuthority, incoming.recipientAuthority) &&
-    areDeliveryContextsEqual(existing.deliveryContext, incoming.deliveryContext)
-  );
-}
-
 function matchesConsumedSystemEvent(queued: SystemEvent, consumed: SystemEvent): boolean {
   if (consumed.id !== undefined) {
     // Queue-owned IDs govern modern consumption; only legacy ID-less snapshots use structure.
@@ -863,51 +626,9 @@ function matchesConsumedSystemEvent(queued: SystemEvent, consumed: SystemEvent):
     queued.text === consumed.text &&
     queued.ts === consumed.ts &&
     (queued.contextKey ?? null) === (consumed.contextKey ?? null) &&
-    queued.sessionDeliveryAckId === consumed.sessionDeliveryAckId &&
-    queued.sessionDeliveryAckStateDir === consumed.sessionDeliveryAckStateDir &&
-    queued.expectedSessionId === consumed.expectedSessionId &&
-    areRecipientAuthoritiesEqual(queued.recipientAuthority, consumed.recipientAuthority) &&
-    (queued.traceparent ?? undefined) === (consumed.traceparent ?? undefined) &&
+    managedDelivery.isSame(queued, consumed, true) &&
     areDeliveryContextsEqual(queued.deliveryContext, consumed.deliveryContext)
   );
-}
-
-// Bring a queue back to MAX_EVENTS by evicting the oldest entries that have no
-// durable row. Durable-backed entries (a managed return whose delivery row is
-// still pending) are never evicted: dropping one from memory loses the return
-// until gateway restart. The queue may exceed the cap only by such entries.
-/** Upstream capacity contract: report a full queue instead of dropping an accepted event. */
-function refuseWhenQueueFull(
-  entry: SessionQueue,
-  sessionKey: string,
-  receiptOptions?: { throwOnFull?: boolean },
-): boolean {
-  if (entry.queue.length < MAX_EVENTS) {
-    return false;
-  }
-  const error = new SystemEventQueueFullError();
-  log.warn(error.message, { sessionKey });
-  if (receiptOptions?.throwOnFull) {
-    throw error;
-  }
-  return true;
-}
-
-function evictOverflow(entry: SessionQueue): void {
-  let overflow = entry.queue.length - MAX_EVENTS;
-  if (overflow <= 0) {
-    return;
-  }
-  const evicted: SystemEvent[] = [];
-  entry.queue = entry.queue.filter((event) => {
-    if (overflow > 0 && !event.sessionDeliveryAckId) {
-      overflow -= 1;
-      evicted.push(event);
-      return false;
-    }
-    return true;
-  });
-  retireSystemEvents(evicted);
 }
 
 function resetQueueState(key: string, entry: SessionQueue) {
@@ -975,70 +696,19 @@ function consumeSelectedSystemEventEntriesCore(
   return selected;
 }
 
-/**
- * Put consumed entries back at the head of the queue, in their original order,
- * when the consumer could not adopt them. An entry already queued again (same
- * id or durable delivery identity) is skipped; a replaced store drops it.
- */
+/** Put back entries a consumer could not adopt; see managedDelivery.restore. */
 export function restoreConsumedSystemEventEntries(
   sessionKey: string,
   events: readonly SystemEvent[],
 ): void {
   const key = requireSessionKey(sessionKey);
   const entry = getOrCreateSessionQueue(key);
-  // The consuming turn gives these rows back: its claim ends whether or not
-  // the entry is restored here (a replaced store leaves the row to replay).
-  for (const event of events) {
-    releaseSystemEventDeliveryAdoption(event, { settled: false });
-  }
-  const restored = events.filter(
-    (event) =>
-      isSystemEventStoreCurrent(key, event.sessionStorePath ?? getSystemEventStorePath(key)) &&
-      !entry.queue.some(
-        (queued) =>
-          (event.id !== undefined && queued.id === event.id) ||
-          (event.sessionDeliveryAckId !== undefined &&
-            queued.sessionDeliveryAckId === event.sessionDeliveryAckId &&
-            queued.sessionDeliveryAckStateDir === event.sessionDeliveryAckStateDir),
-      ),
-  );
-  // Restored entries carry their durable row id, so evictOverflow never drops
-  // them; it evicts the oldest durable-less entries instead.
-  entry.queue.unshift(...restored.map(cloneSystemEvent));
-  evictOverflow(entry);
+  retireSystemEvents(managedDelivery.restore(key, entry, events, cloneSystemEvent, MAX_EVENTS));
   resetQueueState(key, entry);
 }
 
 export function drainSystemEvents(sessionKey: string): string[] {
   return drainSystemEventsWith(sessionKey, (event) => event.text);
-}
-
-/**
- * Remove system events matching a predicate without draining the entire queue.
- * Returns the removed events; non-matching events stay queued.
- */
-export function removeSystemEvents(
-  sessionKey: string,
-  predicate: (event: SystemEvent) => boolean,
-): SystemEvent[] {
-  const key = requireSessionKey(sessionKey);
-  const entry = queues.get(key);
-  if (!entry || entry.queue.length === 0) {
-    return [];
-  }
-  const removed: SystemEvent[] = [];
-  entry.queue = entry.queue.filter((event) => {
-    if (predicate(event)) {
-      removed.push(event);
-      return false;
-    }
-    return true;
-  });
-  if (removed.length > 0) {
-    resetQueueState(key, entry);
-  }
-  retireSystemEvents(removed);
-  return removed;
 }
 
 export function peekSystemEventEntries(sessionKey: string): SystemEvent[] {
@@ -1081,7 +751,7 @@ export function resolveSystemEventDeliveryContext(
 
 export function resetSystemEventsForTest() {
   clearSystemEventQueues(queues);
-  resetSystemEventDeliveryAdoptionClaimsForTest();
+  managedDelivery.resetForTest();
 }
 
 export function peekDeliverableSystemEventEntries(sessionKey: string): SystemEvent[] {

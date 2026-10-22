@@ -224,3 +224,43 @@ export function resolveFinalSystemEventAdoption(params: {
       : new Map<string, PreparedManagedSystemEventDelivery>(),
   };
 }
+
+/**
+ * Adopts one prepared drain into the turn being admitted: settles stale recipient authority until
+ * none remains, records the adopted managed deliveries, and appends each block not already
+ * appended under the same key.
+ */
+export async function adoptPreparedSystemEvents(params: {
+  prepared: PreparedFormattedSystemEvents;
+  recorder?: { replaceSessionDeliveryAckIds?: (deliveryIds: readonly string[]) => boolean };
+  managedDeliveries: Map<string, PreparedManagedSystemEventDelivery>;
+  seenBlockKeys: Set<string>;
+  blocks: Array<{ key?: string; text: string }>;
+}): Promise<void> {
+  let adoption = resolveFinalSystemEventAdoption({ prepared: [params.prepared] });
+  while (adoption.kind === "settle-stale") {
+    await adoption.settle();
+    adoption = resolveFinalSystemEventAdoption({ prepared: [params.prepared] });
+  }
+  const managedDeliveryIds = [...adoption.managedDeliveries.keys()];
+  const recorderAccepted =
+    !params.recorder || params.recorder.replaceSessionDeliveryAckIds?.(managedDeliveryIds) === true;
+  // A staged recorder cannot carry the ack ids. Deferring would drop the
+  // return until gateway restart, so adopt it in this turn without a
+  // transcript receipt; settlement acks it on adoption (at-least-once).
+  for (const [id, delivery] of adoption.managedDeliveries) {
+    params.managedDeliveries.set(
+      id,
+      recorderAccepted ? delivery : { ...delivery, adoptedWithoutReceipt: true },
+    );
+  }
+  for (const block of adoption.blocks) {
+    if (block.key) {
+      if (params.seenBlockKeys.has(block.key)) {
+        continue;
+      }
+      params.seenBlockKeys.add(block.key);
+    }
+    params.blocks.push(block);
+  }
+}

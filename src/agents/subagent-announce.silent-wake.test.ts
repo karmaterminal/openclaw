@@ -164,6 +164,8 @@ vi.mock("../auto-reply/continuation/config.js", () => ({
 // mock-isolation: System events are captured instead of entering the process-wide event queue.
 vi.mock("../infra/system-events.js", () => ({
   enqueueSystemEventRaw: (text: string, options?: unknown) => enqueueSystemEventMock(text, options),
+}));
+vi.mock("../infra/system-event-managed-delivery-queue.js", () => ({
   hasQueuedSystemEventDelivery: () => false,
   removeSystemEvents: () => [],
 }));

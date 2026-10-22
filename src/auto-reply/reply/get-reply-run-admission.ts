@@ -65,7 +65,7 @@ import {
   resolveRoutedDeliveryThreadId,
 } from "./routed-delivery-thread.js";
 import {
-  resolveFinalSystemEventAdoption,
+  adoptPreparedSystemEvents,
   type PreparedManagedSystemEventDelivery,
 } from "./session-system-event-adoption.js";
 import { prepareFormattedSystemEvents } from "./session-system-events.js";
@@ -252,33 +252,13 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
         deferredEventIds: context.isHeartbeat ? eventContext?.deferredEventIds : undefined,
         onEventsAdmitted: context.isHeartbeat ? eventContext?.onEventsAdmitted : undefined,
       });
-      let adoption = resolveFinalSystemEventAdoption({ prepared: [prepared] });
-      while (adoption.kind === "settle-stale") {
-        await adoption.settle();
-        adoption = resolveFinalSystemEventAdoption({ prepared: [prepared] });
-      }
-      const managedDeliveryIds = [...adoption.managedDeliveries.keys()];
-      const recorderAccepted =
-        !opts?.userTurnTranscriptRecorder ||
-        opts.userTurnTranscriptRecorder.replaceSessionDeliveryAckIds?.(managedDeliveryIds) === true;
-      // A staged recorder cannot carry the ack ids. Deferring would drop the
-      // return until gateway restart, so adopt it in this turn without a
-      // transcript receipt; settlement acks it on adoption (at-least-once).
-      for (const [id, delivery] of adoption.managedDeliveries) {
-        managedSystemEventDeliveries.set(
-          id,
-          recorderAccepted ? delivery : { ...delivery, adoptedWithoutReceipt: true },
-        );
-      }
-      for (const block of adoption.blocks) {
-        if (block.key) {
-          if (seenSystemEventBlockKeys.has(block.key)) {
-            continue;
-          }
-          seenSystemEventBlockKeys.add(block.key);
-        }
-        drainedSystemEventBlocks.push(block);
-      }
+      await adoptPreparedSystemEvents({
+        prepared,
+        recorder: opts?.userTurnTranscriptRecorder,
+        managedDeliveries: managedSystemEventDeliveries,
+        seenBlockKeys: seenSystemEventBlockKeys,
+        blocks: drainedSystemEventBlocks,
+      });
     }
   };
   const rebuildPromptBodies = () =>

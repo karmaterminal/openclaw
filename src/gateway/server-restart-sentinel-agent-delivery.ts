@@ -213,14 +213,14 @@ export async function deliverQueuedGeneratedMediaCompletion(input: {
   stateDir?: string;
   resolveGatewayContext?: GatewayContextResolver;
 }): Promise<boolean> {
-  const queueContext =
+  const resolvedQueueContext =
     input.queueContext ??
     (input.stateDir === undefined
       ? captureOpenClawStateWorkerContext()
       : captureOpenClawStateWorkerContext({
           env: { ...process.env, OPENCLAW_STATE_DIR: input.stateDir },
         }));
-  const params = { ...input, queueContext };
+  const params = { ...input, queueContext: resolvedQueueContext };
   if (params.entry.kind !== "agentTurn") {
     return false;
   }
