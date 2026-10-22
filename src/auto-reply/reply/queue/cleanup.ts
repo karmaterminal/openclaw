@@ -8,20 +8,14 @@ import {
 import { cancelFollowupRunLifecycle } from "./lifecycle.js";
 import { getExistingFollowupQueue } from "./state.js";
 
-export type ClearSessionQueueResult = {
-  followupCleared: number;
-  keys: string[];
-};
-
 export function clearSessionQueues(
   keys: Array<string | undefined>,
   target?: SessionTarget,
   capturedInputs?: readonly SessionControllerInput[],
   assertCurrent?: () => void,
-): ClearSessionQueueResult {
+): string[] {
   const seen = new Set<string>();
   const clearedQueues = new Set<NonNullable<ReturnType<typeof getExistingFollowupQueue>>>();
-  let followupCleared = 0;
   const clearedKeys: string[] = [];
   for (const key of keys) {
     const cleaned = normalizeOptionalString(key);
@@ -35,7 +29,7 @@ export function clearSessionQueues(
     if (queue && !clearedQueues.has(queue)) {
       clearedQueues.add(queue);
       // Stop relinquishes queued turns on purpose: cancellation, not abandonment.
-      followupCleared += clearSessionControllerMailbox(
+      clearSessionControllerMailbox(
         queue,
         cancelFollowupRunLifecycle,
         capturedInputs,
@@ -43,5 +37,5 @@ export function clearSessionQueues(
       );
     }
   }
-  return { followupCleared, keys: clearedKeys };
+  return clearedKeys;
 }
