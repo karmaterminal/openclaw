@@ -165,10 +165,6 @@ describe("probe1468", () => {
     };
   }
 
-  function report(name: string, value: unknown) {
-    console.log(`PROBE1468 ${name} ${JSON.stringify(value)}`);
-  }
-
   function expectSafe(result: Awaited<ReturnType<typeof successorTurn>>) {
     expect(result.final.mainRestartRecovery?.tombstone ?? false).toBe(false);
     expect(result.releasePendingTarget).toBe(false);
@@ -183,9 +179,7 @@ describe("probe1468", () => {
         stopReason: "superseded",
         aborted: true,
       });
-      const afterEnd = rowFacts(row.readEntry());
       const result = await successorTurn(row);
-      report("P0", { afterEnd, ...result });
       expectSafe(result);
     });
   });
@@ -198,9 +192,7 @@ describe("probe1468", () => {
         stopReason: "aborted",
         aborted: true,
       });
-      const afterEnd = rowFacts(row.readEntry());
       const result = await successorTurn(row);
-      report("P1", { afterEnd, ...result });
       expectSafe(result);
     });
   });
@@ -215,9 +207,7 @@ describe("probe1468", () => {
         stopReason: "aborted",
         aborted: true,
       });
-      const afterEnd = rowFacts(row.readEntry());
       const result = await successorTurn(row);
-      report("P2", { afterEnd, ...result });
       expectSafe(result);
     });
   });
@@ -231,7 +221,6 @@ describe("probe1468", () => {
         aborted: true,
       });
       const result = await successorTurn(row, { completeBeforeRelease: true });
-      report("P3", result);
       expectSafe(result);
     });
   });
@@ -244,9 +233,7 @@ describe("probe1468", () => {
         stopReason: "aborted",
         aborted: true,
       });
-      const afterEnd = rowFacts(row.readEntry());
       const result = await successorTurn(row);
-      report("P4", { afterEnd, ...result });
       expect(result.claimKind).toBe("not_required");
       expectSafe(result);
     });
@@ -259,9 +246,7 @@ describe("probe1468", () => {
         phase: "end",
         stopReason: "end_turn",
       });
-      const afterEnd = rowFacts(row.readEntry());
       const result = await successorTurn(row);
-      report("P5", { afterEnd, ...result });
       expectSafe(result);
     });
   });
@@ -276,7 +261,6 @@ describe("probe1468", () => {
       });
       const afterEnd = rowFacts(row.readEntry());
       const result = await successorTurn(row);
-      report("C1", { afterEnd, ...result });
       expect(afterEnd.status).toBe("interrupted");
       expect(result.claimKind).toBe("claimed");
       expect(result.releasePendingTarget).toBe(true);
@@ -298,7 +282,6 @@ describe("probe1468", () => {
       });
       const afterMark = rowFacts(row.readEntry());
       const result = await successorTurn(row);
-      report("C2", { afterMark, ...result });
       expect(afterMark.status).toBe("done");
       expect(afterMark.abortedLastRun).toBe(true);
       expect(result.claimKind).toBe("claimed");
@@ -336,7 +319,6 @@ describe("probe1468", () => {
       }));
       const afterCleanup = rowFacts(readEntry());
       const result = await successorTurn(row);
-      report("combined", { afterCleanup, ...result });
       // A flag written before the terminal reads as a restart marker; only its fence retires.
       expect(afterCleanup).toEqual({ abortedLastRun: true, lifecycleRunId: "room-run" });
       expect(result.claimKind).toBe("not_required");
