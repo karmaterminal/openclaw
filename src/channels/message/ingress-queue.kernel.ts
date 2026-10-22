@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import type { ExpressionBuilder } from "kysely";
 import {
   executeSqliteQuerySync,
   executeSqliteQueryTakeFirstSync,
@@ -16,6 +15,7 @@ import {
   FAILED_NULL_PAYLOAD_SENTINEL,
   parseFailedPayload,
 } from "./ingress-queue.codec.js";
+import { nextUpdatedAt, type ChannelIngressGenerationFence } from "./ingress-queue.generation.js";
 import type {
   ChannelIngressClaimRequest,
   ChannelIngressClaimSelection,
@@ -23,7 +23,6 @@ import type {
   ChannelIngressListInput,
   ChannelIngressQueueClaim,
   ChannelIngressQueuePruneOptions,
-  ChannelIngressQueueRecordGeneration,
   ChannelIngressRow,
   ChannelIngressScope,
 } from "./ingress-queue.types.js";
@@ -43,16 +42,6 @@ function executeMutation(
 ): boolean {
   return affectedRows(executeSqliteQuerySync(db, query)) > 0;
 }
-
-/**
- * Every transition writes an updated_at strictly past anything a reader could
- * have seen, even under a frozen or stepped-back clock, so (event_id,
- * updated_at) names one row generation. Generation-fenced writes rely on it.
- */
-const nextUpdatedAt = (
-  eb: ExpressionBuilder<Pick<DB, "channel_ingress_events">, "channel_ingress_events">,
-  now: number,
-) => eb.fn<number>("max", [eb.val(now), eb("updated_at", "+", 1)]);
 
 // Materialize pending rows in bounded chunks because SQLite's json_valid()
 // rejects some payloads accepted by the queue's JSON.stringify/JSON.parse contract.
@@ -472,11 +461,8 @@ export function releaseChannelIngressInDatabase(
 
 export function failChannelIngressInDatabase(
   db: EngineConnection,
-  input: ChannelIngressMutation & {
-    reason: string;
-    message?: string;
-    generation?: ChannelIngressQueueRecordGeneration;
-  },
+  input: ChannelIngressMutation &
+    ChannelIngressGenerationFence & { reason: string; message?: string },
 ): boolean {
   // Fenced: only the generation the caller inspected (see nextUpdatedAt).
   const selected = input.generation
@@ -679,21 +665,6 @@ export function purgeChannelIngressInDatabase(
       getQueue(db).deleteFrom("channel_ingress_events").where("queue_name", "=", input.queueName),
     ),
   );
-}
-
-export function listChannelIngressAccountsInDatabase(
-  db: EngineConnection,
-  input: { channelId: string },
-): string[] {
-  return executeSqliteQuerySync(
-    db,
-    getNodeSqliteKysely<Pick<DB, "channel_ingress_events">>(db)
-      .selectFrom("channel_ingress_events")
-      .select("account_id")
-      .distinct()
-      .where("channel_id", "=", input.channelId)
-      .orderBy("account_id", "asc"),
-  ).rows.map((row) => row.account_id);
 }
 
 export function listChannelIngressRowsInDatabase(

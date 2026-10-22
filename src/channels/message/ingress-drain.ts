@@ -22,10 +22,8 @@ import {
 } from "./ingress-claim-owner.js";
 import { createIngressWriter } from "./ingress-claim-writes.js";
 import type { ChannelIngressDispatchLifecycle } from "./ingress-drain-lifecycle.js";
-import {
-  applyIngressPendingDispositions,
-  type ResolveChannelIngressPendingDisposition,
-} from "./ingress-drain-pending-disposition.js";
+import type { CreateChannelIngressDrainOptions } from "./ingress-drain-options.js";
+import { applyIngressPendingDispositions } from "./ingress-drain-pending-disposition.js";
 import {
   activeClaimKey,
   createIngressSettleOwner,
@@ -34,83 +32,20 @@ import {
   resolveLaneKey,
   sortedKeys,
   type ActiveHandlerState,
-  type ChannelIngressDrainDispatchResult,
 } from "./ingress-drain-state.js";
-import {
-  supersedeActiveStatesIfNeeded,
-  type IngressSupersedeDecision,
-} from "./ingress-drain-supersede.js";
-import type {
-  ChannelIngressQueue,
-  ChannelIngressQueueClaim,
-  ChannelIngressQueueRecord,
-} from "./ingress-queue.types.js";
+import { supersedeActiveStatesIfNeeded } from "./ingress-drain-supersede.js";
+import type { ChannelIngressQueueClaim, ChannelIngressQueueRecord } from "./ingress-queue.types.js";
 import {
   resolveIngressFailureDisposition,
   resolveIngressRetryDelayMs,
-  type IngressNonRetryableFailure,
-  type IngressRetryPolicyConfig,
 } from "./ingress-retry-policy.js";
 export { bindIngressLifecycleToReplyOptions } from "./ingress-drain-lifecycle.js";
+export type { CreateChannelIngressDrainOptions } from "./ingress-drain-options.js";
 export { isIngressAdoptionLostError } from "./ingress-drain-state.js";
 
 /** Default claim→adoption stall before applying the shared retry disposition. */
 export const DEFAULT_INGRESS_ADOPTION_STALL_MS = 5 * 60 * 1000;
 export const DEFAULT_INGRESS_START_LIMIT = 32;
-
-type DeferredLaneOccupancy = "hold" | "release";
-
-export type CreateChannelIngressDrainOptions<
-  TPayload,
-  TMetadata = unknown,
-  TCompletedMetadata = unknown,
-> = {
-  queue: ChannelIngressQueue<TPayload, TMetadata, TCompletedMetadata>;
-  /**
-   * Dispatch a claimed event. Wire lifecycle into reply options (see
-   * bindIngressLifecycleToReplyOptions). Return deferred when ownership will
-   * transfer at reply-lane admission; otherwise complete or throw.
-   */
-  dispatchClaimedEvent: (
-    event: ChannelIngressQueueClaim<TPayload, TMetadata>,
-    lifecycle: ChannelIngressDispatchLifecycle,
-  ) => Promise<ChannelIngressDrainDispatchResult | void> | ChannelIngressDrainDispatchResult | void;
-  resolveNonRetryableFailure?: (err: unknown) => IngressNonRetryableFailure | null;
-  /** A returned guard is checked synchronously before cancelling pre-adoption work. */
-  shouldSupersedePending?: (
-    newEvent:
-      | ChannelIngressQueueRecord<TPayload, TMetadata>
-      | ChannelIngressQueueClaim<TPayload, TMetadata>,
-    pendingEvent: ChannelIngressQueueClaim<TPayload, TMetadata>,
-  ) => IngressSupersedeDecision | Promise<IngressSupersedeDecision>;
-  deriveLaneKey?: (record: ChannelIngressQueueRecord<TPayload, TMetadata>) => string | undefined;
-  reconcileStoredLaneKey?: (
-    record: ChannelIngressQueueRecord<TPayload, TMetadata>,
-    storedLaneKey: string,
-    derivedLaneKey: string,
-  ) => boolean;
-  /**
-   * Optional channel policy that may terminally fail or hold a stored pending
-   * row before it is claimed. Return null/undefined to keep the row claimable.
-   */
-  resolvePendingDisposition?: ResolveChannelIngressPendingDisposition<TPayload, TMetadata>;
-  ownerId?: string;
-  adoptionStallTimeoutMs?: number;
-  claimLeaseMs?: number;
-  /**
-   * Whether a claimed event keeps occupying its ingress serialization lane after
-   * dispatch hands ownership to deferred work. Default "hold" (current behavior).
-   */
-  deferredLaneOccupancy?: DeferredLaneOccupancy;
-  retryPolicy?: IngressRetryPolicyConfig;
-  now?: () => number;
-  formatError?: (err: unknown) => string;
-  onLog?: (message: string) => void;
-  abortSignal?: AbortSignal;
-  orderBy?: "received" | "id";
-  scanLimit?: number;
-  startLimit?: number;
-};
 
 export type ChannelIngressDrain = {
   recoverStaleClaims: () => Promise<number>;
