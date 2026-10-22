@@ -3,6 +3,7 @@ import {
   closeOpenClawStateDatabaseForTest,
   createChannelIngressQueueForTests,
 } from "openclaw/plugin-sdk/channel-ingress-test-runtime";
+import { DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS } from "openclaw/plugin-sdk/channel-outbound";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import { createNonExitingRuntimeEnv } from "openclaw/plugin-sdk/plugin-test-runtime";
 import { closeOpenClawStateDatabaseAsync } from "openclaw/plugin-sdk/sqlite-runtime-testing";
@@ -263,6 +264,83 @@ describe("Feishu durable ingress", () => {
       await expect(queue.enqueue("evt-failure", {} as FeishuIngressPayload)).resolves.toMatchObject(
         expected,
       );
+    });
+  });
+
+  it("keeps an aged row at the retry ceiling recoverable when a merged turn is cancelled", async () => {
+    await withQueue(async (queue, startIngress) => {
+      const envelope = messageEnvelope("evt-aged-cancel");
+      // Received long before the dead-letter age floor, with one try left.
+      await queue.enqueue(
+        "evt-aged-cancel",
+        { version: 1, receivedAt: 1, rawEnvelope: JSON.stringify(envelope) },
+        { laneKey: "chat:oc-chat", receivedAt: 1 },
+      );
+      for (let attempt = 1; attempt < DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS; attempt += 1) {
+        const claim = await queue.claim("evt-aged-cancel");
+        if (!claim) {
+          throw new Error("expected to claim the aged Feishu row");
+        }
+        await queue.release(claim, { lastError: "prior failure", releasedAt: 1 });
+      }
+      const replayClaim = {
+        keys: ["aged-cancel"] as const,
+        commit: vi.fn(async () => true),
+        release: vi.fn(),
+      };
+      const beforeFlush = vi.fn();
+      const finishRedelivery = Promise.withResolvers<void>();
+      const redelivered = Promise.withResolvers<void>();
+      const dispatch = vi
+        .fn()
+        .mockImplementationOnce(async (data: ReturnType<typeof messageEnvelope>) => {
+          const transport = ingress.resolveLifecycle({ ...data.header, ...data.event });
+          if (transport) {
+            // The message debounce owner's pre-settle release, as the handler installs it.
+            transport.onBeforeAbandon = beforeFlush;
+          }
+          const { lifecycle } = buildFeishuFlushIngressLifecycle([
+            { lifecycle: transport, replayClaim },
+          ]);
+          lifecycle?.onDeferred();
+          // The reply lane settles a cleared queued turn through onCancelled and
+          // falls back to abandonment only when the lifecycle cannot cancel.
+          await (lifecycle?.onCancelled ? lifecycle.onCancelled() : lifecycle?.onAbandoned());
+          return { kind: "deferred" };
+        })
+        .mockImplementationOnce(async (data: ReturnType<typeof messageEnvelope>) => {
+          redelivered.resolve();
+          await finishRedelivery.promise;
+          await ingress.resolveLifecycle({ ...data.header, ...data.event })?.onAdopted();
+        });
+      const ingress = startIngress({ queue, dispatch });
+      try {
+        ingress.start();
+        // Cancellation spends no budget, so the drain redelivers the row with
+        // its prior retry facts instead of dead-lettering it.
+        await redelivered.promise;
+        expect(dispatch).toHaveBeenCalledTimes(2);
+        expect(await queue.listFailed?.()).toEqual([]);
+        expect(await queue.listClaims()).toEqual([
+          expect.objectContaining({
+            id: "evt-aged-cancel",
+            attempts: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS - 1,
+            lastError: "prior failure",
+          }),
+        ]);
+        // Logical claims and pre-flush entries are released exactly as on abandonment.
+        expect(replayClaim.release).toHaveBeenCalledOnce();
+        expect(replayClaim.commit).not.toHaveBeenCalled();
+        expect(beforeFlush).toHaveBeenCalledOnce();
+        finishRedelivery.resolve();
+        await ingress.waitForIdle();
+        expect((await queue.enqueue("evt-aged-cancel", {} as FeishuIngressPayload)).kind).toBe(
+          "completed",
+        );
+      } finally {
+        finishRedelivery.resolve();
+        await ingress.stop();
+      }
     });
   });
 

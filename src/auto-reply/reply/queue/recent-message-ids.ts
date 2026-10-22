@@ -1,4 +1,5 @@
 import type { SessionControllerMailbox } from "../../../sessions/session-controller.mailbox.js";
+import { releaseBeforeTurnAdoptionRetry } from "./lifecycle.js";
 import type { FollowupRun } from "./types.js";
 const TTL = 5 * 60 * 1000;
 const MAX = 10_000;
@@ -34,12 +35,10 @@ export function recordRecentQueueMessageId(run: FollowupRun, key: string, now = 
   mailbox.recentSources.set(key, { input, expires: now + TTL });
   const lifecycle = run.turnAdoptionLifecycle;
   if (lifecycle) {
-    const onAbandoned = lifecycle.onAbandoned;
-    lifecycle.onAbandoned = () => {
+    releaseBeforeTurnAdoptionRetry(lifecycle, () => {
       if (mailbox.recentSources.get(key)?.input === input) {
         mailbox.recentSources.delete(key);
       }
-      return onAbandoned?.();
-    };
+    });
   }
 }
