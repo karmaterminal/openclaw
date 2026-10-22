@@ -11,6 +11,7 @@ import {
   withTempState,
 } from "../../channels/message/ingress-drain.test-helpers.js";
 import { fanInChannelIngressLifecycles } from "../../plugin-sdk/channel-ingress-runtime.js";
+import { testing as controllerTesting } from "../../sessions/session-controller.test-support.js";
 import { createInboundDebouncer } from "../inbound-debounce.js";
 import type { MsgContext } from "../templating.js";
 import type { GetReplyOptions } from "../types.js";
@@ -27,17 +28,12 @@ import {
   type DispatchProcessedNote,
 } from "./dispatch-processed-outcome.js";
 import { resetInboundDedupe } from "./inbound-dedupe.js";
-import {
-  completeFollowupRunLifecycle,
-  enqueueFollowupRun,
-  scheduleFollowupDrain,
-  type FollowupRun,
-} from "./queue.js";
-import { clearFollowupQueueForTest, createQueueTestRun } from "./queue.test-helpers.js";
+import { completeFollowupRunLifecycle, enqueueFollowupRun, type FollowupRun } from "./queue.js";
+import { createQueueTestRun } from "./queue.test-helpers.js";
+import { clearSessionQueues } from "./queue/cleanup.js";
 import { resetRecentQueuedMessageIdDedupe } from "./queue/recent-message-ids.test-support.js";
 import { clearFollowupQueue } from "./queue/state.js";
 import { resolveReplyOperationRunState } from "./reply-operation-run-state.js";
-import { testing as replyRunTesting } from "./reply-run-registry.test-support.js";
 import { buildTestCtx } from "./test-ctx.js";
 
 beforeAll(globalBeforeAll0);
@@ -48,7 +44,7 @@ beforeEach(() => {
   vi.useFakeTimers();
 });
 afterEach(() => {
-  replyRunTesting.resetReplyRunRegistry();
+  controllerTesting.resetSessionControllerForTest();
   resetInboundDedupe();
   vi.clearAllTimers();
   vi.useRealTimers();
@@ -217,7 +213,7 @@ describe("queued ingress cancellation through the reply terminal path", () => {
             false,
           ),
         ).toBe(true);
-        clearFollowupQueueForTest(key);
+        clearSessionQueues([key]);
 
         // The recovered claim still delivers; inbound dedupe was released too.
         clock += 1_000;
@@ -246,7 +242,7 @@ describe("queued ingress cancellation through the reply terminal path", () => {
         expect(await queue.listClaims()).toEqual([]);
       } finally {
         drain.dispose();
-        clearFollowupQueueForTest(key);
+        clearSessionQueues([key]);
       }
     });
   });
@@ -296,7 +292,7 @@ describe("queued ingress cancellation through the reply terminal path", () => {
         expect(await queue.listFailed?.()).toEqual([]);
       } finally {
         drain.dispose();
-        clearFollowupQueueForTest(key);
+        clearSessionQueues([key]);
       }
     });
   });
@@ -350,86 +346,7 @@ describe("queued ingress cancellation through the reply terminal path", () => {
         expect(await queue.listFailed?.()).toEqual([]);
       } finally {
         drain.dispose();
-        clearFollowupQueueForTest(key);
-      }
-    });
-  });
-
-  it("cancels a collect-group source aborted while its group drain is awaited", async () => {
-    await withTempState(async (stateDir) => {
-      const key = "agent:main:discord:direct:ingress-collect-cancel";
-      const queue = createTestIngressQueue(stateDir);
-      // Distinct ingress lanes so both claims are held while one session queue
-      // collects them into a single group.
-      await queue.enqueue("cancelled-item", { text: "a" }, { laneKey: "lane-a" });
-      await queue.enqueue("surviving-item", { text: "b" }, { laneKey: "lane-b" });
-      const aborts = new Map<string, AbortController>();
-      const drain = createChannelIngressDrain({
-        queue,
-        retryPolicy: ONE_ATTEMPT,
-        dispatchClaimedEvent: async (event, lifecycle) => {
-          const abort = new AbortController();
-          aborts.set(event.id, abort);
-          const run: FollowupRun = {
-            ...createQueueTestRun({
-              prompt: event.id,
-              messageId: event.id,
-              originatingChannel: "discord",
-              originatingTo: "channel:ingress-fixture",
-            }),
-            abortSignal: abort.signal,
-            turnAdoptionLifecycle:
-              bindIngressLifecycleToReplyOptions(lifecycle).turnAdoptionLifecycle,
-          };
-          expect(
-            enqueueFollowupRun(
-              key,
-              run,
-              { mode: "collect", debounceMs: 0, cap: 10, dropPolicy: "summarize" },
-              "message-id",
-              undefined,
-              false,
-            ),
-          ).toBe(true);
-          return { kind: "deferred" };
-        },
-      });
-
-      try {
-        await drain.drainOnce();
-        await drain.waitForIdle();
-        expect(await queue.listClaims()).toHaveLength(2);
-
-        // The collect group never admits, and one source is aborted mid-drain:
-        // the post-drain cancellation sweep must not spend its retry budget.
-        const groupRuns: string[] = [];
-        const settled = observeChannelIngressQueueWrites(queue, {
-          "cancelled-item": "release",
-          "surviving-item": "fail",
-        });
-        scheduleFollowupDrain(key, async (run) => {
-          groupRuns.push(run.prompt);
-          aborts.get("cancelled-item")?.abort();
-        });
-        await expect(settled).resolves.toEqual({ "cancelled-item": true, "surviving-item": true });
-        expect(await queue.listClaims()).toEqual([]);
-
-        expect(groupRuns.length).toBeGreaterThan(0);
-        // Same ceiling, opposite dispositions: the aborted source keeps its
-        // budget while the one that merely never admitted spends its last try.
-        expect(await queue.listPending()).toEqual([
-          expect.objectContaining({ id: "cancelled-item", attempts: 0 }),
-        ]);
-        expect(await queue.listFailed?.()).toEqual([
-          expect.objectContaining({
-            id: "surviving-item",
-            reason: "retry-limit-exceeded",
-            message: "turn-abandoned",
-          }),
-        ]);
-      } finally {
-        drain.dispose();
-        clearFollowupQueueForTest(key);
+        clearSessionQueues([key]);
       }
     });
   });

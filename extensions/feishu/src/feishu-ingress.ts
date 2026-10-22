@@ -1,4 +1,3 @@
-// Feishu plugin owns raw Lark event admission, replay, and turn adoption.
 import * as Lark from "@larksuiteoapi/node-sdk";
 import { fanInChannelIngressLifecycles } from "openclaw/plugin-sdk/channel-ingress-runtime";
 import {
@@ -23,7 +22,7 @@ const FEISHU_DURABLE_EVENT_TYPES = new Set([
 ]);
 
 export type FeishuIngressLifecycle = Omit<ChannelIngressMonitorLifecycle, "admission"> & {
-  registerAbandonHandler?: (handler: () => void | Promise<void>) => () => void;
+  onBeforeAbandon?: () => void | Promise<void>;
 };
 
 type FeishuIngressPayload = {
@@ -34,7 +33,6 @@ type FeishuIngressPayload = {
 
 type FeishuIngressFacts = {
   eventId: string;
-  eventType: string;
   laneKey: string;
 };
 
@@ -145,28 +143,28 @@ function inspectFeishuIngressEnvelope(
     const chatId = normalizeNullableString(message?.chat_id);
     if (!chatId) {
       if (allowInvalidLane) {
-        return { eventId, eventType, laneKey: `invalid:${eventType}:${eventId}` };
+        return { eventId, laneKey: `invalid:${eventType}:${eventId}` };
       }
       throw new FeishuIngressPermanentError(
         "invalid-event",
         "Feishu message ingress envelope is missing event.message.chat_id.",
       );
     }
-    return { eventId, eventType, laneKey: `chat:${chatId}` };
+    return { eventId, laneKey: `chat:${chatId}` };
   }
   const noticeMeta = isRecord(event.notice_meta) ? event.notice_meta : null;
   const fileType = normalizeNullableString(noticeMeta?.file_type);
   const documentId = normalizeNullableString(noticeMeta?.file_token);
   if (!fileType || !documentId) {
     if (allowInvalidLane) {
-      return { eventId, eventType, laneKey: `invalid:${eventType}:${eventId}` };
+      return { eventId, laneKey: `invalid:${eventType}:${eventId}` };
     }
     throw new FeishuIngressPermanentError(
       "invalid-event",
       "Feishu comment ingress envelope is missing its document identity.",
     );
   }
-  return { eventId, eventType, laneKey: `comment-doc:${fileType}:${documentId}` };
+  return { eventId, laneKey: `comment-doc:${fileType}:${documentId}` };
 }
 
 function resolveFeishuIngressNonRetryableFailure(error: unknown) {
@@ -316,14 +314,8 @@ export function createFeishuDurableIngress(options: FeishuIngressOptions) {
         getFeishuRuntime().state.openChannelIngressQueue<FeishuIngressPayload>({
           accountId: options.accountId,
         })),
-    inspect: (rawEnvelope, context) => {
-      const facts = inspectFeishuIngressEnvelope(
-        rawEnvelope,
-        options.encryptKey,
-        context.phase === "admission",
-      );
-      return facts ? { eventId: facts.eventId, laneKey: facts.laneKey } : null;
-    },
+    inspect: (rawEnvelope, context) =>
+      inspectFeishuIngressEnvelope(rawEnvelope, options.encryptKey, context.phase === "admission"),
     payload: {
       version: FEISHU_INGRESS_PAYLOAD_VERSION,
       serialize: (rawEnvelope, { receivedAt }) => ({ receivedAt, rawEnvelope }),
@@ -342,27 +334,24 @@ export function createFeishuDurableIngress(options: FeishuIngressOptions) {
         ),
     },
     deliver: async (rawEnvelope, lifecycle, claim) => {
-      const abandonHandlers = new Set<() => void | Promise<void>>();
-      // Feishu handlers can defer transport settlement across broadcast lanes.
-      // Keep their lifecycle registry local while the monitor owns the durable claim.
-      const runAbandonHandlers = async () => {
-        await Promise.allSettled([...abandonHandlers].map(async (handler) => await handler()));
+      // The message debounce owner releases its logical claim before transport abandonment.
+      // Cancellation releases it too, so both terminal paths share this pre-settle step.
+      const releaseBeforeSettle = async () => {
+        await Promise.resolve()
+          .then(() => wrappedLifecycle.onBeforeAbandon?.())
+          .catch(() => undefined);
       };
       const wrappedLifecycle: FeishuIngressLifecycle = {
         ...lifecycle,
         // Cancellation ends the turn before adoption too; it releases the same
         // local state and settles the claim without spending retry budget.
         onCancelled: async () => {
-          await runAbandonHandlers();
+          await releaseBeforeSettle();
           await (lifecycle.onCancelled ? lifecycle.onCancelled() : lifecycle.onAbandoned());
         },
         onAbandoned: async () => {
-          await runAbandonHandlers();
+          await releaseBeforeSettle();
           await lifecycle.onAbandoned();
-        },
-        registerAbandonHandler: (handler) => {
-          abandonHandlers.add(handler);
-          return () => abandonHandlers.delete(handler);
         },
       };
       activeLifecycles.set(claim.id, wrappedLifecycle);
@@ -432,9 +421,7 @@ export function createFeishuDurableIngress(options: FeishuIngressOptions) {
       };
     }
     try {
-      await monitor.admit(rawEnvelope, {
-        facts: { eventId: facts.eventId, laneKey: facts.laneKey },
-      });
+      await monitor.admit(rawEnvelope, { facts });
     } catch (error) {
       socketTerminator?.();
       throw error;

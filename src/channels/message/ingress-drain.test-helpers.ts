@@ -11,6 +11,7 @@ import {
 } from "./ingress-queue.js";
 
 export type IngressDrainTestPayload = { text: string };
+type QueueOptions = Parameters<typeof createChannelIngressQueue>[0];
 
 /** Observe the real commit, not just invocation of a queue write. */
 export function observeChannelIngressQueueWrite<TCompletedMetadata>(
@@ -22,42 +23,36 @@ export function observeChannelIngressQueueWrite<TCompletedMetadata>(
   eventId?: string,
 ): Promise<boolean> {
   const committed = createDeferredCore<boolean>();
-  const observe = (
-    id: string | ChannelIngressQueueClaimRef,
-    result: Promise<boolean>,
-    restore: () => void,
+  const observe = <TArgs extends [string | ChannelIngressQueueClaimRef, ...unknown[]]>(
+    write: (...args: TArgs) => Promise<boolean>,
+    restore: (write: (...args: TArgs) => Promise<boolean>) => void,
   ) => {
-    if (eventId === undefined || (typeof id === "string" ? id : id.id) === eventId) {
-      restore();
-      committed.resolve(result);
-    }
-    return result;
+    return (...args: TArgs) => {
+      const result = write.apply(queue, args);
+      const [id] = args;
+      if (eventId === undefined || (typeof id === "string" ? id : id.id) === eventId) {
+        restore(write);
+        committed.resolve(result);
+      }
+      return result;
+    };
   };
   switch (method) {
-    case "complete": {
-      const write = queue.complete;
-      queue.complete = (...args) =>
-        observe(args[0], write.apply(queue, args), () => {
-          queue.complete = write;
-        });
+    case "complete":
+      queue.complete = observe(queue.complete, (write) => {
+        queue.complete = write;
+      });
       break;
-    }
-    case "release": {
-      const write = queue.release;
-      queue.release = (...args) =>
-        observe(args[0], write.apply(queue, args), () => {
-          queue.release = write;
-        });
+    case "release":
+      queue.release = observe(queue.release, (write) => {
+        queue.release = write;
+      });
       break;
-    }
-    case "fail": {
-      const write = queue.fail;
-      queue.fail = (...args) =>
-        observe(args[0], write.apply(queue, args), () => {
-          queue.fail = write;
-        });
+    case "fail":
+      queue.fail = observe(queue.fail, (write) => {
+        queue.fail = write;
+      });
       break;
-    }
   }
   return committed.promise;
 }
@@ -132,10 +127,7 @@ export function observeChannelIngressQueueWrites<TCompletedMetadata>(
 
 export function createTestIngressQueue(
   stateDir: string,
-  options: Omit<
-    Parameters<typeof createChannelIngressQueue>[0],
-    "channelId" | "accountId" | "stateDir"
-  > = {},
+  options: Omit<QueueOptions, "channelId" | "accountId" | "stateDir"> = {},
 ) {
   return createChannelIngressQueue<IngressDrainTestPayload>({
     channelId: "test",
@@ -168,17 +160,9 @@ export function seedPendingBacklog(stateDir: string, total: number): void {
         channel_id: "test",
         account_id: "a",
         status: "pending",
-        lane_key: null,
         payload_json: JSON.stringify({ text: `msg-${index}` }),
-        metadata_json: null,
-        completed_metadata_json: null,
         received_at: index,
         updated_at: index,
-        attempts: 0,
-        claim_token: null,
-        claim_owner: null,
-        claimed_at: null,
-        completed_at: null,
       });
     }
     executeSqliteQuerySync(database.db, kysely.insertInto("channel_ingress_events").values(rows));

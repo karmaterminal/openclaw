@@ -1,135 +1,174 @@
 import { defaultRuntime } from "../../../runtime.js";
+import { completeSessionControllerSourceLifecycle } from "../../../sessions/session-controller.mailbox-source.js";
+import { submitSessionControllerInput } from "../../../sessions/session-controller.mailbox.js";
 import type { TurnAdoptionLifecycle } from "../../get-reply-options.types.js";
-import { FollowupRunDeferredError, type FollowupRun } from "./types.js";
+import type { ReplyOperationRunState } from "../reply-operation-run-state.js";
+import {
+  startFollowupRunPreAdoptionHeartbeatWithCustody,
+  updateFollowupRetryHeartbeatsWithCustody,
+} from "./pre-adoption-heartbeat.js";
+import { isFollowupRunAborted, type FollowupRun } from "./types.js";
 
-type LifecycleState = {
-  enqueued?: boolean;
-  admitted?: boolean;
-  admitting?: Promise<void>;
-  cancellationRetired?: boolean;
-  completed?: boolean;
-  stopHeartbeat?: () => void;
-};
+type FollowupLifecycleSource = Pick<
+  FollowupRun,
+  "operatorAuthority" | "turnAdoptionLifecycle" | "userTurnTranscriptRecorder" | "controllerClaim"
+> & { controllerInput: NonNullable<FollowupRun["controllerInput"]> };
 
-const lifecycleStates = new WeakMap<TurnAdoptionLifecycle, LifecycleState>();
-
-function getLifecycleState(lifecycle: TurnAdoptionLifecycle): LifecycleState {
-  let state = lifecycleStates.get(lifecycle);
-  if (!state) {
-    state = {};
-    lifecycleStates.set(lifecycle, state);
+function custody(run: FollowupRun | FollowupLifecycleSource) {
+  if (run.controllerClaim) {
+    return run.controllerClaim.custody;
   }
-  return state;
+  const input =
+    "run" in run
+      ? (run.controllerInput ??
+        submitSessionControllerInput(run.run.sessionKey ?? run.run.sessionId, run, {
+          mode: "followup",
+        }))
+      : run.controllerInput;
+  return input.custody;
 }
 
-type FollowupLifecycleRun = Pick<
-  FollowupRun,
-  "steerPending" | "turnAdoptionLifecycle" | "operatorAuthority"
->;
+// Native consumption can finish without adoption; disposal alone cannot infer that outcome.
+const abandonedDeliveryCorrelations = new WeakMap<ReturnType<typeof custody>, () => void>();
 
-function stopFollowupRunPreAdoptionHeartbeat(lifecycle: TurnAdoptionLifecycle | undefined): void {
-  if (lifecycle) {
-    lifecycleStates.get(lifecycle)?.stopHeartbeat?.();
+function retainQueuedDeliveryCorrelations(
+  run: FollowupRun,
+  state: ReturnType<typeof custody>,
+): void {
+  if (!run.deliveryCorrelations?.length) {
+    return;
   }
+  const abandon: Array<() => void> = [];
+  run.deliveryCorrelations = run.deliveryCorrelations.map((correlation) => {
+    let pending = true;
+    abandon.push(() => {
+      if (!pending) {
+        return;
+      }
+      pending = false;
+      try {
+        const end = correlation.begin();
+        if (typeof end === "function") {
+          end({ visibleReplySent: false, failed: true });
+        }
+      } catch (error) {
+        defaultRuntime.error?.(
+          `followup queue: delivery correlation cleanup failed: ${String(error)}`,
+        );
+      }
+    });
+    return {
+      ...correlation,
+      begin: () => {
+        pending = false;
+        const end = correlation.begin();
+        if (typeof end !== "function") {
+          return end;
+        }
+        return (settlement: Parameters<typeof end>[0]) => {
+          // A retry hands ownership back; a final delivery outcome must not be repeated by Stop.
+          pending = settlement === undefined;
+          end(settlement);
+        };
+      },
+    };
+  });
+  abandonedDeliveryCorrelations.set(state, () => {
+    for (const notify of abandon) {
+      notify();
+    }
+  });
+  const disposeSource = state.disposeSource;
+  state.disposeSource = () => {
+    const notify = abandonedDeliveryCorrelations.get(state);
+    abandonedDeliveryCorrelations.delete(state);
+    try {
+      disposeSource?.();
+    } finally {
+      if (!state.adopted) {
+        notify?.();
+      }
+    }
+  };
 }
 
 export function updateFollowupRetryHeartbeats(
   error: unknown,
   sources: readonly FollowupRun[],
 ): void {
-  // Preparation failures stop renewal; a later capacity wait restores source liveness.
-  for (const source of sources) {
-    if (error instanceof FollowupRunDeferredError) {
-      startFollowupRunPreAdoptionHeartbeat(source.turnAdoptionLifecycle);
-    } else {
-      stopFollowupRunPreAdoptionHeartbeat(source.turnAdoptionLifecycle);
-    }
-  }
+  updateFollowupRetryHeartbeatsWithCustody(error, sources, custody);
 }
 
 export function startFollowupRunPreAdoptionHeartbeat(
-  lifecycle: TurnAdoptionLifecycle | undefined,
+  run: FollowupRun,
   abortSignal?: AbortSignal,
 ): (() => void) | undefined {
-  if (!lifecycle) {
-    return undefined;
-  }
-  const intervalMs = lifecycle.deferredHeartbeatIntervalMs;
-  const heartbeat = lifecycle.onDeferredHeartbeat;
-  const state = getLifecycleState(lifecycle);
-  if (
-    !heartbeat ||
-    intervalMs === undefined ||
-    !Number.isFinite(intervalMs) ||
-    intervalMs <= 0 ||
-    lifecycle.abortSignal?.aborted ||
-    abortSignal?.aborted ||
-    state.admitted ||
-    state.completed
-  ) {
-    return undefined;
-  }
-  stopFollowupRunPreAdoptionHeartbeat(lifecycle);
-  const pulse = () => {
-    try {
-      heartbeat();
-    } catch {
-      // Leave recovery to the ingress watchdog when its liveness callback fails.
-      stopFollowupRunPreAdoptionHeartbeat(lifecycle);
-    }
-  };
-  const timer = setInterval(pulse, intervalMs).unref();
-  const stop = () => {
-    clearInterval(timer);
-    lifecycle.abortSignal?.removeEventListener("abort", stop);
-    abortSignal?.removeEventListener("abort", stop);
-    if (state.stopHeartbeat === stop) {
-      state.stopHeartbeat = undefined;
-    }
-  };
-  state.stopHeartbeat = stop;
-  lifecycle.abortSignal?.addEventListener("abort", stop, { once: true });
-  abortSignal?.addEventListener("abort", stop, { once: true });
-  pulse();
-  return stop;
+  return startFollowupRunPreAdoptionHeartbeatWithCustody(run, () => custody(run), abortSignal);
 }
 
-export function markFollowupRunEnqueued(run: FollowupLifecycleRun): boolean {
+export function markFollowupRunEnqueued(run: FollowupRun): boolean {
+  const state = custody(run);
   const authority = run.operatorAuthority;
   authority?.signal?.throwIfAborted();
   authority?.assertCurrent();
-  // Delivery recovery has a fresh queue lifetime after its parent turn settles.
-  const lifecycle =
-    run.turnAdoptionLifecycle ??
-    (authority
-      ? (run.turnAdoptionLifecycle = { admission: "cancel-only", onAdopted: () => {} })
-      : undefined);
-  if (lifecycle && !getLifecycleState(lifecycle).enqueued) {
-    if (lifecycle.onDeferred?.() === false) {
-      return false;
-    }
-    let releaseAuthority: (() => void) | undefined;
+  if (!state.enqueued) {
+    // Deferral publishes the source and can synchronously wake its RPC waiters.
+    state.enqueued = true;
     try {
-      releaseAuthority = authority?.retain?.();
+      if (run.turnAdoptionLifecycle?.onDeferred?.() === false) {
+        state.enqueued = false;
+        return false;
+      }
+      state.releaseAuthority = authority?.retain?.();
     } catch (error) {
+      state.enqueued = false;
       completeFollowupRunLifecycle(run);
       throw error;
     }
-    if (releaseAuthority) {
-      const release = releaseAuthority;
-      const onSettled = lifecycle.onSettled;
-      lifecycle.onSettled = () => {
-        try {
-          onSettled?.();
-        } finally {
-          release();
-        }
-      };
-    }
-    getLifecycleState(lifecycle).enqueued = true;
-    startFollowupRunPreAdoptionHeartbeat(lifecycle);
+    retainQueuedDeliveryCorrelations(run, state);
+    startFollowupRunPreAdoptionHeartbeat(run);
   }
   return true;
+}
+export function retireFollowupRunCancellation(run: FollowupRun): void {
+  const state = custody(run);
+  if (state.cancellationRetired) {
+    return;
+  }
+  state.cancellationRetired = true;
+  run.turnAdoptionLifecycle?.onCancellationRetired?.();
+}
+export async function admitFollowupRunLifecycle(
+  run: FollowupRun | FollowupLifecycleSource,
+): Promise<void> {
+  const state = custody(run);
+  run.operatorAuthority?.assertCurrent();
+  if (state.adopted) {
+    return;
+  }
+  if (state.adopting) {
+    return await state.adopting;
+  }
+  if (state.completed) {
+    throw new Error("Input completed before source adoption");
+  }
+  const admission = Promise.resolve().then(async () => {
+    await run.turnAdoptionLifecycle?.onAdopted();
+    // A successful custody callback commits before the post-await authority check.
+    state.adopted = true;
+    state.failure = undefined;
+    state.stopHeartbeat?.();
+    run.operatorAuthority?.assertCurrent();
+  });
+  state.adopting = admission;
+  try {
+    await admission;
+  } catch (error) {
+    state.failure = error;
+    throw error;
+  } finally {
+    state.adopting = undefined;
+  }
 }
 
 /**
@@ -142,7 +181,6 @@ export function releaseBeforeTurnAdoptionRetry(
   release: () => void,
 ): void {
   const onAbandoned = lifecycle.onAbandoned;
-  // Hand the callback's result back so core can contain an async rejection.
   lifecycle.onAbandoned = () => {
     release();
     return onAbandoned?.();
@@ -156,123 +194,48 @@ export function releaseBeforeTurnAdoptionRetry(
   }
 }
 
-export function retireFollowupRunCancellation(run: FollowupLifecycleRun): void {
-  const lifecycle = run.turnAdoptionLifecycle;
-  if (!lifecycle) {
-    return;
-  }
-  const state = getLifecycleState(lifecycle);
-  if (state.cancellationRetired) {
-    return;
-  }
-  state.cancellationRetired = true;
-  lifecycle.onCancellationRetired?.();
-}
-
-export async function admitFollowupRunLifecycle(run: FollowupLifecycleRun): Promise<void> {
-  run.operatorAuthority?.assertCurrent();
-  const lifecycle = run.turnAdoptionLifecycle;
-  if (!lifecycle) {
-    return;
-  }
-  const state = getLifecycleState(lifecycle);
-  if (state.admitted) {
-    return;
-  }
-  if (state.admitting) {
-    await state.admitting;
-    return;
-  }
-  if (state.completed) {
-    throw new Error("followup run lifecycle completed before admission");
-  }
-
-  const admission = Promise.resolve().then(async () => {
-    await lifecycle.onAdopted();
-    run.operatorAuthority?.assertCurrent();
-    state.admitted = true;
-    stopFollowupRunPreAdoptionHeartbeat(lifecycle);
-  });
-
-  state.admitting = admission;
-  try {
-    await admission;
-  } finally {
-    state.admitting = undefined;
-  }
-}
-
+/** Adapter registers source identity before the canonical custody owner settles it. */
 export function completeFollowupRunLifecycle(
-  run: FollowupLifecycleRun,
+  run: FollowupRun | FollowupLifecycleSource,
   disposition?: "consumed" | "cancelled",
 ): void {
-  try {
-    run.steerPending?.settle(false);
-  } finally {
-    // A failed steer notification must not strand already-detached lifecycle custody.
-    const lifecycle = run.turnAdoptionLifecycle;
-    if (lifecycle) {
-      const state = getLifecycleState(lifecycle);
-      if (!state.completed) {
-        state.completed = true;
-        stopFollowupRunPreAdoptionHeartbeat(lifecycle);
-        // Terminal callbacks start synchronously and onSettled runs right after,
-        // even after a synchronous throw. Async adapter work is not awaited, so its
-        // rejection is contained here instead of escaping as an unhandled rejection.
-        const containSettlement = (settlement: unknown, label: string) => {
-          void Promise.resolve(settlement).catch((error: unknown) => {
-            defaultRuntime.error?.(`followup queue ${label} failed: ${String(error)}`);
-          });
-        };
-        const finish = () => {
-          try {
-            if (disposition !== "consumed" && !state.admitted) {
-              // Cancellation ended ownership before the reply lane, so it settles
-              // through the cancel callback and leaves the retry budget untouched.
-              // An explicit "cancelled" disposition and an already-aborted signal
-              // are the same end of ownership, so either takes the cancel path.
-              if (
-                (disposition === "cancelled" || lifecycle.abortSignal?.aborted) &&
-                lifecycle.onCancelled
-              ) {
-                containSettlement(lifecycle.onCancelled(), "cancellation");
-              } else {
-                // Typed void, but channel adapters may still return a promise.
-                containSettlement(lifecycle.onAbandoned?.(), "abandonment");
-              }
-            }
-          } finally {
-            lifecycle.onSettled?.();
-          }
-        };
-
-        if (!state.admitting) {
-          finish();
-        } else {
-          // Completion closes future admission immediately, but the callback waits for
-          // the in-flight admission attempt so adoption and abandonment cannot race.
-          void state.admitting.then(finish, finish).catch(() => {
-            // Detached settlement callbacks cannot reject back into a completed queue item.
-          });
-        }
-      }
-    }
+  const state = custody(run);
+  if (!state.completed && disposition === "consumed") {
+    abandonedDeliveryCorrelations.delete(state);
   }
+  // An aborted owner ended the turn by intent, so an unconsumed completion of
+  // its run is cancellation, not abandonment that would spend retry budget.
+  const settlement =
+    disposition ?? ("run" in run && isFollowupRunAborted(run) ? "cancelled" : undefined);
+  completeSessionControllerSourceLifecycle(run, state, settlement);
 }
 
-export function completeFollowupRuns(
-  items: Iterable<FollowupLifecycleRun>,
-  onError?: (error: unknown) => void,
-  disposition?: "consumed" | "cancelled",
-): void {
-  for (const item of items) {
-    try {
-      completeFollowupRunLifecycle(item, disposition);
-    } catch (error) {
-      if (!onError) {
-        throw error;
-      }
-      onError(error);
+/** Settles a source whose owner relinquished it on purpose (queue clear, stop). */
+export function cancelFollowupRunLifecycle(run: FollowupRun | FollowupLifecycleSource): void {
+  completeFollowupRunLifecycle(run, "cancelled");
+}
+
+/** A policy refusal consumes transport custody without granting execution custody. */
+export async function refuseCollaborativeSteering(
+  run: FollowupRun | FollowupLifecycleSource,
+  state: ReplyOperationRunState | undefined,
+  consumeParked?: () => void,
+): Promise<void> {
+  if (state) {
+    state.admission = { status: "skipped", reason: "collaborative-steering-disabled" };
+  }
+  const recorder = run.userTurnTranscriptRecorder;
+  recorder?.markBlocked();
+  try {
+    recorder?.finishPendingInput?.("cancelled");
+    await recorder?.waitForPendingInputSettlement?.();
+    await admitFollowupRunLifecycle(run);
+  } finally {
+    // Abandonment reopens ingress for replay; this input has a terminal policy decision.
+    if (consumeParked) {
+      consumeParked();
+    } else {
+      completeFollowupRunLifecycle(run, "consumed");
     }
   }
 }

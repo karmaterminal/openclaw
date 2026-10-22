@@ -1,6 +1,6 @@
-// Twitch plugin owns raw chat-envelope durable admission and replay draining.
 import { HttpStatusCodeError } from "@twurple/api-call";
 import {
+  bindIngressLifecycleToReplyOptions,
   createChannelIngressError,
   createChannelIngressMonitor,
   type ChannelIngressQueue,
@@ -112,46 +112,11 @@ export function createTwitchIngress(options: {
             : "Twitch ingress event identity changed after durable admission.",
         ),
     },
-    deliver: async (rawEvent, lifecycle, claim) => {
-      const message = normalizeClaimedTwitchMessage(rawEvent, claim.id);
-      let handedOff = false;
-      const deliveryAbortSignal = AbortSignal.any([lifecycle.abortSignal, shutdown.signal]);
-      try {
-        await options.deliver(message, {
-          admission: lifecycle.admission,
-          abortSignal: deliveryAbortSignal,
-          onAdopted: async () => {
-            handedOff = true;
-            await lifecycle.onAdopted();
-          },
-          onDeferred: () => {
-            handedOff = true;
-            lifecycle.onDeferred();
-          },
-          onDeferredHeartbeat: () => lifecycle.onDeferredHeartbeat?.(),
-          deferredHeartbeatIntervalMs: lifecycle.deferredHeartbeatIntervalMs,
-          // Intentional cancellation must reach the drain's budget-free
-          // settlement; abandonment would spend a retry attempt.
-          onCancelled: async () => {
-            handedOff = true;
-            await (lifecycle.onCancelled ? lifecycle.onCancelled() : lifecycle.onAbandoned());
-          },
-          onAbandoned: async () => {
-            handedOff = true;
-            await lifecycle.onAbandoned();
-          },
-        });
-      } catch (error) {
-        if (stopped || deliveryAbortSignal.aborted) {
-          return { kind: "failed-retryable", error };
-        }
-        throw error;
-      }
-      if (!handedOff && (stopped || deliveryAbortSignal.aborted)) {
-        return { kind: "failed-retryable", error: stoppedError() };
-      }
-      return undefined;
-    },
+    deliver: (rawEvent, lifecycle, claim) =>
+      options.deliver(
+        normalizeClaimedTwitchMessage(rawEvent, claim.id),
+        bindIngressLifecycleToReplyOptions(lifecycle).turnAdoptionLifecycle,
+      ),
     deferredClaims: "manual",
     pollIntervalMs: options.pollIntervalMs ?? TWITCH_INGRESS_DRAIN_INTERVAL_MS,
     // Twitch IRC does not replay PRIVMSG lines; these 1k tombstones only guard local crashes.
