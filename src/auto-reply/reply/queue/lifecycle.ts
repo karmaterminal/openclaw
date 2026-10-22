@@ -210,6 +210,11 @@ export function completeFollowupRunLifecycle(
   completeSessionControllerSourceLifecycle(run, state, settlement);
 }
 
+/** True once this source's adoption committed (the last boundary before model/tool work). */
+export function isFollowupRunAdopted(run: FollowupRun | FollowupLifecycleSource): boolean {
+  return custody(run).adopted === true;
+}
+
 /** Settles a source whose owner relinquished it on purpose (queue clear, stop). */
 export function cancelFollowupRunLifecycle(run: FollowupRun | FollowupLifecycleSource): void {
   completeFollowupRunLifecycle(run, "cancelled");

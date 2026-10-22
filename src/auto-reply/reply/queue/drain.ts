@@ -39,6 +39,7 @@ import {
 import {
   admitFollowupRunLifecycle,
   completeFollowupRunLifecycle,
+  isFollowupRunAdopted,
   retireFollowupRunCancellation,
   updateFollowupRetryHeartbeats,
 } from "./lifecycle.js";
@@ -206,6 +207,7 @@ async function executeClaim(
   }
   let adoptionRefused = false;
   let waitForFreshKick = false;
+  let executionThrew = false;
   try {
     if (admissionSessionRebind && run.run.sessionId === admissionSessionRebind.from) {
       run = { ...run, admissionSessionId: admissionSessionRebind.to };
@@ -214,6 +216,7 @@ async function executeClaim(
       (source.controllerInput && followupSourceRunners.get(source.controllerInput)) ?? execute;
     await runFollowup(run);
   } catch (error) {
+    executionThrew = true;
     updateFollowupRetryHeartbeats(error, sources);
     adoptionRefused = sources.some((item) => {
       const custody = item.controllerInput?.custody;
@@ -280,7 +283,15 @@ async function executeClaim(
         continue;
       }
       try {
-        completeFollowupRunLifecycle(item, preparationRefused ? undefined : "consumed");
+        // A run that returned normally without adopting this source never started
+        // its model/tool work: it releases the source (an aborted owner cancels, an
+        // unadmitted one abandons) instead of consuming its durable claim. Throws
+        // keep upstream's no-replay rule unless the producer refused explicitly.
+        const unadopted = !executionThrew && !isFollowupRunAdopted(item);
+        completeFollowupRunLifecycle(
+          item,
+          preparationRefused || unadopted ? undefined : "consumed",
+        );
       } catch (error) {
         defaultRuntime.error?.("mailbox custody settlement failed: " + String(error));
       }
