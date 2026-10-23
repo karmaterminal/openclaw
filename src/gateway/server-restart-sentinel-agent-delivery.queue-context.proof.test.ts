@@ -89,11 +89,11 @@ function storedRows(stateDir: string) {
   }
 }
 
+// The lifecycle dispatch is specialized to agent turns (upstream bd5a106a2b): params come first.
 function dispatchedTurns(dispatch: { mock: { calls: unknown[][] } }) {
-  return dispatch.mock.calls.map(([method, params]) => {
+  return dispatch.mock.calls.map(([params]) => {
     const turn = params as { sessionKey?: string; expectedExistingSessionId?: string };
     return {
-      method,
       sessionKey: turn.sessionKey,
       expectedExistingSessionId: turn.expectedExistingSessionId,
     };
@@ -125,12 +125,8 @@ describe("queued media completion queue owner", () => {
       }
 
       expect(dispatchedTurns(dispatch)).toEqual([
-        {
-          method: "agent",
-          sessionKey: scope.sessionKey,
-          expectedExistingSessionId: "original-requester",
-        },
-        { method: "agent", sessionKey: scope.sessionKey, expectedExistingSessionId: undefined },
+        { sessionKey: scope.sessionKey, expectedExistingSessionId: "original-requester" },
+        { sessionKey: scope.sessionKey, expectedExistingSessionId: undefined },
       ]);
       expect(log.warn).not.toHaveBeenCalled();
       expect(await queue.loadPendingSessionDeliveries(owning)).toEqual([]);
