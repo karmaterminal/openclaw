@@ -161,6 +161,57 @@ it("captures source selection and the exact settled branch", async () => {
   });
 });
 
+// A user image anywhere in the projected window rejected the whole capture, so every later
+// turn that settled without an answer lost finalization (#1438).
+it.each(["current prompt", "prior history"] as const)(
+  "records a user image in the %s as a bounded placeholder",
+  async (location) => {
+    const imageTurn = (identity: string, text: string) =>
+      message(
+        {
+          role: "user",
+          content: [
+            { type: "text", text },
+            { type: "image", data: "aGVsbG8=", mimeType: "image/png" },
+          ],
+        },
+        identity,
+      );
+    const settledMessages = settledTurn();
+    if (location === "current prompt") {
+      settledMessages[0] = imageTurn("turn-2:prompt", "Send it.");
+    }
+    const prior =
+      location === "prior history"
+        ? imageTurn("turn-1:prompt", "Alice is the recipient.")
+        : user("Alice is the recipient.", "turn-1:prompt");
+    const warn = vi.spyOn(embeddedAgentLog, "warn").mockImplementation(() => {});
+    try {
+      const context = await captureContext(settledMessages, [prior, ...settledMessages]);
+
+      expect(warn).not.toHaveBeenCalled();
+      expect(context?.data[location === "current prompt" ? 1 : 0]).toEqual({
+        type: "message",
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: location === "current prompt" ? "Send it." : "Alice is the recipient.",
+          },
+          { type: "input_text", text: "[User image omitted: image/png]" },
+        ],
+      });
+      expect(context?.data.at(-1)).toEqual({
+        type: "function_call_output",
+        call_id: "call-2",
+        output: "sent",
+      });
+    } finally {
+      warn.mockRestore();
+    }
+  },
+);
+
 it.each([
   { budget: "items", overflow: 1 },
   { budget: "bytes", overflow: 0 },
