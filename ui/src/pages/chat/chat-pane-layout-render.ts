@@ -223,7 +223,16 @@ export abstract class ChatPaneLayoutRender extends ChatPaneHeaderLayout {
       chatProps.canAbort &&
       chatProps.onAbort &&
       !hasTerminalRunStatus(chatProps.runStatus)
-        ? { onAbort: chatProps.onAbort }
+        ? {
+            target: JSON.stringify([
+              this.connectionGeneration,
+              state.sessionKey,
+              state.currentSessionId,
+              observerRunId ?? state.chatRunId,
+              selectedSession?.activeRunIds,
+            ]),
+            onAbort: chatProps.onAbort,
+          }
         : undefined;
     const subagentStopInNotice =
       this.sessionPresentation === "desktop" &&
@@ -653,6 +662,9 @@ export abstract class ChatPaneLayoutRender extends ChatPaneHeaderLayout {
     }
     const avatar = resolveAssistantDisplayAvatar(chatProps);
     const region = renderSidebarRegion({
+      onPanelReady: () => {
+        this.flushPendingPanelToggles();
+      },
       mobileScrollFades: this.mobileScrollFades,
       onRegionElementRef: (element) => {
         this.sidebarRegionElement = element;
