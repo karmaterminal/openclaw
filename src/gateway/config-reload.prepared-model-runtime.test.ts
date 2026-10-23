@@ -85,7 +85,6 @@ describe("buildGatewayReloadPlan", () => {
       restartReasons: [],
       hotReasons: [path],
       noopPaths: [],
-      restartHeartbeat: false,
       restartCron: false,
       reloadHooks: false,
       reloadPlugins: false,
