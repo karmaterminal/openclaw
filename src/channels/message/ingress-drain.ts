@@ -37,8 +37,6 @@ import { supersedeActiveStatesIfNeeded } from "./ingress-drain-supersede.js";
 import type { ChannelIngressQueueClaim, ChannelIngressQueueRecord } from "./ingress-queue.types.js";
 import {
   createIngressRetryPolicy,
-  type IngressNonRetryableFailure,
-  type IngressRetryPolicyConfig,
 } from "./ingress-retry-policy.js";
 export { bindIngressLifecycleToReplyOptions } from "./ingress-drain-lifecycle.js";
 export type { CreateChannelIngressDrainOptions } from "./ingress-drain-options.js";
