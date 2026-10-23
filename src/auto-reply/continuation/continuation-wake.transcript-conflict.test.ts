@@ -35,6 +35,7 @@ import {
   restoreActivePluginRegistrySnapshot,
   setActivePluginRegistry,
 } from "../../plugins/runtime.js";
+import { resolveActiveReplyOperationForSessionId } from "../../sessions/session-controller.queries.js";
 import { openOpenClawStateDatabase } from "../../state/openclaw-state-db.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import {
@@ -82,11 +83,13 @@ type WakeTurnFailure = {
 /**
  * One delegate return wakes a continuation-enabled session whose turn admits, then fails with
  * `failure`. The Gateway persists the run's lifecycle events as its agent-event handler would.
+ * An `answered` turn first answers its source through the message tool.
  */
 async function failWakeTurn(
   label: string,
   failure: (sessionId: string) => Error,
   signal: AbortSignal,
+  options: { answered?: boolean } = {},
 ): Promise<WakeTurnFailure> {
   let observed: WakeTurnFailure | undefined;
   await withOpenClawTestState({ label, env: { OPENCLAW_TEST_FAST: "0" } }, async (state) => {
@@ -151,6 +154,9 @@ async function failWakeTurn(
       prompts.push(params.prompt);
       // The model ran; the turn then failed before its answer reached the transcript.
       await admitModelTurn(params);
+      if (options.answered) {
+        resolveActiveReplyOperationForSessionId(sessionId)?.markSourceReplyDelivered();
+      }
       throw failure(sessionId);
     });
     try {
@@ -235,4 +241,21 @@ it("settles a wake turn that fails for any other reason as a failure, out of the
     lastRunError: "synthetic provider failure",
   });
   expect(turn.rowPending).toBe(false);
+});
+
+it("keeps failure settlement for a wake turn that already answered before its transcript lost", async ({
+  signal,
+}) => {
+  const turn = await failWakeTurn(
+    "conflict-answered",
+    (id) => new SqliteTranscriptMutationConflictError(id),
+    signal,
+    { answered: true },
+  );
+
+  expect(turn.prompts).toHaveLength(1);
+  // The answer already reached its source, so the turn does not yield: it settles as failed,
+  // as its sibling with any other failure does, and leaves no interrupted run.
+  expect(turn.terminal?.aborted).toBeUndefined();
+  expect(turn.entry).toMatchObject({ status: "failed", abortedLastRun: false });
 });

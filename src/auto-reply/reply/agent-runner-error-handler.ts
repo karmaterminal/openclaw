@@ -17,6 +17,8 @@ import { isAgentHarnessPreflightError } from "../../agents/harness/errors.js";
 import { LiveSessionModelSwitchError } from "../../agents/live-model-switch-error.js";
 import { resolveReplyCompletion, resolveReplyExpectation } from "../../agents/reply-completion.js";
 import { isChannelRunAuthorizationError } from "../../channels/message-access/run-authorization-error.js";
+import { isSqliteTranscriptMutationConflict } from "../../config/sessions/session-mutation-conflict-error.js";
+import { logVerbose } from "../../globals.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { GatewayDrainingError } from "../../process/command-queue.js";
 import { defaultRuntime } from "../../runtime.js";
@@ -150,6 +152,21 @@ export async function handleAgentExecutionError(params: {
     kind: "final" as const,
     payload: markAgentRunFailureReplyPayload({ text }),
   });
+  if (
+    turn.followupRun.run.internalEventExecution &&
+    isSqliteTranscriptMutationConflict(err) &&
+    turn.replyOperation?.sourceReplyDelivered === false
+  ) {
+    // A newer writer, such as room input, moved the transcript under this event turn (a
+    // continuation wake or other background event), and its prepared reply cannot rebase over
+    // it. Yield as preemption does: no failed run and no interrupted run to recover (#1475 D3a).
+    // A turn that already answered its source keeps failure settlement.
+    if (turn.replyOperation.supersede()) {
+      logVerbose(
+        `event turn yielded to a newer transcript writer: ${turn.sessionKey ?? turn.followupRun.run.sessionId}`,
+      );
+    }
+  }
   const replyOperationAbortAction = resolveReplyOperationAbortAction(err);
   if (replyOperationAbortAction) {
     return replyOperationAbortAction;
