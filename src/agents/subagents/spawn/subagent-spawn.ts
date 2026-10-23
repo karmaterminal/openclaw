@@ -59,6 +59,7 @@ import {
   buildSubagentSpawnPipelineFailureResult,
   notifyHomeOfAcceptedSubagentSession,
 } from "./subagent-spawn-registration.js";
+import { applySubagentProfile } from "./subagent-spawn-profile.js";
 import { resolveSubagentSpawnRequest } from "./subagent-spawn-request.js";
 import { cleanupAcceptedSubagentSpawnFailure } from "./subagent-spawn-rollback.js";
 import { createInitialSubagentSession } from "./subagent-spawn-session-patch.js";
@@ -71,9 +72,10 @@ export type SpawnSubagentParams = BaseSpawnSubagentParams & ContinuationSpawnPar
 export type { SpawnSubagentContext, SpawnSubagentResult };
 
 export async function spawnSubagentDirect(
-  params: SpawnSubagentParams,
-  ctx: SpawnSubagentContext,
+  input: SpawnSubagentParams,
+  context: SpawnSubagentContext,
 ): Promise<SpawnSubagentResult> {
+  const { params, ctx, profileReceipt, systemPrompt } = applySubagentProfile(input, context);
   let assertDelegationCurrent: (() => void) | undefined;
   const assertActive = composeSessionSourceAssertion([ctx.assertActive], (assertSource) => {
     assertSource();
@@ -265,7 +267,6 @@ export async function spawnSubagentDirect(
     const cleanupCreatedSession = (emitLifecycleHooks = false) =>
       cleanupProvisionalSession(childSessionKey, {
         emitLifecycleHooks,
-        deleteTranscript: true,
         ...provisionalSessionIdentity,
         isCurrent: isCleanupCurrent,
         ...(cleanupOwner ? { callGateway: cleanupOwner.callGateway } : {}),
@@ -344,6 +345,7 @@ export async function spawnSubagentDirect(
       maxSpawnDepth,
       drainsContinuationDelegateQueue: params.drainsContinuationDelegateQueue === true,
       outputSchema: params.outputSchema,
+      systemPrompt,
     });
     const { completionMode, envelope } = preparedEnvelope;
     let { childSystemPrompt } = preparedEnvelope;
@@ -456,7 +458,6 @@ export async function spawnSubagentDirect(
         ...childTarget,
         attachmentId,
         emitLifecycleHooks: threadBindingReady,
-        deleteTranscript: true,
         ...provisionalSessionIdentity,
         ...options,
         isCurrent: isCleanupCurrent,
@@ -541,6 +542,7 @@ export async function spawnSubagentDirect(
           runId,
           requesterTurnRunId: ctx.requesterTurnRunId,
           nativePluginOwner: params.collect ? ctx.nativePluginOwner : undefined,
+          subagentProfile: profileReceipt,
           ...childTarget,
           controllerSessionKey: ownership.controllerSessionKey,
           sessionEntry: childEntry,

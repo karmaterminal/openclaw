@@ -215,9 +215,8 @@ export function isSystemEventContextChanged(
 export function enqueueSystemEventEntry(
   text: string,
   options: SystemEventOptions,
-  receiptOptions?: ReceiptOptions,
 ): SystemEvent | null {
-  const event = enqueueOwnedSystemEventEntry(text, options, receiptOptions);
+  const event = enqueueOwnedSystemEventEntry(text, options);
   return event ? cloneSystemEvent(event) : null;
 }
 
@@ -762,14 +761,4 @@ export function peekDeliverableSystemEventEntries(sessionKey: string): SystemEve
   return peekSystemEventEntries(sessionKey).filter(
     (event) => !event.deliveryHeld && !isSystemEventTurnOwned(sessionKey, event),
   );
-}
-export function holdSystemEventDelivery(
-  sessionKey: string,
-  attempted: readonly SystemEvent[],
-): void {
-  for (const event of getSessionQueue(sessionKey)?.queue ?? []) {
-    if (attempted.some((candidate) => matchesConsumedSystemEvent(event, candidate))) {
-      event.deliveryHeld = true;
-    }
-  }
 }

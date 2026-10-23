@@ -1,9 +1,9 @@
 // Sweeper archival for completed collector groups (split from the sweeper for its line
 // budget): a group archives only as a whole, after every member's session, attachments
 // and context-engine cleanup succeed, and stops for this pass once any member changes.
-import { resolveSubagentChildAuthority } from "./subagent-child-owner-match.js";
 import { shouldSuppressSubagentRecoverySessionEffects } from "./subagent-recovery-state.js";
 import { safeRemoveAttachmentsDir } from "./subagent-registry-helpers.js";
+import { getRecordedSubagentChildAuthority } from "./subagent-registry-memory.js";
 import { mutateSubagentRuns } from "./subagent-registry-persistence.js";
 import {
   mutateCleanup,
@@ -53,7 +53,7 @@ export async function sweepCollectorArchiveGroups(
     if (
       groupEntries.some(
         ([, candidate]) =>
-          resolveSubagentChildAuthority(candidate).status === "mismatch" ||
+          getRecordedSubagentChildAuthority(candidate).status === "mismatch" ||
           !isCollectorArchiveReady(candidate, now) ||
           !cleanupIdentities.has(getSubagentRunRuntimeKey(candidate)) ||
           (!shouldSuppressSubagentRecoverySessionEffects(candidate) &&

@@ -124,8 +124,9 @@ function isGitHubCopilotResponsesRoute(route: TranscriptAssistantRoute | undefin
   );
 }
 
-function isStructurallyValidOpaqueReplayToken(value: string): boolean {
+function isStructurallyValidOpaqueReplayToken(value: unknown): value is string {
   return (
+    typeof value === "string" &&
     value.length > 0 &&
     value === value.trim() &&
     OPAQUE_REPLAY_TOKEN_RE.test(value) &&
@@ -210,7 +211,6 @@ function sanitizeCompactionReplayState(
     (!isOpenAI && !isAnthropic) ||
     !(isOpenAI ? isOpenAIResponsesRoute(route) : isAnthropicReasoningRoute(route)) ||
     value.v !== 1 ||
-    typeof value.data !== "string" ||
     (value.type === "openai-responses-retained-compaction" && value.replayIndex !== undefined) ||
     (value.replayIndex !== undefined &&
       (isSuppression ||
@@ -236,19 +236,14 @@ function sanitizeCompactionReplayState(
       ? isStructurallyValidOpaqueReplayToken(value.data)
         ? value.data
         : undefined
-      : value.data.length > 0
+      : typeof value.data === "string" && value.data.length > 0
         ? value.data
         : undefined;
   if (data === undefined) {
     return undefined;
   }
   const encryptedContent = !isSuppression && isAnthropic ? value.encryptedContent : undefined;
-  if (
-    encryptedContent !== undefined &&
-    encryptedContent !== null &&
-    (typeof encryptedContent !== "string" ||
-      !isStructurallyValidOpaqueReplayToken(encryptedContent))
-  ) {
+  if (encryptedContent != null && !isStructurallyValidOpaqueReplayToken(encryptedContent)) {
     return undefined;
   }
   const replayId =
@@ -354,12 +349,7 @@ export function sanitizeOpenAIReasoningSignature(
   }
   const encryptedContent = parsed.encrypted_content;
   const hasEncryptedContent = Object.hasOwn(parsed, "encrypted_content");
-  if (
-    encryptedContent !== undefined &&
-    encryptedContent !== null &&
-    (typeof encryptedContent !== "string" ||
-      !isStructurallyValidOpaqueReplayToken(encryptedContent))
-  ) {
+  if (encryptedContent != null && !isStructurallyValidOpaqueReplayToken(encryptedContent)) {
     return undefined;
   }
   if (
@@ -402,7 +392,6 @@ function sanitizeOpenAICompletionsToolSignature(value: string): string | undefin
   if (
     !parsed ||
     parsed.type !== "reasoning.encrypted" ||
-    typeof parsed.data !== "string" ||
     !isStructurallyValidOpaqueReplayToken(parsed.data) ||
     (parsed.id !== undefined &&
       parsed.id !== null &&

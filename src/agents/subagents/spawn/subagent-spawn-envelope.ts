@@ -33,6 +33,8 @@ export function prepareSubagentSpawnEnvelope(params: {
   maxSpawnDepth: number;
   drainsContinuationDelegateQueue: boolean;
   outputSchema?: Record<string, unknown>;
+  /** The subagent profile's instructions follow the envelope, before the output contract. */
+  systemPrompt: (base: string) => string;
 }): PreparedSubagentSpawnEnvelope {
   let completionMode: SubagentCompletionMode = "quiet";
   if (params.collect) {
@@ -84,9 +86,10 @@ export function prepareSubagentSpawnEnvelope(params: {
   });
   const outputSchemaInstruction =
     'Call structured_output with {"result": <your final result>} until one payload is accepted, with at most one retry after a rejected attempt. The result value must match the requested JSON Schema. Do not call structured_output again after acceptance.';
+  const basePrompt = params.systemPrompt(envelope.systemPrompt);
   const childSystemPrompt = params.outputSchema
-    ? `${envelope.systemPrompt}\n\n${outputSchemaInstruction}`
-    : envelope.systemPrompt;
+    ? `${basePrompt}\n\n${outputSchemaInstruction}`
+    : basePrompt;
 
   return { completionMode, envelope, childSystemPrompt };
 }

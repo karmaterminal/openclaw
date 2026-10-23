@@ -540,7 +540,6 @@ export async function deliverQueuedGeneratedMediaCompletion(input: {
     });
     assertRequesterAdmissionCurrent();
     await dispatchGatewayMethodInProcess(
-      "agent",
       {
         sessionKey: params.canonicalKey,
         ...(binding

@@ -2,12 +2,12 @@
 import type { SessionEntry } from "../../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { notifyHomeOfSessionCreated } from "../../../sessions/session-created.js";
+import { summarizeSpawnError, type runSpawnPipeline } from "../../spawn-pipeline.js";
 import {
   isSpawnSubagentAdmissionCancelledError,
   type SpawnSubagentResult,
 } from "./subagent-spawn-contract.js";
 import type { resolveSubagentSpawnRequest } from "./subagent-spawn-request.js";
-import { buildSubagentSpawnFailureResult } from "./subagent-spawn-result.js";
 
 type ResolveCollectorAdmission = Extract<
   Awaited<ReturnType<typeof resolveSubagentSpawnRequest>>,
@@ -47,7 +47,7 @@ export async function notifyHomeOfAcceptedSubagentSession(
 
 /** Upstream's failure result, plus continuation's cancelled status and failure phase. */
 export function buildSubagentSpawnPipelineFailureResult(
-  pipelineResult: Parameters<typeof buildSubagentSpawnFailureResult>[0],
+  pipelineResult: Extract<Awaited<ReturnType<typeof runSpawnPipeline>>, { ok: false }>,
   {
     childIdem,
     childSessionKey,
@@ -61,19 +61,26 @@ export function buildSubagentSpawnPipelineFailureResult(
     acceptedRunCleanupError?: string;
   },
 ): SpawnSubagentResult {
-  const result = buildSubagentSpawnFailureResult(pipelineResult, {
-    childSessionKey,
-    fallbackRunId: childIdem,
-    acceptedRunCleanupError,
-  });
+  const { phase, error } = pipelineResult;
+  const spawnStatus =
+    error && typeof error === "object" && "spawnStatus" in error ? error.spawnStatus : undefined;
   return {
-    ...result,
-    status: isSpawnSubagentAdmissionCancelledError(pipelineResult.error)
+    status: isSpawnSubagentAdmissionCancelledError(error)
       ? "cancelled"
-      : result.status === "forbidden"
+      : spawnStatus === "forbidden"
         ? "forbidden"
         : "error",
+    error: [
+      phase === "register" && spawnStatus !== "forbidden"
+        ? `Failed to register subagent run: ${summarizeSpawnError(error)}`
+        : summarizeSpawnError(error),
+      acceptedRunCleanupError,
+    ]
+      .filter(Boolean)
+      .join(" "),
+    childSessionKey,
+    ...(phase === "initialize" ? {} : { runId: pipelineResult.runId ?? childIdem }),
     context: undefined,
-    ...(reportFailurePhase ? { failurePhase: pipelineResult.phase } : {}),
+    ...(reportFailurePhase ? { failurePhase: phase } : {}),
   };
 }

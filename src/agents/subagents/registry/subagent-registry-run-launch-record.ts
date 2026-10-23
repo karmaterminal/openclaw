@@ -31,6 +31,7 @@ export type RegisterSubagentRunParams = {
   runId: string;
   requesterTurnRunId?: string;
   nativePluginOwner?: SubagentRunRecord["nativePluginOwner"];
+  subagentProfile?: SubagentRunRecord["subagentProfile"];
   childSessionKey: string;
   childAgentId: string;
   sessionEntry?: SubagentRunRecord["childSessionIdentity"];
@@ -105,6 +106,9 @@ export function createSubagentRegistrationRecord(
     ...(requesterTurnRunId ? { requesterTurnRunId } : {}),
     ...(registerParams.nativePluginOwner
       ? { nativePluginOwner: { ...registerParams.nativePluginOwner } }
+      : {}),
+    ...(registerParams.subagentProfile
+      ? { subagentProfile: { ...registerParams.subagentProfile } }
       : {}),
     childSessionKey: registerParams.childSessionKey.trim(),
     childAgentId: prepared.childAgentId,

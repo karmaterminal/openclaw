@@ -106,7 +106,6 @@ function stagedDir(result: Awaited<ReturnType<typeof spawn>>): string {
     resolveSubagentSessionAttachmentRootDir({
       agentId: "main",
       childSessionKey: result.childSessionKey as string,
-      env: { ...process.env, OPENCLAW_STATE_DIR: stateDirOverride },
     }),
     path.basename(result.attachments?.relDir ?? ""),
   );
