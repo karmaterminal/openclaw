@@ -154,6 +154,26 @@ afterEach(async () => {
 });
 
 describe("Feishu durable ingress", () => {
+  it("settles a cancelled flush once, without spending retry budget, when other callbacks overlap", async () => {
+    const cancellation = Promise.withResolvers<void>();
+    const cancelled = vi.fn(async () => await cancellation.promise);
+    const replayClaim = createReplayClaim("overlapping-cancel");
+    const { calls, lifecycle } = createLifecycle({ onCancelled: cancelled }, replayClaim);
+
+    // The first terminal callback owns the flush; later ones may not repeat or replace it.
+    const cancelling = lifecycle?.onCancelled?.();
+    const abandoning = lifecycle?.onAbandoned();
+    const adopting = lifecycle?.onAdopted();
+    cancellation.resolve();
+    await Promise.all([cancelling, abandoning, adopting]);
+
+    expect(cancelled).toHaveBeenCalledOnce();
+    expect(calls.onAbandoned).not.toHaveBeenCalled();
+    expect(calls.onAdopted).not.toHaveBeenCalled();
+    expect(replayClaim.release).toHaveBeenCalledOnce();
+    expect(replayClaim.commit).not.toHaveBeenCalled();
+  });
+
   it("waits for durable append before acknowledging the webhook", async () => {
     await withQueue(async (queue, startIngress) => {
       const appendGate = createDeferred<void>();
