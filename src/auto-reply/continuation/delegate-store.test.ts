@@ -5,7 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setRuntimeConfigSnapshot } from "../../config/config.js";
-import { isSessionRecipientAuthorityCurrent } from "../../config/sessions/session-accessor.js";
+import { isSessionRecipientAuthorityCurrentInWorker } from "../../config/sessions/session-recipient-authority-current.js";
 
 // Logger mock for corrupt-payload breadcrumb assertions.
 // Mirrors the shape used in sibling delegate-dispatch.test.ts so log.warn
@@ -873,9 +873,12 @@ describe("delegate store — continuation custody", () => {
       "agent:main:sibling",
     ]);
     for (const { sessionKey, authority } of recipients) {
-      expect(isSessionRecipientAuthorityCurrent({ agentId: "main", sessionKey }, authority)).toBe(
-        true,
-      );
+      expect(
+        await isSessionRecipientAuthorityCurrentInWorker(
+          { agentId: "main", sessionKey },
+          authority,
+        ),
+      ).toBe(true);
     }
     expect(record.recordId).toEqual(expect.any(String));
   });

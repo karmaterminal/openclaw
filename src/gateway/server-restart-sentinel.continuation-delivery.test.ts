@@ -14,7 +14,6 @@ import {
   deleteSessionEntryLifecycle,
   upsertSessionEntryCore,
 } from "../config/sessions/session-accessor.js";
-import { isSessionRecipientAuthorityCurrent as isActualSessionRecipientAuthorityCurrent } from "../config/sessions/session-accessor.sqlite-recipient-authority.js";
 import { addSessionMember, removeSessionMember } from "../config/sessions/session-sharing-store.js";
 import type { RestartSentinelPayload } from "../infra/restart-sentinel.js";
 import { resolveSystemEventQueueKey } from "../infra/system-event-ownership.js";
@@ -44,6 +43,10 @@ const { resetGatewayWorkAdmission } = await import("../process/gateway-work-admi
 const actualRestartUpdateRun = await vi.importActual<
   typeof import("./server-restart-update-run.js")
 >("./server-restart-update-run.js");
+const { isSessionRecipientAuthorityCurrentInWorker: isActualSessionRecipientAuthorityCurrent } =
+  await vi.importActual<typeof import("../config/sessions/session-recipient-authority-current.js")>(
+    "../config/sessions/session-recipient-authority-current.js",
+  );
 
 function mockRestartContinuation(
   continuation: NonNullable<RestartSentinelPayload["continuation"]>,
@@ -431,9 +434,9 @@ describe("scheduleRestartSentinelWake", () => {
         expect(deletion.deleted).toBe(true);
       }
 
-      expect(isActualSessionRecipientAuthorityCurrent(authorityScope, recipientAuthority)).toBe(
-        false,
-      );
+      expect(
+        await isActualSessionRecipientAuthorityCurrent(authorityScope, recipientAuthority),
+      ).toBe(false);
       mocks.isSessionRecipientAuthorityCurrent.mockImplementation((scope, authority) =>
         isActualSessionRecipientAuthorityCurrent(scope, authority),
       );

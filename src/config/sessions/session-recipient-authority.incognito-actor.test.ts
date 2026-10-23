@@ -19,12 +19,9 @@ import {
 } from "../../state/openclaw-agent-db.paths.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { captureRuntimeConfigAsyncReader } from "../io.runtime.js";
-import {
-  captureSessionRecipientAuthority,
-  isSessionRecipientAuthorityCurrent,
-} from "./session-accessor.js";
+import { captureSessionRecipientAuthority } from "./session-accessor.js";
 import { patchSessionEntryCore } from "./session-accessor.sqlite-entry.js";
-import { readSessionRecipientAuthorityEpochInDatabase } from "./session-accessor.sqlite-recipient-authority.js";
+import { readSessionRecipientAuthorityEpochInDatabase } from "./session-recipient-authority.worker.js";
 import type { SessionActorAuthority } from "./session-actor-contract.js";
 import { memorySessionActorOwners } from "./session-actor-memory-owner.js";
 import { commitMemory } from "./session-actor-memory-publication.test-support.js";
@@ -32,6 +29,7 @@ import {
   acquireSessionActorStorage,
   runWithSessionActorStorage,
 } from "./session-actor-storage-binding.js";
+import { isSessionRecipientAuthorityCurrentInWorker } from "./session-recipient-authority-current.js";
 import {
   sessionRecipientAuthorityMatches,
   type SessionRecipientAuthority,
@@ -124,15 +122,18 @@ it("never treats natively captured authority as current while an incognito owner
     expect(sessionRecipientAuthorityMatches(nativeAuthority, readNativeEpoch())).toBe(true);
     // The durable control proves the row would be current for a natively owned key.
     expect(
-      isSessionRecipientAuthorityCurrent({ ...scope, sessionKey: controlKey }, nativeAuthority),
+      await isSessionRecipientAuthorityCurrentInWorker(
+        { ...scope, sessionKey: controlKey },
+        nativeAuthority,
+      ),
     ).toBe(true);
-    expect(isSessionRecipientAuthorityCurrent(scope, nativeAuthority)).toBe(false);
+    expect(await isSessionRecipientAuthorityCurrentInWorker(scope, nativeAuthority)).toBe(false);
 
     const { binding, owner } = await createIncognitoSession(env, "narrow");
     try {
       // While the owner holds the namespace the native epoch is not current, so
       // no return carrying it can be delivered or adopted.
-      expect(isSessionRecipientAuthorityCurrent(scope, nativeAuthority)).toBe(false);
+      expect(await isSessionRecipientAuthorityCurrentInWorker(scope, nativeAuthority)).toBe(false);
 
       // The memory writer commits a narrowing visibility change without running
       // the in-transaction hook, and authority stays non-current afterwards.
@@ -148,7 +149,7 @@ it("never treats natively captured authority as current while an incognito owner
       );
       expect(patched?.visibility).toBe("draft");
       expect(hookRan).toBe(false);
-      expect(isSessionRecipientAuthorityCurrent(scope, nativeAuthority)).toBe(false);
+      expect(await isSessionRecipientAuthorityCurrentInWorker(scope, nativeAuthority)).toBe(false);
       expect(owner.readSession(sessionKey, authority)?.entry?.visibility).toBe("draft");
       // The memory write never reached the native store's epoch row.
       expect(sessionRecipientAuthorityMatches(nativeAuthority, readNativeEpoch())).toBe(true);

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { captureRuntimeConfigAsyncReader } from "../../config/io.runtime.js";
 import * as sessionAccessor from "../../config/sessions/session-accessor.js";
 import { advanceSessionRecipientAuthorityInTransaction } from "../../config/sessions/session-accessor.sqlite-recipient-authority.js";
+import { isSessionRecipientAuthorityCurrentInWorker } from "../../config/sessions/session-recipient-authority-current.js";
 import {
   addSessionMember,
   removeSessionMember,
@@ -87,10 +88,10 @@ async function applyInvalidation(params: {
 }
 
 async function resolveFinalAdoption(...prepared: PreparedFormattedSystemEvents[]) {
-  let adoption = resolveFinalSystemEventAdoption({ prepared });
+  let adoption = await resolveFinalSystemEventAdoption({ prepared });
   while (adoption.kind === "settle-stale") {
     await adoption.settle();
-    adoption = resolveFinalSystemEventAdoption({ prepared });
+    adoption = await resolveFinalSystemEventAdoption({ prepared });
   }
   return adoption;
 }
@@ -166,7 +167,7 @@ describe("recipient authority prompt-adoption fence", () => {
         resumeTranscriptRead.resolve();
         const prepared = await preparing;
 
-        expect(sessionAccessor.isSessionRecipientAuthorityCurrent(scope, recipientAuthority)).toBe(
+        expect(await isSessionRecipientAuthorityCurrentInWorker(scope, recipientAuthority)).toBe(
           false,
         );
         const prompt = prepared.blocks.map((block) => block.text).join("\n");
@@ -229,7 +230,7 @@ describe("recipient authority prompt-adoption fence", () => {
           isNewSession: false,
         });
 
-        expect(sessionAccessor.isSessionRecipientAuthorityCurrent(scope, recipientAuthority)).toBe(
+        expect(await isSessionRecipientAuthorityCurrentInWorker(scope, recipientAuthority)).toBe(
           false,
         );
         expect(prepared).toEqual({ blocks: [], managedDeliveries: [] });
@@ -290,7 +291,7 @@ describe("recipient authority prompt-adoption fence", () => {
         await applyInvalidation({ invalidation, scope, storePath });
         const adoption = await resolveFinalAdoption(prepared);
 
-        expect(sessionAccessor.isSessionRecipientAuthorityCurrent(scope, recipientAuthority)).toBe(
+        expect(await isSessionRecipientAuthorityCurrentInWorker(scope, recipientAuthority)).toBe(
           false,
         );
         const prompt = adoption.blocks.map((block) => block.text).join("\n");
@@ -351,11 +352,11 @@ describe("recipient authority prompt-adoption fence", () => {
       ).not.toBeNull();
       const adoption = await resolveFinalAdoption(route.prepared, current.prepared);
 
-      expect(sessionAccessor.isSessionRecipientAuthorityCurrent(route.scope, route.authority)).toBe(
+      expect(await isSessionRecipientAuthorityCurrentInWorker(route.scope, route.authority)).toBe(
         false,
       );
       expect(
-        sessionAccessor.isSessionRecipientAuthorityCurrent(current.scope, current.authority),
+        await isSessionRecipientAuthorityCurrentInWorker(current.scope, current.authority),
       ).toBe(true);
       const prompt = adoption.blocks.map((block) => block.text).join("\n");
       expect(prompt).not.toContain("ops delegate result");

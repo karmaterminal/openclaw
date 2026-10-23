@@ -2,9 +2,12 @@ import { expect, test, vi } from "vitest";
 import { enqueueContinuationReturnDeliveries } from "../auto-reply/continuation/targeting.js";
 import {
   captureSessionRecipientAuthority,
-  isSessionRecipientAuthorityCurrent,
   loadSessionEntry,
 } from "../config/sessions/session-accessor.js";
+import {
+  isSessionRecipientAuthorityCurrentInWorker,
+  withCurrentSessionRecipientAuthority,
+} from "../config/sessions/session-recipient-authority-current.js";
 import { setupGatewaySessionsTestHarness } from "./test/server-sessions.test-helpers.js";
 
 const { seedActiveMainSession } = setupGatewaySessionsTestHarness();
@@ -37,7 +40,7 @@ test.each(["new", "reset"] as const)(
     expect(reset.entry.lifecycleRevision).toEqual(expect.any(String));
     expect(reset.entry.lifecycleRevision).not.toBe(beforeReset?.lifecycleRevision);
     expect(loadSessionEntry(scope)?.lifecycleRevision).toBe(reset.entry.lifecycleRevision);
-    expect(isSessionRecipientAuthorityCurrent(scope, recipientAuthority)).toBe(true);
+    expect(await isSessionRecipientAuthorityCurrentInWorker(scope, recipientAuthority)).toBe(true);
 
     const enqueueSessionDelivery = vi.fn(async () => `delivery-${reason}`);
     const enqueueSystemEvent = vi.fn(() => true);
@@ -55,10 +58,10 @@ test.each(["new", "reset"] as const)(
         enqueueSessionDelivery,
         enqueueSystemEvent,
         requestContinuationWake,
-        isRecipientAuthorityCurrent: (resolvedKey, authority) =>
-          isSessionRecipientAuthorityCurrent(
-            { agentId: "main", sessionKey: resolvedKey, storePath },
-            authority,
+        withRecipientAuthority: (target, authority, decide) =>
+          withCurrentSessionRecipientAuthority(
+            [{ scope: { agentId: "main", sessionKey: target.sessionKey, storePath }, authority }],
+            ([current]) => decide(Boolean(current)),
           ),
       },
     );

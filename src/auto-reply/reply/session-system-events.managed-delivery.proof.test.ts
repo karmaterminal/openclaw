@@ -114,10 +114,10 @@ async function prepareTurn(scope: Scope): Promise<{ prompt: string; deliveries: 
     isMainSession: false,
     isNewSession: false,
   });
-  let adoption = resolveFinalSystemEventAdoption({ prepared: [prepared] });
+  let adoption = await resolveFinalSystemEventAdoption({ prepared: [prepared] });
   while (adoption.kind === "settle-stale") {
     await adoption.settle();
-    adoption = resolveFinalSystemEventAdoption({ prepared: [prepared] });
+    adoption = await resolveFinalSystemEventAdoption({ prepared: [prepared] });
   }
   return {
     prompt: adoption.blocks.map((block) => block.text).join("\n"),
@@ -367,19 +367,19 @@ describe("managed system-event delivery (non-default agent, global scope)", () =
       });
 
     expect(reassign(main)).not.toBeNull();
-    const adoption = resolveFinalSystemEventAdoption({ prepared: [prepared] });
+    const adoption = await resolveFinalSystemEventAdoption({ prepared: [prepared] });
     if (adoption.kind !== "adopted") {
       throw new Error("a default-agent writer staled the non-default agent's delivery");
     }
     expect([...adoption.managedDeliveries.keys()]).toEqual([kept]);
 
     expect(reassign(ops)).not.toBeNull();
-    const stale = resolveFinalSystemEventAdoption({ prepared: [prepared] });
+    const stale = await resolveFinalSystemEventAdoption({ prepared: [prepared] });
     if (stale.kind !== "settle-stale") {
       throw new Error("the owning agent's owner change did not stale its delivery");
     }
     await stale.settle();
-    const final = resolveFinalSystemEventAdoption({ prepared: [prepared] });
+    const final = await resolveFinalSystemEventAdoption({ prepared: [prepared] });
     expect(final).toMatchObject({ kind: "adopted", blocks: [] });
     expect(final.kind === "adopted" ? final.managedDeliveries.size : -1).toBe(0);
     // Stale authority retires the row instead of leaving it to replay into a new owner.

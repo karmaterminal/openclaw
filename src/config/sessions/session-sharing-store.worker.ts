@@ -27,11 +27,14 @@ import { updatePreparedSessionProfileInvolvement } from "./session-accessor.sqli
 import { assignSessionOwner } from "./session-accessor.sqlite-owner.js";
 import { readSqliteSessionParticipantProjection } from "./session-accessor.sqlite-participant-projection.js";
 import { recordSessionParticipantFromWorker } from "./session-accessor.sqlite-participants.native.js";
-import { captureSessionRecipientAuthorityInTransaction } from "./session-accessor.sqlite-recipient-authority.js";
 import { resolveSqliteScope, toDatabaseOptions } from "./session-accessor.sqlite-scope.js";
 import { applySessionGroupCategoryMutation } from "./session-group-categories.kernel.js";
 import { readSessionGroupCategoryKeys } from "./session-group-categories.read.js";
 import { prepareSessionParticipantContribution } from "./session-participant-contribution.worker.js";
+import {
+  captureSessionRecipientAuthorityInTransaction,
+  readSessionRecipientAuthorityEpochInDatabase,
+} from "./session-recipient-authority.worker.js";
 import { addSessionMember, removeSessionMember } from "./session-sharing-store.native.js";
 import type {
   MembershipPublication,
@@ -82,6 +85,13 @@ export function bindSqliteWorkerBackend(
         throw new Error("Session collaboration target changed its database owner");
       }
       scope.storePath = context.databasePath;
+      if (command.type === "authority.read") {
+        // Continuation: the caller holds writer admission, so no accepted write is in flight.
+        return readSessionRecipientAuthorityEpochInDatabase(
+          workerDatabase(scope),
+          scope.sessionKey,
+        );
+      }
       if (command.type === "category.prepare") {
         const database = workerDatabase(scope);
         categoryPlan = {

@@ -323,12 +323,16 @@ const updateAmbientTranscriptWatermarkMock = vi.hoisted(() => vi.fn().mockResolv
 
 // Continuation (karmaterminal): recipient authority is scripted per case at its owner module.
 vi.mock(
-  "../../config/sessions/session-accessor.sqlite-recipient-authority.js",
+  "../../config/sessions/session-recipient-authority-current.js",
   async (importOriginal) => ({
     ...(await importOriginal<
-      typeof import("../../config/sessions/session-accessor.sqlite-recipient-authority.js")
+      typeof import("../../config/sessions/session-recipient-authority-current.js")
     >()),
-    isSessionRecipientAuthorityCurrent: recipientAuthorityCurrentMock,
+    isSessionRecipientAuthorityCurrentInWorker: async () => recipientAuthorityCurrentMock(),
+    withCurrentSessionRecipientAuthority: async <T>(
+      checks: readonly unknown[],
+      decide: (current: readonly boolean[]) => T,
+    ) => decide(checks.map(() => recipientAuthorityCurrentMock())),
   }),
 );
 

@@ -12,7 +12,10 @@ import { recordInboundSession } from "../channels/session.js";
 import { dispatchAssembledChannelTurn } from "../channels/turn/lifecycle.js";
 import type { CliDeps } from "../cli/deps.types.js";
 import { getRuntimeConfig } from "../config/io.js";
-import { isSessionRecipientAuthorityCurrent } from "../config/sessions/session-accessor.js";
+import {
+  isSessionRecipientAuthorityCurrentInWorker,
+  withCurrentSessionRecipientAuthority,
+} from "../config/sessions/session-recipient-authority-current.js";
 import type { SessionRecipientAuthority } from "../config/sessions/session-recipient-authority-types.js";
 import { toErrorObject } from "../infra/errors.js";
 import {
@@ -24,10 +27,7 @@ import {
   SessionDeliverySafeRetryError,
   type QueuedSessionDelivery,
 } from "../infra/session-delivery-queue-storage.js";
-import {
-  hasQueuedSystemEventDelivery,
-  removeSystemEvents,
-} from "../infra/system-event-managed-delivery-queue.js";
+import { hasQueuedSystemEventDelivery } from "../infra/system-event-managed-delivery-queue.js";
 import { withSystemEventOwner } from "../infra/system-event-ownership.js";
 import { enqueueSystemEvent } from "../infra/system-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -96,7 +96,6 @@ function enqueueRestartSentinelWake(params: {
   sessionDeliveryAckStateDir?: string;
   recipientAuthority?: SessionRecipientAuthority;
   awaitsTurnAdoption?: boolean;
-  isRecipientAuthorityCurrent?: () => boolean;
   /** A continuation return's own wake; absent keeps the generic restart-sentinel wake. */
   returnWake?: ContinuationReturnWake;
 }): RestartSentinelWakeOutcome {
@@ -122,15 +121,6 @@ function enqueueRestartSentinelWake(params: {
   // neither replace the queued occurrence nor wake the session again.
   const admitted =
     !hasQueuedSystemEventDelivery(ownedOptions) && enqueueSystemEvent(params.message, ownedOptions);
-  if (params.recipientAuthority && params.isRecipientAuthorityCurrent?.() !== true) {
-    removeSystemEvents(
-      params.sessionKey,
-      (event) =>
-        event.sessionDeliveryAckId === params.sessionDeliveryAckId &&
-        event.sessionDeliveryAckStateDir === params.sessionDeliveryAckStateDir,
-    );
-    return "stale-authority";
-  }
   if (!admitted) {
     // `false` is either a capacity refusal or a de-duplicated re-enqueue of a
     // row that already rides a queued event (whose producer already woke the
@@ -279,13 +269,11 @@ async function deliverResolvedQueuedSessionDelivery(params: {
       });
     }
     const recipientAuthority = params.entry.recipientAuthority;
-    const recipientAuthorityCurrent = () =>
-      !recipientAuthority ||
-      isSessionRecipientAuthorityCurrent(
-        { agentId, sessionKey: canonicalKey, storePath },
-        recipientAuthority,
-      );
-    if (!recipientAuthorityCurrent()) {
+    const authorityScope = { agentId, sessionKey: canonicalKey, storePath };
+    if (
+      recipientAuthority &&
+      !(await isSessionRecipientAuthorityCurrentInWorker(authorityScope, recipientAuthority))
+    ) {
       log.warn("session event delivery skipped: recipient authority changed", {
         sessionKey: canonicalKey,
         queueId: params.entry.id,
@@ -316,7 +304,7 @@ async function deliverResolvedQueuedSessionDelivery(params: {
     // Continuation-owned rows keep adoption-scoped custody: the queued event
     // carries the row's ack id, recipient authority and return wake, and the
     // row settles only when a prompt adopts it.
-    const replayed = enqueueRestartSentinelWake({
+    const wake = {
       entryId: params.entry.id,
       message: params.entry.text,
       sessionKey: canonicalKey,
@@ -327,11 +315,18 @@ async function deliverResolvedQueuedSessionDelivery(params: {
       sessionDeliveryAckStateDir: stateDir,
       recipientAuthority,
       awaitsTurnAdoption,
-      isRecipientAuthorityCurrent: recipientAuthorityCurrent,
       ...(isContinuationReturn && params.entry.returnWake !== undefined
         ? { returnWake: params.entry.returnWake }
         : {}),
-    });
+    };
+    // The replay enqueues inside the authority decision, under the writer admission that read
+    // the epoch; prompt adoption fences the queued event again.
+    const replayed: RestartSentinelWakeOutcome = recipientAuthority
+      ? await withCurrentSessionRecipientAuthority(
+          [{ scope: authorityScope, authority: recipientAuthority }],
+          ([current]) => (current ? enqueueRestartSentinelWake(wake) : "stale-authority"),
+        )
+      : enqueueRestartSentinelWake(wake);
     if (replayed === "refused") {
       deferRefusedRestartSentinelWake({
         sessionKey: canonicalKey,

@@ -2,7 +2,8 @@
 // module first so its registrations precede the modules they replace.
 import { vi } from "vitest";
 import type { ChannelPlugin } from "../channels/plugins/types.plugin.js";
-import type { isSessionRecipientAuthorityCurrent as isActualSessionRecipientAuthorityCurrent } from "../config/sessions/session-accessor.sqlite-recipient-authority.js";
+import type { SessionAccessScope } from "../config/sessions/session-accessor.sqlite-contract.js";
+import type { SessionRecipientAuthority } from "../config/sessions/session-recipient-authority-types.js";
 
 type RestartSentinel = NonNullable<
   Awaited<ReturnType<typeof import("../infra/restart-sentinel.js").readRestartSentinel>>
@@ -56,9 +57,12 @@ const mocks = vi.hoisted(() => {
 
   const harnessMocks = {
     resolveSessionAgentId: vi.fn(() => "agent-from-key"),
-    isSessionRecipientAuthorityCurrent: vi.fn<typeof isActualSessionRecipientAuthorityCurrent>(
-      () => true,
-    ),
+    isSessionRecipientAuthorityCurrent: vi.fn<
+      (
+        scope: SessionAccessScope,
+        authority: SessionRecipientAuthority,
+      ) => boolean | Promise<boolean>
+    >(() => true),
     get queuedSessionDelivery() {
       return state.queuedSessionDeliveries.values().next().value ?? null;
     },
@@ -341,9 +345,25 @@ vi.mock("../utils/delivery-context.read.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/delivery-context.read.js")>()),
   deliveryContextFromSession: mocks.deliveryContextFromSession,
 }));
-vi.mock("../config/sessions/session-accessor.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../config/sessions/session-accessor.js")>()),
-  isSessionRecipientAuthorityCurrent: mocks.isSessionRecipientAuthorityCurrent,
+vi.mock("../config/sessions/session-recipient-authority-current.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../config/sessions/session-recipient-authority-current.js")
+  >()),
+  isSessionRecipientAuthorityCurrentInWorker: async (
+    scope: SessionAccessScope,
+    authority: SessionRecipientAuthority,
+  ) => mocks.isSessionRecipientAuthorityCurrent(scope, authority),
+  withCurrentSessionRecipientAuthority: async <T>(
+    checks: readonly { scope: SessionAccessScope; authority: SessionRecipientAuthority }[],
+    decide: (current: readonly boolean[]) => T,
+  ) =>
+    decide(
+      await Promise.all(
+        checks.map(({ scope, authority }) =>
+          mocks.isSessionRecipientAuthorityCurrent(scope, authority),
+        ),
+      ),
+    ),
 }));
 
 vi.mock("../utils/delivery-context.shared.js", async (importOriginal) => ({

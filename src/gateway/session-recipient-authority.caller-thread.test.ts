@@ -2,6 +2,7 @@
 // ratchet). This config runs on the process main thread, so session writers take the same
 // worker routes as the Gateway. Every recipient-authority statement prepared on this thread is
 // caller-thread SQL; worker threads have their own SQLite realm and are not observed here.
+import { randomUUID } from "node:crypto";
 import { isMainThread } from "node:worker_threads";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
@@ -11,15 +12,37 @@ import { prepareFormattedSystemEvents } from "../auto-reply/reply/session-system
 import { captureRuntimeConfigAsyncReader } from "../config/io.runtime.js";
 import * as sessionAccessor from "../config/sessions/session-accessor.js";
 import { readSessionEntryReadOnlyInWorker } from "../config/sessions/session-entry-read-runtime.js";
+import { SessionEntryChangedDuringReadError } from "../config/sessions/session-entry-read-errors.js";
 import { addSessionMember, removeSessionMember } from "../config/sessions/session-sharing-store.js";
 import { resetSystemEventsForTest } from "../infra/system-events.js";
-import { closeOpenClawAgentDatabasesForTest } from "../state/openclaw-agent-db.js";
+import {
+  closeOpenClawAgentDatabasesForTest,
+  openOpenClawAgentDatabase,
+} from "../state/openclaw-agent-db.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 
 const ownerA = { type: "human" as const, source: "unknown" as const, id: "owner-a" };
 const AUTHORITY_SQL = /\bsession_recipient_authority\b/i;
 
+const authorityRead = vi.hoisted(() => ({ onMatch: undefined as (() => void) | undefined }));
+
+// The match runs after the worker read and before the decision: the gap a racing writer targets.
+vi.mock("../config/sessions/session-recipient-authority-types.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../config/sessions/session-recipient-authority-types.js")>();
+  return {
+    ...actual,
+    sessionRecipientAuthorityMatches: (
+      ...args: Parameters<typeof actual.sessionRecipientAuthorityMatches>
+    ) => {
+      authorityRead.onMatch?.();
+      return actual.sessionRecipientAuthorityMatches(...args);
+    },
+  };
+});
+
 afterEach(() => {
+  authorityRead.onMatch = undefined;
   resetSystemEventsForTest();
   closeOpenClawAgentDatabasesForTest();
   vi.restoreAllMocks();
@@ -52,21 +75,47 @@ async function boundReturn(env: NodeJS.ProcessEnv, sessionKey: string, member = 
   return { scope, deliveryId: delivery.deliveryIds[0] };
 }
 
-/** Prepare and adopt one drain; `await` also serves a synchronous final decision. */
-async function adopt(sessionKey: string) {
-  const prepared = await prepareFormattedSystemEvents({
+function prepare(sessionKey: string) {
+  return prepareFormattedSystemEvents({
     cfg: {},
     agentId: "main",
     sessionKey,
     isMainSession: false,
     isNewSession: false,
   });
-  let adoption = await resolveFinalSystemEventAdoption({ prepared: [prepared] });
+}
+
+/** The final adoption, settling stale authority until none remains, as turn admission does. */
+async function finalize(
+  prepared: Awaited<ReturnType<typeof prepare>>,
+  onDecision?: () => void,
+): Promise<string> {
+  const resolve = () =>
+    resolveFinalSystemEventAdoption({
+      prepared: [prepared],
+      replaceDeliveryIds: () => {
+        onDecision?.();
+        return true;
+      },
+    });
+  let adoption = await resolve();
   while (adoption.kind === "settle-stale") {
     await adoption.settle();
-    adoption = await resolveFinalSystemEventAdoption({ prepared: [prepared] });
+    adoption = await resolve();
   }
   return adoption.blocks.map((block) => block.text).join("\n");
+}
+
+async function adopt(sessionKey: string) {
+  return await finalize(await prepare(sessionKey));
+}
+
+/** A writer outside the agent writer FIFO revising the epoch on this thread's own connection. */
+function reviseEpochOutsideWriterFifo(env: NodeJS.ProcessEnv, sessionKey: string) {
+  const { db } = openOpenClawAgentDatabase({ agentId: "main", env });
+  db.prepare(
+    "UPDATE session_recipient_authority SET epoch = ?, updated_at = ? WHERE session_key = ?",
+  ).run(randomUUID(), Date.now(), sessionKey);
 }
 
 async function withAuthorityState(run: (env: NodeJS.ProcessEnv) => Promise<void>) {
@@ -139,6 +188,62 @@ describe("recipient authority on the Gateway thread", () => {
       });
     },
   );
+
+  it("fails closed when a writer outside the FIFO revokes between the worker read and adoption", async () => {
+    expect(isMainThread).toBe(true);
+    await withAuthorityState(async (env) => {
+      const sessionKey = "agent:main:caller-thread-read-gap";
+      await boundReturn(env, sessionKey);
+      const prepared = await prepare(sessionKey);
+      let reads = 0;
+      authorityRead.onMatch = () => {
+        if (reads++ === 0) {
+          reviseEpochOutsideWriterFifo(env, sessionKey);
+        }
+      };
+      expect(await finalize(prepared)).not.toContain(`${sessionKey} delegate result`);
+      // The witness rejected the first read; the repeat saw the revision.
+      expect(reads).toBeGreaterThan(1);
+    });
+  });
+
+  it("refuses to adopt while a writer outside the FIFO races every authority read", async () => {
+    expect(isMainThread).toBe(true);
+    await withAuthorityState(async (env) => {
+      const sessionKey = "agent:main:caller-thread-read-race";
+      await boundReturn(env, sessionKey);
+      const prepared = await prepare(sessionKey);
+      let decided = false;
+      authorityRead.onMatch = () => reviseEpochOutsideWriterFifo(env, sessionKey);
+      await expect(
+        finalize(prepared, () => {
+          decided = true;
+        }),
+      ).rejects.toBeInstanceOf(SessionEntryChangedDuringReadError);
+      expect(decided).toBe(false);
+      authorityRead.onMatch = undefined;
+      expect(await finalize(prepared)).not.toContain(`${sessionKey} delegate result`);
+    });
+  });
+
+  it("orders a revoke queued during the read after the adoption decision", async () => {
+    expect(isMainThread).toBe(true);
+    await withAuthorityState(async (env) => {
+      const sessionKey = "agent:main:caller-thread-queued-revoke";
+      const { scope } = await boundReturn(env, sessionKey, true);
+      const prepared = await prepare(sessionKey);
+      const order: string[] = [];
+      let revoke: Promise<unknown> | undefined;
+      authorityRead.onMatch = () => {
+        revoke ??= removeSessionMember(scope, "member-a").then(() => order.push("revoke"));
+      };
+      const adopted = await finalize(prepared, () => order.push("decide"));
+      await revoke;
+      // The read held the writer FIFO, so the revoke could not commit under the decision.
+      expect(order).toEqual(["decide", "revoke"]);
+      expect(adopted).toContain(`${sessionKey} delegate result`);
+    });
+  });
 
   it.each([
     ["the default writer route", "default", {}],

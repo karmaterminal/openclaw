@@ -22,12 +22,9 @@ vi.mock("../../config/sessions/session-accessor.js", async () => {
   const { persistSessionTranscriptTurn } =
     await import("../../config/sessions/session-accessor.transcript-turn.js");
   // Continuation (karmaterminal): post-compaction delegate delivery binds patchSessionEntryCore
-  // at module load, and system-event adoption checks recipient authority through this barrel.
-  const { isSessionRecipientAuthorityCurrent } =
-    await import("../../config/sessions/session-accessor.sqlite-recipient-authority.js");
+  // at module load.
   return {
     bindSessionPendingInputSources,
-    isSessionRecipientAuthorityCurrent,
     loadSessionEntry,
     patchSessionEntryCore,
     patchSessionEntryTarget,

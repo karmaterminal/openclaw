@@ -8,13 +8,13 @@ import {
 import { captureRuntimeConfigAsyncReader } from "../../config/io.runtime.js";
 import {
   captureSessionRecipientAuthority,
-  isSessionRecipientAuthorityCurrent,
   loadSessionEntry,
   replaceSessionEntrySync,
   loadTranscriptEvents,
   patchSessionEntryCore,
   upsertSessionEntryCore,
 } from "../../config/sessions/session-accessor.js";
+import { isSessionRecipientAuthorityCurrentInWorker } from "../../config/sessions/session-recipient-authority-current.js";
 import { readSessionMembersInWorker } from "../../config/sessions/session-sharing-store.js";
 import { addSessionMember } from "../../config/sessions/session-sharing-store.native.js";
 import * as sharingLifecycle from "../../sessions/session-controller.lifecycle.js";
@@ -154,14 +154,14 @@ it("revokes recipient authority only when visibility becomes more restrictive", 
       expect(
         await call("session.visibility.set", { sessionKey, visibility }, requestContext),
       ).toMatchObject([[true, { ok: true, sessionKey, visibility }, undefined]]);
-      expect(isSessionRecipientAuthorityCurrent(scope, authority)).toBe(false);
+      expect(await isSessionRecipientAuthorityCurrentInWorker(scope, authority)).toBe(false);
       authority = await captureSessionRecipientAuthority(scope);
     }
 
     expect(
       await call("session.visibility.set", { sessionKey, visibility: "shared" }, requestContext),
     ).toMatchObject([[true, { ok: true, sessionKey, visibility: "shared" }, undefined]]);
-    expect(isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);
+    expect(await isSessionRecipientAuthorityCurrentInWorker(scope, authority)).toBe(true);
   }));
 
 it("preserves profile actors and distinguishes unknown from absent profileless evidence", () =>

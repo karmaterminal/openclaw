@@ -1,4 +1,4 @@
-import { isSessionRecipientAuthorityCurrent } from "../../config/sessions/session-accessor.js";
+import { withCurrentSessionRecipientAuthority } from "../../config/sessions/session-recipient-authority-current.js";
 import type { SessionRecipientAuthority } from "../../config/sessions/session-recipient-authority-types.js";
 import { emitContinuationFanoutSpan } from "../../infra/continuation-tracer.js";
 import type { scheduleSessionDelivery } from "../../infra/session-delivery-queue-runtime.js";
@@ -75,16 +75,28 @@ type ContinuationReturnDeliveryDeps = {
   ackSessionDelivery?: typeof import("../../infra/session-delivery-queue-storage.js").ackSessionDelivery;
   enqueueSystemEvent: typeof enqueueSystemEvent;
   requestContinuationWake: typeof requestContinuationWake;
-  isRecipientAuthorityCurrent?: (
-    sessionKey: string,
+  /** Decides synchronously under the recipient's authority read (writer admission). */
+  withRecipientAuthority?: <T>(
+    target: { sessionKey: string; agentId: string },
     authority: SessionRecipientAuthority,
-  ) => boolean;
+    decide: (current: boolean) => T,
+  ) => Promise<T>;
   removeSystemEvents?: typeof removeSystemEvents;
   /** Arms the delivery scheduler's retry for a row the full queue refused. */
   scheduleSessionDelivery?: typeof scheduleSessionDelivery;
 };
 
 const log = createSubsystemLogger("continuation/targeting");
+
+function withRecipientAuthorityInWorker<T>(
+  target: { sessionKey: string; agentId: string },
+  authority: SessionRecipientAuthority,
+  decide: (current: boolean) => T,
+): Promise<T> {
+  return withCurrentSessionRecipientAuthority([{ scope: target, authority }], ([current]) =>
+    decide(Boolean(current)),
+  );
+}
 
 const defaultContinuationReturnDeliveryDeps: ContinuationReturnDeliveryDeps = {
   enqueueSessionDelivery,
@@ -228,17 +240,16 @@ export async function enqueueContinuationReturnDeliveries(
   for (const { sessionKey, recipientAgentId } of targets) {
     const text = params.text;
     const recipientAuthority = params.recipientAuthorities?.get(sessionKey);
-    const recipientAuthorityCurrent = () =>
-      !recipientAuthority ||
-      (
-        deps.isRecipientAuthorityCurrent ??
-        ((key, authority) =>
-          isSessionRecipientAuthorityCurrent(
-            { agentId: recipientAgentId, sessionKey: key },
-            authority,
-          ))
-      )(sessionKey, recipientAuthority);
-    if (!recipientAuthorityCurrent()) {
+    // Each decision runs under the recipient's authority read; an unbound return is current.
+    const withAuthority = <T>(decide: (current: boolean) => T): Promise<T> =>
+      recipientAuthority
+        ? (deps.withRecipientAuthority ?? withRecipientAuthorityInWorker)(
+            { sessionKey, agentId: recipientAgentId },
+            recipientAuthority,
+            decide,
+          )
+        : Promise.resolve(decide(true));
+    if (!(await withAuthority((current) => current))) {
       continue;
     }
     const commonPayload = {
@@ -268,7 +279,37 @@ export async function enqueueContinuationReturnDeliveries(
       payload,
       captureContinuationQueueContext(params.stateDir),
     );
-    if (!recipientAuthorityCurrent()) {
+    const enqueued = await withAuthority((current) => {
+      if (!current) {
+        return { kind: "stale" as const };
+      }
+      // Checked after the awaited write, with no await before the queue below: a reset that
+      // marks the child later clears this event and its replay is deferred by the same mark.
+      if (params.holdForReset?.(sessionKey)) {
+        return { kind: "reset-held" as const };
+      }
+      const eventOptions = {
+        sessionKey,
+        trusted: true,
+        ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
+        ...(params.traceparent ? { traceparent: params.traceparent } : {}),
+        sessionDeliveryAckId: deliveryId,
+        ...(params.stateDir ? { sessionDeliveryAckStateDir: params.stateDir } : {}),
+        ...(recipientAuthority ? { recipientAuthority } : {}),
+        sessionDeliveryAwaitsTurnAdoption: true,
+      };
+      const ownedEventOptions = withContinuationOwner(eventOptions, recipientAgentId);
+      // Never ack on `false`. It is either a de-duplicated re-enqueue (the
+      // idempotent row already rides a queued event that carries its ack id) or a
+      // capacity refusal (nothing is queued and the row is the only copy).
+      return {
+        kind: "queued" as const,
+        refused:
+          !deps.enqueueSystemEvent(text, ownedEventOptions) &&
+          !hasQueuedSystemEventDelivery(ownedEventOptions),
+      };
+    });
+    if (enqueued.kind === "stale") {
       // Stale authority can never adopt this row; retire it now rather than leave it until replay.
       await (deps.ackSessionDelivery ?? ackSessionDelivery)(
         deliveryId,
@@ -276,9 +317,7 @@ export async function enqueueContinuationReturnDeliveries(
       );
       continue;
     }
-    // Checked after the awaited write, with no await before the queue below: a reset that marks
-    // the child later clears this event and its replay is deferred by the same mark.
-    if (params.holdForReset?.(sessionKey)) {
+    if (enqueued.kind === "reset-held") {
       deliveryIds.push(deliveryId);
       resetHeldSessionKeys.push(sessionKey);
       log.info(
@@ -286,31 +325,19 @@ export async function enqueueContinuationReturnDeliveries(
       );
       continue;
     }
-
-    const eventOptions = {
-      sessionKey,
-      trusted: true,
-      ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
-      ...(params.traceparent ? { traceparent: params.traceparent } : {}),
-      sessionDeliveryAckId: deliveryId,
-      ...(params.stateDir ? { sessionDeliveryAckStateDir: params.stateDir } : {}),
-      ...(recipientAuthority ? { recipientAuthority } : {}),
-      sessionDeliveryAwaitsTurnAdoption: true,
-    };
-    const ownedEventOptions = withContinuationOwner(eventOptions, recipientAgentId);
-    // Never ack on `false`. It is either a de-duplicated re-enqueue (the
-    // idempotent row already rides a queued event that carries its ack id) or a
-    // capacity refusal (nothing is queued and the row is the only copy).
-    const refused =
-      !deps.enqueueSystemEvent(text, ownedEventOptions) &&
-      !hasQueuedSystemEventDelivery(ownedEventOptions);
-    if (!recipientAuthorityCurrent()) {
-      (deps.removeSystemEvents ?? removeSystemEvents)(
-        sessionKey,
-        (event) =>
-          event.sessionDeliveryAckId === deliveryId &&
-          event.sessionDeliveryAckStateDir === params.stateDir,
-      );
+    const { refused } = enqueued;
+    const stillCurrent = await withAuthority((current) => {
+      if (!current) {
+        (deps.removeSystemEvents ?? removeSystemEvents)(
+          sessionKey,
+          (event) =>
+            event.sessionDeliveryAckId === deliveryId &&
+            event.sessionDeliveryAckStateDir === params.stateDir,
+        );
+      }
+      return current;
+    });
+    if (!stillCurrent) {
       await (deps.ackSessionDelivery ?? ackSessionDelivery)(
         deliveryId,
         captureContinuationQueueContext(params.stateDir),

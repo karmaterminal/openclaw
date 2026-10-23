@@ -17,10 +17,10 @@ import {
 import { captureRuntimeConfigAsyncReader } from "../../config/io.runtime.js";
 import {
   captureSessionRecipientAuthority,
-  isSessionRecipientAuthorityCurrent,
   upsertSessionEntryCore,
 } from "../../config/sessions/session-accessor.js";
 import { replaceSessionEntry } from "../../config/sessions/session-accessor.sqlite-entry.js";
+import { isSessionRecipientAuthorityCurrentInWorker } from "../../config/sessions/session-recipient-authority-current.js";
 import { withSystemEventOwner } from "../../infra/system-event-ownership.js";
 import {
   enqueueSystemEventRaw as enqueueSystemEvent,
@@ -521,7 +521,7 @@ describe("clearSessionResetRuntimeState", () => {
             ).toEqual([]);
             expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(false);
             expect(
-              isSessionRecipientAuthorityCurrent(
+              await isSessionRecipientAuthorityCurrentInWorker(
                 { agentId: "main", sessionKey },
                 recipientAuthority,
               ),

@@ -10,11 +10,11 @@ import {
   assignSessionOwner,
   captureSessionRecipientAuthority,
   deleteSessionEntryLifecycle,
-  isSessionRecipientAuthorityCurrent,
   patchSessionEntryCore,
   resetSessionEntryLifecycle,
   upsertSessionEntryCore,
 } from "./session-accessor.js";
+import { isSessionRecipientAuthorityCurrentInWorker } from "./session-recipient-authority-current.js";
 import { addSessionMember, removeSessionMember } from "./session-sharing-store.js";
 
 afterEach(() => closeOpenClawAgentDatabasesForTest());
@@ -42,18 +42,18 @@ describe("session recipient authority", () => {
         updatedAt: 2,
         lifecycleRevision: "lifecycle-new-conversation",
       });
-      expect(isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);
+      expect(await isSessionRecipientAuthorityCurrentInWorker(scope, authority)).toBe(true);
 
       await patchSessionEntryCore(scope, () => ({
         modelProvider: "fallback-provider",
         model: "fallback-model",
         compactionCount: 2,
       }));
-      expect(isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);
+      expect(await isSessionRecipientAuthorityCurrentInWorker(scope, authority)).toBe(true);
 
       // Capture used the writer worker; await its retirement before reopening.
       await closeOpenClawAgentDatabasesForTestAsync();
-      expect(isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);
+      expect(await isSessionRecipientAuthorityCurrentInWorker(scope, authority)).toBe(true);
     });
   });
 
@@ -79,7 +79,7 @@ describe("session recipient authority", () => {
           resetBoundary: { context: "clear", reason, cwd: state.workspaceDir },
           buildNextEntry: () => ({ sessionId: "session-after", updatedAt: 2 }),
         });
-        expect(isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);
+        expect(await isSessionRecipientAuthorityCurrentInWorker(scope, authority)).toBe(true);
       });
     },
   );
@@ -98,7 +98,7 @@ describe("session recipient authority", () => {
         epoch: expect.stringMatching(/^[0-9a-f-]{36}$/u),
       });
       await upsertSessionEntryCore(scope, { sessionId: "session-before", updatedAt: 1 });
-      expect(isSessionRecipientAuthorityCurrent(scope, absentAuthority)).toBe(true);
+      expect(await isSessionRecipientAuthorityCurrentInWorker(scope, absentAuthority)).toBe(true);
 
       await deleteSessionEntryLifecycle({
         agentId: "main",
@@ -111,7 +111,7 @@ describe("session recipient authority", () => {
       });
       await upsertSessionEntryCore(scope, { sessionId: "session-after", updatedAt: 2 });
 
-      expect(isSessionRecipientAuthorityCurrent(scope, absentAuthority)).toBe(false);
+      expect(await isSessionRecipientAuthorityCurrentInWorker(scope, absentAuthority)).toBe(false);
       const replacementAuthority = await captureSessionRecipientAuthority(scope);
       expect(replacementAuthority).not.toEqual(absentAuthority);
     });
@@ -137,7 +137,7 @@ describe("session recipient authority", () => {
         target: { canonicalKey: scope.sessionKey, storeKeys: [scope.sessionKey] },
       });
       await upsertSessionEntryCore(scope, { sessionId: "session-after", updatedAt: 2 });
-      expect(isSessionRecipientAuthorityCurrent(scope, authority)).toBe(false);
+      expect(await isSessionRecipientAuthorityCurrentInWorker(scope, authority)).toBe(false);
     });
   });
 
@@ -156,21 +156,21 @@ describe("session recipient authority", () => {
         updatedAt: 1,
         createdActor: ownerA,
       });
-      expect(isSessionRecipientAuthorityCurrent(scope, initialAuthority)).toBe(true);
+      expect(await isSessionRecipientAuthorityCurrentInWorker(scope, initialAuthority)).toBe(true);
 
       assignSessionOwner(scope, {
         owner: ownerA,
         assignedBy: ownerA,
         assignedAt: 2,
       });
-      expect(isSessionRecipientAuthorityCurrent(scope, initialAuthority)).toBe(true);
+      expect(await isSessionRecipientAuthorityCurrentInWorker(scope, initialAuthority)).toBe(true);
 
       assignSessionOwner(scope, {
         owner: { type: "human", id: "owner-b" },
         assignedBy: ownerA,
         assignedAt: 3,
       });
-      expect(isSessionRecipientAuthorityCurrent(scope, initialAuthority)).toBe(false);
+      expect(await isSessionRecipientAuthorityCurrentInWorker(scope, initialAuthority)).toBe(false);
 
       const reassignedAuthority = await captureSessionRecipientAuthority(scope);
       expect(
@@ -182,14 +182,18 @@ describe("session recipient authority", () => {
           })
         ).inserted,
       ).toBe(true);
-      expect(isSessionRecipientAuthorityCurrent(scope, reassignedAuthority)).toBe(true);
+      expect(await isSessionRecipientAuthorityCurrentInWorker(scope, reassignedAuthority)).toBe(
+        true,
+      );
 
       expect(await removeSessionMember(scope, "member-a")).not.toBeNull();
-      expect(isSessionRecipientAuthorityCurrent(scope, reassignedAuthority)).toBe(false);
+      expect(await isSessionRecipientAuthorityCurrentInWorker(scope, reassignedAuthority)).toBe(
+        false,
+      );
 
       const revokedAuthority = await captureSessionRecipientAuthority(scope);
       expect(await removeSessionMember(scope, "member-a")).toBeNull();
-      expect(isSessionRecipientAuthorityCurrent(scope, revokedAuthority)).toBe(true);
+      expect(await isSessionRecipientAuthorityCurrentInWorker(scope, revokedAuthority)).toBe(true);
     });
   });
 
@@ -208,7 +212,7 @@ describe("session recipient authority", () => {
       openOpenClawAgentDatabase({ agentId: "main", env: state.env })
         .db.prepare("UPDATE session_recipient_authority SET epoch = ? WHERE session_key = ?")
         .run("not-an-epoch", scope.sessionKey);
-      expect(isSessionRecipientAuthorityCurrent(scope, initialized)).toBe(false);
+      expect(await isSessionRecipientAuthorityCurrentInWorker(scope, initialized)).toBe(false);
       await expect(captureSessionRecipientAuthority(scope)).rejects.toThrow(
         /Invalid recipient authority epoch/,
       );

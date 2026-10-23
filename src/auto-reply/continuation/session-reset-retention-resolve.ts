@@ -8,8 +8,8 @@ import {
 } from "../../agents/subagents/registry/subagent-continuation-reset-retention.js";
 import { killSubagentRunAdmin } from "../../agents/subagents/registry/subagent-control-kill.js";
 import type { SubagentRunRecord } from "../../agents/subagents/registry/subagent-registry.types.js";
-import { isSessionRecipientAuthorityCurrent } from "../../config/sessions/session-accessor.js";
 import { readSessionEntryReadOnlyInWorker } from "../../config/sessions/session-entry-read-runtime.js";
+import { isSessionRecipientAuthorityCurrentInWorker } from "../../config/sessions/session-recipient-authority-current.js";
 import { resolveAllAgentSessionStoreTargetsSync } from "../../config/sessions/targets.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -25,13 +25,14 @@ const log = createSubsystemLogger("continuation/reset-retention");
 
 /**
  * The run's captured recipient authority for the reset session. Stale once delete, owner change
- * or visibility narrowing advanced the epoch: no later head may adopt its results.
+ * or visibility narrowing advanced the epoch: no later head may adopt its results. A "current"
+ * verdict only releases the held returns; each is fenced again when a prompt adopts it.
  */
-function readRetainedRecipientAuthority(
+async function readRetainedRecipientAuthority(
   entry: SubagentRunRecord,
   mark: NonNullable<SubagentRunRecord["continuationResetRetention"]>,
   storePath: string | undefined,
-): "current" | "stale" | "uncaptured" {
+): Promise<"current" | "stale" | "uncaptured"> {
   const parsed = parseContinuationRecipientAuthorityBinding(
     entry.continuationRecipientAuthorityBinding,
   );
@@ -43,10 +44,10 @@ function readRetainedRecipientAuthority(
   if (!authority) {
     return "uncaptured";
   }
-  return isSessionRecipientAuthorityCurrent(
+  return (await isSessionRecipientAuthorityCurrentInWorker(
     { agentId: mark.agentId, sessionKey: mark.sessionKey, ...(storePath ? { storePath } : {}) },
     authority,
-  )
+  ))
     ? "current"
     : "stale";
 }
@@ -54,7 +55,7 @@ function readRetainedRecipientAuthority(
 function classifyRetention(
   mark: NonNullable<SubagentRunRecord["continuationResetRetention"]>,
   row: SessionEntry | undefined,
-  authority: ReturnType<typeof readRetainedRecipientAuthority>,
+  authority: Awaited<ReturnType<typeof readRetainedRecipientAuthority>>,
 ): ContinuationResetRetentionOutcome | undefined {
   if (authority === "stale" || (authority === "uncaptured" && !row)) {
     return "orphaned";
@@ -133,7 +134,7 @@ export async function resolveContinuationResetRetentions(params: {
     const state = classifyRetention(
       mark,
       rows.get(rowKey),
-      readRetainedRecipientAuthority(entry, mark, storePath),
+      await readRetainedRecipientAuthority(entry, mark, storePath),
     );
     if (!state) {
       log.warn(

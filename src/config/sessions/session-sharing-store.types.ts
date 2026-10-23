@@ -5,7 +5,10 @@ import type { SessionActorVersion } from "./session-actor-state.types.js";
 import type { SessionActor, SessionOwnerAssignment } from "./session-entry-provenance.js";
 import type { SessionMember, SessionParticipantRecord } from "./session-membership-facts.types.js";
 import type { SessionParticipantIdentity } from "./session-participant-identity.js";
-import type { SessionRecipientAuthority } from "./session-recipient-authority-types.js";
+import type {
+  SessionRecipientAuthority,
+  SessionRecipientAuthorityEpochState,
+} from "./session-recipient-authority-types.js";
 import type { SessionEntry, SessionProfileInvolvement } from "./types.js";
 
 export type SessionSharingExpectedEntry = Pick<
@@ -125,6 +128,11 @@ export type SessionSharingWorkerOperations = {
   "category.prepare": { input: { scope: SessionAccessScope; from: string }; output: string[] };
   /** Continuation: insert-if-absent recipient authority; changes no session row. */
   "authority.capture": { input: { scope: SessionAccessScope }; output: SessionRecipientAuthority };
+  /** Continuation: the durable recipient-authority epoch, read without a write transaction. */
+  "authority.read": {
+    input: { scope: SessionAccessScope };
+    output: SessionRecipientAuthorityEpochState;
+  };
   "category.apply": {
     input: { scope: SessionAccessScope; from: string; to?: string };
     output: Array<{ sessionKey: string; sessionId: string }>;
@@ -156,10 +164,10 @@ export type SessionCollaborationFact = Extract<
 
 export type SessionSharingCommitReceipt = {
   kind: "session-collaboration-committed";
-  type: Exclude<keyof SessionSharingWorkerOperations, "category.prepare">;
+  type: Exclude<keyof SessionSharingWorkerOperations, "category.prepare" | "authority.read">;
   result: SessionSharingWorkerOperations[Exclude<
     keyof SessionSharingWorkerOperations,
-    "category.prepare"
+    "category.prepare" | "authority.read"
   >]["output"];
   publication: SqliteCommitReceipt<readonly SessionCollaborationFact[]>;
 };

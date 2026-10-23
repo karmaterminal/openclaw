@@ -31,8 +31,8 @@ type SharingWrites = {
   [
     Key in Exclude<
       keyof SessionSharingWorkerOperations,
-      // Continuation's recipient-authority capture runs only on the sharing writer's owner.
-      "category.prepare" | "category.apply" | "authority.capture"
+      // Continuation's recipient-authority capture and read run only on the sharing writer's owner.
+      "category.prepare" | "category.apply" | "authority.capture" | "authority.read"
     > as `session.collaboration.${Key}`
   ]: {
     input: Omit<SessionSharingWorkerOperations[Key]["input"], "scope"> &

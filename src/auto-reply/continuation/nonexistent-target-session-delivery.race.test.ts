@@ -195,6 +195,12 @@ describe("branch 2 — target session deleted before dispatch", () => {
   });
 });
 
+/** Each authority decision reads the scripted verdict once, as the worker read would. */
+function recipientAuthorityFrom(isCurrent: () => boolean) {
+  return async <T>(_target: unknown, _authority: unknown, decide: (current: boolean) => T) =>
+    decide(isCurrent());
+}
+
 describe("branch 3 — target deleted during dispatch race", () => {
   it("removes the durable row and emits no event or wake when bound authority changes during enqueue", async () => {
     let authorityCurrent = true;
@@ -206,6 +212,7 @@ describe("branch 3 — target deleted during dispatch race", () => {
     const enqueueSystemEvent = vi.fn<EnqueueSystemEvent>(() => true);
     const requestContinuationWake = vi.fn();
     const isRecipientAuthorityCurrent = vi.fn(() => authorityCurrent);
+    const withRecipientAuthority = recipientAuthorityFrom(isRecipientAuthorityCurrent);
     const recipientAuthorities = new Map([
       [
         EXISTING_TARGET,
@@ -230,7 +237,7 @@ describe("branch 3 — target deleted during dispatch race", () => {
         ackSessionDelivery,
         enqueueSystemEvent,
         requestContinuationWake,
-        isRecipientAuthorityCurrent,
+        withRecipientAuthority,
       },
     );
 
@@ -272,6 +279,7 @@ describe("branch 3 — target deleted during dispatch race", () => {
       authorityChecks += 1;
       return authorityChecks < 3;
     });
+    const withRecipientAuthority = recipientAuthorityFrom(isRecipientAuthorityCurrent);
     const recipientAuthorities = new Map([
       [
         EXISTING_TARGET,
@@ -297,7 +305,7 @@ describe("branch 3 — target deleted during dispatch race", () => {
         enqueueSystemEvent,
         removeSystemEvents,
         requestContinuationWake,
-        isRecipientAuthorityCurrent,
+        withRecipientAuthority,
       },
     );
 

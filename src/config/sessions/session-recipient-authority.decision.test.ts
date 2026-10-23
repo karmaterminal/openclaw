@@ -10,10 +10,10 @@ import { captureRuntimeConfigAsyncReader } from "../io.runtime.js";
 import {
   assignSessionOwner,
   captureSessionRecipientAuthority,
-  isSessionRecipientAuthorityCurrent,
   upsertSessionEntryCore,
 } from "./session-accessor.js";
 import { advanceSessionRecipientAuthorityInTransaction } from "./session-accessor.sqlite-recipient-authority.js";
+import { isSessionRecipientAuthorityCurrentInWorker } from "./session-recipient-authority-current.js";
 import { addSessionMember, removeSessionMember } from "./session-sharing-store.js";
 import * as historyRuntime from "./session-transcript-worker-runtime.js";
 
@@ -84,11 +84,11 @@ describe("recipient authority adopt/deliver decision", () => {
         return result;
       });
 
-      expect(isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);
+      expect(await isSessionRecipientAuthorityCurrentInWorker(scope, authority)).toBe(true);
       expect(readThroughWorker).not.toHaveBeenCalled();
 
       writeEpochOutOfProcess(state.env, scope.sessionKey, crypto.randomUUID());
-      expect(isSessionRecipientAuthorityCurrent(scope, authority)).toBe(false);
+      expect(await isSessionRecipientAuthorityCurrentInWorker(scope, authority)).toBe(false);
     });
   });
 
@@ -97,13 +97,19 @@ describe("recipient authority adopt/deliver decision", () => {
       await captureRuntimeConfigAsyncReader()();
       const replaced = await seedBoundSession(state.env, "agent:main:restart-replaced");
       const kept = await seedBoundSession(state.env, "agent:main:restart-kept");
-      expect(isSessionRecipientAuthorityCurrent(replaced.scope, replaced.authority)).toBe(true);
+      expect(
+        await isSessionRecipientAuthorityCurrentInWorker(replaced.scope, replaced.authority),
+      ).toBe(true);
 
       await closeOpenClawAgentDatabasesForTestAsync();
       writeEpochOutOfProcess(state.env, replaced.scope.sessionKey, crypto.randomUUID());
 
-      expect(isSessionRecipientAuthorityCurrent(replaced.scope, replaced.authority)).toBe(false);
-      expect(isSessionRecipientAuthorityCurrent(kept.scope, kept.authority)).toBe(true);
+      expect(
+        await isSessionRecipientAuthorityCurrentInWorker(replaced.scope, replaced.authority),
+      ).toBe(false);
+      expect(await isSessionRecipientAuthorityCurrentInWorker(kept.scope, kept.authority)).toBe(
+        true,
+      );
     });
   });
 
@@ -118,12 +124,16 @@ describe("recipient authority adopt/deliver decision", () => {
           assignedAt: 3,
         }),
       ).not.toBeNull();
-      expect(isSessionRecipientAuthorityCurrent(owned.scope, owned.authority)).toBe(false);
+      expect(await isSessionRecipientAuthorityCurrentInWorker(owned.scope, owned.authority)).toBe(
+        false,
+      );
 
       const shared = await seedBoundSession(state.env, "agent:main:advance-worker");
       // Member removal advances authority inside the sharing writer worker's transaction.
       expect(await removeSessionMember(shared.scope, "member-a")).not.toBeNull();
-      expect(isSessionRecipientAuthorityCurrent(shared.scope, shared.authority)).toBe(false);
+      expect(await isSessionRecipientAuthorityCurrentInWorker(shared.scope, shared.authority)).toBe(
+        false,
+      );
     });
   });
 
@@ -141,7 +151,7 @@ describe("recipient authority adopt/deliver decision", () => {
         ),
       ).toThrow("abandon advance");
 
-      expect(isSessionRecipientAuthorityCurrent(scope, authority)).toBe(true);
+      expect(await isSessionRecipientAuthorityCurrentInWorker(scope, authority)).toBe(true);
     });
   });
 });

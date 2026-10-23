@@ -1,6 +1,6 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
-import { isSessionRecipientAuthorityCurrent } from "../../config/sessions/session-accessor.js";
+import { withCurrentSessionRecipientAuthority } from "../../config/sessions/session-recipient-authority-current.js";
 import type { SessionRecipientAuthority } from "../../config/sessions/session-recipient-authority-types.js";
 import { toErrorObject } from "../../infra/errors.js";
 import { ackSessionDelivery } from "../../infra/session-delivery-queue-storage.js";
@@ -158,26 +158,27 @@ export function createPreparedSystemEventAuthorityOwner(params: {
   return pending.size > 0 ? { scope: params.scope, pending } : undefined;
 }
 
-export function resolveFinalSystemEventAdoption(params: {
+type StaleAuthorityBinding = {
+  authorityKey: string;
+  binding: PreparedAuthorityBinding;
+  owner: PreparedSystemEventAuthorityOwner;
+};
+
+type FinalSystemEventAdoptionParams = {
   prepared: readonly PreparedFormattedSystemEvents[];
   replaceDeliveryIds?: (deliveryIds: readonly string[]) => boolean;
-}) {
-  const stale: Array<{
-    authorityKey: string;
-    binding: PreparedAuthorityBinding;
-    owner: PreparedSystemEventAuthorityOwner;
-  }> = [];
-  for (const prepared of params.prepared) {
-    const owner = prepared.authorityOwner;
-    if (!owner) {
-      continue;
-    }
-    for (const [authorityKey, binding] of owner.pending) {
-      if (!isSessionRecipientAuthorityCurrent(owner.scope, binding.authority)) {
-        stale.push({ authorityKey, binding, owner });
-      }
-    }
-  }
+};
+
+export type AdoptedSystemEvents = {
+  kind: "adopted";
+  blocks: PreparedSystemEventBlock[];
+  managedDeliveries: Map<string, PreparedManagedSystemEventDelivery>;
+};
+
+function decideFinalSystemEventAdoption(
+  params: FinalSystemEventAdoptionParams,
+  stale: readonly StaleAuthorityBinding[],
+) {
   if (stale.length > 0) {
     return {
       kind: "settle-stale" as const,
@@ -222,7 +223,36 @@ export function resolveFinalSystemEventAdoption(params: {
     managedDeliveries: recorderAccepted
       ? adoptedDeliveries
       : new Map<string, PreparedManagedSystemEventDelivery>(),
-  };
+  } satisfies AdoptedSystemEvents;
+}
+
+/**
+ * The final adoption decision. Recipient authority is read in the sharing worker, and the
+ * decision (with `onAdopted`, when given) runs under the same writer admission, so no
+ * revocation can commit between the read and the adoption it allows.
+ */
+export async function resolveFinalSystemEventAdoption(
+  params: FinalSystemEventAdoptionParams & { onAdopted?: (adoption: AdoptedSystemEvents) => void },
+) {
+  const bound: StaleAuthorityBinding[] = params.prepared.flatMap((prepared) => {
+    const owner = prepared.authorityOwner;
+    return owner
+      ? [...owner.pending].map(([authorityKey, binding]) => ({ authorityKey, binding, owner }))
+      : [];
+  });
+  return await withCurrentSessionRecipientAuthority(
+    bound.map(({ owner, binding }) => ({ scope: owner.scope, authority: binding.authority })),
+    (current) => {
+      const adoption = decideFinalSystemEventAdoption(
+        params,
+        bound.filter((_, index) => !current[index]),
+      );
+      if (adoption.kind === "adopted") {
+        params.onAdopted?.(adoption);
+      }
+      return adoption;
+    },
+  );
 }
 
 /**
@@ -237,30 +267,34 @@ export async function adoptPreparedSystemEvents(params: {
   seenBlockKeys: Set<string>;
   blocks: Array<{ key?: string; text: string }>;
 }): Promise<void> {
-  let adoption = resolveFinalSystemEventAdoption({ prepared: [params.prepared] });
+  // Applied inside the authority decision, before its writer admission releases.
+  const onAdopted = (adoption: AdoptedSystemEvents) => {
+    const managedDeliveryIds = [...adoption.managedDeliveries.keys()];
+    const recorderAccepted =
+      !params.recorder ||
+      params.recorder.replaceSessionDeliveryAckIds?.(managedDeliveryIds) === true;
+    // A staged recorder cannot carry the ack ids. Deferring would drop the
+    // return until gateway restart, so adopt it in this turn without a
+    // transcript receipt; settlement acks it on adoption (at-least-once).
+    for (const [id, delivery] of adoption.managedDeliveries) {
+      params.managedDeliveries.set(
+        id,
+        recorderAccepted ? delivery : { ...delivery, adoptedWithoutReceipt: true },
+      );
+    }
+    for (const block of adoption.blocks) {
+      if (block.key) {
+        if (params.seenBlockKeys.has(block.key)) {
+          continue;
+        }
+        params.seenBlockKeys.add(block.key);
+      }
+      params.blocks.push(block);
+    }
+  };
+  let adoption = await resolveFinalSystemEventAdoption({ prepared: [params.prepared], onAdopted });
   while (adoption.kind === "settle-stale") {
     await adoption.settle();
-    adoption = resolveFinalSystemEventAdoption({ prepared: [params.prepared] });
-  }
-  const managedDeliveryIds = [...adoption.managedDeliveries.keys()];
-  const recorderAccepted =
-    !params.recorder || params.recorder.replaceSessionDeliveryAckIds?.(managedDeliveryIds) === true;
-  // A staged recorder cannot carry the ack ids. Deferring would drop the
-  // return until gateway restart, so adopt it in this turn without a
-  // transcript receipt; settlement acks it on adoption (at-least-once).
-  for (const [id, delivery] of adoption.managedDeliveries) {
-    params.managedDeliveries.set(
-      id,
-      recorderAccepted ? delivery : { ...delivery, adoptedWithoutReceipt: true },
-    );
-  }
-  for (const block of adoption.blocks) {
-    if (block.key) {
-      if (params.seenBlockKeys.has(block.key)) {
-        continue;
-      }
-      params.seenBlockKeys.add(block.key);
-    }
-    params.blocks.push(block);
+    adoption = await resolveFinalSystemEventAdoption({ prepared: [params.prepared], onAdopted });
   }
 }

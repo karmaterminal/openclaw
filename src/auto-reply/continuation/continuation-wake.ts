@@ -13,8 +13,8 @@ import {
 // are acknowledged only once that turn is adopted. A refused or never-adopted turn leaves its
 // occurrences queued as passive events and their rows pending, so the next ordinary turn, the
 // delivery scheduler or a restart replay still owns them.
-import { isSessionRecipientAuthorityCurrent } from "../../config/sessions/session-accessor.js";
 import { readSessionEntryReadOnlyInWorker } from "../../config/sessions/session-entry-read-runtime.js";
+import { withCurrentSessionRecipientAuthority } from "../../config/sessions/session-recipient-authority-current.js";
 import { emitContinuationQueueDrainSpan } from "../../infra/continuation-tracer.js";
 import { ackSessionDelivery } from "../../infra/session-delivery-queue-storage.js";
 import {
@@ -142,30 +142,9 @@ async function handOffContinuationWake(wake: PendingWake): Promise<void> {
     ...authorityScope,
     projection: "list",
   });
+  const bound = pending.filter((event) => event.recipientAuthority);
+  const stale: SystemEvent[] = [];
   const occurrences: SystemEvent[] = [];
-  for (const event of pending) {
-    if (
-      event.recipientAuthority &&
-      !isSessionRecipientAuthorityCurrent(authorityScope, event.recipientAuthority)
-    ) {
-      // The recipient no longer owns the session: retire the row, never deliver it.
-      await settleStaleSystemEventAuthority({ event, sessionKey: queueKey });
-      continue;
-    }
-    if (event.expectedSessionId && event.expectedSessionId !== entry?.sessionId) {
-      // Produced for a head a reset replaced; the passive prompt owner settles it.
-      continue;
-    }
-    occurrences.push(event);
-  }
-  if (occurrences.length === 0) {
-    return;
-  }
-  // While the handed-off turn owns these rows, a scheduler retry or replay must not queue them
-  // again; an adopted row keeps a lease-long tombstone, a refused one becomes free again.
-  for (const event of occurrences) {
-    claimSystemEventDeliveryAdoption(event);
-  }
   let adopted = false;
   const releaseUnadopted = () => {
     if (!adopted) {
@@ -174,37 +153,76 @@ async function handOffContinuationWake(wake: PendingWake): Promise<void> {
       }
     }
   };
-  let receipt: ReturnType<typeof enqueueSessionEventForHost>;
+  let receipt: ReturnType<typeof enqueueSessionEventForHost> | undefined;
   try {
-    receipt = enqueueSessionEventForHost(occurrences.map((event) => event.text).join("\n"), {
-      agentId: wake.agentId,
-      sessionKey: wake.sessionKey,
-      source: "continuation",
-      occurrences,
-      preserveOccurrenceOnRejection: true,
-      ...(wake.parentRunId ? { sourceRunId: wake.parentRunId } : {}),
-      ...(wake.silent ? { deliver: false } : {}),
-      continuation: {
-        ...(wake.continuationTrigger ? { continuationTrigger: wake.continuationTrigger } : {}),
-        ...(wake.parentRunId ? { parentRunId: wake.parentRunId } : {}),
+    // The handoff is the delivery boundary: it runs inside the authority decision, under the
+    // writer admission that read the epoch, so no revocation lands between check and handoff.
+    await withCurrentSessionRecipientAuthority(
+      bound.map((event) => ({ scope: authorityScope, authority: event.recipientAuthority! })),
+      (current) => {
+        const currentByEvent = new Map(bound.map((event, index) => [event, current[index]]));
+        for (const event of pending) {
+          if (event.recipientAuthority && !currentByEvent.get(event)) {
+            stale.push(event);
+            continue;
+          }
+          if (event.expectedSessionId && event.expectedSessionId !== entry?.sessionId) {
+            // Produced for a head a reset replaced; the passive prompt owner settles it.
+            continue;
+          }
+          occurrences.push(event);
+        }
+        if (occurrences.length === 0) {
+          return;
+        }
+        // While the handed-off turn owns these rows, a scheduler retry or replay must not queue
+        // them again; an adopted row keeps a lease-long tombstone, a refused one becomes free.
+        for (const event of occurrences) {
+          claimSystemEventDeliveryAdoption(event);
+        }
+        try {
+          receipt = enqueueSessionEventForHost(occurrences.map((event) => event.text).join("\n"), {
+            agentId: wake.agentId,
+            sessionKey: wake.sessionKey,
+            source: "continuation",
+            occurrences,
+            preserveOccurrenceOnRejection: true,
+            ...(wake.parentRunId ? { sourceRunId: wake.parentRunId } : {}),
+            ...(wake.silent ? { deliver: false } : {}),
+            continuation: {
+              ...(wake.continuationTrigger
+                ? { continuationTrigger: wake.continuationTrigger }
+                : {}),
+              ...(wake.parentRunId ? { parentRunId: wake.parentRunId } : {}),
+            },
+            onAdopted: async () => {
+              adopted = true;
+              // Handed-off occurrences skip the passive queue drain; their adoption is the drain.
+              emitContinuationQueueDrainSpan({
+                drainedCount: occurrences.length,
+                drainedContinuationCount: occurrences.filter((event) =>
+                  event.text.startsWith("[continuation:"),
+                ).length,
+                traceparent: occurrences.find((event) => event.traceparent)?.traceparent,
+                log: (message) => log.warn(message),
+              });
+              await acknowledgeAdoptedReturns(occurrences);
+            },
+          });
+        } catch (error) {
+          releaseUnadopted();
+          throw error;
+        }
       },
-      onAdopted: async () => {
-        adopted = true;
-        // Handed-off occurrences skip the passive queue drain; their adoption is the drain.
-        emitContinuationQueueDrainSpan({
-          drainedCount: occurrences.length,
-          drainedContinuationCount: occurrences.filter((event) =>
-            event.text.startsWith("[continuation:"),
-          ).length,
-          traceparent: occurrences.find((event) => event.traceparent)?.traceparent,
-          log: (message) => log.warn(message),
-        });
-        await acknowledgeAdoptedReturns(occurrences);
-      },
-    });
-  } catch (error) {
-    releaseUnadopted();
-    throw error;
+    );
+  } finally {
+    for (const event of stale) {
+      // The recipient no longer owns the session: retire the row, never deliver it.
+      await settleStaleSystemEventAuthority({ event, sessionKey: queueKey });
+    }
+  }
+  if (!receipt) {
+    return;
   }
   const outcome = await receipt.settled;
   releaseUnadopted();

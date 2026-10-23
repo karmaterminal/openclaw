@@ -7,11 +7,9 @@ import {
   resolveAgentIdFromSessionKey,
   resolveSessionStorePathCore,
 } from "../../config/sessions.js";
-import {
-  isSessionRecipientAuthorityCurrent,
-  loadTranscriptEvents,
-} from "../../config/sessions/session-accessor.js";
+import { loadTranscriptEvents } from "../../config/sessions/session-accessor.js";
 import { readSessionEntryReadOnlyInWorker } from "../../config/sessions/session-entry-read-runtime.js";
+import { withCurrentSessionRecipientAuthority } from "../../config/sessions/session-recipient-authority-current.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { buildChannelSummary } from "../../infra/channel-summary.js";
 import { emitContinuationQueueDrainSpan } from "../../infra/continuation-tracer.js";
@@ -190,10 +188,11 @@ export async function prepareFormattedSystemEvents(params: {
             }),
           )
         : new Set<string>();
-    const staleAuthorityEvents = selected.filter(
-      (event) =>
-        event.recipientAuthority &&
-        !isSessionRecipientAuthorityCurrent(authorityScope, event.recipientAuthority),
+    // A pre-filter only: final adoption decides under writer admission again.
+    const bound = selected.filter((event) => event.recipientAuthority);
+    const staleAuthorityEvents = await withCurrentSessionRecipientAuthority(
+      bound.map((event) => ({ scope: authorityScope, authority: event.recipientAuthority! })),
+      (current) => bound.filter((_, index) => !current[index]),
     );
     for (const event of staleAuthorityEvents) {
       await settleStaleSystemEventAuthority({
@@ -429,18 +428,18 @@ export async function drainFormattedSystemEvents(
   params: Parameters<typeof prepareFormattedSystemEvents>[0],
 ): Promise<string | undefined> {
   const prepared = await prepareFormattedSystemEvents(params);
-  let adoption = resolveFinalSystemEventAdoption({ prepared: [prepared] });
+  let adoption = await resolveFinalSystemEventAdoption({ prepared: [prepared] });
   while (adoption.kind === "settle-stale") {
     await adoption.settle();
-    adoption = resolveFinalSystemEventAdoption({ prepared: [prepared] });
+    adoption = await resolveFinalSystemEventAdoption({ prepared: [prepared] });
   }
   for (const delivery of adoption.managedDeliveries.values()) {
     await delivery.acknowledge();
   }
-  let finalAdoption = resolveFinalSystemEventAdoption({ prepared: [prepared] });
+  let finalAdoption = await resolveFinalSystemEventAdoption({ prepared: [prepared] });
   while (finalAdoption.kind === "settle-stale") {
     await finalAdoption.settle();
-    finalAdoption = resolveFinalSystemEventAdoption({ prepared: [prepared] });
+    finalAdoption = await resolveFinalSystemEventAdoption({ prepared: [prepared] });
   }
   return finalAdoption.blocks.length > 0
     ? finalAdoption.blocks.map((block) => block.text).join("\n")

@@ -57,8 +57,8 @@ function toMemoryCollaborationCommand(
   if (command.type === "category.prepare" || command.type === "category.apply") {
     throw new Error("Memory categories require the category owner composition");
   }
-  if (command.type === "authority.capture") {
-    // Memory-owned (incognito) sessions have no recipient-authority owner; refuse capture.
+  if (command.type === "authority.capture" || command.type === "authority.read") {
+    // Memory-owned (incognito) sessions have no recipient-authority owner; refuse both.
     throw new Error("Incognito collaboration command requires its dedicated owner");
   }
   const { scope: _scope, ...input } = command.input;

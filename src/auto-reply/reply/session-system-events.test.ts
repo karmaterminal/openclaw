@@ -46,8 +46,17 @@ vi.mock("../../infra/session-delivery-queue-storage.js", async (importOriginal) 
 });
 // mock-isolation: Transcript events come from the test; the real accessor reads SQLite.
 vi.mock("../../config/sessions/session-accessor.js", () => ({
-  isSessionRecipientAuthorityCurrent: mocks.isSessionRecipientAuthorityCurrent,
   loadTranscriptEvents: mocks.loadTranscriptEvents,
+}));
+// Recipient authority is scripted per case at its owner module.
+vi.mock("../../config/sessions/session-recipient-authority-current.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../config/sessions/session-recipient-authority-current.js")
+  >()),
+  withCurrentSessionRecipientAuthority: async <T>(
+    checks: readonly unknown[],
+    decide: (current: readonly boolean[]) => T,
+  ) => decide(checks.map(() => mocks.isSessionRecipientAuthorityCurrent())),
 }));
 // The current session id is read through the worker-backed session reader.
 vi.mock("../../config/sessions/session-entry-read-runtime.js", async (importOriginal) => ({
