@@ -322,7 +322,6 @@ async function spawnWithForcedMaterializationFailure(params: {
     const stagedRoot = resolveSubagentSessionAttachmentRootDir({
       agentId: "main",
       childSessionKey,
-      env: { ...process.env, OPENCLAW_STATE_DIR: stateDirOverride },
     });
     fs.mkdirSync(path.join(stagedRoot, attachmentId, collisionName), {
       recursive: true,
