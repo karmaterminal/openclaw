@@ -275,13 +275,28 @@ vi.mock("./runtime-plugins.js", () => ({
 /** The recipients each settled return asked to wake, in request order. */
 function wakeRequests() {
   return requestContinuationWakeMock.mock.calls.map(([request]) => {
-    const { sessionKey, reason, parentRunId } = request as {
+    const { sessionKey, reason, parentRunId, deliveryIds } = request as {
       sessionKey: string;
       reason: string;
       parentRunId?: string;
+      deliveryIds: readonly string[];
     };
-    return { sessionKey, reason, parentRunId };
+    return { sessionKey, reason, parentRunId, deliveryIds };
   });
+}
+
+/**
+ * The durable row of the one managed (row-backed) queued return whose text matches. A wake names
+ * the rows it hands to the woken turn, and the real wake ignores a request that names none.
+ */
+function queuedReturnRowId(sessionKey: string, matches: (text: string) => boolean): string {
+  const rowIds = peekSystemEventEntries(sessionKey)
+    .filter((entry) => entry.sessionDeliveryAckId !== undefined && matches(entry.text))
+    .map((entry) => entry.sessionDeliveryAckId);
+  expect(rowIds).toHaveLength(1);
+  const [rowId] = rowIds;
+  expect(rowId).toMatch(/\S/);
+  return rowId as string;
 }
 
 describe("continuation chain production composition proof (tree hop-1 + hop-2)", () => {
@@ -673,12 +688,36 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
       1,
     );
     expectSubagentRunOwnedBy(hop1ChildSessionKey, hop2RunId);
-    // Each settled return wakes its recipients once (the tree fan-out wakes both); replayed
-    // completions wake no one.
+    // Each settled return wakes its recipients once (the tree fan-out wakes both), naming its own
+    // durable row; replayed completions wake no one. The recovery's return to root quotes the
+    // grandchild result, so only its own CHILD-DONE (outside GRANDCHILD-DONE) tells the rows apart.
+    const quotesGrandchild = (text: string) => text.includes(grandchildDone);
+    const carriesChildDone = (text: string) =>
+      text.replaceAll(grandchildDone, "").includes(childDone);
     expect(wakeRequests()).toEqual([
-      { sessionKey: hop1ChildSessionKey, reason: "delegate-return", parentRunId: hop2RunId },
-      { sessionKey: rootSessionKey, reason: "delegate-return", parentRunId: hop2RunId },
-      { sessionKey: rootSessionKey, reason: "delegate-return", parentRunId: recoveryRunId },
+      {
+        sessionKey: hop1ChildSessionKey,
+        reason: "delegate-return",
+        parentRunId: hop2RunId,
+        deliveryIds: [queuedReturnRowId(hop1ChildSessionKey, quotesGrandchild)],
+      },
+      {
+        sessionKey: rootSessionKey,
+        reason: "delegate-return",
+        parentRunId: hop2RunId,
+        deliveryIds: [
+          queuedReturnRowId(
+            rootSessionKey,
+            (text) => quotesGrandchild(text) && !carriesChildDone(text),
+          ),
+        ],
+      },
+      {
+        sessionKey: rootSessionKey,
+        reason: "delegate-return",
+        parentRunId: recoveryRunId,
+        deliveryIds: [queuedReturnRowId(rootSessionKey, carriesChildDone)],
+      },
     ]);
   });
 
@@ -897,6 +936,9 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
         sessionKey: originChildSessionKey,
         reason: "delegate-return",
         parentRunId: delegateChildRunId,
+        deliveryIds: [
+          queuedReturnRowId(originChildSessionKey, (text) => text.includes(delegateSentinel)),
+        ],
       },
     ]);
   });
