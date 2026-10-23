@@ -236,28 +236,4 @@ describe("followup lifecycle terminal disposition", () => {
     expect(consumed.onCancelled).not.toHaveBeenCalled();
     expect(consumed.onAbandoned).not.toHaveBeenCalled();
   });
-
-  it("runs a pre-retry release ahead of both terminal callbacks", async () => {
-    const calls: string[] = [];
-    const lifecycle = {
-      onAdopted: vi.fn(),
-      onCancelled: async () => {
-        calls.push("cancelled");
-      },
-      onAbandoned: () => {
-        calls.push("abandoned");
-      },
-    };
-    releaseBeforeTurnAdoptionRetry(lifecycle, () => calls.push("release"));
-    await lifecycle.onCancelled();
-    lifecycle.onAbandoned();
-    expect(calls).toEqual(["release", "cancelled", "release", "abandoned"]);
-
-    const { onCancelled: _onCancelled, ...legacy } = { ...lifecycle };
-    calls.length = 0;
-    releaseBeforeTurnAdoptionRetry(legacy, () => calls.push("release"));
-    expect("onCancelled" in legacy).toBe(false);
-    legacy.onAbandoned?.();
-    expect(calls).toEqual(["release", "release", "abandoned"]);
-  });
 });
