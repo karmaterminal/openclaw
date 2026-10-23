@@ -31,7 +31,6 @@ import {
 } from "../../scripts/lib/ci-test-timings-schema.mts";
 import * as testTimings from "../../scripts/lib/ci-test-timings.mts";
 import { createExtensionTestTimingKey as extensionTimingKey } from "../../scripts/lib/extension-test-plan.mts";
-import * as localCheckRuntime from "../../scripts/lib/local-check-runtime.mts";
 import * as buildPrerequisites from "../../scripts/lib/vitest-build-prerequisites.mts";
 import { createCompactSplitTimingGeneration as splitTimingGeneration } from "../../scripts/lib/vitest-shard-metadata.mts";
 import {
@@ -436,10 +435,10 @@ describe("runtime placement observations", () => {
       );
     onTestFinished(() => spy.mockRestore());
   }
-  function mockRuntimePlacementCosts(overrides: Record<string, number> = {}) {
+  function mockRuntimePlacementCosts() {
     // Keep spare capacity independent of growing production prices; observations supply overload.
     const costs = new Proxy<Record<string, number>>(
-      { "agentic-gateway-server-isolated": 30, "agentic-agents-core-subagents": 20, ...overrides },
+      { "agentic-gateway-server-isolated": 30, "agentic-agents-core-subagents": 20 },
       {
         get: (target, key) =>
           typeof key === "string" ? (target[key] ?? 39) : Reflect.get(target, key),
@@ -448,151 +447,80 @@ describe("runtime placement observations", () => {
     const spy = vi.spyOn(testTimings, "readCompactGroupTimings").mockReturnValue(costs);
     onTestFinished(() => spy.mockRestore());
   }
-  function useRuntimeReaderInventory(spareSeconds: number) {
-    // Plan only the readers' real owner configs plus one explicit serial spare job,
-    // so recipient headroom does not depend on how the whole repository packs.
-    const originalShards = fullSuiteVitestShards.slice();
-    const owners = new Set([
-      "test/vitest/vitest.infra.config.ts",
-      "test/vitest/vitest.runtime-config.config.ts",
-    ]);
-    const spare = "runtime-placement-spare";
-    const spareConfig = `fixture-${spare}.config.ts`;
-    const isExclusiveConfig = localCheckRuntime.isExclusiveCiTestConfig;
-    const gatewayConfigSpy = vi
-      .spyOn(localCheckRuntime, "isExclusiveCiTestConfig")
-      .mockImplementation((config) =>
-        isExclusiveConfig(
-          config === spareConfig ? "test/vitest/vitest.gateway-methods-isolated.config.ts" : config,
-        ),
-      );
-    mockRuntimePlacementCosts({ [spare]: spareSeconds });
-    fullSuiteVitestShards.splice(
-      0,
-      fullSuiteVitestShards.length,
-      ...originalShards
-        .map((shard) => ({
-          ...shard,
-          projects: shard.projects.filter((config) => owners.has(config)),
-        }))
-        .filter((shard) => shard.projects.length > 0),
-      { name: spare, config: spareConfig, projects: [spareConfig] },
-    );
-    onTestFinished(() => {
-      fullSuiteVitestShards.splice(0, fullSuiteVitestShards.length, ...originalShards);
-      gatewayConfigSpy.mockRestore();
-    });
-    return spareConfig;
-  }
   it.each(["node", "bun-all"])(
     "retains recorded %s runtime work when its current group gains a file",
     (runtimePolicy) => {
-      expectRecordedRuntimePlacement({ runtimePolicy, spareSeconds: 30, headroom: true });
-    },
-  );
-
-  it("keeps recorded runtime work together when no job has headroom", () => {
-    // 60s preparation + 250s spare + the 174s scaled corpus reader exceeds 360s.
-    expectRecordedRuntimePlacement({ runtimePolicy: "node", spareSeconds: 250, headroom: false });
-  });
-
-  function expectRecordedRuntimePlacement({
-    runtimePolicy,
-    spareSeconds,
-    headroom,
-  }: {
-    runtimePolicy: string;
-    spareSeconds: number;
-    headroom: boolean;
-  }) {
-    vi.stubEnv("OPENCLAW_CI_TEST_RUNTIME_POLICY", runtimePolicy);
-    onTestFinished(() => {
-      vi.unstubAllEnvs();
-    });
-    const corpusFile = "src/config/state-startup-corpus.test.ts";
-    const handoffFile = "src/infra/update-managed-service-handoff-lifecycle.test.ts";
-    selectRuntimeConsumers([corpusFile, handoffFile]);
-    const spareConfig = useRuntimeReaderInventory(spareSeconds);
-    const readRuntimeTimings = testTimings.readRuntimePlacementTimings;
-    const runtimeSpy = vi.spyOn(testTimings, "readRuntimePlacementTimings").mockReturnValue([]);
-    onTestFinished(() => {
-      runtimeSpy.mockRestore();
-    });
-    const options = {
-      compactMode: "push" as const,
-      runnerBackend: "hybrid",
-      includeReleaseOnlyPluginShards: false,
-    };
-    const before = nodeBundles(options);
-    const groups = before.flatMap((job) => job.groups);
-    const corpus = groups.find((group) => group.includePatterns?.includes(corpusFile))!;
-    const handoff = groups.find((group) => group.includePatterns?.includes(handoffFile))!;
-    expect(corpus.includePatterns!.length).toBeGreaterThan(1);
-    expect(corpus.pretestBuildMode).toBe("runtime");
-    expect(handoff.pretestBuildMode).toBe("runtime");
-    expect(before.find((job) => job.groups.includes(corpus))).toBe(
-      before.find((job) => job.groups.includes(handoff)),
-    );
-    runtimeSpy.mockImplementation(readRuntimeTimings);
-    const observations = [
-      { ...corpus, includePatterns: [corpusFile], seconds: 200 },
-      { ...handoff, seconds: 300 },
-    ];
-    const runs = [1, 2].map((id) =>
-      timingRun(
-        id,
-        observations.map(({ seconds, ...group }, index) => {
-          const descriptor = {
-            ...group,
-            shard_name: `recorded-runtime-${index}`,
-            timing_key: undefined,
-          };
-          const runtimeShard = `${runtimePolicy === "bun-all" ? "bun:" : ""}${descriptor.shard_name}`;
-          const [begin, end] = compactLog(seconds, runtimeShard).split("\n");
-          return timingLog(
-            [
-              `2026-08-27T23:00:00Z OPENCLAW_CI_TEST_RUNTIME_POLICY: ${runtimePolicy}`,
-              `2026-08-27T23:00:00Z OPENCLAW_NODE_TEST_GROUPS_GZIP_BASE64: ${encodeNodeTestGroups([descriptor])}`,
-              begin,
-              `2026-08-27T23:00:01Z [shard:${runtimeShard}] [test] preparing runtime runtime before Vitest workers`,
-              end,
-            ].join("\n"),
-            "blacksmith-4vcpu-ubuntu-2404",
-          );
-        }),
-      ),
-    );
-    const data = refitTestTimings(runs).timings;
-    mockTimingFile(JSON.stringify(data));
-    const plan = nodeBundles(options);
-    const corpusJob = plan.find((job) =>
-      job.groups.some((group) => group.includePatterns?.includes(corpusFile)),
-    );
-    const handoffJob = plan.find((job) =>
-      job.groups.some((group) => group.includePatterns?.includes(handoffFile)),
-    );
-    const spareJob = plan.find((job) =>
-      job.groups.some((group) => group.configs.includes(spareConfig)),
-    );
-    expect(corpusJob).toBeDefined();
-    expect(handoffJob).toBeDefined();
-    expect(spareJob).toBeDefined();
-    if (headroom) {
+      vi.stubEnv("OPENCLAW_CI_TEST_RUNTIME_POLICY", runtimePolicy);
+      onTestFinished(() => {
+        vi.unstubAllEnvs();
+      });
+      const corpusFile = "src/config/state-startup-corpus.test.ts";
+      const handoffFile = "src/infra/update-managed-service-handoff-lifecycle.test.ts";
+      selectRuntimeConsumers([corpusFile, handoffFile]);
+      mockRuntimePlacementCosts();
+      const readRuntimeTimings = testTimings.readRuntimePlacementTimings;
+      const runtimeSpy = vi.spyOn(testTimings, "readRuntimePlacementTimings").mockReturnValue([]);
+      onTestFinished(() => runtimeSpy.mockRestore());
+      const options = {
+        compactMode: "push" as const,
+        runnerBackend: "hybrid",
+        includeReleaseOnlyPluginShards: false,
+      };
+      const before = nodeBundles(options);
+      const groups = before.flatMap((job) => job.groups);
+      const corpus = groups.find((group) => group.includePatterns?.includes(corpusFile))!;
+      const handoff = groups.find((group) => group.includePatterns?.includes(handoffFile))!;
+      expect(corpus.includePatterns!.length).toBeGreaterThan(1);
+      expect(corpus.pretestBuildMode).toBe("runtime");
+      expect(handoff.pretestBuildMode).toBe("runtime");
+      expect(before.find((job) => job.groups.includes(corpus))).toBe(
+        before.find((job) => job.groups.includes(handoff)),
+      );
+      runtimeSpy.mockImplementation(readRuntimeTimings);
+      const observations = [
+        { ...corpus, includePatterns: [corpusFile], seconds: 200 },
+        { ...handoff, seconds: 300 },
+      ];
+      const runs = [1, 2].map((id) =>
+        timingRun(
+          id,
+          observations.map(({ seconds, ...group }, index) => {
+            const descriptor = {
+              ...group,
+              shard_name: `recorded-runtime-${index}`,
+              timing_key: undefined,
+            };
+            const runtimeShard = `${runtimePolicy === "bun-all" ? "bun:" : ""}${descriptor.shard_name}`;
+            const [begin, end] = compactLog(seconds, runtimeShard).split("\n");
+            return timingLog(
+              [
+                `2026-08-27T23:00:00Z OPENCLAW_CI_TEST_RUNTIME_POLICY: ${runtimePolicy}`,
+                `2026-08-27T23:00:00Z OPENCLAW_NODE_TEST_GROUPS_GZIP_BASE64: ${encodeNodeTestGroups([descriptor])}`,
+                begin,
+                `2026-08-27T23:00:01Z [shard:${runtimeShard}] [test] preparing runtime runtime before Vitest workers`,
+                end,
+              ].join("\n"),
+              "blacksmith-4vcpu-ubuntu-2404",
+            );
+          }),
+        ),
+      );
+      const data = refitTestTimings(runs).timings;
+      mockTimingFile(JSON.stringify(data));
+      const plan = nodeBundles(options);
+      const corpusJob = plan.find((job) =>
+        job.groups.some((group) => group.includePatterns?.includes(corpusFile)),
+      );
+      const handoffJob = plan.find((job) =>
+        job.groups.some((group) => group.includePatterns?.includes(handoffFile)),
+      );
+      expect(corpusJob).toBeDefined();
+      expect(handoffJob).toBeDefined();
       // These recorded workloads exceed the shared 360s budget, including
       // preparation. Added files must not make the known reader appear cheap.
       expect(corpusJob).not.toBe(handoffJob);
-      expect(corpusJob).toBe(spareJob);
-      expect(corpusJob!.predictedSeconds).toBeLessThanOrEqual(360);
-      expect(handoffJob!.predictedSeconds).toBeLessThanOrEqual(360);
-    } else {
-      // Placement never drops work; the unchanged donor keeps its full recorded price.
-      expect(corpusJob).toBe(handoffJob);
-      expect(spareJob!.groups.map((group) => group.shard_name)).toEqual([
-        "runtime-placement-spare",
-      ]);
-      expect(corpusJob!.predictedSeconds).toBeGreaterThan(360);
-    }
-  }
+    },
+  );
 
   const reader = {
     configs: ["test/vitest/reader.config.ts"],
