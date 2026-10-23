@@ -28,6 +28,8 @@ const state = vi.hoisted(() => ({
   dispatchPostCompactionDelegatesMock: vi.fn(),
   emitContinuationCompactionReleasedSpanMock: vi.fn(),
   logVerboseMock: vi.fn(),
+  releaseInfoMock: vi.fn(),
+  releaseWarnMock: vi.fn(),
   resolveSessionStoreEntryMock: vi.fn(),
   stagePostCompactionDelegateMock: vi.fn(),
 }));
@@ -37,6 +39,24 @@ vi.mock("../continuation/delegate-store-post-compaction.js", () => ({
   stagePostCompactionDelegate: (sessionKey: string, delegate: unknown) =>
     state.stagePostCompactionDelegateMock(sessionKey, delegate),
 }));
+
+// Release skips log through the continuation/compaction subsystem logger.
+vi.mock("../../logging/subsystem.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../logging/subsystem.js")>();
+  return {
+    ...actual,
+    createSubsystemLogger: (subsystem: string) => {
+      const logger = actual.createSubsystemLogger(subsystem);
+      return subsystem === "continuation/compaction"
+        ? {
+            ...logger,
+            info: (msg: string) => state.releaseInfoMock(msg),
+            warn: (msg: string) => state.releaseWarnMock(msg),
+          }
+        : logger;
+    },
+  };
+});
 
 vi.mock("../../globals.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../globals.js")>()),
@@ -128,6 +148,8 @@ beforeEach(() => {
   state.dispatchPostCompactionDelegatesMock.mockReset();
   state.emitContinuationCompactionReleasedSpanMock.mockReset();
   state.logVerboseMock.mockReset();
+  state.releaseInfoMock.mockReset();
+  state.releaseWarnMock.mockReset();
   state.resolveSessionStoreEntryMock.mockReset();
   state.stagePostCompactionDelegateMock.mockReset();
 });
@@ -153,6 +175,8 @@ describe("releaseQueuedCompactionCompletion: early-return guards", () => {
     expect(state.emitContinuationCompactionReleasedSpanMock).not.toHaveBeenCalled();
     expect(state.resolveSessionStoreEntryMock).not.toHaveBeenCalled();
     expect(state.logVerboseMock).not.toHaveBeenCalled();
+    expect(state.releaseWarnMock).not.toHaveBeenCalled();
+    expect(state.releaseInfoMock).not.toHaveBeenCalled();
   });
 
   it("returns without mutation when compactionResult.compacted is false (branch 2)", async () => {
@@ -179,6 +203,8 @@ describe("releaseQueuedCompactionCompletion: early-return guards", () => {
     expect(state.emitContinuationCompactionReleasedSpanMock).not.toHaveBeenCalled();
     expect(state.resolveSessionStoreEntryMock).not.toHaveBeenCalled();
     expect(state.logVerboseMock).not.toHaveBeenCalled();
+    expect(state.releaseWarnMock).not.toHaveBeenCalled();
+    expect(state.releaseInfoMock).not.toHaveBeenCalled();
   });
 });
 
@@ -198,8 +224,8 @@ describe("releaseQueuedCompactionCompletion: session-store-unavailable guard (br
       traceparent: TRACEPARENT,
     });
 
-    expect(state.logVerboseMock).toHaveBeenCalledTimes(1);
-    const msg = state.logVerboseMock.mock.calls[0]?.[0] as string;
+    expect(state.releaseWarnMock).toHaveBeenCalledTimes(1);
+    const msg = state.releaseWarnMock.mock.calls[0]?.[0] as string;
     expect(msg).toContain("[request_compaction:post-compaction-release-skipped]");
     expect(msg).toContain("reason=session-store-unavailable");
     expect(msg).toContain("session=none");
@@ -222,8 +248,8 @@ describe("releaseQueuedCompactionCompletion: session-store-unavailable guard (br
       traceparent: TRACEPARENT,
     });
 
-    expect(state.logVerboseMock).toHaveBeenCalledTimes(1);
-    const msg = state.logVerboseMock.mock.calls[0]?.[0] as string;
+    expect(state.releaseWarnMock).toHaveBeenCalledTimes(1);
+    const msg = state.releaseWarnMock.mock.calls[0]?.[0] as string;
     expect(msg).toContain("reason=session-store-unavailable");
     expect(msg).toContain(`session=${SESSION_KEY}`);
     expect(state.incrementRunCompactionCountMock).not.toHaveBeenCalled();
@@ -247,8 +273,8 @@ describe("releaseQueuedCompactionCompletion: session-entry-unavailable guard (br
       traceparent: TRACEPARENT,
     });
 
-    expect(state.logVerboseMock).toHaveBeenCalledTimes(1);
-    const msg = state.logVerboseMock.mock.calls[0]?.[0] as string;
+    expect(state.releaseWarnMock).toHaveBeenCalledTimes(1);
+    const msg = state.releaseWarnMock.mock.calls[0]?.[0] as string;
     expect(msg).toContain("reason=session-entry-unavailable");
     expect(msg).toContain(`session=${SESSION_KEY}`);
     expect(state.incrementRunCompactionCountMock).not.toHaveBeenCalled();
@@ -408,9 +434,11 @@ describe("releaseQueuedCompactionCompletion: happy-path dispatch (branch 4)", ()
     expect(spanArg.traceparent).toBe(TRACEPARENT);
     expect(typeof spanArg.log).toBe("function");
 
-    // No spurious logVerbose entries from the happy path itself; the span's
+    // No spurious log entries from the happy path itself; the span's
     // logger callback is invoked only by the emitter, which is mocked.
     expect(state.logVerboseMock).not.toHaveBeenCalled();
+    expect(state.releaseWarnMock).not.toHaveBeenCalled();
+    expect(state.releaseInfoMock).not.toHaveBeenCalled();
   });
 
   it("falls back to activeSessionStore[sessionKey] when getActiveSessionEntry returns undefined", async () => {
@@ -581,7 +609,7 @@ describe("releaseQueuedCompactionCompletion: preserves delegates on double persi
  *
  * These tests force the downstream deps of releaseQueuedCompactionCompletion
  * (incrementRunCompactionCount, dispatchPostCompactionDelegates, span emit)
- * to throw. The tolerant wrapper must swallow + logVerbose + not re-throw.
+ * to throw. The tolerant wrapper must swallow + log a warning + not re-throw.
  */
 describe("releaseQueuedCompactionTolerant: error-isolation guard", () => {
   it("resolves silently when the underlying release succeeds (happy-path passthrough)", async () => {
@@ -610,7 +638,7 @@ describe("releaseQueuedCompactionTolerant: error-isolation guard", () => {
     ).resolves.toBeUndefined();
 
     // Success-path must NOT emit a release-failed verbose log.
-    const failedLogs = state.logVerboseMock.mock.calls.filter((call) =>
+    const failedLogs = state.releaseWarnMock.mock.calls.filter((call) =>
       String(call[0]).includes("[request_compaction:post-compaction-release-failed]"),
     );
     expect(failedLogs).toHaveLength(0);
@@ -644,7 +672,7 @@ describe("releaseQueuedCompactionTolerant: error-isolation guard", () => {
     expect(state.dispatchPostCompactionDelegatesMock).not.toHaveBeenCalled();
     expect(state.emitContinuationCompactionReleasedSpanMock).not.toHaveBeenCalled();
 
-    const failedLogs = state.logVerboseMock.mock.calls.filter((call) =>
+    const failedLogs = state.releaseWarnMock.mock.calls.filter((call) =>
       String(call[0]).includes("[request_compaction:post-compaction-release-failed]"),
     );
     expect(failedLogs).toHaveLength(1);
@@ -684,7 +712,7 @@ describe("releaseQueuedCompactionTolerant: error-isolation guard", () => {
     expect(state.incrementRunCompactionCountMock).toHaveBeenCalledTimes(1);
     expect(state.emitContinuationCompactionReleasedSpanMock).not.toHaveBeenCalled();
 
-    const failedLogs = state.logVerboseMock.mock.calls.filter((call) =>
+    const failedLogs = state.releaseWarnMock.mock.calls.filter((call) =>
       String(call[0]).includes("[request_compaction:post-compaction-release-failed]"),
     );
     expect(failedLogs).toHaveLength(1);
@@ -714,7 +742,7 @@ describe("releaseQueuedCompactionTolerant: error-isolation guard", () => {
       }),
     ).resolves.toBeUndefined();
 
-    const failedLogs = state.logVerboseMock.mock.calls.filter((call) =>
+    const failedLogs = state.releaseWarnMock.mock.calls.filter((call) =>
       String(call[0]).includes("[request_compaction:post-compaction-release-failed]"),
     );
     expect(failedLogs).toHaveLength(1);

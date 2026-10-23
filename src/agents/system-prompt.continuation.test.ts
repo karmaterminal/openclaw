@@ -43,6 +43,20 @@ describe("buildAgentSystemPrompt — continuation section branching", () => {
       );
     });
 
+    it("leads with the wake model and drops RFC jargon", () => {
+      expect(prompt).toContain("### How you wake");
+      expect(prompt).toContain(
+        "You run only when an inbound message arrives, a scheduled automation fires, or a continuation you armed wakes you.",
+      );
+      expect(prompt).toContain("If you end a turn without arming one, nothing else wakes you.");
+      expect(prompt.indexOf("### How you wake")).toBeLessThan(
+        prompt.indexOf("### Self-elected turns"),
+      );
+      expect(prompt).not.toContain("(a)-shape");
+      expect(prompt).not.toContain("session-delivery-queue substrate");
+      expect(prompt).not.toContain("broadcast/publish-stream");
+    });
+
     it("teaches the `request_compaction` tool", () => {
       expect(prompt).toContain("`request_compaction`");
     });
