@@ -33,7 +33,15 @@ const ACTIVE_TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331
 // mock-isolation: Completion delivery is captured without the session delivery queue or transcript writes.
 vi.mock("../subagents/announce/subagent-announce-delivery.js", () => subagentAnnounceDeliveryMocks);
 // mock-isolation: The fake requester session replaces worker-thread session reads.
+// Admission reads it directly (upstream 8d5158a4b6); completion still consumes a read.
 vi.mock("../../config/sessions/session-entry-read-runtime.js", () => ({
+  readSessionEntryReadOnlyInWorker: async (
+    _scope: unknown,
+    assertCurrent: () => void,
+  ): Promise<SessionEntry | undefined> => {
+    assertCurrent();
+    return sessionMocks.loadSessionEntry();
+  },
   withSessionEntryReadOnlyInWorker: async (
     _scope: unknown,
     assertCurrent: () => void,
