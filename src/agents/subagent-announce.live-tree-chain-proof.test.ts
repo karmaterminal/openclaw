@@ -20,6 +20,8 @@ const gatewayState = vi.hoisted(() => ({
   chatHistoryBySessionKey: new Map<string, Array<Record<string, unknown>>>(),
 }));
 
+const requestContinuationWakeMock = vi.hoisted(() => vi.fn((_request: unknown) => undefined));
+
 const callGatewayMock = vi.hoisted(() =>
   vi.fn(async (request: GatewayRequest) => {
     if (request.method === "sessions.patch" || request.method === "sessions.delete") {
@@ -69,6 +71,10 @@ const inProcessDispatchMock = vi.hoisted(() =>
   ),
 );
 
+// mock-isolation: Continuation wakes are recorded without running the session-event handoff.
+vi.mock("../auto-reply/continuation/continuation-wake.js", () => ({
+  requestContinuationWake: (request: unknown) => requestContinuationWakeMock(request),
+}));
 // mock-isolation: Gateway calls get scripted replies; no live Gateway is contacted.
 vi.mock("../gateway/call.js", () => ({
   callGateway: (...args: [GatewayRequest]) => callGatewayMock(...args),
@@ -266,6 +272,18 @@ vi.mock("./runtime-plugins.js", () => ({
   loadAgentRuntimePluginRegistryHandle: vi.fn(),
 }));
 
+/** The recipients each settled return asked to wake, in request order. */
+function wakeRequests() {
+  return requestContinuationWakeMock.mock.calls.map(([request]) => {
+    const { sessionKey, reason, parentRunId } = request as {
+      sessionKey: string;
+      reason: string;
+      parentRunId?: string;
+    };
+    return { sessionKey, reason, parentRunId };
+  });
+}
+
 describe("continuation chain production composition proof (tree hop-1 + hop-2)", () => {
   let logSpy: ReturnType<typeof vi.spyOn>;
   let errorSpy: ReturnType<typeof vi.spyOn>;
@@ -276,6 +294,7 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
     gatewayState.chatHistoryBySessionKey.clear();
     callGatewayMock.mockClear();
     inProcessDispatchMock.mockClear();
+    requestContinuationWakeMock.mockClear();
 
     stateDir = mkdtempSync(join(tmpdir(), "openclaw-proof-state-live-tree-chain-"));
     vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
@@ -654,6 +673,13 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
       1,
     );
     expectSubagentRunOwnedBy(hop1ChildSessionKey, hop2RunId);
+    // Each settled return wakes its recipients once (the tree fan-out wakes both); replayed
+    // completions wake no one.
+    expect(wakeRequests()).toEqual([
+      { sessionKey: hop1ChildSessionKey, reason: "delegate-return", parentRunId: hop2RunId },
+      { sessionKey: rootSessionKey, reason: "delegate-return", parentRunId: hop2RunId },
+      { sessionKey: rootSessionKey, reason: "delegate-return", parentRunId: recoveryRunId },
+    ]);
   });
 
   it("keeps a raw-final token delegate owned by its registered disposable origin", async () => {
@@ -865,5 +891,13 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
     });
     expect(countReturns(originChildSessionKey)).toBe(originReturnsBefore + 1);
     expect(countReturns(rootSessionKey)).toBe(rootReturnsBefore);
+    // The delegate's return wakes its origin once; the replayed completion wakes no one.
+    expect(wakeRequests()).toEqual([
+      {
+        sessionKey: originChildSessionKey,
+        reason: "delegate-return",
+        parentRunId: delegateChildRunId,
+      },
+    ]);
   });
 });
