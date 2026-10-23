@@ -156,6 +156,27 @@ const ALLOWLIST = [
       "Lost on process restart; the durable terminal notice remains and the next delivery pass can arm a fresh retry timer.",
   },
   {
+    file: "src/auto-reply/continuation/continuation-wake.ts",
+    symbol: "pendingWakes",
+    owner: "continuation wake coalescer",
+    purpose:
+      "Buffers wake requests for one session and delivery class over the 250 ms coalescing window, with the durable return rows each wake names and its live timer.",
+    safeVolatileClassification:
+      "Holds a Node timeout handle and the ack ids of durable session-delivery rows; those rows own delivery and are acknowledged only after the woken turn is adopted.",
+    restartContract:
+      "Lost on process restart; the named rows stay pending, and restart replay (recoverPendingRestartContinuationDeliveries) re-queues their events and requests the wake again.",
+  },
+  {
+    file: "src/auto-reply/continuation/continuation-wake.ts",
+    symbol: "inFlightWakes",
+    owner: "continuation wake coalescer",
+    purpose: "Tracks the handoff promises of running wakes so test settlement can await them.",
+    safeVolatileClassification:
+      "Set of live promises for in-process handoffs; a promise has no meaning in another process.",
+    restartContract:
+      "Lost on process restart; a handoff that never reached adoption leaves its rows pending for restart replay, and an adopted one has already acknowledged them.",
+  },
+  {
     file: "src/auto-reply/reply/reply-run-typing.ts",
     symbol: "typingByReplyOperation",
     owner: "reply run typing binder",
