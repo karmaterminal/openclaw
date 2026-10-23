@@ -9,6 +9,7 @@ import {
   assertSqliteSchemaContains,
   assertSqliteSchemaTablesPresent,
   collectSqliteSchemaIssues,
+  createSqliteTableContractReader,
   getCanonicalSqliteNamedIndexNames,
   getCanonicalSqliteTableNames,
   type SqliteTableContractReader,
@@ -344,11 +345,13 @@ export function readOpenClawAgentSchema25Shape(
   db: DatabaseSync,
   pathname: string,
 ): OpenClawAgentSchema25Shape {
-  const has = (type: "table" | "trigger", name: string) =>
-    db.prepare("SELECT 1 FROM sqlite_master WHERE type = ? AND name = ?").get(type, name) !==
-    undefined;
-  const authority = has("table", "session_recipient_authority");
-  const legacyTriggers = has("trigger", "session_nodes_entry_valid_after_insert");
+  // Shape facts come from the schema-catalog owner, not a local catalog query.
+  const readTable = createSqliteTableContractReader(db);
+  const authority = readTable("session_recipient_authority") !== undefined;
+  const legacyTriggers =
+    readTable("session_nodes")?.triggers.some(
+      (trigger) => trigger.name === "session_nodes_entry_valid_after_insert",
+    ) === true;
   if (authority && legacyTriggers) {
     return "recipient-authority";
   }
