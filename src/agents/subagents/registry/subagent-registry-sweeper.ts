@@ -33,7 +33,10 @@ import {
 import { createInterruptedRecoveryCoordinator } from "./subagent-registry-restart-recovery-coordinator.js";
 import { isRestoredQueuedFailureSettlementClaimed } from "./subagent-registry-restore.js";
 import type { createSubagentRunManager } from "./subagent-registry-run-manager.js";
-import { isSubagentSpawnArmed } from "./subagent-registry-spawn-acceptance.js";
+import {
+  isAcceptedSpawnCustodyRow,
+  isSubagentSpawnArmed,
+} from "./subagent-registry-spawn-acceptance.js";
 import {
   discardSuspendedPendingFinalDelivery,
   isSuspendedPendingFinalDelivery,
@@ -42,7 +45,6 @@ import {
 } from "./subagent-registry-suspended-delivery.js";
 import {
   decideAcceptedSpawnCustodyRow,
-  isAcceptedSpawnCustodyRow,
   reconcileAcceptedSpawnRollback,
   selectNextAcceptedSpawnRollbackCandidate,
 } from "./subagent-registry-sweep-accepted.js";

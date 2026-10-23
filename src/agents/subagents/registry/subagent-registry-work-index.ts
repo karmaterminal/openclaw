@@ -1,3 +1,4 @@
+import { isAcceptedSpawnCustodyRow } from "./subagent-registry-spawn-acceptance.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 
 export const SUBAGENT_SESSION_RUN_TTL_MS = 5 * 60_000;
@@ -24,7 +25,10 @@ export function subagentSweepAt(entry: SubagentRunRecord): number {
     needsSubagentActivation(entry) ||
     entry.delivery?.status === "pending" ||
     entry.delivery?.status === "in_progress" ||
-    entry.delivery?.status === "suspended"
+    entry.delivery?.status === "suspended" ||
+    // Continuation (karmaterminal, H1 v4): settled rows can still hold an arm or rollback
+    // custody, and only the sweeper decides those.
+    isAcceptedSpawnCustodyRow(entry)
   ) {
     // Unfinished rows also carry runtime-only recovery and completion custody.
     return 0;

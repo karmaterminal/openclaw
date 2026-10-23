@@ -23,6 +23,11 @@ export function isSubagentSpawnArmed(entry: ArmedRow | undefined): boolean {
   return Boolean(entry?.spawnAcceptance || entry?.launchDispatch);
 }
 
+/** An armed row or an accepted spawn's rollback custody: work only the sweeper decides. */
+export function isAcceptedSpawnCustodyRow(entry: SubagentRunRecord): boolean {
+  return Boolean(entry.spawnAcceptance || entry.launchDispatch || entry.acceptedSpawnRollback);
+}
+
 /** Holds an armed row for its in-process launch owner; unarmed rows are ignored. */
 export function holdSubagentSpawnAcceptance(entry: SubagentRunRecord): void {
   if (isSubagentSpawnArmed(entry)) {

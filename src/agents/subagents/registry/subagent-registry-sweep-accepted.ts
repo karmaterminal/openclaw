@@ -151,10 +151,6 @@ export async function reconcileAcceptedSpawnRollback(params: {
   return true;
 }
 
-export function isAcceptedSpawnCustodyRow(entry: SubagentRunRecord): boolean {
-  return Boolean(entry.spawnAcceptance || entry.launchDispatch || entry.acceptedSpawnRollback);
-}
-
 /**
  * H1 v4 §3.3a: the sweeper decides armed and custody rows here, right after its
  * owner checks and before the retired-authority branch (which would otherwise
