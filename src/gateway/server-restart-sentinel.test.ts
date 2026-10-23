@@ -520,6 +520,7 @@ vi.mock("../infra/system-events.js", () => ({
   enqueueSystemEvent: mocks.enqueueSystemEvent,
   enqueueSystemEventRaw: mocks.enqueueSystemEvent,
 }));
+// mock-isolation: Restart-sentinel cases model an empty managed-delivery queue without touching the process-wide event queue.
 vi.mock("../infra/system-event-managed-delivery-queue.js", () => ({
   hasQueuedSystemEventDelivery: () => false,
 }));

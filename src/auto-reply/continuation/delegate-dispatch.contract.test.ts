@@ -61,6 +61,7 @@ vi.mock("../../agents/subagents/registry/subagent-registry.js", async (importOri
 vi.mock("../../infra/system-events.js", () => ({
   enqueueSystemEventRaw: (text: string, options: unknown) => enqueueSystemEventMock(text, options),
 }));
+// mock-isolation: Managed-delivery removal stays off the process-wide event queue, like the captured system events above.
 vi.mock("../../infra/system-event-managed-delivery-queue.js", () => ({
   removeSystemEvents: vi.fn(),
 }));
