@@ -13,6 +13,7 @@ import type { GetReplyOptions } from "../get-reply-options.types.js";
 import type {
   ScheduledSessionAutomation,
   SessionEventExecution,
+  SessionEventOptions,
   SessionEventOutcome,
 } from "./session-event-contract.js";
 
@@ -44,7 +45,7 @@ export function prepareCronRunContinuationCleanup(
   };
 }
 
-export function resolveScheduledSessionReplyOptions(
+function resolveScheduledSessionReplyOptions(
   automation?: ScheduledSessionAutomation,
 ): Pick<
   GetReplyOptions,
@@ -69,6 +70,14 @@ export function resolveScheduledSessionReplyOptions(
           bootstrapContextMode: payload.lightContext ? "lightweight" : "full",
         }
       : {}),
+  };
+}
+
+/** Continuation (karmaterminal): a delegate return or notice keeps its trigger and parent run. */
+export function resolveSessionEventReplyOptions(options: SessionEventOptions) {
+  return {
+    ...resolveScheduledSessionReplyOptions(options.scheduledAutomation),
+    ...options.continuation,
   };
 }
 
