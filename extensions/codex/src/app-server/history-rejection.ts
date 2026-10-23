@@ -2,7 +2,6 @@ export type CodexHistoryRejectionReason =
   | "item_limit"
   | "byte_limit"
   | "field_limit"
-  | "unsupported_user_image"
   | "unsupported_content"
   | "invalid_content"
   | "invalid_pairing"

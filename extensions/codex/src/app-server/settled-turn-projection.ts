@@ -16,6 +16,9 @@ const MAX_TEXT_BYTES = 64 * 1024;
 // ("codex_apps.slack.slack_send"), so "." must stay projectable or any turn
 // that used such a tool can never finalize.
 const TOOL_NAME_PATTERN = /^[a-zA-Z0-9._-]{1,128}$/u;
+// type/subtype tokens only; anything else is user-controlled text, not a MIME type.
+const USER_IMAGE_MIME_PATTERN =
+  /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/iu;
 const TOOL_ERROR_STATUS_PREFIX = "[Tool result status: error]\n";
 
 function responseItemBytes(item: JsonValue): number {
@@ -105,12 +108,17 @@ class HistoryProjection {
       if (!isRecord(value)) {
         throw new CodexHistoryRejection("invalid_content");
       }
-      if (value.type !== "text") {
-        throw new CodexHistoryRejection(
-          value.type === "image" ? "unsupported_user_image" : "unsupported_content",
-        );
+      let text: string | undefined;
+      if (value.type === "image") {
+        // Like tool-result images, a user image stays visible as bounded
+        // metadata. Rejecting it made every later answerless turn unrecoverable.
+        const mimeType = normalizeOptionalString(value.mimeType);
+        text = `[User image omitted: ${mimeType && USER_IMAGE_MIME_PATTERN.test(mimeType) ? mimeType : "unknown type"}]`;
+      } else if (value.type === "text") {
+        text = this.readBoundedText(value.text);
+      } else {
+        throw new CodexHistoryRejection("unsupported_content");
       }
-      const text = this.readBoundedText(value.text);
       if (text) {
         hasText = true;
         if (this.omitted) {
