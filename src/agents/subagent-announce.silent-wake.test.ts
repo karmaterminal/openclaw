@@ -165,6 +165,7 @@ vi.mock("../auto-reply/continuation/config.js", () => ({
 vi.mock("../infra/system-events.js", () => ({
   enqueueSystemEventRaw: (text: string, options?: unknown) => enqueueSystemEventMock(text, options),
 }));
+// mock-isolation: Managed-delivery queue reads stay off the process-wide event queue, like the captured system events above.
 vi.mock("../infra/system-event-managed-delivery-queue.js", () => ({
   hasQueuedSystemEventDelivery: () => false,
   removeSystemEvents: () => [],
