@@ -8,8 +8,19 @@ import {
 import { resolveSessionEntryFromStore } from "../../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { logVerbose } from "../../globals.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { stagePostCompactionDelegate } from "../continuation/delegate-store-post-compaction.js";
 import { isFollowupRunAborted, type FollowupRun } from "./queue/types.js";
+
+// A skipped release leaves staged post-compaction delegates waiting for a
+// later seam that may never come (#1469), so skips are visible by default.
+const log = createSubsystemLogger("continuation/compaction");
+
+function logReleaseAborted(sessionKey: string | undefined, phase: string): void {
+  log.info(
+    `[request_compaction:post-compaction-release-skipped] session=${sessionKey ?? "none"} reason=run-aborted phase=${phase}`,
+  );
+}
 
 export async function releaseQueuedCompactionCompletion(params: {
   activeSessionStore?: Record<string, SessionEntry>;
@@ -24,10 +35,11 @@ export async function releaseQueuedCompactionCompletion(params: {
     return;
   }
   if (isFollowupRunAborted(params.followupRun)) {
+    logReleaseAborted(params.sessionKey, "before-count");
     return;
   }
   if (!params.sessionKey || !params.activeSessionStore) {
-    logVerbose(
+    log.warn(
       `[request_compaction:post-compaction-release-skipped] session=${params.sessionKey ?? "none"} reason=session-store-unavailable`,
     );
     return;
@@ -35,7 +47,7 @@ export async function releaseQueuedCompactionCompletion(params: {
   const sessionEntry =
     params.getActiveSessionEntry() ?? params.activeSessionStore[params.sessionKey];
   if (!sessionEntry) {
-    logVerbose(
+    log.warn(
       `[request_compaction:post-compaction-release-skipped] session=${params.sessionKey} reason=session-entry-unavailable`,
     );
     return;
@@ -44,7 +56,7 @@ export async function releaseQueuedCompactionCompletion(params: {
   // Compaction counts persist only through the writer-serialized row; there is no
   // in-memory-only increment, so a release without a store path records nothing.
   if (!params.storePath) {
-    logVerbose(
+    log.warn(
       `[request_compaction:post-compaction-release-skipped] session=${params.sessionKey} reason=store-path-unavailable`,
     );
     return;
@@ -62,6 +74,7 @@ export async function releaseQueuedCompactionCompletion(params: {
     newSessionId: params.compactionResult.result?.sessionId,
   });
   if (isFollowupRunAborted(params.followupRun)) {
+    logReleaseAborted(params.sessionKey, "after-count");
     return;
   }
   const resolved = resolveSessionEntryFromStore({
@@ -91,6 +104,7 @@ export async function releasePostCompactionDelegatesAfterCompaction(params: {
   const { dispatchPostCompactionDelegates } =
     await import("./post-compaction-delegate-dispatch.js");
   if (isFollowupRunAborted(params.followupRun)) {
+    logReleaseAborted(params.sessionKey, "before-release");
     return;
   }
   const delegatesToPreserve: SessionPostCompactionDelegate[] = [];
@@ -126,7 +140,7 @@ export async function releaseQueuedCompactionTolerant(
     await releaseQueuedCompactionCompletion(params);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    logVerbose(
+    log.warn(
       `[request_compaction:post-compaction-release-failed] session=${params.sessionKey ?? "none"} reason=${reason}`,
     );
   }

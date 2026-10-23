@@ -320,5 +320,10 @@ export function createSessionHistoryWorkerReaders(
       (value) => value,
       (scope) => ({ kind: "session-row-presence", scope }),
     ),
+    readEntryAvailability: reader(
+      "session-row-availability",
+      (value) => value.result,
+      (scope) => ({ kind: "session-row-availability", scope }),
+    ),
   };
 }

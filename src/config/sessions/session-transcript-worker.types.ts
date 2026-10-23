@@ -57,6 +57,7 @@ import type {
   SessionTranscriptVisibleMessageDeltaResult,
 } from "./session-accessor.sqlite-contract.js";
 import type {
+  ExactSessionEntryReadOnlyResult,
   SessionIdentityEvidenceIdentity,
   SessionIdentityEvidenceResult,
 } from "./session-accessor.sqlite-entry-availability.js";
@@ -101,6 +102,7 @@ import type {
   SessionRetirementReadWorkerInput,
 } from "./session-retirement-read.types.js";
 import type {
+  SessionRowAvailabilityWorkerInput,
   SessionRowFactsWorkerInput,
   SessionRowFactsWorkerResult,
   SessionRowPresenceWorkerInput,
@@ -236,6 +238,7 @@ type SessionStoreSummaryWorkerInput = {
 export const MAX_SESSION_ROW_FACTS_KEYS = 64;
 
 export type {
+  SessionRowAvailabilityWorkerInput,
   SessionRowFactsWorkerInput,
   SessionRowFactsWorkerResult,
   SessionRowPresenceWorkerInput,
@@ -317,6 +320,7 @@ export type SessionHistoryWorkerInput =
   | SessionTranscriptAnchorsWorkerInput
   | SessionActivitySummarySourceWorkerInput
   | SessionRowPresenceWorkerInput
+  | SessionRowAvailabilityWorkerInput
   | SessionProjectionStatusWorkerInput
   | SessionMembersWorkerInput
   | SessionSuggestionsWorkerInput
@@ -444,6 +448,10 @@ export type SessionTranscriptWorkerValues = SessionTranscriptInventoryWorkerValu
       source: SessionActivitySummaryBatchResult;
     };
     "session-row-presence": boolean;
+    "session-row-availability": {
+      kind: "session-row-availability";
+      result: ExactSessionEntryReadOnlyResult;
+    };
     "projection-status": boolean;
     "session-members": { kind: "session-members" } & SessionMembersSnapshot;
     "session-suggestions": { kind: "session-suggestions"; suggestions: StoredSessionSuggestion[] };
@@ -596,6 +604,9 @@ export type SessionHistoryWorkerDatabase = SessionTranscriptInventoryReaders &
     readStats: SessionHistoryReader<"transcript-stats", "stats">;
     readActivitySummarySource: SessionHistoryReader<"session-activity-summary-source", "source">;
     readEntryPresence: (scope: SessionRowPresenceWorkerInput["scope"]) => Promise<boolean>;
+    readEntryAvailability: (
+      scope: SessionRowAvailabilityWorkerInput["scope"],
+    ) => Promise<ExactSessionEntryReadOnlyResult>;
     readProjectionStatus: CancellableSessionHistoryReader<"projection-status">;
     readIdentityEvidence: CancellableSessionHistoryReader<"session-identity-evidence", "evidence">;
     readExactEntries: (

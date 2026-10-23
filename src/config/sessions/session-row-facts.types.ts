@@ -32,3 +32,10 @@ export type SessionRowPresenceWorkerInput = {
   database: { agentId: string; path: string };
   scope: SessionAccessScope & { databaseAgentId: string };
 };
+
+/** Exact-key probe that keeps an unreadable row distinct from an absent one. */
+export type SessionRowAvailabilityWorkerInput = {
+  kind: "session-row-availability";
+  database: { agentId: string; path: string };
+  scope: SessionAccessScope;
+};

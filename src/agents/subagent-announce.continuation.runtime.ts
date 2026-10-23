@@ -261,6 +261,9 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
 
   const toolDelegates = isChain ? await consumePendingDelegates(params.childSessionKey) : [];
   if (!isChain) {
+    // Only due rows are claimed here. A delegate not yet due keeps the hedge the
+    // drain above armed, which dispatches it at its due time in this process; a
+    // restart drops that hedge and the orphan reaper fails the row instead.
     const orphaned = await consumePendingDelegates(params.childSessionKey);
     if (orphaned.length > 0) {
       defaultRuntime.log(

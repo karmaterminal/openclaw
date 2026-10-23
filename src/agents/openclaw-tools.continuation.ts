@@ -1,5 +1,6 @@
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { isCronRunSessionKey } from "../sessions/session-key-utils.js";
 import type { OpenClawToolsOptions } from "./openclaw-tools.types.js";
 import type { AnyAgentTool } from "./tools/common.js";
 import { createContinueDelegateTool } from "./tools/continue-delegate-tool.js";
@@ -42,7 +43,14 @@ export function createOpenClawContinuationTools(
       }),
     );
   }
-  if (options.drainsContinuationDelegateQueue !== false) {
+  // Nothing drains a cron run's delegate queue (#1469). Embedded cron runs
+  // already disable continuation tools; a CLI-backend cron run reaches this
+  // through the MCP loopback catalog, which keeps continue_delegate, and ends
+  // without an announce. Accepted cost: a chat.send turn on a restored cron
+  // run session, which would drain, is not offered continue_delegate either.
+  const registersDelegateTool =
+    options.drainsContinuationDelegateQueue !== false && !isCronRunSessionKey(liveSessionKey);
+  if (registersDelegateTool) {
     tools.push(
       createContinueDelegateTool({ agentSessionKey: liveSessionKey, runId: options.runId }),
     );
@@ -58,7 +66,7 @@ export function createOpenClawContinuationTools(
     );
   }
 
-  if (!options.continueWorkOpts && !options.requestCompactionOpts) {
+  if (registersDelegateTool && !options.continueWorkOpts && !options.requestCompactionOpts) {
     log.warn(
       "continuation.enabled=true but neither continueWorkOpts nor requestCompactionOpts " +
         "were supplied — only continue_delegate will register. If this is a live runner, it " +
