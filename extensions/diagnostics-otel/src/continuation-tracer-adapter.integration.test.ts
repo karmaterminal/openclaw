@@ -249,7 +249,6 @@ function installProductionDiagnostics(provider: BasicTracerProvider) {
       warn() {},
     },
     recorders,
-    recordLogEvent: undefined,
   });
   const unsubscribe = onTrustedInternalDiagnosticEvent(handler);
   const tracePropagationBridge = {
@@ -258,9 +257,9 @@ function installProductionDiagnostics(provider: BasicTracerProvider) {
     },
     prepareEvent(event: DiagnosticEventPayload, metadata: DiagnosticEventMetadata) {
       if (event.type === "model.call.started") {
-        recorders.recordModelCallStarted(event, metadata);
+        recorders["model.call.started"](event, metadata);
       } else if (event.type === "tool.execution.started") {
-        recorders.recordToolExecutionStarted(event, metadata);
+        recorders["tool.execution.started"](event, metadata);
       }
     },
     resolveTraceContext(traceContext: DiagnosticTraceContext) {
