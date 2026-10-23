@@ -826,7 +826,7 @@ describe("createFollowupRunner", () => {
       state.deliver.mockResolvedValue({ kind: "completed", payloads: [] });
       try {
         await createFollowupRunner({
-          typing: createTypingController(),
+          typing: createMockTypingController(),
           typingMode: "never",
           defaultModel: "claude",
         })(turn.queued);
