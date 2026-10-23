@@ -58,6 +58,10 @@ function queuedTexts(scope: Scope): string[] {
   return peekSystemEventEntries(queueKey(scope)).map((event) => event.text);
 }
 
+function occurrences(haystack: string, needle: string): number {
+  return haystack.split(needle).length - 1;
+}
+
 async function prompt(
   scope: Scope,
   params?: Partial<Parameters<typeof drainFormattedSystemEvents>[0]>,
@@ -92,11 +96,11 @@ describe.each(scenarios)("system-event prompt ownership ($name)", ({ scope, fore
   }
 
   describe("claimed turns", () => {
-    it("interleaving: a claim taken after a heartbeat captured its events keeps the occurrence out of that prompt", async () => {
+    it("interleaving: a claim taken after a captured selection included its occurrence keeps the occurrence out of that prompt", async () => {
       const claimed = enqueue(scope, "Task completed: build 42");
       enqueue(scope, "Passive notice");
       const foreignIntact = enqueueForeign("Task completed: build 42");
-      // The heartbeat preflight captured both occurrences before the handoff claimed one.
+      // The captured selection holds both occurrences; the handoff claims one afterwards.
       const captured = peekSystemEventEntries(queueKey(scope));
       const cancelled = vi.fn();
       const owner = expectDefined(
@@ -157,29 +161,58 @@ describe.each(scenarios)("system-event prompt ownership ($name)", ({ scope, fore
       expect(queuedTexts(scope)).toEqual([]);
     });
 
-    it("negative: an unclaimed exec completion stays queued for its dedicated heartbeat prompt", async () => {
+    // Upstream retired the dedicated exec heartbeat prompt (#180563): an exec completion is an
+    // ordinary passive event, admitted by its own agent's next prompt unless a turn claimed it.
+    it("positive: its own agent's next ordinary prompt admits an unclaimed exec completion once, in queue order", async () => {
       enqueue(scope, EXEC_COMPLETION, "exec:job-7");
       enqueue(scope, "Model switched.");
-      const foreignIntact = enqueueForeign("Model switched.");
+      const foreignIntact = enqueueForeign(EXEC_COMPLETION, "exec:job-7");
+
+      const text = await prompt(scope);
+
+      expect(occurrences(text, "Exec finished")).toBe(1);
+      expect(text).toContain("Model switched.");
+      expect(text.indexOf("Exec finished")).toBeLessThan(text.indexOf("Model switched."));
+      expect(queuedTexts(scope)).toEqual([]);
+      expect(await prompt(scope)).toBe("");
+      foreignIntact();
+    });
+
+    it("interleaving: an exec completion inside a captured selection is admitted with it, once and in order", async () => {
+      enqueue(scope, EXEC_COMPLETION, "exec:job-7");
+      enqueue(scope, "Model switched.");
+      const foreignIntact = enqueueForeign(EXEC_COMPLETION, "exec:job-7");
+      const captured = peekSystemEventEntries(queueKey(scope));
+
+      const text = await prompt(scope, { events: captured, deferredEventIds: [] });
+
+      expect(occurrences(text, "Exec finished")).toBe(1);
+      expect(text).toContain("Model switched.");
+      expect(text.indexOf("Exec finished")).toBeLessThan(text.indexOf("Model switched."));
+      expect(queuedTexts(scope)).toEqual([]);
+      foreignIntact();
+    });
+
+    it("negative: a claimed exec completion stays queued for its claim owner", async () => {
+      const claimed = enqueue(scope, EXEC_COMPLETION, "exec:job-7");
+      enqueue(scope, "Model switched.");
+      const foreignIntact = enqueueForeign(EXEC_COMPLETION, "exec:job-7");
+      const cancelled = vi.fn();
+      const owner = expectDefined(
+        claimSystemEventTurn(queueKey(scope), [claimed], cancelled, scope.agentId),
+        "turn owner",
+      );
 
       const text = await prompt(scope);
 
       expect(text).toContain("Model switched.");
       expect(text).not.toContain("Exec finished");
+      expect(isSystemEventTurnOwned(queueKey(scope), claimed)).toBe(true);
       expect(queuedTexts(scope)).toEqual([EXEC_COMPLETION]);
+      owner.start();
+      expect(queuedTexts(scope)).toEqual([]);
+      expect(cancelled).not.toHaveBeenCalled();
       foreignIntact();
-    });
-
-    it("interleaving: an exec completion inside a heartbeat's captured selection is still excluded", async () => {
-      enqueue(scope, EXEC_COMPLETION, "exec:job-7");
-      enqueue(scope, "Model switched.");
-      const captured = peekSystemEventEntries(queueKey(scope));
-
-      const text = await prompt(scope, { events: captured, deferredEventIds: [] });
-
-      expect(text).toContain("Model switched.");
-      expect(text).not.toContain("Exec finished");
-      expect(queuedTexts(scope)).toEqual([EXEC_COMPLETION]);
     });
 
     it("interleaving: an exec completion that lands while preparation is in flight is not consumed by it", async () => {
@@ -211,7 +244,7 @@ describe.each(scenarios)("system-event prompt ownership ($name)", ({ scope, fore
       expect(queuedTexts(scope)).toEqual([CRON_REMINDER]);
     });
 
-    it("interleaving: a reminder that arrives after a heartbeat captured its generic events is not admitted by that heartbeat", async () => {
+    it("interleaving: a reminder that arrives after a captured selection was taken is not admitted by that selection's prompt", async () => {
       enqueue(scope, "Model switched.");
       const captured = peekSystemEventEntries(queueKey(scope));
       enqueue(scope, CRON_REMINDER, "cron:rotate-keys");

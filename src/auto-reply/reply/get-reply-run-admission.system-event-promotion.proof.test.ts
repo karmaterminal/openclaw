@@ -1,4 +1,4 @@
-// Continuation (karmaterminal): proves reply admission promotes only turn-owned queued system events, once and in order, never under a "drop" action, and leaves them queued when a claim or abort lands before promotion.
+// Continuation (karmaterminal): proves reply admission promotes only turn-owned queued system events, once and in order, consumes only a producer-owned turn's captured selection, and leaves them queued when a claim or abort lands before promotion.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionEntry } from "../../config/sessions.js";
 import { withSystemEventOwner } from "../../infra/system-event-ownership.js";
@@ -11,8 +11,6 @@ import {
   resetSystemEventsForTest,
   type SystemEvent,
 } from "../../infra/system-events.js";
-import { createReplyOperation } from "../../sessions/session-controller.js";
-import { captureSessionTarget } from "../../sessions/session-controller.target.js";
 import type { runReplyAgent } from "./agent-runner-run.js";
 import { parseInlineSessionDirectives } from "./directive-handling.parse.js";
 import { prepareReplyRunAdmission } from "./get-reply-run-admission.js";
@@ -50,7 +48,6 @@ vi.mock("./get-reply-run-helpers.js", async (importOriginal) => ({
 }));
 
 const STORE_PATH = "/tmp/agent/sessions/sessions.json";
-const operations: Array<ReturnType<typeof createReplyOperation>> = [];
 
 async function prepareTurn(input: {
   sessionKey: string;
@@ -160,28 +157,12 @@ function occurrences(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1;
 }
 
-function activateRun(sessionKey: string) {
-  const operation = createReplyOperation({
-    sessionKey,
-    sessionId: "active-session",
-    target: captureSessionTarget({ storeScope: STORE_PATH, sessionKey, agentId: "main" }),
-    resetTriggered: false,
-  });
-  operation.setPhase("running");
-  operations.push(operation);
-  return operation;
-}
-
 beforeEach(() => {
   resetSystemEventsForTest();
   runReplyAgentMock.mockClear();
 });
 
-afterEach(async () => {
-  for (const operation of operations.splice(0)) {
-    operation.complete();
-    await operation.ownerSettlement;
-  }
+afterEach(() => {
   resetSystemEventsForTest();
 });
 
@@ -218,56 +199,36 @@ describe("reply admission system-event promotion", () => {
     }
   });
 
-  it("does not promote or report the captured heartbeat selection when the active-run action is drop", async () => {
-    const sessionKey = "agent:main:proof-drop";
-    enqueueSystemEvent("DROP-ONE", { sessionKey });
-    enqueueSystemEvent("DROP-TWO", { sessionKey });
-    enqueueSystemEvent("DROP-DEFERRED", { sessionKey });
+  // Upstream retired the heartbeat "drop" action and its captured-selection plumbing (#180192,
+  // #180563). The selection contract that survives is the producer-owned (event) turn's.
+  it("consumes only a producer-owned turn's captured selection; a later passive event waits for the next ordinary turn", async () => {
+    const sessionKey = "agent:main:proof-producer";
+    enqueueSystemEvent("SELECTED-ONE", { sessionKey });
+    enqueueSystemEvent("SELECTED-TWO", { sessionKey });
     const captured = peekSystemEventEntries(sessionKey);
-    const deferred = captured.filter((event) => event.text === "DROP-DEFERRED");
-    const onEventsAdmitted = vi.fn((_events: readonly SystemEvent[]) => {});
-    const heartbeatOpts = () =>
-      withReplySystemEventContext(
-        { isHeartbeat: true },
-        {
-          sessionKey,
-          events: captured,
-          deferredEventIds: deferred.map((event) => event.id!),
-          onEventsAdmitted,
-        },
-      );
-    const operation = activateRun(sessionKey);
+    enqueueSystemEvent("LATE-PASSIVE", { sessionKey });
 
-    await runTurn({ sessionKey, opts: heartbeatOpts() });
+    await runTurn({
+      sessionKey,
+      opts: withReplySystemEventContext(
+        { internalEventExecution: { onStarted: () => {}, onTerminal: () => {} } },
+        { sessionKey, events: captured },
+      ),
+    });
 
-    // Heartbeat + active run resolves to "drop": the selection stays queued, in
-    // order, and the admission hook (#166775) hears about nothing.
-    expect(lastRun().isActive).toBe(true);
-    expect(promptSurfaces(lastRun()).context).not.toContain("DROP-");
-    expect(onEventsAdmitted).not.toHaveBeenCalled();
-    expect(peekSystemEventEntries(sessionKey).map((event) => event.text)).toEqual([
-      "DROP-ONE",
-      "DROP-TWO",
-      "DROP-DEFERRED",
-    ]);
-
-    // Positive control: once the run ends the same selection is promoted, once;
-    // the hook sees every admitted entry and the deferred one stays with its owner.
-    operation.complete();
-    await operation.ownerSettlement;
-    await runTurn({ sessionKey, opts: heartbeatOpts() });
     const context = promptSurfaces(lastRun()).context;
-    for (const text of ["DROP-ONE", "DROP-TWO", "DROP-DEFERRED"]) {
-      expect(occurrences(context, text)).toBe(1);
-    }
-    expect(context.indexOf("DROP-ONE")).toBeLessThan(context.indexOf("DROP-TWO"));
-    expect(onEventsAdmitted).toHaveBeenCalledOnce();
-    expect(onEventsAdmitted.mock.calls[0]?.[0].map((event) => event.id)).toEqual(
-      captured.map((event) => event.id),
-    );
-    expect(peekSystemEventEntries(sessionKey).map((event) => event.text)).toEqual([
-      "DROP-DEFERRED",
-    ]);
+    expect(occurrences(context, "SELECTED-ONE")).toBe(1);
+    expect(occurrences(context, "SELECTED-TWO")).toBe(1);
+    expect(context.indexOf("SELECTED-ONE")).toBeLessThan(context.indexOf("SELECTED-TWO"));
+    expect(context).not.toContain("LATE-PASSIVE");
+    expect(peekSystemEventEntries(sessionKey).map((event) => event.text)).toEqual(["LATE-PASSIVE"]);
+
+    // The next ordinary turn reads the live queue and adopts the passive event, once.
+    await runTurn({ sessionKey });
+    const next = promptSurfaces(lastRun()).context;
+    expect(occurrences(next, "LATE-PASSIVE")).toBe(1);
+    expect(next).not.toContain("SELECTED-");
+    expect(peekSystemEventEntries(sessionKey)).toEqual([]);
   });
 
   it("admits only the prepared agent's unclaimed events; foreign and turn-owned ones stay queued", async () => {

@@ -15,6 +15,7 @@ import {
 } from "./agent-runner.misc.runreplyagent.test-support.js";
 import { createBaseRun } from "./agent-runner.runreplyagent.test-support.js";
 import { scheduleFollowupDrain } from "./queue.js";
+import type { SessionEventExecution } from "./session-event-contract.js";
 
 const requireRecord = createRequireRecord("record", "expected-label-object");
 
@@ -31,7 +32,7 @@ describe("runReplyAgent auto-compaction token update", () => {
     options?: {
       agentEvents?: Array<{ stream: string; data: Record<string, unknown> }>;
       config?: OpenClawConfig;
-      isHeartbeat?: boolean;
+      internalEventExecution?: SessionEventExecution;
       onBlockReply?: (payload: unknown) => Promise<void> | void;
       reasoningPayloadsEnabled?: boolean;
       onAgentRunTerminalOutcome?: (outcome: "completed" | "failed") => void;
@@ -76,16 +77,17 @@ describe("runReplyAgent auto-compaction token update", () => {
         agentDir: path.join(rootDir, "agent"),
         config: options?.config ?? {},
         reasoningLevel: "on",
+        ...(options?.internalEventExecution
+          ? { internalEventExecution: options.internalEventExecution }
+          : {}),
       },
       reply: {
         opts:
           options?.onBlockReply ||
-          options?.isHeartbeat ||
           options?.reasoningPayloadsEnabled ||
           options?.onAgentRunTerminalOutcome
             ? {
                 ...(options.onBlockReply ? { onBlockReply: options.onBlockReply } : {}),
-                ...(options.isHeartbeat ? { isHeartbeat: true } : {}),
                 ...(options.reasoningPayloadsEnabled ? { reasoningPayloadsEnabled: true } : {}),
                 ...(options.onAgentRunTerminalOutcome
                   ? { onAgentRunTerminalOutcome: options.onAgentRunTerminalOutcome }
@@ -119,13 +121,44 @@ describe("runReplyAgent auto-compaction token update", () => {
     expect(result).toBeUndefined();
   });
 
-  it("keeps empty heartbeat replies silent", async () => {
+  // Upstream retired heartbeat turns (#180192, #180563). A continuation wake is a session-event
+  // turn, so the empty-reply silence it relies on belongs to event turns.
+  const eventExecution = (): SessionEventExecution => ({
+    onStarted: () => {},
+    onTerminal: () => {},
+  });
+
+  it("keeps an empty event-turn reply silent", async () => {
     const result = await runEmptyDirectReply(
       { meta: { agentMeta: {} } },
-      { isHeartbeat: true, reasoningPayloadsEnabled: true },
+      { internalEventExecution: eventExecution(), reasoningPayloadsEnabled: true },
     );
 
     expect(result).toBeUndefined();
+  });
+
+  it("keeps an empty transport-silent (deliver: false) event-turn reply silent", async () => {
+    const result = await runEmptyDirectReply(
+      { meta: { agentMeta: {} } },
+      {
+        internalEventExecution: { ...eventExecution(), deliver: false },
+        reasoningPayloadsEnabled: true,
+      },
+    );
+
+    expect(result).toBeUndefined();
+  });
+
+  it("still tells an ordinary user turn with an empty reply that no answer was returned", async () => {
+    const result = await runEmptyDirectReply(
+      { meta: { agentMeta: {} } },
+      { reasoningPayloadsEnabled: true },
+    );
+
+    expect(result).toMatchObject({
+      isStatusNotice: true,
+      text: "No answer was returned. Ask again if you still need one.",
+    });
   });
 
   it("loads post-compaction context before starting a queued followup drain", async () => {
