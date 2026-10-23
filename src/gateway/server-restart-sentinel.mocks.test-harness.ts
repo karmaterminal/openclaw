@@ -360,7 +360,7 @@ vi.mock("../config/sessions/session-recipient-authority-current.js", async (impo
     decide(
       await Promise.all(
         checks.map(({ scope, authority }) =>
-          mocks.isSessionRecipientAuthorityCurrent(scope, authority),
+          Promise.resolve(mocks.isSessionRecipientAuthorityCurrent(scope, authority)),
         ),
       ),
     ),
