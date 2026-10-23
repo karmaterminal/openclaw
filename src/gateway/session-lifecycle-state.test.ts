@@ -410,6 +410,12 @@ describe("session lifecycle state", () => {
       abortedLastRun: true,
     },
     {
+      name: "superseded by a newer session writer",
+      data: { phase: "end", endedAt: 1_800, stopReason: "superseded", aborted: true },
+      status: "killed",
+      abortedLastRun: false,
+    },
+    {
       name: "provider timeout",
       data: {
         phase: "error",
