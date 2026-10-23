@@ -216,6 +216,11 @@ async function prepareHistoryRead(
       );
       return () => ({ kind: request.kind, snapshot: read() });
     }
+    case "session-row-availability": {
+      const { readSessionRowAvailability } =
+        await import("./session-accessor.sqlite-entry-availability.js");
+      return () => ({ kind: request.kind, result: readSessionRowAvailability(request.scope) });
+    }
     case "transcript-match": {
       const [{ findTranscriptEventMatchingInDatabase }, { withOpenClawAgentDatabaseReadOnly }] =
         await Promise.all([

@@ -8,6 +8,7 @@ import {
   type OpenClawAgentDatabase,
 } from "../../state/openclaw-agent-db.js";
 import { chunkItems } from "../../utils/chunk-items.js";
+import { cloneEnvWithPlatformSemantics } from "../config-env-vars.js";
 import type { ExactSessionEntry, SessionAccessScope } from "./session-accessor.sqlite-contract.js";
 import { prepareSqliteSessionEntryRowDecoder } from "./session-accessor.sqlite-entry-read.js";
 import { readExactSessionEntryRowValidated } from "./session-accessor.sqlite-entry-store.js";
@@ -36,6 +37,17 @@ export type ExactSessionEntryReadOnlyResult =
       found: false;
       reason: "database-missing" | "schema-missing" | "row-invalid";
     };
+
+/** History-worker form of the exact probe: the caller's environment crosses the worker boundary. */
+export function readSessionRowAvailability(
+  scope: SessionAccessScope,
+): ExactSessionEntryReadOnlyResult {
+  return loadExactSessionEntryReadOnlyResult({
+    ...scope,
+    env: cloneEnvWithPlatformSemantics(scope.env ?? process.env),
+    clone: false,
+  });
+}
 
 /** Exact persisted-key probe that preserves database and row availability. */
 export function loadExactSessionEntryReadOnlyResult(

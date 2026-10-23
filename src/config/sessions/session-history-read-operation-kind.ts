@@ -22,6 +22,7 @@ const historyReadKinds = [
   "session-pending-input-receipts",
   "session-pending-input-source",
   "session-harness-completion-source",
+  "session-row-availability",
 ] as const;
 const historyReadKindSet: ReadonlySet<string> = new Set(historyReadKinds);
 
