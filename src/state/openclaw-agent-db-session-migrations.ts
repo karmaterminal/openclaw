@@ -392,53 +392,48 @@ export function migrateSessionRecipientAuthorityInTransaction(db: DatabaseSync):
   }
 }
 
-/** Moves the unshipped entry-local return epoch to its logical session-key owner. */
+const ENTRY_LOCAL_RECIPIENT_EPOCH =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+/**
+ * Moves the unshipped entry-local return epoch to its logical session-key owner. Like the
+ * creator migration below, entry JSON is parsed and rewritten in JavaScript, its writer,
+ * so the epoch's shape is checked here rather than with SQLite JSON functions.
+ */
 export function migrateSessionRecipientAuthority(db: DatabaseSync): boolean {
   if (!readSqliteTableColumns(db, "session_nodes")) {
     return false;
   }
-  const importEpochs = db.prepare(
-    `INSERT OR IGNORE INTO session_recipient_authority (
-       session_key, epoch, created_at, updated_at
-     )
-     SELECT
-       session_key,
-       CAST(json_extract(entry_json, '$.recipientAuthorityEpoch') AS TEXT),
-       ?,
-       ?
-     FROM session_nodes
-     WHERE CASE
-       WHEN json_valid(entry_json)
-       THEN
-         json_type(entry_json, '$.recipientAuthorityEpoch') = 'text'
-         AND length(json_extract(entry_json, '$.recipientAuthorityEpoch')) = 36
-         AND substr(json_extract(entry_json, '$.recipientAuthorityEpoch'), 9, 1) = '-'
-         AND substr(json_extract(entry_json, '$.recipientAuthorityEpoch'), 14, 1) = '-'
-         AND substr(json_extract(entry_json, '$.recipientAuthorityEpoch'), 19, 1) = '-'
-         AND substr(json_extract(entry_json, '$.recipientAuthorityEpoch'), 24, 1) = '-'
-         AND lower(substr(json_extract(entry_json, '$.recipientAuthorityEpoch'), 15, 1)) = '4'
-         AND lower(substr(json_extract(entry_json, '$.recipientAuthorityEpoch'), 20, 1))
-           GLOB '[89ab]'
-         AND length(replace(json_extract(entry_json, '$.recipientAuthorityEpoch'), '-', '')) = 32
-         AND lower(replace(json_extract(entry_json, '$.recipientAuthorityEpoch'), '-', ''))
-           NOT GLOB '*[^0-9a-f]*'
-       ELSE 0
-     END`,
+  const rows = db
+    .prepare(
+      "SELECT session_key, entry_json FROM session_nodes WHERE entry_json LIKE '%recipientAuthorityEpoch%'",
+    )
+    .all() as Array<{ session_key: string; entry_json: string }>;
+  const importEpoch = db.prepare(
+    `INSERT INTO session_recipient_authority (session_key, epoch, created_at, updated_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT (session_key) DO NOTHING`,
   );
+  const removeEpoch = db.prepare("UPDATE session_nodes SET entry_json = ? WHERE session_key = ?");
   // Run results carry the connection's last rowid, which can exceed 2^53.
-  importEpochs.setReadBigInts(true);
-  importEpochs.run(Date.now(), Date.now());
-  const removeEpochs = db.prepare(
-    `UPDATE session_nodes
-     SET entry_json = json_remove(entry_json, '$.recipientAuthorityEpoch')
-     WHERE CASE
-       WHEN json_valid(entry_json)
-       THEN json_type(entry_json, '$.recipientAuthorityEpoch') IS NOT NULL
-       ELSE 0
-     END`,
-  );
-  removeEpochs.setReadBigInts(true);
-  return Number(removeEpochs.run().changes) > 0;
+  importEpoch.setReadBigInts(true);
+  removeEpoch.setReadBigInts(true);
+  let removed = false;
+  for (const row of rows) {
+    const entry = safeParseJsonRecord(row.entry_json);
+    if (!entry || !Object.hasOwn(entry, "recipientAuthorityEpoch")) {
+      continue;
+    }
+    const { recipientAuthorityEpoch: epoch, ...rest } = entry;
+    if (typeof epoch === "string" && ENTRY_LOCAL_RECIPIENT_EPOCH.test(epoch)) {
+      const now = Date.now();
+      importEpoch.run(row.session_key, epoch, now, now);
+    }
+    // A malformed epoch is dropped too; only a valid one moves.
+    removeEpoch.run(JSON.stringify(rest), row.session_key);
+    removed = true;
+  }
+  return removed;
 }
 
 /** Adds the v11 exact delivery target before the conversation backfill writes canonical rows. */
