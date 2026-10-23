@@ -1,8 +1,10 @@
-// A live /stop followed by a Gateway restart (🕯's F2 ordering for #1468 and #1475 D3b).
+// A live /stop, then the room's next turn or a Gateway restart (#1468, #1475 D3b).
 //
-// The stop writes its abort marker first, then the stopped run's terminal lands. A later restart
-// runs the startup orphan scan and restart recovery over that row: the user's stop must neither
-// be resumed nor tombstone the session. A run a restart genuinely interrupted must still resume.
+// 🕯's F2 ordering: the stop writes its abort marker first, then the stopped run's terminal
+// lands. A later restart runs the startup orphan scan and restart recovery over that row: the
+// user's stop must neither be resumed nor tombstone the session. A run a restart genuinely
+// interrupted must still resume. 🕯's negative control: the next turn after a stop in this
+// generation is admitted as ordinary work.
 import { expectDefined } from "@openclaw/normalization-core/expect";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
@@ -20,6 +22,7 @@ import { resetGatewayWorkAdmission } from "../../process/gateway-work-admission.
 import { withEnvAsync } from "../../test-utils/env.js";
 import { createOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { createRecoveryRuntimeFixture } from "./main-session-recovery-runtime.test-support.js";
+import { claimMainSessionRecoveryOwner } from "./main-session-recovery-store.js";
 import { createRestartRecoveryStoreFixture } from "./main-session-restart-recovery-fixture.test-support.js";
 import {
   markStartupOrphanedMainSessionsForRecovery,
@@ -146,5 +149,49 @@ it("still resumes a channel-reply room turn a restart genuinely interrupted", as
     expect(recovery).toMatchObject({ started: 1, failed: 0 });
     expect(resumedRuns()).toBe(1);
     expect(row.readEntry()?.mainRestartRecovery?.tombstone).toBeUndefined();
+  });
+});
+
+it("admits the next room turn over a current-generation stop as ordinary work", async () => {
+  await withEnvAsync({ OPENCLAW_STATE_DIR: tmpDir }, async () => {
+    // A stop in this generation: abortedLastRun beside a live message-tool claim, with no fence,
+    // recovery aggregate or restart mark.
+    const row = await liveRoomRow(true);
+    const { sessionKey, storePath, lifecycleGeneration, readEntry } = row;
+    const stopped = expectDefined(readEntry(), "live room row");
+    await persistAbortTargetEntry({
+      entry: stopped,
+      key: sessionKey,
+      sessionStore: { [sessionKey]: stopped },
+      storePath,
+    });
+    await persistGatewaySessionLifecycleEvent({
+      sessionKey,
+      agentId: "main",
+      event: {
+        ts: Date.now(),
+        sessionId: "main-session",
+        runId: "room-run",
+        lifecycleGeneration,
+        data: { phase: "end", stopReason: "aborted", aborted: true },
+      },
+    });
+    expect(readEntry()).toMatchObject({
+      abortedLastRun: true,
+      restartRecoveryDeliveryRunId: "room-run",
+      restartRecoverySourceReplyDeliveryMode: "message_tool_only",
+    });
+    expect(readEntry()?.restartRecoveryRuns).toBeUndefined();
+    expect(readEntry()?.mainRestartRecovery).toBeUndefined();
+
+    await expect(
+      claimMainSessionRecoveryOwner({
+        lifecycleGeneration,
+        sessionId: "main-session",
+        runId: "next-room-run",
+        target: { agentId: "main", sessionKey, storePath },
+      }),
+    ).resolves.toMatchObject({ kind: "not_required" });
+    expect(readEntry()?.mainRestartRecovery).toBeUndefined();
   });
 });
