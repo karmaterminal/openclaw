@@ -287,6 +287,7 @@ export const gatewayDatabaseWorkerTestFiles = [
   "src/gateway/session-message-events.test.ts",
   "src/gateway/session-pr-workspace-adoption.test.ts",
   "src/gateway/session-recipient-authority.caller-thread.test.ts",
+  "src/gateway/session-recipient-authority.deletion.test.ts",
   "src/gateway/session-repository-materialization.test.ts",
   "src/gateway/session-repository-publication-handoff.test.ts",
   "src/gateway/session-row-event-ancestor-placement.test.ts",
