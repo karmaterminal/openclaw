@@ -11,10 +11,12 @@ import { resolveFinalSystemEventAdoption } from "../auto-reply/reply/session-sys
 import { prepareFormattedSystemEvents } from "../auto-reply/reply/session-system-events.js";
 import { captureRuntimeConfigAsyncReader } from "../config/io.runtime.js";
 import * as sessionAccessor from "../config/sessions/session-accessor.js";
-import { readSessionEntryReadOnlyInWorker } from "../config/sessions/session-entry-read-runtime.js";
 import { SessionEntryChangedDuringReadError } from "../config/sessions/session-entry-read-errors.js";
+import { readSessionEntryReadOnlyInWorker } from "../config/sessions/session-entry-read-runtime.js";
+import { isSessionRecipientAuthorityCurrentInWorker } from "../config/sessions/session-recipient-authority-current.js";
 import { addSessionMember, removeSessionMember } from "../config/sessions/session-sharing-store.js";
 import { resetSystemEventsForTest } from "../infra/system-events.js";
+import { runWithAgentDatabaseMaintenanceAuthority } from "../state/openclaw-agent-db-lease.js";
 import {
   closeOpenClawAgentDatabasesForTest,
   openOpenClawAgentDatabase,
@@ -29,7 +31,9 @@ const authorityRead = vi.hoisted(() => ({ onMatch: undefined as (() => void) | u
 // The match runs after the worker read and before the decision: the gap a racing writer targets.
 vi.mock("../config/sessions/session-recipient-authority-types.js", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("../config/sessions/session-recipient-authority-types.js")>();
+    await importOriginal<
+      typeof import("../config/sessions/session-recipient-authority-types.js")
+    >();
   return {
     ...actual,
     sessionRecipientAuthorityMatches: (
@@ -245,18 +249,38 @@ describe("recipient authority on the Gateway thread", () => {
     });
   });
 
+  type PatchOptions = Parameters<typeof sessionAccessor.patchSessionEntryCore>[2];
+  type PatchRoute = (
+    patch: (options?: PatchOptions) => Promise<unknown>,
+    env: NodeJS.ProcessEnv,
+  ) => Promise<unknown>;
+  const maintenanceOwner = {
+    signal: new AbortController().signal,
+    assertOwned() {},
+    assertOwnedInTransaction() {},
+    renew() {},
+  };
   it.each([
-    ["the default writer route", "default", {}],
+    ["the default writer route", "default", ((patch) => patch()) satisfies PatchRoute],
     [
       "an in-transaction hook",
       "hook",
-      { afterPersistInTransaction: () => undefined } as Parameters<
-        typeof sessionAccessor.patchSessionEntryCore
-      >[2],
+      ((patch) =>
+        patch({ afterPersistInTransaction: () => undefined } as PatchOptions)) satisfies PatchRoute,
+    ],
+    [
+      "maintenance authority over an open native connection",
+      "maintenance",
+      ((patch, env) => {
+        // Maintenance authority turns off worker routing; the patch then reuses this thread's
+        // already-open native connection instead of claiming a new one.
+        const { path } = openOpenClawAgentDatabase({ agentId: "main", env });
+        return runWithAgentDatabaseMaintenanceAuthority(maintenanceOwner, path, () => patch());
+      }) satisfies PatchRoute,
     ],
   ] as const)(
     "never advances recipient authority on the Gateway thread for a restrictive visibility patch through %s",
-    async (_route, key, options) => {
+    async (_route, key, route) => {
       expect(isMainThread).toBe(true);
       await withAuthorityState(async (env) => {
         const scope = { agentId: "main", env, sessionKey: `agent:main:restrict-${key}` };
@@ -269,14 +293,21 @@ describe("recipient authority on the Gateway thread", () => {
         const captured = await sessionAccessor.captureSessionRecipientAuthority(scope);
         const sql = observeHostDataSql();
         try {
-          await sessionAccessor
-            .patchSessionEntryCore(scope, () => ({ visibility: "draft" }), options)
-            .catch(() => undefined);
+          await route(
+            (options) =>
+              sessionAccessor.patchSessionEntryCore(
+                scope,
+                () => ({ visibility: "draft" }),
+                options,
+              ),
+            env,
+          ).catch(() => undefined);
           expect(sql.queries.filter((query) => AUTHORITY_SQL.test(query))).toEqual([]);
         } finally {
           sql.restore();
         }
-        // Whatever route served it, an effective restriction revoked the captured authority.
+        // A committed restriction revoked the captured authority in its own transaction; a
+        // refused one changed neither the visibility nor the authority.
         const entry = await readSessionEntryReadOnlyInWorker({
           ...scope,
           projection: "list",
@@ -285,6 +316,9 @@ describe("recipient authority on the Gateway thread", () => {
           expect(await sessionAccessor.captureSessionRecipientAuthority(scope)).not.toEqual(
             captured,
           );
+        } else {
+          expect(entry?.visibility).toBe("shared");
+          expect(await isSessionRecipientAuthorityCurrentInWorker(scope, captured)).toBe(true);
         }
       });
     },
