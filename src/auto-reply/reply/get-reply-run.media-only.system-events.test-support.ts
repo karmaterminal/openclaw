@@ -24,6 +24,19 @@ vi.mock("../../config/sessions/session-entry-read-runtime.js", async (importOrig
   };
 });
 
+// Recipient authority is scripted per case at its owner module; the mocks read
+// recipientAuthorityCurrentMock (below) only when called.
+vi.mock("../../config/sessions/session-recipient-authority-current.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../config/sessions/session-recipient-authority-current.js")
+  >()),
+  isSessionRecipientAuthorityCurrentInWorker: async () => recipientAuthorityCurrentMock(),
+  withCurrentSessionRecipientAuthority: async <T>(
+    checks: readonly unknown[],
+    decide: (current: readonly boolean[]) => T,
+  ) => decide(checks.map(() => recipientAuthorityCurrentMock())),
+}));
+
 type ActualSessionSystemEvents = typeof import("./session-system-events.js");
 
 // Production admission prepares system events and adopts them later. When a case
