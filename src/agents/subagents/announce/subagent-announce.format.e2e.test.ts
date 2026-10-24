@@ -48,10 +48,6 @@ import { testing as deliveryTesting } from "./subagent-announce-delivery.test-su
 import { testing as outputTesting } from "./subagent-announce-output.test-support.js";
 import { announceTesting } from "./subagent-announce-overrides.test-support.js";
 import {
-  registerContinuationTriggerOmittedCase,
-  withContinuationEnabled,
-} from "./subagent-announce.format.continuation.test-support.js";
-import {
   visibleAgentResponse,
   publishAnnounceRunFixture,
   type MockSubagentRun,
@@ -569,7 +565,6 @@ describe("subagent announce formatting", () => {
   });
 
   it("sends status, complete findings and compact usage stats as private parent-review context", async () => {
-    setConfigOverride(withContinuationEnabled(configOverride));
     const findings = `raw subagent reply ${Array.from({ length: 140 }, (_, i) => `step-${i}`).join(" ")}`;
     sessionStore = {
       [childKey]: session("child-session-123", {
@@ -621,13 +616,6 @@ describe("subagent announce formatting", () => {
       type: "task_completion",
       taskLabel: "do thing",
     });
-    expect(call.params?.continuationTrigger).toBe("subagent-return");
-  });
-
-  registerContinuationTriggerOmittedCase({
-    getRunSubagentAnnounceFlow: () => runSubagentAnnounceFlow,
-    defaultOutcomeAnnounce,
-    agentSpy,
   });
 
   it("announces the final source reply despite later silence and unrelated-run distractors", async () => {
@@ -1089,7 +1077,6 @@ describe("subagent announce formatting", () => {
       if (failed) {
         agentSpy.mockRejectedValueOnce(new Error("direct delivery unavailable"));
       } else {
-        setConfigOverride(withContinuationEnabled(configOverride));
         agentSpy.mockImplementationOnce(async ({ params }) => {
           if (params?.deliver === true && typeof params.channel !== "string") {
             throw new Error("Channel is required when deliver=true");
@@ -1107,7 +1094,6 @@ describe("subagent announce formatting", () => {
       const call = expectParentAnnounce();
       if (!failed) {
         expectAgentCallFields(call, { sessionKey: requesterKey, deliver: false });
-        expect(call.params?.continuationTrigger).toBe("subagent-return");
       }
     },
   );

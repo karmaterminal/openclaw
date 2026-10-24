@@ -162,9 +162,6 @@ const mocks = vi.hoisted(() => {
       value: await fn(),
     })),
     withStableDeliveryPreparation: vi.fn(),
-    // `true` is the queue's admission contract; the replay acts on the result.
-    enqueueSystemEvent: vi.fn((..._args: unknown[]) => true),
-    requestContinuationWake: vi.fn(),
     loadSessionEntryInWorker:
       vi.fn<
         typeof import("./session-utils-store-worker.js").loadGatewaySessionEntryReadOnlyInWorker
@@ -514,20 +511,6 @@ vi.mock("./server-restart-update-run.js", async () => {
   );
   return { ...actual, finalizeRestartUpdateRun: vi.fn(actual.finalizeRestartUpdateRun) };
 });
-
-// mock-isolation: System events are captured instead of entering the process-wide event queue.
-vi.mock("../infra/system-events.js", () => ({
-  enqueueSystemEvent: mocks.enqueueSystemEvent,
-  enqueueSystemEventRaw: mocks.enqueueSystemEvent,
-}));
-// mock-isolation: The system-event queue above is synthetic, so its managed-delivery lookups are too.
-vi.mock("../infra/system-event-managed-delivery-queue.js", () => ({
-  hasQueuedSystemEventDelivery: () => false,
-}));
-// mock-isolation: Continuation wakes are recorded without running the session-event handoff.
-vi.mock("../auto-reply/continuation/continuation-wake.js", () => ({
-  requestContinuationWake: mocks.requestContinuationWake,
-}));
 
 // mock-isolation: These producer tests use supplied rows; worker authority has its own boundary suite.
 vi.mock("./session-utils-store-worker.js", () => ({
@@ -1395,9 +1378,6 @@ describe("scheduleRestartSentinelWake", () => {
       messageId: "image:task-1:agent-loop",
       route: { channel: "discord", to: "channel:123", accountId: "default", chatType: "channel" },
       sourceReplyDeliveryMode: "message_tool_only",
-      continuationTrigger: "delegate-return",
-      traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
-      traceparentProvenance: "internal",
       expectedMediaUrls: ["/tmp/proof.png"],
     });
 
@@ -1427,8 +1407,6 @@ describe("scheduleRestartSentinelWake", () => {
       threadId: undefined,
       inputProvenance: entry.inputProvenance,
       sourceReplyDeliveryMode: "message_tool_only",
-      continuationTrigger: "delegate-return",
-      traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
       idempotencyKey: "image:task-1:agent-loop:attempt:1",
     });
     expect(String(request.message)).toContain("Do not send these files again.");

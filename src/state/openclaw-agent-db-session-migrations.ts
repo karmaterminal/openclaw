@@ -408,6 +408,7 @@ export function migrateSessionRecipientAuthority(db: DatabaseSync): boolean {
     .prepare(
       "SELECT session_key, entry_json FROM session_nodes WHERE entry_json LIKE '%recipientAuthorityEpoch%'",
     )
+    // SAFETY: The query selects the two declared, non-null TEXT columns without projection casts.
     .all() as Array<{ session_key: string; entry_json: string }>;
   const importEpoch = db.prepare(
     `INSERT INTO session_recipient_authority (session_key, epoch, created_at, updated_at)

@@ -54,12 +54,12 @@ import {
   createSubagentSpawnLifecycleEmitter,
   recordSubagentSessionSetup,
 } from "./subagent-spawn-lifecycle.js";
+import { applySubagentProfile } from "./subagent-spawn-profile.js";
 import {
   assertSubagentCollectorAdmission,
   buildSubagentSpawnPipelineFailureResult,
   notifyHomeOfAcceptedSubagentSession,
 } from "./subagent-spawn-registration.js";
-import { applySubagentProfile } from "./subagent-spawn-profile.js";
 import { resolveSubagentSpawnRequest } from "./subagent-spawn-request.js";
 import { cleanupAcceptedSubagentSpawnFailure } from "./subagent-spawn-rollback.js";
 import { createInitialSubagentSession } from "./subagent-spawn-session-patch.js";

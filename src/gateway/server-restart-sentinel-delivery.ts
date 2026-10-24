@@ -269,7 +269,13 @@ async function deliverResolvedQueuedSessionDelivery(params: {
       });
     }
     const recipientAuthority = params.entry.recipientAuthority;
-    const authorityScope = { agentId, sessionKey: canonicalKey, storePath };
+    // The row's owning state dir, as the session read above; recovery may run under another env.
+    const authorityScope = {
+      agentId,
+      sessionKey: canonicalKey,
+      storePath,
+      env: params.queueContext.environment,
+    };
     if (
       recipientAuthority &&
       !(await isSessionRecipientAuthorityCurrentInWorker(authorityScope, recipientAuthority))

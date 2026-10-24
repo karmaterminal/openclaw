@@ -13,7 +13,10 @@ import {
 import { markContinuationRunsRetainedByReset } from "../../agents/subagents/registry/subagent-continuation-reset-retention.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import { SessionResetCleanupError } from "../reply/session-reset-cleanup.js";
+import {
+  SessionResetCleanupError,
+  stopSessionResetSubagents,
+} from "../reply/session-reset-cleanup.js";
 import { resolveContinuationResetRetentions } from "./session-reset-retention-resolve.js";
 
 export { resolveContinuationResetRetentions };
@@ -29,6 +32,11 @@ export type ContinuationResetRetentionScope = {
     params: { fromRevision?: string; assertCurrent: () => void },
     kill: () => Promise<T>,
   ) => Promise<T>;
+  /** stopSubagents around upstream's reset kill, which carries the marks' current-incarnation fence. */
+  stopResetSubagents: (
+    fromRevision: string | undefined,
+    params: Parameters<typeof stopSessionResetSubagents>[0],
+  ) => ReturnType<typeof stopSessionResetSubagents>;
   /** Runs a later kill of the same reset so it honors the same marks. */
   runKill: <T>(kill: () => Promise<T>) => Promise<T>;
   /**
@@ -70,7 +78,7 @@ export function prepareContinuationResetRetention(params: {
       );
     }
   };
-  return {
+  const scope: ContinuationResetRetentionScope = {
     successorRevision,
     async stopSubagents(stop, kill) {
       markAttempted = true;
@@ -101,6 +109,10 @@ export function prepareContinuationResetRetention(params: {
         }
       }
     },
+    stopResetSubagents: (fromRevision, stop) =>
+      scope.stopSubagents({ fromRevision, assertCurrent: stop.assertCurrent }, () =>
+        stopSessionResetSubagents(stop),
+      ),
     runKill: (kill) => runWithActiveContinuationReset(reset, kill),
     async resolve() {
       if (!markAttempted) {
@@ -115,4 +127,5 @@ export function prepareContinuationResetRetention(params: {
       await resolveNow();
     },
   };
+  return scope;
 }

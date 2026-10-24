@@ -1221,9 +1221,7 @@ describe("runCodexAppServerSideQuestion", () => {
 
     expect(relayIdDuringFork).toBeDefined();
     expect(beforeToolCall).toHaveBeenCalledTimes(1);
-    expect(createTools).toHaveBeenCalledWith(
-      expect.objectContaining({ runId: "run-side-1", disableContinuationTools: true }),
-    );
+    expect(createTools).toHaveBeenCalledWith(expect.objectContaining({ runId: "run-side-1" }));
     expect(
       nativeHookRelayTesting.getNativeHookRelayRegistrationForTests(relayIdDuringFork!),
     ).toBeUndefined();

@@ -4,6 +4,10 @@ import { expect } from "vitest";
 import { captureContinuationRecipientAuthorities } from "../../../auto-reply/continuation/recipient-authority-binding.js";
 import { prepareContinuationResetRetention } from "../../../auto-reply/continuation/session-reset-retention.js";
 import { getRuntimeConfig } from "../../../config/config.js";
+import {
+  applySessionEntryLifecycleMutation,
+  loadSessionEntry,
+} from "../../../config/sessions/session-accessor.js";
 import { deleteSessionEntryRows } from "../../../config/sessions/session-accessor.sqlite-entry-store.js";
 import { clearSessionStoreCacheForTest } from "../../../config/sessions/store-writer-state.js";
 import { deliverQueuedSessionDeliveryCore } from "../../../gateway/server-restart-sentinel-delivery.js";
@@ -137,10 +141,30 @@ export function createResetRetentionFixture(stateDir: () => string) {
     return settled ?? (remaining ? "pending" : "gone");
   }
 
-  /** Removes the session row and leaves its recipient authority epoch where it was. */
+  /** Deletes the session row through the shared deletion edge, which advances its authority. */
   function removeSessionRow(sessionKey: string) {
     runOpenClawAgentWriteTransaction((database) => deleteSessionEntryRows(database, sessionKey), {
       agentId: "main",
+    });
+    clearSessionStoreCacheForTest();
+  }
+
+  /**
+   * Moves `sessionKey`'s session to `liveKey` through the production lifecycle projection, as
+   * canonical alias adoption does: one mutation removes the old key and upserts its entry under
+   * the live key, so the projection deletes the old row as a legacy replacement
+   * (deleteLegacySessionEntryRows). That is not a deletion edge; the old key's recipient
+   * authority stays where it was.
+   */
+  async function rehomeSessionRow(storePath: string, sessionKey: string, liveKey: string) {
+    const entry = loadSessionEntry({ storePath, sessionKey });
+    expect(entry?.sessionId).toBeDefined();
+    await applySessionEntryLifecycleMutation({
+      agentId: "main",
+      storePath,
+      removals: [{ sessionKey }],
+      upserts: [{ sessionKey: liveKey, entry: structuredClone(entry!) }],
+      skipMaintenance: true,
     });
     clearSessionStoreCacheForTest();
   }
@@ -194,6 +218,7 @@ export function createResetRetentionFixture(stateDir: () => string) {
     replay,
     drain,
     removeSessionRow,
+    rehomeSessionRow,
     enqueueReturnWithoutAuthority,
     queuedEvents,
     leavePendingRetention,
