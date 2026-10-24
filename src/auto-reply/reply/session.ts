@@ -95,7 +95,6 @@ import {
 import { normalizeSessionDeliveryState } from "../../utils/delivery-context.shared.js";
 import { isInternalMessageChannel } from "../../utils/message-channel.js";
 import { resolveCommandTurnTargetSessionKey } from "../command-turn-context.js";
-import { prepareContinuationResetRetention } from "../continuation/session-reset-retention.js";
 import type { FinalizedTemplateContext as TemplateContext } from "../templating.js";
 import { resolveEffectiveResetTargetSessionKey } from "./acp-reset-target.js";
 import { readBeforeResetMessages } from "./commands-reset-hooks.js";
@@ -122,6 +121,7 @@ import {
   runWithSessionInitConflictRetry,
 } from "./session-init-conflict-retry.js";
 import { clearReplacedSessionRuntimeState } from "./session-init-reset-cleanup.js";
+import { prepareResetRetention, resetSuccessorRevision } from "./session-init-reset-retention.js";
 import type { SessionInitResult } from "./session-init.types.js";
 import {
   assertReplySessionInitializationAllowed,
@@ -135,10 +135,7 @@ import {
   canReplaceRestartTombstoneFromParent,
   prepareReplySessionParentFork,
 } from "./session-parent-fork-prepare.js";
-import {
-  prepareSessionResetCleanupGuard,
-  stopSessionResetSubagents,
-} from "./session-reset-cleanup.js";
+import { prepareSessionResetCleanupGuard } from "./session-reset-cleanup.js";
 import { resolveAuthorizedSessionResetCommand } from "./session-reset-command.js";
 import { runReplySessionRolloverMutation } from "./session-rollover-mutation.js";
 import {
@@ -242,14 +239,7 @@ async function initSessionStateAttempt(params: InitSessionStateParams): Promise<
       return { stopped: 0, failed: 0 };
     };
     // Continuation: an explicit reset keeps its continuation-elected delegate tree.
-    const continuationRetention = candidate.resetTriggered
-      ? prepareContinuationResetRetention({
-          cfg: params.cfg,
-          sessionKey: candidate.sessionKey,
-          agentId: attemptContext.agentId,
-          storePath: attemptContext.storePath,
-        })
-      : undefined;
+    const retention = prepareResetRetention(params.cfg, candidate, attemptContext);
     // Drain foreign owners before the rollover takes the writer lane. Holding
     // that lane while waiting would deadlock owners that release after a write.
     rollover = await runReplySessionRolloverMutation<InitSessionStateAttemptOutcome>({
@@ -295,23 +285,13 @@ async function initSessionStateAttempt(params: InitSessionStateParams): Promise<
               assertCurrent: () => params.signal?.throwIfAborted(),
             });
             try {
-              const stop = () =>
-                stopSessionResetSubagents({
-                  cfg: params.cfg,
-                  sessionKey: candidate.sessionKey,
-                  agentId: attemptContext.agentId,
-                  assertCurrent: cleanup.assertCurrent,
-                  beforeKill: applyParentStop,
-                });
-              return continuationRetention
-                ? await continuationRetention.stopSubagents(
-                    {
-                      fromRevision: current.lifecycleRevision,
-                      assertCurrent: cleanup.assertCurrent,
-                    },
-                    stop,
-                  )
-                : await stop();
+              return await retention.stopSubagents(current.lifecycleRevision, {
+                cfg: params.cfg,
+                sessionKey: candidate.sessionKey,
+                agentId: attemptContext.agentId,
+                assertCurrent: cleanup.assertCurrent,
+                beforeKill: applyParentStop,
+              });
             } finally {
               cleanup.release();
             }
@@ -320,15 +300,8 @@ async function initSessionStateAttempt(params: InitSessionStateParams): Promise<
       },
       // Check the current identity once at the commit instead of rebuilding the
       // complete initialization before and after draining.
-      run: async () =>
-        preparedOutcome ??
-        runLockedAttempt(
-          continuationRetention
-            ? { ...candidate, nextLifecycleRevision: continuationRetention.successorRevision }
-            : candidate,
-        ),
-      // Inside the lifecycle mutation, so no later rollover can move the row first.
-      finalize: async () => await continuationRetention?.resolve(),
+      run: async () => preparedOutcome ?? runLockedAttempt(retention.withSuccessor(candidate)),
+      finalize: retention.resolve,
     });
   }
   return rollover.result;
@@ -690,9 +663,7 @@ async function initSessionStateAttemptLocked(
     ...creationStamp,
     sessionId,
     lifecycleRevision: isNewSession
-      ? ((lifecycleMutationMatches
-          ? lifecycleMutationIdentity?.nextLifecycleRevision
-          : undefined) ?? crypto.randomUUID())
+      ? resetSuccessorRevision(lifecycleMutationMatches, lifecycleMutationIdentity)
       : baseEntry?.lifecycleRevision,
     updatedAt: retainPendingResetMarker
       ? 0
