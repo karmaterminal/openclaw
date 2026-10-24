@@ -97,11 +97,13 @@ async function readCurrentUnderAdmission<T>(
           );
           try {
             for (const check of group) {
-              const state = await worker.execute(
+              // A database that does not exist holds no authority row: the binding stays stale.
+              const read = await worker.executeExisting(
                 { type: "authority.read", input: { scope: check.commandScope } },
                 () => execution.assertCurrent(),
               );
-              current[check.index] = sessionRecipientAuthorityMatches(check.authority, state);
+              current[check.index] =
+                read !== undefined && sessionRecipientAuthorityMatches(check.authority, read.value);
             }
           } finally {
             await worker.close();
