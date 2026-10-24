@@ -73,6 +73,9 @@ describe("runCodexAppServerSideQuestion", () => {
     await expect(runCodexAppServerSideQuestion(sideParams())).resolves.toEqual({
       text: "Side answer.",
     });
+    expect(createOpenClawCodingToolsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ disableContinuationTools: true }),
+    );
     expect(continuationExecute).not.toHaveBeenCalled();
     expect(toolResponse).toEqual({
       success: false,
