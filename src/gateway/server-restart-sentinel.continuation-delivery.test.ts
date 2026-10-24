@@ -29,7 +29,10 @@ import {
   createOpenClawTestState,
   type OpenClawTestState,
 } from "../test-utils/openclaw-test-state.js";
-import { configureRestartSessionEventMocks } from "./server-restart-sentinel.test-support.js";
+import {
+  configureRestartSessionEventMocks,
+  createGeneratedMediaDeliveryEntry,
+} from "./server-restart-sentinel.test-support.js";
 import * as restartUpdateRun from "./server-restart-update-run.js";
 
 const { mocks } = await import("./server-restart-sentinel.mocks.test-harness.js");
@@ -758,5 +761,55 @@ describe("scheduleRestartSentinelWake", () => {
     );
     // Plain notices take no continuation wake (#167113).
     expect(mocks.requestContinuationWake).not.toHaveBeenCalled();
+  });
+
+  it("replays a generated-media completion turn with its continuation trigger and trace", async () => {
+    const queueContext = captureOpenClawStateWorkerContext();
+    const traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+    const {
+      id: _id,
+      enqueuedAt: _enqueuedAt,
+      retryCount: _retryCount,
+      ...payload
+    } = createGeneratedMediaDeliveryEntry({
+      id: "unused",
+      idempotencyKey: "image:task-1:agent-loop",
+      messageId: "image:task-1:agent-loop",
+      route: { channel: "discord", to: "channel:123", accountId: "default", chatType: "channel" },
+      sourceReplyDeliveryMode: "message_tool_only",
+      continuationTrigger: "delegate-return",
+      traceparent,
+      traceparentProvenance: "internal",
+      expectedMediaUrls: ["/tmp/proof.png"],
+    });
+    const deliver = (entry: unknown) =>
+      deliverQueuedSessionDelivery({
+        deps: {} as never,
+        queueContext,
+        entry: entry as Parameters<typeof deliverQueuedSessionDelivery>[0]["entry"],
+      });
+    // This harness keeps the queue's agent-run advance inert; the media send's one advance is real.
+    const storage = await vi.importActual<
+      typeof import("../infra/session-delivery-queue-storage.js")
+    >("../infra/session-delivery-queue-storage.js");
+    mocks.advanceSessionDeliveryAgentRun.mockImplementationOnce(
+      storage.advanceSessionDeliveryAgentRun,
+    );
+    const id = await mocks.enqueueSessionDelivery(payload, queueContext);
+    // The host sends the media first; the completion turn is the entry's next attempt.
+    await expect(deliver(await mocks.loadPendingSessionDelivery(id, queueContext))).rejects.toThrow(
+      "its completion turn follows",
+    );
+    await deliver(await mocks.loadPendingSessionDelivery(id, queueContext));
+
+    const request = mocks.dispatchGatewayMethodInProcess.mock.calls.at(-1)?.[0];
+    expect(request).toMatchObject({
+      sessionKey: "agent:main:main",
+      continuationTrigger: "delegate-return",
+      traceparent,
+      idempotencyKey: "image:task-1:agent-loop:attempt:1",
+    });
+    // Provenance qualifies the stored trace; the replayed turn carries only the trace itself.
+    expect(request).not.toHaveProperty("traceparentProvenance");
   });
 });
