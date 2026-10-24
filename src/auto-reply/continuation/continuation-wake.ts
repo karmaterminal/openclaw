@@ -154,6 +154,7 @@ async function handOffContinuationWake(wake: PendingWake): Promise<void> {
     }
   };
   let receipt: ReturnType<typeof enqueueSessionEventForHost> | undefined;
+  let settlementFailure: { error: unknown } | undefined;
   try {
     // The handoff is the delivery boundary: it runs inside the authority decision, under the
     // writer admission that read the epoch, so no revocation lands between check and handoff.
@@ -217,19 +218,26 @@ async function handOffContinuationWake(wake: PendingWake): Promise<void> {
     );
   } finally {
     for (const event of stale) {
-      // The recipient no longer owns the session: retire the row, never deliver it.
-      await settleStaleSystemEventAuthority({ event, sessionKey: queueKey });
+      try {
+        // The recipient no longer owns the session: retire the row, never deliver it.
+        await settleStaleSystemEventAuthority({ event, sessionKey: queueKey });
+      } catch (error) {
+        // An unsettled stale row replays later; the current claims below must settle now.
+        settlementFailure ??= { error };
+      }
     }
   }
-  if (!receipt) {
-    return;
+  if (receipt) {
+    const outcome = await receipt.settled;
+    releaseUnadopted();
+    if (!adopted) {
+      log.info(
+        `[continuation:wake-not-adopted] session=${wake.sessionKey} status=${outcome.status} rows=${occurrences.map((event) => event.sessionDeliveryAckId).join(",")}${outcome.error ? ` error=${outcome.error}` : ""}`,
+      );
+    }
   }
-  const outcome = await receipt.settled;
-  releaseUnadopted();
-  if (!adopted) {
-    log.info(
-      `[continuation:wake-not-adopted] session=${wake.sessionKey} status=${outcome.status} rows=${occurrences.map((event) => event.sessionDeliveryAckId).join(",")}${outcome.error ? ` error=${outcome.error}` : ""}`,
-    );
+  if (settlementFailure) {
+    throw settlementFailure.error;
   }
 }
 
