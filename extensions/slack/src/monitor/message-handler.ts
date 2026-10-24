@@ -312,6 +312,20 @@ export function createSlackMessageHandler(params: {
                     void turnAdoptionLifecycle?.onAbandoned();
                     void admissionLifecycle.onAbandoned();
                   },
+                  onDropped: async (reason) => {
+                    settlementHandedOff = true;
+                    // A policy discard is terminal for both the durable ingress
+                    // source and Slack's logical message/app_mention twin guard.
+                    await commitClaims();
+                    await Promise.all([
+                      turnAdoptionLifecycle?.onDropped
+                        ? turnAdoptionLifecycle.onDropped(reason)
+                        : turnAdoptionLifecycle?.onAbandoned?.(),
+                      admissionLifecycle.onDropped
+                        ? admissionLifecycle.onDropped(reason)
+                        : admissionLifecycle.onAbandoned(),
+                    ]);
+                  },
                 };
                 onPrepared?.(prepared);
                 if (surviving.length > 1 && sourceMessageIds.length > 0) {
