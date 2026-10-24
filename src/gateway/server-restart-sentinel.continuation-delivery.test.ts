@@ -473,7 +473,8 @@ describe("scheduleRestartSentinelWake", () => {
       });
 
       expect(mocks.isSessionRecipientAuthorityCurrent).toHaveBeenCalledWith(
-        { agentId: "main", sessionKey, storePath },
+        // The check reads under the row's owning state dir, not the process env's.
+        { agentId: "main", sessionKey, storePath, env: { OPENCLAW_STATE_DIR: testState.stateDir } },
         recipientAuthority,
       );
       expect(mocks.enqueueSystemEvent).not.toHaveBeenCalled();
