@@ -64,11 +64,14 @@ const {
   replay,
   drain,
   removeSessionRow,
+  rehomeSessionRow,
   enqueueReturnWithoutAuthority,
   queuedEvents,
   leavePendingRetention,
 } = createResetRetentionFixture(() => fixture.stateDir);
 const WAITING = "waiting for external continuation";
+// Where a rehome moves the parent's session (as alias adoption moves an old key's session).
+const liveKey = "agent:main:work";
 
 const displayStatus = (id: string) => resolveSubagentDisplayStatus(subagentRuns.get(id)!);
 const retentionState = (id: string) => subagentRuns.get(id)?.continuationResetRetention?.state;
@@ -313,8 +316,12 @@ it("a return held seven days by an unresolved reset expires to failed, never del
       await returnFrom("elected", text);
     },
   });
-  // The head is missing under unchanged recipient authority, so boot cannot prove an outcome.
-  removeSessionRow(parentKey);
+  // The session moves to another key through the legacy-replacement projection, which is not a
+  // deletion edge: the old head is missing under unchanged recipient authority, so boot cannot
+  // prove an outcome (owner ruling 🩸 1563546185942179871).
+  await rehomeSessionRow(storePath, parentKey, liveKey);
+  expect(readParent(storePath)).toBeUndefined();
+  expect(loadSessionEntry({ storePath, sessionKey: liveKey })?.sessionId).toBe("parent");
   await resolveContinuationResetRetentions({
     cfg: getRuntimeConfig(),
     markedBefore: Date.now() + 1,
@@ -335,6 +342,24 @@ it("a return held seven days by an unresolved reset expires to failed, never del
   // The handover stays unresolved and visible; age alone never stops a valid child.
   expect(retentionState("elected")).toBe("pending");
   expect(subagentRuns.get("elected")?.killIntent).toBeUndefined();
+});
+
+it("a reset whose head is deleted through the deletion edge resolves orphaned", async () => {
+  const storePath = await writeSession(parentKey, "parent", "before-reset");
+  await addChild("elected", true);
+  await leavePendingRetention(storePath, {
+    during: async () => {
+      await returnFrom("elected", "elected result before deletion");
+    },
+  });
+  // Every deletion owner advances recipient authority at the shared edge, so the binding is stale.
+  removeSessionRow(parentKey);
+  expect(readParent(storePath)).toBeUndefined();
+  await resolveContinuationResetRetentions({
+    cfg: getRuntimeConfig(),
+    markedBefore: Date.now() + 1,
+  });
+  expect(retentionState("elected")).toBe("orphaned");
 });
 
 it("a retained chain-hop delegate survives when the reset stops the sibling that controls it", async () => {
