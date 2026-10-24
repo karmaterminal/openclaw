@@ -16,10 +16,12 @@ import type { MediaFact } from "../media/media-facts.js";
 import type { PromptImageOrderEntry } from "../media/prompt-image-order.js";
 import type { UserTurnTranscriptRecorder } from "../sessions/user-turn-transcript.types.js";
 import type { ReplyPayload } from "./reply-payload.js";
+import type { FollowupQueueDisposition } from "./reply/queue-policy.js";
 import type { TypingController } from "./reply/typing.js";
 import type { SourceReplyDeliveryMode } from "./source-reply-delivery-mode.types.js";
 
 export type { SourceReplyDeliveryMode } from "./source-reply-delivery-mode.types.js";
+export type { FollowupQueueDisposition } from "./reply/queue-policy.js";
 
 /** An accepted visible work session and its canonical Control UI link. */
 export type VisibleWorkSession = {
@@ -118,7 +120,6 @@ export type QueuedReplyDeliveryCorrelation = {
  * Cancel-only: share collect identity via ownerKey (gateway chat.send).
  */
 type TurnAdoptionAdmission = "exclusive" | "cancel-only";
-export type FollowupQueueDisposition = "queue-cap" | "queue-cap-old" | "queue-cap-new";
 
 /**
  * Canonical turn-ownership lifecycle (adopt / defer / abandon / settle).
