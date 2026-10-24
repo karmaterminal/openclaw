@@ -327,11 +327,15 @@ function applyFollowupQueueOverflow(
     }
   }
   if (!shouldEnqueue) {
-    run.onQueueDisposition?.(queue.dropPolicy === "new" ? "queue-cap-new" : "queue-cap");
-    completeFollowupRunLifecycle(run, {
-      kind: "dropped",
-      reason: queue.dropPolicy === "new" ? "queue-cap-new" : "queue-cap",
-    });
+    const reason = queue.dropPolicy === "new" ? "queue-cap-new" : "queue-cap";
+    run.onQueueDisposition?.(reason);
+    // A full queue with no evictable victim is transient backpressure, not a
+    // policy drop. Its durable ingress claim must remain retryable.
+    if (reason === "queue-cap") {
+      completeFollowupRunLifecycle(run);
+    } else {
+      completeFollowupRunLifecycle(run, { kind: "dropped", reason });
+    }
   }
   return shouldEnqueue;
 }
