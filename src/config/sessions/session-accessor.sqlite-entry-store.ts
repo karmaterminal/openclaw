@@ -63,6 +63,10 @@ export function deleteSessionEntryRows(
     postimages?: SessionEntryWritePostimages;
   } = {},
 ): boolean {
+  // Continuation: deletion is a generation edge of recipient authority. Every deletion owner
+  // advances it here, in its own transaction, so a binding captured before the deletion stays
+  // stale when the key is recreated (the authority row deliberately outlives the session).
+  advanceSessionRecipientAuthorityInTransaction(database, sessionKey);
   // Lifecycle deletion reuses its transaction snapshot; Doctor also supplies validated legacy rows.
   const previousEntry =
     options.validatedEntry ?? readExactSessionEntryRow(database, sessionKey)?.entry;
@@ -199,7 +203,6 @@ export function deleteLifecycleTargetRows(
   for (const sessionKey of uniqueStrings([target.canonicalKey, ...target.storeKeys])) {
     const trimmed = sessionKey.trim();
     if (trimmed) {
-      advanceSessionRecipientAuthorityInTransaction(database, trimmed);
       const unchanged = deleteSessionEntryRows(database, trimmed, {
         validatedEntry: snapshot.find((row) => row.sessionKey === trimmed)?.entry,
       });
