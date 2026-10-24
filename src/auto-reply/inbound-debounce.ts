@@ -7,6 +7,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { toErrorObject } from "../infra/errors.js";
 import { runWithGatewayIndependentRootWorkContinuation } from "../process/gateway-work-admission.js";
 import { createDeferredCore } from "../shared/deferred.js";
+import type { FollowupQueueDisposition } from "./get-reply-options.types.js";
 
 /** Resolve effective inbound debounce milliseconds from explicit, channel, and global config. */
 export function resolveInboundDebounceMs(params: {
@@ -48,6 +49,7 @@ type InboundDebounceAdmissionLifecycleInput = {
   onFailed?: (error: unknown) => void | Promise<void>;
   onCancelled?: () => void | Promise<void>;
   onAbandoned?: () => void | Promise<void>;
+  onDropped?: (reason: FollowupQueueDisposition) => void | Promise<void>;
 };
 
 /** Lifecycle shape passed to a channel dispatch so it can signal session-lane admission. */
@@ -61,6 +63,7 @@ type InboundDebounceAdmissionLifecycle = {
   onFailed?: (error: unknown) => Promise<void>;
   onCancelled?: () => Promise<void>;
   onAbandoned: () => Promise<void>;
+  onDropped?: (reason: FollowupQueueDisposition) => Promise<void>;
 };
 
 /**
@@ -107,6 +110,11 @@ function createInboundDebounceFlush(params: {
     // the durable source settles it without spending retry budget.
     onCancelled: source?.onCancelled ? async () => source.onCancelled?.() : undefined,
     onAbandoned: async () => source?.onAbandoned?.(),
+    onDropped: source?.onDropped
+      ? async (reason) => {
+          await source.onDropped?.(reason);
+        }
+      : undefined,
   };
   // Adoption can release the HTTP request before dispatch reaches agent enqueue.
   const completion = runWithGatewayIndependentRootWorkContinuation(

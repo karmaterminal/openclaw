@@ -30,14 +30,14 @@ import {
   IngressAdoptionLostError,
   isPreAdoptionState,
   resolveLaneKey,
+  settlePreAdoptionFailure,
   sortedKeys,
   type ActiveHandlerState,
 } from "./ingress-drain-state.js";
 import { supersedeActiveStatesIfNeeded } from "./ingress-drain-supersede.js";
+import { IngressQueueCapDropError, resolveQueueCapDropFailure } from "./ingress-queue-cap-drop.js";
 import type { ChannelIngressQueueClaim, ChannelIngressQueueRecord } from "./ingress-queue.types.js";
-import {
-  createIngressRetryPolicy,
-} from "./ingress-retry-policy.js";
+import { createIngressRetryPolicy } from "./ingress-retry-policy.js";
 export { bindIngressLifecycleToReplyOptions } from "./ingress-drain-lifecycle.js";
 export type { CreateChannelIngressDrainOptions } from "./ingress-drain-options.js";
 export { isIngressAdoptionLostError } from "./ingress-drain-state.js";
@@ -243,7 +243,8 @@ export function createChannelIngressDrainOwner<
       err,
       event: claim,
       formatError,
-      resolveNonRetryableFailure: options.resolveNonRetryableFailure,
+      resolveNonRetryableFailure: (failure) =>
+        resolveQueueCapDropFailure(failure, options.resolveNonRetryableFailure),
       config: options.retryPolicy,
       now: now(),
     });
@@ -394,13 +395,7 @@ export function createChannelIngressDrainOwner<
         // stall watchdog race and dead-letter an about-to-complete event.
         clearStallTimer(state);
       },
-      onFailed: async (error) => {
-        if (!isPreAdoptionState(state)) {
-          return;
-        }
-        // Keep recovery armed until disposition commits; removeActive clears it after success.
-        await state.settleOnce(() => applyFailureDisposition(state.claim, error));
-      },
+      onFailed: (error) => settlePreAdoptionFailure(state, error, applyFailureDisposition),
       onCancelled: async () => {
         // Cancellation means ownership ended before delivery, so preserve every
         // prior retry fact while reopening the canonical row for replacement.
@@ -412,6 +407,12 @@ export function createChannelIngressDrainOwner<
           applyFailureDisposition(claim, new Error("turn-abandoned")),
         );
       },
+      onDropped: (reason) =>
+        settlePreAdoptionFailure(
+          state,
+          new IngressQueueCapDropError(reason),
+          applyFailureDisposition,
+        ),
     };
   };
 
