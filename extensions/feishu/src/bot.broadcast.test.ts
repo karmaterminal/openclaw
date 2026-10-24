@@ -88,16 +88,18 @@ it("releases the shared broadcast claim if terminal drop settlement fails", asyn
     }),
   };
   const sharedClaim = createReplayClaim("shared-drop-failure");
+  const droppedClaim = createReplayClaim("dropped-lane-failure");
   const settlement = createFeishuBroadcastIngressSettlement({
     lifecycle: transport,
     replayClaim: sharedClaim,
   });
-  const dropped = settlement.createLane();
+  const dropped = settlement.createLane(droppedClaim);
   await dropped.lifecycle.onDropped?.("queue-cap-new");
 
   await expect(settlement.onDispatchComplete()).rejects.toThrow("drop settlement failed");
   expect(transport.onAbandoned).toHaveBeenCalledOnce();
   expectClaim(sharedClaim, false);
+  expectClaim(droppedClaim, false);
 });
 
 describe("broadcast dispatch", () => {

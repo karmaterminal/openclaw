@@ -316,8 +316,9 @@ export function createSlackMessageHandler(params: {
                     settlementHandedOff = true;
                     // A policy discard is terminal for both the durable ingress
                     // source and Slack's logical message/app_mention twin guard.
-                    await commitClaims();
-                    await Promise.all([
+                    // Commit the latter only after the durable settlement succeeds;
+                    // a failed settlement must be eligible for retry.
+                    const outcomes = await Promise.allSettled([
                       turnAdoptionLifecycle?.onDropped
                         ? turnAdoptionLifecycle.onDropped(reason)
                         : turnAdoptionLifecycle?.onAbandoned?.(),
@@ -325,6 +326,12 @@ export function createSlackMessageHandler(params: {
                         ? admissionLifecycle.onDropped(reason)
                         : admissionLifecycle.onAbandoned(),
                     ]);
+                    const failure = outcomes.find((result) => result.status === "rejected");
+                    if (failure?.status === "rejected") {
+                      releaseClaims(failure.reason);
+                      throw failure.reason;
+                    }
+                    await commitClaims();
                   },
                 };
                 onPrepared?.(prepared);

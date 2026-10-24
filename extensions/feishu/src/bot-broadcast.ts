@@ -71,6 +71,11 @@ export function createFeishuBroadcastIngressSettlement(params: {
     }
     terminal = "abandoned";
     params.replayClaim?.release({ error });
+    for (const lane of lanes) {
+      if (lane.status === "dropped") {
+        lane.replayClaim?.release({ error });
+      }
+    }
     try {
       await params.lifecycle?.onAbandoned();
     } finally {
@@ -88,13 +93,29 @@ export function createFeishuBroadcastIngressSettlement(params: {
       beginFinalizing();
       if (params.lifecycle?.onDropped) {
         await params.lifecycle.onDropped(reason);
+        for (const lane of lanes) {
+          if (lane.status !== "dropped") {
+            continue;
+          }
+          try {
+            await lane.replayClaim?.commit();
+          } catch (error) {
+            reportReplayCommitError(error);
+          }
+        }
         try {
           await params.replayClaim?.commit();
         } catch (error) {
           reportReplayCommitError(error);
         }
       } else {
-        params.replayClaim?.release({ error: new Error(`feishu-broadcast-${reason}`) });
+        const error = new Error(`feishu-broadcast-${reason}`);
+        params.replayClaim?.release({ error });
+        for (const lane of lanes) {
+          if (lane.status === "dropped") {
+            lane.replayClaim?.release({ error });
+          }
+        }
         await params.lifecycle?.onAbandoned();
       }
     } catch (error) {
@@ -226,11 +247,6 @@ export function createFeishuBroadcastIngressSettlement(params: {
             }
             lane.status = "dropped";
             dropReason ??= reason;
-            try {
-              await lane.replayClaim?.commit();
-            } catch (error) {
-              reportReplayCommitError(error);
-            }
             await maybeSettle();
           },
         },
