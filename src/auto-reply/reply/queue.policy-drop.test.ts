@@ -63,4 +63,33 @@ describe("followup queue policy drop", () => {
       clearFollowupQueue(key);
     }
   });
+
+  it("releases an all-protected queue refusal for retry instead of dropping it", async () => {
+    const key = `test-protected-backpressure-${Date.now()}`;
+    const settings = createQueueSettings({ mode: "followup", cap: 1, dropPolicy: "summarize" });
+    const dropped = vi.fn();
+    const abandoned = vi.fn();
+    const rejected = createQueueTestRun({ prompt: "rejected" });
+    rejected.turnAdoptionLifecycle = {
+      admission: "exclusive",
+      onAdopted: vi.fn(),
+      onDropped: dropped,
+      onAbandoned: abandoned,
+    };
+    try {
+      expect(
+        enqueueFollowupRun(
+          key,
+          createQueueTestRun({ prompt: "protected", protectFromQueueOverflow: true }),
+          settings,
+        ),
+      ).toBe(true);
+      expect(enqueueFollowupRun(key, rejected, settings)).toBe(false);
+      await rejected.controllerInput!.settlement.promise;
+      expect(abandoned).toHaveBeenCalledOnce();
+      expect(dropped).not.toHaveBeenCalled();
+    } finally {
+      clearFollowupQueue(key);
+    }
+  });
 });
