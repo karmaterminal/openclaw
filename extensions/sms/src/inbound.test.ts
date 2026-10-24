@@ -311,6 +311,36 @@ describe("dispatchSmsInboundEvent", () => {
     expect(events).toEqual(["cleanup", "abandon"]);
   });
 
+  it("cleans deferred MMS files before settling a queue drop", async () => {
+    const mocks = createAuthorizedRuntime();
+    const events: string[] = [];
+    unlinkIfExistsMock.mockImplementationOnce(async () => {
+      events.push("cleanup");
+    });
+    const originalLifecycle: SmsTurnAdoptionLifecycle = {
+      ...lifecycle(),
+      onDropped: vi.fn(async () => {
+        events.push("drop");
+      }),
+    };
+    let wrappedLifecycle: SmsTurnAdoptionLifecycle | undefined;
+    mocks.run.mockImplementationOnce(async (runParams) => {
+      wrappedLifecycle = runParams.turnAdoptionLifecycle;
+      wrappedLifecycle?.onDeferred?.();
+    });
+
+    await dispatch(mocks.runtime, createMmsMessage("MM-dropped"), {
+      turnAdoptionLifecycle: originalLifecycle,
+    });
+
+    expect(unlinkIfExistsMock).not.toHaveBeenCalled();
+    await wrappedLifecycle?.onDropped?.("queue-cap-old");
+    expectCleanedMedia();
+    expect(originalLifecycle.onDropped).toHaveBeenCalledExactlyOnceWith("queue-cap-old");
+    expect(originalLifecycle.onAbandoned).not.toHaveBeenCalled();
+    expect(events).toEqual(["cleanup", "drop"]);
+  });
+
   it("retains MMS files after successful turn adoption", async () => {
     const mocks = createAuthorizedRuntime();
     const originalLifecycle = lifecycle();

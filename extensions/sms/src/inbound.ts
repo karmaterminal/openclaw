@@ -17,6 +17,10 @@ export type SmsChannelRuntime = Pick<
   PluginRuntime["channel"],
   "commands" | "inbound" | "media" | "pairing" | "reply" | "routing" | "session"
 >;
+type SmsTurnAdoptionLifecycle = NonNullable<
+  Parameters<SmsChannelRuntime["inbound"]["run"]>[0]["turnAdoptionLifecycle"]
+>;
+type SmsQueueDropReason = Parameters<NonNullable<SmsTurnAdoptionLifecycle["onDropped"]>>[0];
 
 export async function dispatchSmsInboundEvent(params: {
   cfg: OpenClawConfig;
@@ -24,9 +28,7 @@ export async function dispatchSmsInboundEvent(params: {
   msg: SmsInboundMessage;
   channelRuntime: SmsChannelRuntime;
   receivedAt: number;
-  turnAdoptionLifecycle?: NonNullable<
-    Parameters<SmsChannelRuntime["inbound"]["run"]>[0]["turnAdoptionLifecycle"]
-  >;
+  turnAdoptionLifecycle?: SmsTurnAdoptionLifecycle;
   log?: SmsLog;
 }): Promise<void> {
   const from = normalizeSmsPhoneNumber(params.msg.from);
@@ -147,6 +149,10 @@ export async function dispatchSmsInboundEvent(params: {
                     `Failed to abandon Twilio MMS ingress ${params.msg.messageSid}: ${String(error)}`,
                   );
                 });
+            },
+            onDropped: async (reason: SmsQueueDropReason) => {
+              await materialized.cleanup();
+              await params.turnAdoptionLifecycle?.onDropped?.(reason);
             },
           }
         : params.turnAdoptionLifecycle;
