@@ -1,6 +1,4 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { OpenClawConfig } from "../config/config.js";
-import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { AsyncWorkScope } from "../shared/async-work-scope.js";
 import type {
   EmbeddedRunAttemptParams,
@@ -9,7 +7,7 @@ import type {
 import { resetFallbackSkipCacheForTest } from "./fallback-skip-cache.test-support.js";
 import { createFallbackE2eMocks } from "./model-fallback.e2e.test-support.js";
 import {
-  type EmbeddedAttemptParams,
+  createEmbeddedFallbackEntryRunner,
   makeModelFallbackConfig,
   readFallbackUsageStats,
   withModelFallbackWorkspace,
@@ -20,23 +18,26 @@ import {
   makeEmbeddedRunnerAttempt,
 } from "./test-helpers/embedded-agent-runner-e2e-fixtures.js";
 
-const runEmbeddedAttemptMock = vi.fn<(params: unknown) => Promise<EmbeddedRunAttemptResult>>();
+const runEmbeddedAttemptMock =
+  vi.fn<(params: EmbeddedRunAttemptParams) => Promise<EmbeddedRunAttemptResult>>();
 const fallbackMocks = createFallbackE2eMocks((params) => runEmbeddedAttemptMock(params));
 // mock-isolation: keep model config writes out of the isolated fallback workspace.
 vi.mock("./models-config.js", () => ({
   ensureOpenClawModelsJson: vi.fn(async () => ({ wrote: false })),
 }));
 
-let runEmbeddedAgent: typeof import("./embedded-agent-runner/run.js").runEmbeddedAgent;
-let runEmbeddedAgentEntry: typeof import("./embedded-agent-runner/run-entry.js").runEmbeddedAgentEntry;
-let createModelRoutingTestAdmission: typeof import("./test-helpers/model-routing-decision-e2e-fixtures.js").createModelRoutingTestAdmission;
+let runEmbeddedEntryFallback: ReturnType<typeof createEmbeddedFallbackEntryRunner>;
 
 beforeAll(async () => {
   fallbackMocks.install();
-  ({ runEmbeddedAgent } = await import("./embedded-agent-runner/run.js"));
-  ({ runEmbeddedAgentEntry } = await import("./embedded-agent-runner/run-entry.js"));
-  ({ createModelRoutingTestAdmission } =
-    await import("./test-helpers/model-routing-decision-e2e-fixtures.js"));
+  runEmbeddedEntryFallback = createEmbeddedFallbackEntryRunner({
+    runEmbeddedAgent: (await import("./embedded-agent-runner/run.js")).runEmbeddedAgent,
+    runEmbeddedAgentEntry: (await import("./embedded-agent-runner/run-entry.js"))
+      .runEmbeddedAgentEntry,
+    createModelRoutingTestAdmission: (
+      await import("./test-helpers/model-routing-decision-e2e-fixtures.js")
+    ).createModelRoutingTestAdmission,
+  });
 });
 
 beforeEach(() => {
@@ -45,82 +46,13 @@ beforeEach(() => {
   fallbackMocks.clear();
 });
 
-type Workspace = { agentDir: string; workspaceDir: string };
-
-async function runEmbeddedEntryFallback(
-  workspace: Workspace,
-  name: string,
-  options: { config: OpenClawConfig },
-) {
-  const cfg = options.config;
-  const runId = `run:${name}`;
-  const sessionKey = `agent:test:${name}`;
-  const sessionId = `session:${runId}`;
-  setRuntimeConfigSnapshot(cfg, cfg);
-  const preparedRunAdmission = createModelRoutingTestAdmission({
-    cfg: { ...cfg, logging: { audit: { executionIdentity: true } } },
-    runId,
-    boundary: "model-fallback-e2e",
-  });
-  try {
-    return await runEmbeddedAgentEntry({
-      selection: {
-        cfg,
-        provider: "openai",
-        model: "mock-1",
-        agentDir: workspace.agentDir,
-        manifestPlugins: [],
-      },
-      identity: { runId, agentId: "test", sessionId, sessionKey },
-      harness: {
-        workspaceDir: workspace.workspaceDir,
-        sessionKey,
-        preparation: { kind: "direct" },
-        resolveRuntimeOverride: () => undefined,
-        resolveContextEngineHost: (provider, model) => ({
-          id: `embedded-e2e:${provider}/${model}`,
-          label: "embedded runner e2e",
-          capabilities: [],
-        }),
-      },
-      behavior: { kind: "maintenance" },
-      sessionOverride: { kind: "preserve" },
-      runCandidate: (provider, model, attemptOptions) =>
-        runEmbeddedAgent({
-          ...workspace,
-          runId,
-          sessionKey,
-          sessionId,
-          config: cfg,
-          prompt: "hello",
-          authProfileIdSource: "auto",
-          timeoutMs: 5_000,
-          enqueue: async (task) => await task(),
-          preparedRunAdmission,
-          provider,
-          model,
-          modelRoutingProvenance: attemptOptions.modelRoutingProvenance,
-          isFinalFallbackAttempt: attemptOptions.isFinalFallbackAttempt,
-          contextEngineLogicalTurnLease: attemptOptions.contextEngineLogicalTurnLease,
-          onContextEngineTurnCandidate: attemptOptions.onContextEngineTurnCandidate,
-        }),
-    });
-  } finally {
-    preparedRunAdmission.close();
-  }
-}
-
-function expectAttemptOrder(expected: Array<{ provider: string; authProfileId: string }>) {
+function expectAttemptOrder(expected: Array<[string, string]>) {
   expect(
-    runEmbeddedAttemptMock.mock.calls.map(([params]) => {
-      const { provider, authProfileId } = params as EmbeddedRunAttemptParams;
-      return { provider, authProfileId };
-    }),
+    runEmbeddedAttemptMock.mock.calls.map(([{ provider, authProfileId }]) => [
+      provider,
+      authProfileId,
+    ]),
   ).toEqual(expected);
-}
-
-function profileAttempts(provider: string, count: number) {
-  return Array.from({ length: count }, () => ({ provider, authProfileId: `${provider}:p1` }));
 }
 
 describe("timeout cooldown availability", () => {
@@ -138,8 +70,7 @@ describe("timeout cooldown availability", () => {
         cfg.auth = { order: { openai: hasBackup ? ["openai:p1", "openai:p2"] : ["openai:p1"] } };
         // Stored credentials outside the authorized order must not enable cooldown.
         await writeFallbackMultiProfileAuthStore(workspace.agentDir, { openAiProfileCount: 2 });
-        runEmbeddedAttemptMock.mockImplementation(async (params: unknown) => {
-          const { provider, modelId } = params as EmbeddedAttemptParams;
+        runEmbeddedAttemptMock.mockImplementation(async ({ provider, modelId }) => {
           const failed = runEmbeddedAttemptMock.mock.calls.length === 1;
           const assistant = buildEmbeddedRunnerAssistant({
             provider,
@@ -155,7 +86,6 @@ describe("timeout cooldown availability", () => {
                 ? { kind: "timeout", phase: "prompt", source: "idle", aborted: true }
                 : { kind: "ok" },
             lastAssistant: assistant,
-            currentAttemptAssistant: assistant,
             assistantTexts: failed ? [] : ["recovered"],
           });
         });
@@ -174,10 +104,8 @@ describe("timeout cooldown availability", () => {
           expect(stats?.cooldownReason).toBe("timeout");
           expect(stats?.cooldownUntil).toBeGreaterThan(Date.now());
           expectAttemptOrder([
-            { provider: "openai", authProfileId: "openai:p1" },
-            hasBackup
-              ? { provider: "openai", authProfileId: "openai:p2" }
-              : { provider: "groq", authProfileId: "groq:p1" },
+            ["openai", "openai:p1"],
+            hasBackup ? ["openai", "openai:p2"] : ["groq", "groq:p1"],
           ]);
         } else {
           expect(stats?.cooldownUntil).toBeUndefined();
@@ -187,7 +115,7 @@ describe("timeout cooldown availability", () => {
             const result = await run(`${name}-${scenario}`);
             expect(result.result.payloads?.[0]?.text).toBe("recovered");
           }
-          expectAttemptOrder(profileAttempts("openai", 3));
+          expectAttemptOrder(Array.from({ length: 3 }, () => ["openai", "openai:p1"]));
         }
       });
     },

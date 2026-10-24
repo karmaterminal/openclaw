@@ -11,6 +11,8 @@ export type SettledTurnMessages = {
   turnId: string;
   /** The run's persisted prompt when a same-run continuation started a later native turn. */
   promptIdentity?: string;
+  /** The run mirrored no prompt for this turn: an internal system turn without a recorder. */
+  promptSuppressed?: boolean;
 };
 
 function rejectEvidence(reason: CodexHistoryRejectionReason): never {
@@ -47,6 +49,9 @@ function* verifiedSettledMessages(
   const requiredIds = params.settledMessages
     .slice(0, boundaryIndex + 1)
     .flatMap((message) => readMirrorIdentity(message) ?? []);
+  // A turn without a mirrored prompt starts at its first mirrored row; the user turn
+  // that produced it is then prior context, never borrowed as this turn's prompt.
+  const anchorIdentity = params.promptSuppressed ? requiredIds[0] : promptIdentity;
   if (!boundaryIdentity?.startsWith(`${params.turnId}:tool:`)) {
     rejectEvidence("provenance_missing_boundary");
   }
@@ -56,7 +61,14 @@ function* verifiedSettledMessages(
   if (new Set(requiredIds).size !== requiredIds.length) {
     rejectEvidence("provenance_duplicate_identity");
   }
-  if (!requiredIds.includes(promptIdentity)) {
+  if (params.promptSuppressed) {
+    if (requiredIds.includes(promptIdentity)) {
+      rejectEvidence("provenance_unexpected_prompt");
+    }
+    if (!anchorIdentity?.startsWith(`${params.turnId}:`)) {
+      rejectEvidence("provenance_foreign_anchor");
+    }
+  } else if (!requiredIds.includes(promptIdentity)) {
     rejectEvidence("provenance_missing_prompt");
   }
   const mirrored = params.mirroredMessages;
@@ -99,7 +111,7 @@ function* verifiedSettledMessages(
         matched += 1;
       }
     }
-    currentStarted ||= identity === promptIdentity;
+    currentStarted ||= identity === anchorIdentity;
     if (!currentStarted) {
       prior.append(message);
     } else if (!throughBoundary) {

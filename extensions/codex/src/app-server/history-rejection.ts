@@ -11,6 +11,8 @@ export type CodexHistoryRejectionReason =
   | "provenance_unattested_prefix"
   | "provenance_duplicate_identity"
   | "provenance_missing_prompt"
+  | "provenance_unexpected_prompt"
+  | "provenance_foreign_anchor"
   | "provenance_mirror_prefix"
   | "provenance_history_order"
   | "provenance_fingerprint_drift"
