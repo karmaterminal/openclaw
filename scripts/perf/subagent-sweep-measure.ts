@@ -86,6 +86,10 @@ const sweeper = createSubagentRegistrySweeper({
     lifecycleSweeps++;
   },
   completeSubagentRunWithRecovery: unexpected,
+  recordAcceptedSubagentSpawnRollback: unexpected,
+  releaseAcceptedSubagentSpawnRollback: unexpected,
+  rollbackSubagentRunRegistration: unexpected,
+  settleFailedQueuedSubagentLaunch: unexpected,
   getGatewayRecoveryRuntime: () => undefined,
   finalizeInterruptedSubagentRun: unexpected,
   startSubagentAnnounceCleanupFlow: unexpected,
@@ -99,6 +103,7 @@ const sweeper = createSubagentRegistrySweeper({
   discardTerminalDelivery: unexpected,
   shouldEmitEndedHookForRun: unexpected,
   emitSubagentEndedHookForRun: unexpected,
+  shouldDeferArchive: unexpected,
   callGateway: unexpected,
   cleanupCollectorLaunchResources: unexpected,
   runContextEngineSubagentEnded: unexpected,
