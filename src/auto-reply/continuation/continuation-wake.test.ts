@@ -17,7 +17,11 @@ import { runEmbeddedAgent } from "../../agents/embedded-agent.js";
 import type { ChannelOutboundAdapter } from "../../channels/plugins/outbound.types.js";
 import type { ChannelPlugin } from "../../channels/plugins/types.public.js";
 import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
-import { assignSessionOwner, replaceSessionEntry } from "../../config/sessions/session-accessor.js";
+import {
+  assignSessionOwner,
+  deleteSessionEntryLifecycle,
+  replaceSessionEntry,
+} from "../../config/sessions/session-accessor.js";
 import { readSessionEntryInWorker } from "../../config/sessions/session-entry-read-writable.js";
 import { captureSessionRecipientAuthority } from "../../config/sessions/session-sharing-store.async.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -28,6 +32,7 @@ import {
   type StartSpanOptions,
 } from "../../infra/continuation-tracer.js";
 import { loadPendingSessionDelivery } from "../../infra/session-delivery-queue-storage.js";
+import { isDeliveryAdoptionClaimed } from "../../infra/system-event-delivery-claims.js";
 import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import {
   isSystemEventTurnOwned,
@@ -39,6 +44,7 @@ import {
   restoreActivePluginRegistrySnapshot,
   setActivePluginRegistry,
 } from "../../plugins/runtime.js";
+import { resolveOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
 import { openOpenClawStateDatabase } from "../../state/openclaw-state-db.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import {
@@ -60,6 +66,21 @@ vi.mock("../../agents/embedded-agent-runner/run.js", () => ({
   runEmbeddedAgent: vi.fn(),
 }));
 const runEmbeddedAgentMock = vi.mocked(runEmbeddedAgent);
+const failingAcks = vi.hoisted(() => new Set<string>());
+// Durable acks stay real unless a case arms a failing row.
+vi.mock("../../infra/session-delivery-queue-storage.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../infra/session-delivery-queue-storage.js")>();
+  return {
+    ...actual,
+    ackSessionDelivery: async (...args: Parameters<typeof actual.ackSessionDelivery>) => {
+      if (failingAcks.has(args[0])) {
+        throw new Error(`ack failed for ${args[0]}`);
+      }
+      return await actual.ackSessionDelivery(...args);
+    },
+  };
+});
 // Match Gateway startup: activate the real reply runtimes before admitting turns.
 await Promise.all([
   import("../dispatch.js"),
@@ -72,6 +93,7 @@ const AGENT_ID = "main";
 const ROUTE = { channel: "telegram", to: "-100001", accountId: "default" };
 
 afterEach(() => {
+  failingAcks.clear();
   resetContinuationWakesForTest();
   resetSystemEventsForTest();
   runEmbeddedAgentMock.mockReset();
@@ -415,6 +437,54 @@ it("retires a return whose recipient authority a reset or owner change advanced"
     // Retired, never delivered: the row settles and the event leaves the queue.
     expect(await rowPending(row)).toBe(false);
     expect(peekSystemEventEntries(resolveSystemEventQueueKey(sessionKey, AGENT_ID))).toEqual([]);
+  });
+});
+
+it("releases a refused current return at once when a stale return's settlement fails", async ({
+  signal,
+}) => {
+  await withWakeFixture("stale-settlement-failure", async ({ sessionKey, prompts }) => {
+    answerTurns(prompts, "unreachable");
+    const scope = { agentId: AGENT_ID, sessionKey };
+    const recipientAuthority = await captureSessionRecipientAuthority(scope);
+    const stale = await produceReturn(sessionKey, "delegate for the deleted session", {
+      wakeRecipients: false,
+      recipientAuthorities: new Map([[sessionKey, recipientAuthority]]),
+    });
+    // Deletion advances the recipient authority, and leaves no origin for a later return's turn.
+    const deletion = await deleteSessionEntryLifecycle({
+      agentId: AGENT_ID,
+      archiveTranscript: false,
+      storePath: resolveOpenClawAgentSqlitePath({ agentId: AGENT_ID }),
+      target: { canonicalKey: sessionKey, storeKeys: [sessionKey] },
+    });
+    expect(deletion.deleted).toBe(true);
+    const current = await produceReturn(sessionKey, "unbound delegate return", {
+      wakeRecipients: false,
+    });
+    const queueKey = resolveSystemEventQueueKey(sessionKey, AGENT_ID);
+    const queued = peekSystemEventEntries(queueKey);
+    expect(queued.map((event) => event.sessionDeliveryAckId)).toEqual([stale, current]);
+    const stateDir = queued[1]?.sessionDeliveryAckStateDir;
+    failingAcks.add(stale);
+    requestContinuationWake({
+      sessionKey,
+      agentId: AGENT_ID,
+      reason: "delegate-return",
+      deliveryIds: [stale, current],
+    });
+
+    await withinTest(settleContinuationWakesForTest(), signal);
+
+    // The current return's handoff was refused; its claim is released now, not at lease
+    // expiry, so a later turn or replay can take it. The stale row stays for replay.
+    expect(prompts).toEqual([]);
+    expect(isDeliveryAdoptionClaimed(current, stateDir)).toBe(false);
+    expect(
+      peekSystemEventEntries(queueKey).some((event) => isSystemEventTurnOwned(queueKey, event)),
+    ).toBe(false);
+    expect(await rowPending(current)).toBe(true);
+    expect(await rowPending(stale)).toBe(true);
   });
 });
 
