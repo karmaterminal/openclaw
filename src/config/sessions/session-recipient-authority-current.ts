@@ -55,7 +55,8 @@ async function prepareCheck(
   const path = resolveOpenClawAgentSqlitePath({ ...resolvedOptions, env });
   return {
     index,
-    database: { agentId: resolved.agentId, path, env },
+    // The witness looks up the physical database, which a shared store keys by its owner.
+    database: { agentId: resolvedOptions.agentId, path, env },
     options: { ...resolvedOptions, env, path },
     commandScope: {
       agentId: resolved.agentId,
