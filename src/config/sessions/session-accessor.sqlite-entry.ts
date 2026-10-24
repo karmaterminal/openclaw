@@ -558,8 +558,6 @@ async function patchSqliteSessionEntrySnapshot(
                 if (!mutation.identity) {
                   return undefined;
                 }
-                // The mutation owner performed the persist; fire the in-transaction hook.
-                options.afterPersistInTransaction?.(writeDatabase);
                 if (options.onCommittedSource) {
                   const identity = readOpenClawAgentDatabaseIdentity(writeDatabase);
                   committedSource = {

@@ -263,12 +263,6 @@ describe("recipient authority on the Gateway thread", () => {
   it.each([
     ["the default writer route", "default", ((patch) => patch()) satisfies PatchRoute],
     [
-      "an in-transaction hook",
-      "hook",
-      ((patch) =>
-        patch({ afterPersistInTransaction: () => undefined } as PatchOptions)) satisfies PatchRoute,
-    ],
-    [
       "maintenance authority over an open native connection",
       "maintenance",
       ((patch, env) => {

@@ -1,3 +1,4 @@
+import { isMainThread } from "node:worker_threads";
 import type { OpenClawAgentDatabase } from "../../state/openclaw-agent-db-contract.js";
 import { assertConversationAuthority } from "./conversation-authority.js";
 import type { SessionEntryPatchOptions } from "./session-accessor.sqlite-contract.js";
@@ -117,13 +118,20 @@ export function writeSessionEntryPatchInDatabase(
   });
   // Narrowing visibility revokes recipients: advance recipient authority in this
   // same transaction, for every writer, so a delayed named return cannot land on
-  // a session that was made narrower after it was addressed.
+  // a session that was made narrower after it was addressed. The advance is worker
+  // SQL; a narrowing that reached the main thread's native writer (maintenance
+  // authority) is refused, and the throw rolls the whole patch back.
   if (
     doesSessionVisibilityRestrictRecipientAuthority(
       selectedPreviousEntry.visibility ?? "shared",
       persisted.visibility ?? "shared",
     )
   ) {
+    if (isMainThread) {
+      throw new Error(
+        "Narrowing session visibility must commit through the session entry worker; retry outside agent database maintenance.",
+      );
+    }
     advanceSessionRecipientAuthorityInTransaction(database, params.sessionKey);
   }
   if (postimages.get(params.sessionKey)?.changed === false) {

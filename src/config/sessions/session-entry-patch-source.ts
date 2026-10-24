@@ -30,8 +30,6 @@ import type { CapturedSessionEntryReadSource } from "./session-entry-read-source
 import type { InternalSessionEntry as SessionEntry } from "./types.js";
 
 export type SqliteSessionEntryPatchOptions = SessionEntryPatchOptions & {
-  /** Continuation: same-transaction bookkeeping (e.g. recipient-authority advance); native writer only. */
-  afterPersistInTransaction?: (database: OpenClawAgentDatabase) => void;
   /** Closed operations can acknowledge completion without returning the entry. */
   result?: "none";
   /** Exact captured writer under its caller's foreground reservation; never a new owner. */
@@ -87,11 +85,7 @@ export function captureSessionEntryPatchSource(params: SqliteSessionEntrySnapsho
   const targetIdentity = readDatabasePathIdentitySync(databasePath);
   resolved.path = databasePath;
   databaseOptions.path = databasePath;
-  const useWorker =
-    isMainThread &&
-    // The in-transaction hook is a main-thread closure; keep it on the native writer.
-    !options.afterPersistInTransaction &&
-    supportsOpenClawAgentDatabaseExecution(databaseOptions);
+  const useWorker = isMainThread && supportsOpenClawAgentDatabaseExecution(databaseOptions);
   const ensure = options.workerGuard?.ensureIdentitySource;
   if (
     ensure &&

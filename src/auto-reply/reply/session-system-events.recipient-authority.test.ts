@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { captureRuntimeConfigAsyncReader } from "../../config/io.runtime.js";
 import * as sessionAccessor from "../../config/sessions/session-accessor.js";
-import { advanceSessionRecipientAuthorityInTransaction } from "../../config/sessions/session-accessor.sqlite-recipient-authority.js";
 import { isSessionRecipientAuthorityCurrentInWorker } from "../../config/sessions/session-recipient-authority-current.js";
 import {
   addSessionMember,
@@ -81,10 +80,8 @@ async function applyInvalidation(params: {
     });
     return;
   }
-  await sessionAccessor.patchSessionEntryCore(params.scope, () => ({ visibility: "draft" }), {
-    afterPersistInTransaction: (database) =>
-      advanceSessionRecipientAuthorityInTransaction(database, params.scope.sessionKey),
-  });
+  // The entry mutation advances recipient authority in the narrowing transaction.
+  await sessionAccessor.patchSessionEntryCore(params.scope, () => ({ visibility: "draft" }));
 }
 
 async function resolveFinalAdoption(...prepared: PreparedFormattedSystemEvents[]) {
