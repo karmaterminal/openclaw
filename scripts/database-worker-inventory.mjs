@@ -685,6 +685,17 @@ const reviewedOperations = new Map([
     ],
   ],
   [
+    "src/config/sessions/session-accessor.sqlite-recipient-authority.ts",
+    [
+      {
+        tier: "T3",
+        operations: ["advanceSessionRecipientAuthorityInTransaction"],
+        evidence:
+          "The in-transaction epoch advance runs only inside its writer's transaction. Sharing-worker writers: capture (session-recipient-authority.worker.ts), membership removal (session-sharing-store.native.ts, worker-only) and owner assignment (assignSessionOwner; its only production caller is session-sharing-store.worker.ts). Visibility narrowing (session-accessor.sqlite-entry-mutation.ts) commits in session-entry-patch.worker.ts or session-meta-entry.worker.ts and is refused on the main thread. Deletion goes through deleteSessionEntryRows (reviewed above). Main-thread execution is limited to Doctor/migration maintenance owners, reclamation-run.ts's native branch (hasNativeReclamationOwner) and resetSessionStore from cleanup-utils.ts offline reset; the Gateway runtime main thread has no caller.",
+      },
+    ],
+  ],
+  [
     "src/config/sessions/session-accessor.sqlite-entry-inventory.ts",
     [
       {
