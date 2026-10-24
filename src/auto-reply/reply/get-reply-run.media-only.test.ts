@@ -322,19 +322,16 @@ vi.mock("../../gateway/session-sharing-preparation.js", async (importOriginal) =
 const updateAmbientTranscriptWatermarkMock = vi.hoisted(() => vi.fn().mockResolvedValue(null));
 
 // Continuation (karmaterminal): recipient authority is scripted per case at its owner module.
-vi.mock(
-  "../../config/sessions/session-recipient-authority-current.js",
-  async (importOriginal) => ({
-    ...(await importOriginal<
-      typeof import("../../config/sessions/session-recipient-authority-current.js")
-    >()),
-    isSessionRecipientAuthorityCurrentInWorker: async () => recipientAuthorityCurrentMock(),
-    withCurrentSessionRecipientAuthority: async <T>(
-      checks: readonly unknown[],
-      decide: (current: readonly boolean[]) => T,
-    ) => decide(checks.map(() => recipientAuthorityCurrentMock())),
-  }),
-);
+vi.mock("../../config/sessions/session-recipient-authority-current.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../config/sessions/session-recipient-authority-current.js")
+  >()),
+  isSessionRecipientAuthorityCurrentInWorker: async () => recipientAuthorityCurrentMock(),
+  withCurrentSessionRecipientAuthority: async <T>(
+    checks: readonly unknown[],
+    decide: (current: readonly boolean[]) => T,
+  ) => decide(checks.map(() => recipientAuthorityCurrentMock())),
+}));
 
 // mock-isolation: Session entries come from the test; the real accessor reads SQLite.
 vi.mock("../../config/sessions/session-accessor.js", () => ({
