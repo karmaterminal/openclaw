@@ -33,6 +33,8 @@ export const SCHEMA_MIGRATION_BACKUP_TABLES: Record<
     33: [],
     // PostgreSQL-only index ordering; SQLite advances metadata only.
     34: [],
+    // PostgreSQL-only partial-index ordering; SQLite advances metadata only.
+    35: [],
     // Continuation (karmaterminal): the authority step only creates its table. The fleet's own
     // schema 26 also crosses upstream's undeclared step 26, so Doctor keeps its full image
     // (isAgentFleetSchema26Migration).
@@ -62,5 +64,7 @@ export const SCHEMA_MIGRATION_BACKUP_TABLES: Record<
     ],
     // PostgreSQL-only index ordering; SQLite advances metadata only.
     32: [],
+    // PostgreSQL-only partial-index ordering; SQLite advances metadata only.
+    33: [],
   },
 };

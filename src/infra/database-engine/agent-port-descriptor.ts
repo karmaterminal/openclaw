@@ -151,13 +151,13 @@ export async function loadAgentPortDescriptor(
     if (backup?.version === sourceVersion && backup.id === "agent") {
       return backup;
     }
-    // Schema 30 appends columns; 31–34 change only PostgreSQL search, triggers, or indexes;
-    // schema 35 (continuation) adds the recipient-authority table, which older sources omit.
+    // Schema 30 appends columns; 31–35 change only PostgreSQL search, triggers, or indexes;
+    // schema 36 (continuation) adds the recipient-authority table, which older sources omit.
     // Pin the remaining shared layout so future DDL gets its own descriptor.
     if (
       backup ||
-      OPENCLAW_AGENT_SCHEMA_VERSION !== 35 ||
-      ![27, 28, 29, 30, 31, 32, 33, 34].includes(sourceVersion)
+      OPENCLAW_AGENT_SCHEMA_VERSION !== 36 ||
+      ![27, 28, 29, 30, 31, 32, 33, 34, 35].includes(sourceVersion)
     ) {
       throw new DatabasePortDataError(
         `Missing agent PostgreSQL backup descriptor for version ${sourceVersion}`,
@@ -348,6 +348,7 @@ export async function loadAgentPortDescriptor(
           runWithAgentDatabaseMaintenanceAuthority(
             {
               signal: new AbortController().signal,
+              assertCurrent,
               assertOwned: assertCurrent,
               assertOwnedInTransaction: assertCurrent,
               renew: assertCurrent,
@@ -407,10 +408,14 @@ export async function loadAgentPortDescriptor(
   let postData = legacyRevision
     ? withLegacyAgentPostgresMemoryRevisionTriggers(descriptor.postData)
     : descriptor.postData;
-  // Schema 34 adopted nullability-aware index ordering; continuation's 35 sits above it, so a
-  // historical source at 34 already has the current form.
-  if (sourceVersion < 34) {
-    postData = withLegacyPostgresIndexOrdering(postData);
+  // Continuation's 36 sits above upstream's 35 and changes no index, so a historical source at
+  // 35 already has the current ordering.
+  if (sourceVersion < 35) {
+    postData = withLegacyPostgresIndexOrdering(
+      postData,
+      sourceVersion === 34 ? "schema-nullability" : "sqlite",
+      descriptor.preData,
+    );
   }
   if (legacyTrajectory) {
     postData = withLegacyAgentPostgresTrajectoryStorage(postData);

@@ -31,6 +31,10 @@ import {
   createDiagnosticValueForListeners,
 } from "./diagnostic-event-snapshot.js";
 import type * as Liveness from "./diagnostic-liveness-types.js";
+import type {
+  DiagnosticModelCallTerminalFields,
+  DiagnosticModelCallUsage,
+} from "./diagnostic-model-call-types.js";
 import {
   consumeCoreModelRequestLifecycleDiagnosticEvent,
   CORE_MODEL_REQUEST_LIFECYCLE_METADATA_KEY,
@@ -500,16 +504,15 @@ type DiagnosticToolExecutionBlockedEvent = DiagnosticToolExecutionBaseEvent & {
   reason: string;
 };
 
-type DiagnosticSkillTelemetrySource = "bundled" | "unknown" | "workspace";
-type DiagnosticSkillActivation = "command" | "read";
-
 export type DiagnosticSkillUsedEvent = DiagnosticSessionEvent & {
   type: "skill.used";
   runId?: string;
   agentId?: string;
   skillName: string;
-  skillSource: DiagnosticSkillTelemetrySource;
-  activation: DiagnosticSkillActivation;
+  skillSource: "bundled" | "unknown" | "workspace";
+  activation: "command" | "read";
+  /** SHA-256 of the complete instructions actually delivered, when known. */
+  skillFingerprint?: string;
   toolName?: string;
   toolCallId?: string;
 };
@@ -616,15 +619,8 @@ type DiagnosticModelCallStartedEvent = DiagnosticModelCallBaseEvent & {
   type: "model.call.started";
 };
 
-type DiagnosticModelCallEndedEvent = DiagnosticModelCallBaseEvent & {
-  durationMs: number;
-  providerProcessingMs?: number;
-  providerWaitEstimateMs?: number;
-  requestPayloadBytes?: number;
-  responseStreamBytes?: number;
-  timeToFirstByteMs?: number;
-  usage?: DiagnosticModelCallUsage;
-};
+type DiagnosticModelCallEndedEvent = DiagnosticModelCallBaseEvent &
+  DiagnosticModelCallTerminalFields;
 
 type DiagnosticModelCallCompletedEvent = DiagnosticModelCallEndedEvent & {
   type: "model.call.completed";
@@ -657,16 +653,6 @@ type DiagnosticModelCallPromptStats = Readonly<{
   toolDefinitionsCount?: number;
   toolDefinitionsChars?: number;
   totalChars?: number;
-}>;
-
-type DiagnosticModelCallUsage = Readonly<{
-  input?: number;
-  output?: number;
-  cacheRead?: number;
-  cacheWrite?: number;
-  reasoningTokens?: number;
-  promptTokens?: number;
-  total?: number;
 }>;
 
 type DiagnosticContextAssembledEvent = DiagnosticSessionEvent & {

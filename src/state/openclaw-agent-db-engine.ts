@@ -8,6 +8,7 @@ import {
   postgresIndexOrderingMigration,
   withLegacyPostgresIndexOrdering,
 } from "../infra/database-engine/postgres-index-ordering.js";
+import { arePostgresSearchExtensionsAdmitted } from "../infra/database-engine/search-extension.js";
 import {
   isPostgresSqlConnection,
   type EngineConnection,
@@ -71,6 +72,12 @@ export function admitAgentEngineSearchExtensions(
   if (!isPostgresSqlConnection(db)) {
     return;
   }
+  if (arePostgresSearchExtensionsAdmitted(db, definitions)) {
+    for (const definition of Object.values(definitions)) {
+      admitStoreSearch(db, definition);
+    }
+    return;
+  }
   db.runTransaction(
     () => {
       admit("transaction");
@@ -88,8 +95,12 @@ export function admitAgentEngineSearchExtensions(
 }
 
 const agentPostgresSql = `${agentPostgresRuntime.sql}\n${agentSearchPostgresRuntime.sql}`;
-// Continuation's recipient authority (v35) sits above upstream's v34; schema 34 lacks its table.
-const agentPostgresV34Sql = withoutSessionRecipientAuthorityPostgresSchema(agentPostgresSql);
+// Continuation's recipient authority (v36) sits above upstream's v35; schema 35 lacks its table.
+const agentPostgresV35Sql = withoutSessionRecipientAuthorityPostgresSchema(agentPostgresSql);
+const agentPostgresV34Sql = withLegacyPostgresIndexOrdering(
+  agentPostgresV35Sql,
+  "schema-nullability",
+);
 const agentPostgresV33Sql = withLegacyPostgresIndexOrdering(agentPostgresV34Sql);
 const agentPostgresV30Sql = withLegacyAgentPostgresMemoryRevisionTriggers(agentPostgresV33Sql);
 const agentPostgresV29Sql = withLegacyAgentPostgresTrajectoryStorage(agentPostgresV30Sql);
@@ -196,9 +207,28 @@ export const agentEngineSchema: StoreSchema = {
         WHERE meta_key = 'primary';`,
     },
     {
-      version: AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
+      version: 35,
       fromSchema: {
         postgres: agentPostgresV34Sql,
+        postgresVectorDecoderVersion: 2,
+        postgresVectorSearchVersion: 2,
+      },
+      schema: {
+        postgres: agentPostgresV35Sql,
+        postgresVectorDecoderVersion: 2,
+        postgresVectorSearchVersion: 2,
+      },
+      sql: `${postgresIndexOrderingMigration(agentPostgresV35Sql, "schema-nullability")}
+        UPDATE schema_meta
+        SET schema_version = 35,
+          app_version = '${VERSION.replaceAll("'", "''")}',
+          updated_at = CAST(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP) * 1000 AS bigint)
+        WHERE meta_key = 'primary';`,
+    },
+    {
+      version: AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
+      fromSchema: {
+        postgres: agentPostgresV35Sql,
         postgresVectorDecoderVersion: 2,
         postgresVectorSearchVersion: 2,
       },

@@ -180,7 +180,7 @@ export function createSubagentRegistrySweeper(params: {
         void trackWork(runTick);
       }, delayMs),
     );
-    timer.unref?.();
+    timer.unref();
     scheduled = { timer, at: nextAt };
   }
 

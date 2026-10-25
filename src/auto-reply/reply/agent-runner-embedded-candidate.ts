@@ -261,6 +261,14 @@ export async function runEmbeddedFallbackCandidate(
               },
             }
           : undefined,
+        ...(params.cyberAccessProgram
+          ? {
+              cyberAccessProgram: params.cyberAccessProgram,
+              ...(params.authProfileId
+                ? { authProfileId: params.authProfileId, authProfileIdSource: "user" as const }
+                : {}),
+            }
+          : {}),
         onAutoCompactionSucceeded: (count) => {
           attemptCompactionCount = Math.max(attemptCompactionCount, count);
         },

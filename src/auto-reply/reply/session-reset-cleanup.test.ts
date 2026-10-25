@@ -1,4 +1,3 @@
-// Tests session reset cleanup for stale files and persisted state.
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -201,7 +200,6 @@ describe("clearSessionResetRuntimeState", () => {
   it("disposes prompt projections with the archived session", async () => {
     using original = retainEmbeddedSessionPromptState("old-session");
     const state = original.state;
-    state.toolResults.frozen.add("sent-tool-result");
 
     await clearArchived(["old-session"]);
 
@@ -288,12 +286,16 @@ describe("clearSessionResetRuntimeState", () => {
     }
   });
 
-  it("does not clear a fresh active reply under the same key when only the archived id is reset", async () => {
-    const operation = createOperation("new-session");
-    operation.setPhase("running");
-
+  it.each([
+    ["new-session", "running"],
+    ["old-session", "queued"],
+  ] as const)("preserves %s/%s while clearing archived runtime state", async (sessionId, phase) => {
+    const operation = createOperation(sessionId);
+    if (phase === "running") {
+      operation.setPhase(phase);
+    }
     await clearArchived();
-
+    expect(operation.phase).toBe(phase);
     expect(getSessionControllerOperation(replySessionKey)).toBe(operation);
   });
 
@@ -315,15 +317,6 @@ describe("clearSessionResetRuntimeState", () => {
 
     expect(replacement).toBeDefined();
     expect(getSessionControllerOperation(replySessionKey)).toBe(replacement);
-  });
-
-  it("leaves queued reservations for the archived id so session init can rebind them", async () => {
-    const operation = createOperation();
-
-    await clearArchived();
-
-    expect(operation.phase).toBe("queued");
-    expect(getSessionControllerOperation(replySessionKey)).toBe(operation);
   });
 
   it("clears queued sources without cancelling the executing reset turn that requested it", async () => {

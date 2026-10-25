@@ -6,6 +6,7 @@ import * as ts from "typescript/ast";
 import { afterAll, afterEach, expect, it, vi } from "vitest";
 import { createNativeTypeScriptParser } from "../../../scripts/lib/native-typescript.mts";
 import { awaitGateBeforeSettlement, createDeferred } from "../../../test/helpers/promise.js";
+import { listDirectoryTreeStrictSync } from "../../infra/directory-walk.js";
 import { openNodeSqliteDatabase } from "../../infra/node-sqlite.js";
 import * as queue from "../../shared/store-writer-queue.js";
 import { closeCachedOpenClawAgentDatabase } from "../../state/openclaw-agent-db-lifecycle.js";
@@ -469,7 +470,10 @@ it.each([
     expect(readRow(databasePath, "SELECT agent_id FROM schema_meta")).toEqual({ agent_id: "main" });
 
     // Do not open B to inspect it: that would create the failure under test.
-    const successorFiles = fs.readdirSync(successor, { recursive: true }).map(String).toSorted();
+    const successorFiles = listDirectoryTreeStrictSync(successor)
+      .map((walkEntry) => walkEntry.relativePath)
+      .map(String)
+      .toSorted();
     const successorStatePath = resolveOpenClawStateSqlitePath({
       OPENCLAW_STATE_DIR: trigger === "relative-kick" ? path.join(successor, "state") : successor,
     });
