@@ -256,6 +256,7 @@ describe("recipient authority on the Gateway thread", () => {
   ) => Promise<unknown>;
   const maintenanceOwner = {
     signal: new AbortController().signal,
+    assertCurrent() {},
     assertOwned() {},
     assertOwnedInTransaction() {},
     renew() {},

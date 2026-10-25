@@ -10,7 +10,7 @@ import { getDiagnosticStabilitySnapshot } from "./diagnostic-stability.js";
 import { diagnosticLogger } from "./diagnostic.js";
 import {
   resetDiagnosticStateForTest,
-  startDiagnosticHeartbeatForTest as startDiagnosticHeartbeat,
+  startEnabledDiagnosticHeartbeatForTest as startEnabledDiagnosticHeartbeat,
 } from "./diagnostic.test-support.js";
 
 function createEmitMemorySampleMock() {
@@ -87,21 +87,14 @@ describe("stuck session diagnostics threshold", () => {
     );
 
     try {
-      startDiagnosticHeartbeat(
-        {
-          diagnostics: {
-            enabled: true,
-          },
-        },
-        {
-          emitMemorySample,
-          sampleLiveness: () => ({
-            reasons: ["cpu"],
-            intervalMs: 30_000,
-            cpuCoreRatio: 1,
-          }),
-        },
-      );
+      startEnabledDiagnosticHeartbeat({
+        emitMemorySample,
+        sampleLiveness: () => ({
+          reasons: ["cpu"],
+          intervalMs: 30_000,
+          cpuCoreRatio: 1,
+        }),
+      });
 
       vi.advanceTimersByTime(30_000);
     } finally {
@@ -193,21 +186,14 @@ describe("stuck session diagnostics threshold", () => {
     );
 
     try {
-      startDiagnosticHeartbeat(
-        {
-          diagnostics: {
-            enabled: true,
-          },
-        },
-        {
-          emitMemorySample,
-          sampleLiveness: () => ({
-            reasons: ["cpu"],
-            intervalMs: 30_000,
-            cpuCoreRatio: 1,
-          }),
-        },
-      );
+      startEnabledDiagnosticHeartbeat({
+        emitMemorySample,
+        sampleLiveness: () => ({
+          reasons: ["cpu"],
+          intervalMs: 30_000,
+          cpuCoreRatio: 1,
+        }),
+      });
 
       vi.advanceTimersByTime(30_000);
     } finally {

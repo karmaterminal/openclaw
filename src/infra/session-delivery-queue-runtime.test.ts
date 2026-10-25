@@ -226,9 +226,7 @@ describe("session delivery queue runtime", () => {
   it("recomputes future claim timers after a clock jump", async ({ runtime: r }) => {
     const dayMs = 24 * 60 * 60 * 1_000;
     const { id, claimed } = await r.claim(2 * dayMs);
-    // The assertion below reads the scheduler's earliest armed wake, which must
-    // be this row's claim timer, not the periodic pending sweep's.
-    const stop = r.start({ pendingSweep: false });
+    const stop = r.start();
     r.time.clock.setTime(claimed.availableAt - 2 * dayMs);
     await r.schedule(id);
     r.time.clock.setTime(claimed.availableAt - dayMs);
@@ -437,40 +435,48 @@ describe("session delivery queue runtime", () => {
   async function capacityRetryGaps(random: () => number, totalMs: number) {
     const times: number[] = [];
     const warnings: string[] = [];
-    await withRuntime(async (r) => {
-      const id = await enqueue(
-        {
-          kind: "systemEvent",
-          sessionKey: "agent:main:main",
-          agentId: "main",
-          text: "held return",
-          idempotencyKey: "continuation-return:jitter:agent:main:main",
-          awaitPromptAdoption: true,
-        },
-        r.context,
-      );
-      r.start({
-        random,
-        deliver: async () => {
-          times.push(r.time.clock.clock.now());
-          throw new SessionDeliveryDeferredError("system event queue is full", {
-            capacity: { sessionKey: "agent:main:main", continuationReturn: true },
-          });
-        },
-      });
-      await r.schedule(id);
-      for (let elapsed = 0; elapsed <= totalMs; elapsed += 1_000) {
-        await r.time.advanceBy(elapsed === 0 ? 0 : 1_000);
-        for (let index = 0; index < 50; index += 1) {
-          const armedAt = r.time.clock.armedAtMs;
-          if (armedAt === null || armedAt > r.time.clock.clock.now()) {
-            break;
+    // Each bound needs a fresh queue and clock, so this builds the runtime fixture directly.
+    await withSessionDeliveryQueue(async (_stateDir, context) => {
+      const r = runtimeFixture(context);
+      try {
+        const id = await enqueue(
+          {
+            kind: "systemEvent",
+            sessionKey: "agent:main:main",
+            agentId: "main",
+            text: "held return",
+            idempotencyKey: "continuation-return:jitter:agent:main:main",
+            awaitPromptAdoption: true,
+          },
+          r.context,
+        );
+        r.start({
+          random,
+          deliver: async () => {
+            times.push(r.time.clock.clock.now());
+            throw new SessionDeliveryDeferredError("system event queue is full", {
+              capacity: { sessionKey: "agent:main:main", continuationReturn: true },
+            });
+          },
+        });
+        await r.schedule(id);
+        for (let elapsed = 0; elapsed <= totalMs; elapsed += 1_000) {
+          await r.time.advanceBy(elapsed === 0 ? 0 : 1_000);
+          for (let index = 0; index < 50; index += 1) {
+            const armedAt = r.time.clock.armedAtMs;
+            if (armedAt === null || armedAt > r.time.clock.clock.now()) {
+              break;
+            }
+            await r.time.clock.wake();
           }
-          await r.time.clock.wake();
         }
+        expect(await r.pending(id)).not.toBeNull();
+        warnings.push(...r.logger.warn.mock.calls.map(([message]) => String(message)));
+      } finally {
+        await r.close();
+        await r.time.scheduler.stop();
+        vi.restoreAllMocks();
       }
-      expect(await r.pending(id)).not.toBeNull();
-      warnings.push(...r.logger.warn.mock.calls.map(([message]) => String(message)));
     });
     return { gaps: times.slice(1).map((at, index) => at - (times[index] as number)), warnings };
   }
