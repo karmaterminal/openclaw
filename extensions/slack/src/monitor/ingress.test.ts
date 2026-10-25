@@ -297,9 +297,13 @@ describe("Slack durable ingress", () => {
         await receive(createReceiverEvent("Ev-routed"));
         await routedDeferred.promise;
         await receive(
-          createReceiverEventWithBody(
-            createChannelIdChangedEnvelope("Ev-migration", "C_OLD", "C_TEST"),
-          ),
+          createReceiverEvent("Ev-migration", undefined, {
+            event: {
+              type: "channel_id_changed",
+              old_channel_id: "C_OLD",
+              new_channel_id: "C_TEST",
+            },
+          }),
         );
         await migrationClaimed.promise;
         expect(await queue.listClaims()).toHaveLength(2);
