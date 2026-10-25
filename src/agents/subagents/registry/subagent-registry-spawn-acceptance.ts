@@ -23,6 +23,23 @@ export function isSubagentSpawnArmed(entry: ArmedRow | undefined): boolean {
   return Boolean(entry?.spawnAcceptance || entry?.launchDispatch);
 }
 
+/**
+ * Whether restart restore leaves a row to another owner. Restart recovery and accepted
+ * cancellation own theirs (upstream). An armed row is never resumed or relaunched (F1, H1), and
+ * a queued collector in rollback custody already failed after the Gateway accepted its child:
+ * with no owner left after restart, the sweeper fails both closed. Kept here because the
+ * restorer sits at its line cap.
+ */
+export function isRestoredSubagentRunOwnedElsewhere(entry: SubagentRunRecord): boolean {
+  return Boolean(
+    entry.execution.restartRecovery ||
+    entry.killIntent ||
+    entry.killReconciliation ||
+    isSubagentSpawnArmed(entry) ||
+    (entry.collect && entry.execution.status === "queued" && entry.acceptedSpawnRollback),
+  );
+}
+
 /** An armed row or an accepted spawn's rollback custody: work only the sweeper decides. */
 export function isAcceptedSpawnCustodyRow(entry: SubagentRunRecord): boolean {
   return Boolean(entry.spawnAcceptance || entry.launchDispatch || entry.acceptedSpawnRollback);

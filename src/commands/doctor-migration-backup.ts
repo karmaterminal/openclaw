@@ -157,6 +157,7 @@ export async function backupDoctorMigrationDatabases(params: {
   /** Only the version-phase owner may select a table-scoped checkpoint. */
   versionMigrationsOnly?: boolean;
   check?: "quick" | "full";
+  repair?: { key: string; validate?: (database: DatabaseSync) => void };
 }): Promise<
   MigrationMessages & {
     versionMigrations?: NonNullable<OpenClawDatabaseSchemaPreflight["pendingMigrations"]>;
@@ -354,7 +355,7 @@ export async function backupDoctorSqliteDatabases(params: {
   pendingDatabasePaths: readonly string[];
   databasePaths: readonly string[];
   authority: DoctorSqliteMaintenanceAuthority;
-  repair?: { key: string; validate: (database: DatabaseSync) => void };
+  repair?: { key: string; validate?: (database: DatabaseSync) => void };
   verifiedSnapshots?: readonly BackupSqliteSnapshotFact[];
   migrationTables?: ReadonlyMap<string, readonly string[]>;
   integrityChecks?: ReadonlyMap<string, SqliteIntegrityCheckOptions>;
@@ -590,7 +591,7 @@ export async function backupDoctorSqliteDatabases(params: {
             snapshot.exec("PRAGMA trusted_schema = OFF;");
             assertCapture();
             assertSqliteIntegrity(snapshot, targetPath, params.integrityChecks?.get(sourcePath));
-            params.repair?.validate(snapshot);
+            params.repair?.validate?.(snapshot);
           } finally {
             snapshot.close();
           }

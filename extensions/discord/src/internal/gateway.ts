@@ -309,7 +309,7 @@ export class GatewayPlugin implements GatewayPluginContract {
         this.sendHeartbeat();
         scheduleHeartbeatCycle();
       }, intervalMs);
-      this.heartbeatInterval.unref?.();
+      this.heartbeatInterval.unref();
     };
     this.firstHeartbeatTimeout = setTimeout(
       () => {
@@ -319,7 +319,7 @@ export class GatewayPlugin implements GatewayPluginContract {
       },
       Math.max(0, intervalMs * Math.random()),
     );
-    this.firstHeartbeatTimeout.unref?.();
+    this.firstHeartbeatTimeout.unref();
   }
 
   private stopHeartbeat(): void {
@@ -496,7 +496,7 @@ export class GatewayPlugin implements GatewayPluginContract {
       this.reconnectTimeout = undefined;
       this.connect(shouldResume);
     }, delay);
-    this.reconnectTimeout.unref?.();
+    this.reconnectTimeout.unref();
   }
 
   updatePresence(data: UpdatePresenceData): void {

@@ -1,13 +1,15 @@
+import type { DeliveryContext } from "../utils/delivery-context.types.js";
 import { formatAgentInternalEventsForPrompt, type AgentInternalEvent } from "./internal-events.js";
 import { describeChildrenEndedWithoutResult } from "./subagents/announce/subagent-announce.requester-settle-message.js";
 import {
+  buildSubagentPrivateCompletionInstruction,
   SUBAGENT_COMPLETION_OUTCOME_INSTRUCTION,
-  SUBAGENT_PRIVATE_COMPLETION_INSTRUCTION,
 } from "./subagents/completion/subagent-completion-instructions.js";
 import type { SubagentRunOutcome } from "./subagents/subagent-run-outcome.types.js";
 
 function buildAnnounceReplyInstruction(params: {
   requesterIsSubagent: boolean;
+  requesterOrigin: DeliveryContext | undefined;
   completionTarget?: "parent";
   modelRouteChange?: string;
   preserveModelRouteNotice?: boolean;
@@ -18,7 +20,7 @@ function buildAnnounceReplyInstruction(params: {
       ? " Preserve any runtime-authored model-route change notice in your update."
       : " Keep runtime-authored model-route change notices internal on this shared surface.";
   if (params.completionTarget === "parent") {
-    return SUBAGENT_PRIVATE_COMPLETION_INSTRUCTION;
+    return buildSubagentPrivateCompletionInstruction(params.requesterOrigin);
   }
   if (params.requesterIsSubagent) {
     return `${SUBAGENT_COMPLETION_OUTCOME_INSTRUCTION} Convert the reviewed outcome into a concise internal orchestration update for your parent agent in your own words.${modelRouteInstruction} Keep this internal context private (don't mention system/log/stats/session details or announce type).`;
@@ -35,6 +37,7 @@ function buildAnnounceSteerMessage(events: AgentInternalEvent[]): string {
 
 export function buildSubagentAnnounceMessages(params: {
   requesterIsSubagent: boolean;
+  requesterOrigin: DeliveryContext | undefined;
   completionTarget?: "parent";
   childSessionKey: string;
   childSessionId: string;

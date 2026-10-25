@@ -119,6 +119,8 @@ export type SpawnSubagentResult = {
   runId?: string;
   mode?: SpawnSubagentMode;
   taskName?: string;
+  label?: string;
+  groupId?: string;
   expectsCompletionMessage?: boolean;
   completionTarget?: "parent";
   note?: string;

@@ -358,7 +358,7 @@ describe("subagent registry persistence resume", () => {
 
         await mod.initSubagentRegistry();
         if (restarting) {
-          await mod.activateSubagentRegistry(() => firstGateway as never);
+          await mod.activateSubagentRegistry(() => firstGateway as never).settled;
         } else {
           await activateRegistry();
         }
@@ -413,10 +413,10 @@ describe("subagent registry persistence resume", () => {
             );
           }
           await mod.initSubagentRegistry();
-          await mod.activateSubagentRegistry(() => replacementGateway as never);
+          await mod.activateSubagentRegistry(() => replacementGateway as never).settled;
           const recoveredRun = mod.getSubagentRunByRunId(run.runId);
           expect(recoveredRun).not.toBe(retiredRun);
-          await mod.activateSubagentRegistry(() => replacementGateway as never);
+          await mod.activateSubagentRegistry(() => replacementGateway as never).settled;
           expect(mod.getSubagentRunByRunId(run.runId)).toBe(recoveredRun);
           expect(retiredResolver?.()).toBeUndefined();
           await mod.testing.runSweeperTickForTests();
@@ -517,7 +517,7 @@ describe("subagent registry persistence resume", () => {
             saveRuns(...runs);
             await writeRunChildSessions(stateDir, runs);
             await mod.initSubagentRegistry();
-            await mod.activateSubagentRegistry(() => firstGateway as never);
+            await mod.activateSubagentRegistry(() => firstGateway as never).settled;
             const oldActiveCount = Math.min(runCount, 2);
             await waitForCalls(oldActiveCount);
             expect(wakeRequester).toHaveBeenCalledTimes(oldActiveCount);
@@ -548,7 +548,7 @@ describe("subagent registry persistence resume", () => {
                 expectedWakes,
               );
             }
-            await mod.activateSubagentRegistry(() => replacementGateway as never);
+            await mod.activateSubagentRegistry(() => replacementGateway as never).settled;
             const recoveredRuns = runs.map((run) => mod.getSubagentRunByRunId(run.runId)!);
             recoveredRuns.forEach((run, index) => {
               expect(run).not.toBe(retiredRuns[index]);
@@ -751,8 +751,9 @@ describe("subagent registry persistence resume", () => {
       const startupTrace = createGatewayStartupTrace(startupLog);
       try {
         await startupTrace.measure("sidecars.subagent-recovery", () =>
-          startupTrace.measure("sidecars.subagent-activation", () =>
-            mod.activateSubagentRegistry(resolveGatewayContext, startupTrace),
+          startupTrace.measure(
+            "sidecars.subagent-activation",
+            () => mod.activateSubagentRegistry(resolveGatewayContext, startupTrace).settled,
           ),
         );
         const summary = startupInfo.mock.calls.find(([message]) =>
@@ -767,7 +768,7 @@ describe("subagent registry persistence resume", () => {
         startupTrace.close();
         startupInfo.mockRestore();
       }
-      await mod.activateSubagentRegistry(resolveGatewayContext);
+      await mod.activateSubagentRegistry(resolveGatewayContext).settled;
       const restoredRun = mod.getSubagentRunByRunId(runningRun.runId);
       expect(restoredRun).toBeDefined();
       const restoredGatewayContextResolver = getGatewayContextResolver(restoredRun!);
@@ -815,8 +816,8 @@ describe("subagent registry persistence resume", () => {
         resolveGatewayContext: () => replacementGateway as never,
       };
       const resolveReplacementContext = () => replacementGateway as never;
-      await mod.activateSubagentRegistry(resolveReplacementContext);
-      await mod.activateSubagentRegistry(resolveReplacementContext);
+      await mod.activateSubagentRegistry(resolveReplacementContext).settled;
+      await mod.activateSubagentRegistry(resolveReplacementContext).settled;
       expect(getGatewayContextResolver(restoredRun!)).toBe(restoredGatewayContextResolver);
       expect(wakeRequester).not.toHaveBeenCalled();
       expect(recoveryRuntime.waitForAgent).toHaveBeenCalledOnce();

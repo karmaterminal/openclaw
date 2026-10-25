@@ -20,6 +20,7 @@ import {
 import { projectChatWorkContextForDisplay } from "../../../../src/chat/work-context.js";
 import { splitMediaFromOutput } from "../../../../src/media/parse.js";
 import { readClawHubRecommendation } from "../../../../src/shared/clawhub-recommendations.js";
+import { readPluginInlineViewBlock } from "../../../../src/shared/plugin-inline-view.js";
 import { getMediaFileExtension } from "../media-file-extension.ts";
 import type { NormalizedMessage, MessageContentItem, MessageImageSource } from "./chat-types.ts";
 import { projectImportedMessageForDisplay } from "./imported-message-display.ts";
@@ -144,27 +145,6 @@ export function readMessageSenderSession(value: unknown): NormalizedMessage["sen
         ...(label ? { label } : {}),
       }
     : undefined;
-}
-
-function normalizeOmittedMediaContentBlock(
-  item: Record<string, unknown>,
-): Extract<MessageContentItem, { type: "omitted_media" }> | null {
-  if (
-    item.type !== "image" ||
-    item.omitted !== true ||
-    normalizeOptionalString(item.artifactId) !== undefined ||
-    normalizeOptionalString(item.url) !== undefined
-  ) {
-    return null;
-  }
-  const sizeBytes = asNonNegativeFiniteNumber(item.bytes);
-  return {
-    type: "omitted_media",
-    media: {
-      kind: "image",
-      ...(sizeBytes !== undefined ? { sizeBytes } : {}),
-    },
-  };
 }
 
 export function normalizeRoleForGrouping(role: string): string {
@@ -509,20 +489,37 @@ export function normalizeMessage(message: unknown): NormalizedMessage {
   if (typeof contentRaw === "string") {
     content = normalizeText(contentRaw);
   } else if (contentItems) {
-    content = contentItems.flatMap((value) => {
+    content = contentItems.flatMap((value): MessageContentItem[] => {
       const item = asOptionalRecord(value);
       if (!item) {
         return [];
       }
-      const omittedMedia = normalizeOmittedMediaContentBlock(item);
-      if (omittedMedia) {
-        return [omittedMedia];
+      if (
+        item.type === "image" &&
+        item.omitted === true &&
+        normalizeOptionalString(item.artifactId) === undefined &&
+        normalizeOptionalString(item.url) === undefined
+      ) {
+        const sizeBytes = asNonNegativeFiniteNumber(item.bytes);
+        return [
+          {
+            type: "omitted_media",
+            media: {
+              kind: "image",
+              ...(sizeBytes !== undefined ? { sizeBytes } : {}),
+            },
+          },
+        ];
       }
       const image = normalizeImageContentBlock(item);
       if (image) {
         return [image];
       }
       const type = item.type;
+      if (type === "plugin_view") {
+        const inline = isAssistantMessage ? readPluginInlineViewBlock(item) : undefined;
+        return inline ? [inline] : [];
+      }
       if (type === "clawhub") {
         const recommendation = isAssistantMessage ? readClawHubRecommendation(item) : null;
         return recommendation ? [recommendation] : [];

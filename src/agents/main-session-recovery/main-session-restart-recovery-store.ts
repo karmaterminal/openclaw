@@ -24,13 +24,13 @@ import {
 } from "../agent-harness-completion-recovery.js";
 import { resolveExecDefaultsAsync } from "../exec-defaults.js";
 import { readRestartRecoveryRequesterSource } from "../requester-run-recovery-source.js";
-import { hasMainSessionRestartEvidence } from "./main-session-recovery-restart-evidence.js";
 import {
   getMainSessionRecoveryRetryCount,
   isMainRestartRecoveryTerminalOnly,
 } from "./main-session-recovery-state.js";
 import { commitMainSessionRecovery } from "./main-session-recovery-store.js";
 import { resumeMainSession } from "./main-session-restart-dispatch.js";
+import { retireMainSessionLiveInterruptionWithoutRestartEvidence } from "./main-session-restart-live-interruption.js";
 import {
   completePendingFinalRecoveryWithNotice,
   markSessionCompletedAfterRecoveryCheckpoint,
@@ -63,6 +63,7 @@ import {
   type ExpectedRestartRecoveryTarget,
   mainSessionRecoveryLog,
   MAX_RECOVERY_RETRIES,
+  readInterruptedRunId,
 } from "./main-session-restart-recovery-shared.js";
 import { resolveRestartRecoveryDispatchTarget } from "./main-session-restart-recovery-target.js";
 
@@ -163,6 +164,16 @@ export async function recoverStore(params: {
       }
       const agentId = dispatchTarget.agentId;
       const target = { agentId, sessionKey, storePath: params.storePath };
+      const { getPrivateRequesterSettleRecoveryOwner } =
+        await import("../subagents/registry/subagent-registry.js");
+      const privateRecoveryOwner = await getPrivateRequesterSettleRecoveryOwner(
+        { ...target, canonicalKey: sessionKey, entry },
+        entry.restartRecoveryDeliverySourceRunId ?? readInterruptedRunId(entry),
+      );
+      if (privateRecoveryOwner === "owned") {
+        skip("already_handled");
+        continue;
+      }
       const workStartBlock = resolveSessionWorkStartBlock(
         sessionKey,
         entry,
@@ -244,25 +255,15 @@ export async function recoverStore(params: {
         if (stopped()) {
           return result;
         }
-        if (
-          recoveryView.status !== "exhausted" &&
-          !hasMainSessionRestartEvidence(entry, lifecycleGeneration)
-        ) {
-          // A turn that failed before replying on this live Gateway is not restart work.
-          // Declining its replay already withholds message-tool authority; keep the session.
-          const retired = await commitMainSessionRecovery({
-            command: {
-              kind: "retire_live_interruption",
-              lifecycleGeneration,
-              now: Date.now(),
-              observation: recoveryView.observation,
-            },
-            requireWriteSuccess: true,
-            target,
-          });
-          skip(
-            retired.transition.kind === "applied" ? "live_interruption_retired" : "state_changed",
-          );
+        // A turn that failed before replying on this live Gateway is not restart work.
+        const liveInterruption = await retireMainSessionLiveInterruptionWithoutRestartEvidence({
+          entry,
+          lifecycleGeneration,
+          recoveryView,
+          target,
+        });
+        if (liveInterruption) {
+          skip(liveInterruption);
           continue;
         }
         const tombstone = await tombstoneMainRestartRecoveryWithNotice({
@@ -419,8 +420,8 @@ export async function recoverStore(params: {
       // historical inputs without it still need the cohort failure settlement.
       if (
         !harnessCompletion &&
-        !entry.restartRecoveryOperatorSource &&
-        !requesterOrigin &&
+        (privateRecoveryOwner === "unrestorable" ||
+          (!entry.restartRecoveryOperatorSource && !requesterOrigin)) &&
         entry.restartRecoverySourceIngress === "internal" &&
         expectedRecoverySourceRunId?.startsWith("announce:requester-settle:")
       ) {
@@ -505,7 +506,7 @@ export async function recoverStore(params: {
         !requesterOrigin &&
         source !== "cron" &&
         expectedRecoverySourceRunId &&
-        requiresDelegatedRecoverySource(entry, source)
+        requiresDelegatedRecoverySource(entry, source, sessionKey)
       ) {
         const { prepareConsumedSessionSendSource } =
           await import("../../gateway/session-send-recovery-source.js");
@@ -532,7 +533,7 @@ export async function recoverStore(params: {
         !recoverableHarnessCompletion &&
         !completionSource &&
         (source === "cron" || !requesterOrigin) &&
-        requiresDelegatedRecoverySource(entry, source)
+        requiresDelegatedRecoverySource(entry, source, sessionKey)
       ) {
         const outcome = await finishDelegatedRestartRecovery({
           ...target,

@@ -336,6 +336,8 @@ type SessionEntryCore = SessionRestartRecoveryState &
     /** Internal one-shot traceparent for a freshly spawned child agent run. */
     continuationTraceparent?: string;
     sessionId: string;
+    /** Latest operator client declaration; retained across internal turns and restart. */
+    clientCapabilities?: string[];
     updatedAt: number;
     /** Process-lifetime session whose entry and transcript stay in the in-memory agent database. */
     incognito?: true;

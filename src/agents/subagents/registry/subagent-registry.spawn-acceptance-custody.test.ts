@@ -258,7 +258,7 @@ async function restartFrom(image: Map<string, SubagentRunRecord>) {
     recoveryRuntime: { dispatchAgent, prepareRestartRecovery: () => undefined },
     resolveGatewayContext: () => gatewayContext as never,
   };
-  await activateSubagentRegistry(gatewayContext.resolveGatewayContext);
+  await activateSubagentRegistry(gatewayContext.resolveGatewayContext).settled;
   await settle();
   return dispatchAgent;
 }

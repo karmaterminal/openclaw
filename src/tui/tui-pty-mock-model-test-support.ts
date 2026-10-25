@@ -1,14 +1,13 @@
-// Routed mock OpenAI Responses model server for the TUI PTY real-backend e2e cases.
+// Routed mock OpenAI Responses model server for the TUI PTY real-backend e2e cases, kept apart
+// so the fork's Gateway-client collect case does not grow the e2e file past its line cap.
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { writeOpenAiResponsesSse } from "../../test/helpers/openai-responses-sse.js";
+import { writeOpenAiResponsesText } from "../../test/helpers/openai-responses-sse.js";
 import { createDeferred } from "../../test/helpers/promise.js";
 import { readRequestBody, writeTuiModelHttpJson } from "./tui-pty-model-http-test-support.js";
 
 export type MockModelServer = {
   baseUrl: string;
   requests: (modelId?: string) => MockModelRequest[];
-  rejectedRequests: () => MockModelRequest[];
-  allowValidResponses: (modelId: string) => void;
   releaseFirstResponse: (modelId: string) => void;
   stop: () => Promise<void>;
 };
@@ -17,12 +16,9 @@ export type MockModelBehavior = {
   replyText: string;
   holdFirstResponse?: boolean;
   followupReplyText?: string;
-  invalidEditLoop?: boolean;
 };
 
-type MockModelRequest = {
-  method: string;
-  path: string;
+export type MockModelRequest = {
   authorization?: string;
   body: Record<string, unknown>;
 };
@@ -32,111 +28,14 @@ async function writeResponsesSse(
   text: string,
   completionGate?: Promise<void>,
 ) {
-  const id = "msg_tui_pty_local";
-  const events = [
-    {
-      type: "response.output_item.added",
-      output_index: 0,
-      sequence_number: 0,
-      item: { type: "message", id, role: "assistant", content: [], status: "in_progress" },
-    },
-    {
-      type: "response.output_text.delta",
-      item_id: id,
-      output_index: 0,
-      content_index: 0,
-      sequence_number: 1,
-      logprobs: [],
-      delta: text,
-    },
-    {
-      type: "response.output_text.done",
-      item_id: id,
-      output_index: 0,
-      content_index: 0,
-      sequence_number: 2,
-      logprobs: [],
+  await completionGate;
+  if (!res.destroyed) {
+    writeOpenAiResponsesText(res, {
       text,
-    },
-    {
-      type: "response.output_item.done",
-      output_index: 0,
-      sequence_number: 3,
-      item: {
-        type: "message",
-        id,
-        role: "assistant",
-        status: "completed",
-        content: [{ type: "output_text", text, annotations: [] }],
-      },
-    },
-    {
-      type: "response.completed",
-      sequence_number: 4,
-      response: {
-        id: "resp_tui_pty_local",
-        status: "completed",
-        output: [
-          {
-            type: "message",
-            id,
-            role: "assistant",
-            status: "completed",
-            content: [{ type: "output_text", text, annotations: [] }],
-          },
-        ],
-        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
-      },
-    },
-  ];
-  res.writeHead(200, {
-    "content-type": "text/event-stream",
-    "cache-control": "no-store",
-    connection: "keep-alive",
-  });
-  res.write(`data: ${JSON.stringify(events[0])}\n\n`);
-  if (completionGate) {
-    await completionGate;
+      messageId: "msg_tui_pty_local",
+      responseId: "resp_tui_pty_local",
+    });
   }
-  if (res.destroyed) {
-    return;
-  }
-  const completionBody = `${events
-    .slice(1)
-    .map((event) => `data: ${JSON.stringify(event)}\n\n`)
-    .join("")}data: [DONE]\n\n`;
-  res.end(completionBody);
-}
-
-function writeInvalidEditCallSse(res: ServerResponse, requestIndex: number) {
-  const item = {
-    type: "function_call",
-    id: `fc_tui_validation_${requestIndex}`,
-    call_id: `call_tui_validation_${requestIndex}`,
-    name: "edit",
-    arguments: "{}",
-    status: "completed",
-  };
-  const events = [
-    {
-      type: "response.output_item.added",
-      output_index: 0,
-      sequence_number: 0,
-      item: { ...item, status: "in_progress" },
-    },
-    { type: "response.output_item.done", output_index: 0, sequence_number: 1, item },
-    {
-      type: "response.completed",
-      sequence_number: 2,
-      response: {
-        id: `resp_tui_validation_${requestIndex}`,
-        status: "completed",
-        output: [item],
-        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
-      },
-    },
-  ];
-  writeOpenAiResponsesSse(res, events);
 }
 
 async function readJsonRequest(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -148,16 +47,10 @@ export async function startRoutedMockModelServer(
   behaviors: Readonly<Record<string, MockModelBehavior>>,
 ): Promise<MockModelServer> {
   const requests: MockModelRequest[] = [];
-  const rejectedRequests: MockModelRequest[] = [];
   const requestsByModel = new Map<string, MockModelRequest[]>();
   const firstResponseGates = new Map(
     Object.entries(behaviors)
       .filter(([, behavior]) => behavior.holdFirstResponse)
-      .map(([modelId]) => [modelId, createDeferred()] as const),
-  );
-  const repeatedInvalidResponseGates = new Map(
-    Object.entries(behaviors)
-      .filter(([, behavior]) => behavior.invalidEditLoop)
       .map(([modelId]) => [modelId, createDeferred()] as const),
   );
   const server = createServer((req, res) => {
@@ -181,14 +74,11 @@ export async function startRoutedMockModelServer(
         if (url.pathname === "/v1/responses" || url.pathname === "/responses") {
           const modelId = typeof body.model === "string" ? body.model : "";
           const request = {
-            method: req.method,
-            path: url.pathname,
             authorization: req.headers.authorization,
             body,
           };
           const behavior = behaviors[modelId];
           if (!behavior) {
-            rejectedRequests.push(request);
             writeTuiModelHttpJson(res, 400, {
               error: `unknown mock model: ${modelId || "missing"}`,
             });
@@ -201,19 +91,6 @@ export async function startRoutedMockModelServer(
           const requestIndex = modelRequests.length;
           requests.push(request);
           modelRequests.push(request);
-          if (behavior.invalidEditLoop) {
-            if (requestIndex > 0) {
-              const gate = repeatedInvalidResponseGates.get(modelId);
-              // The active abort owns this request; keep later identical failures pending.
-              res.once("close", () => gate?.resolve());
-              await gate?.promise;
-              if (res.destroyed) {
-                return;
-              }
-            }
-            writeInvalidEditCallSse(res, requestIndex);
-            return;
-          }
           await writeResponsesSse(
             res,
             requestIndex === 0
@@ -241,22 +118,12 @@ export async function startRoutedMockModelServer(
   return {
     baseUrl: `http://127.0.0.1:${address.port}`,
     requests: (modelId) => (modelId ? (requestsByModel.get(modelId) ?? []) : requests),
-    rejectedRequests: () => rejectedRequests,
-    allowValidResponses: (modelId) => {
-      const behavior = behaviors[modelId];
-      if (behavior) {
-        behavior.invalidEditLoop = false;
-      }
-    },
     releaseFirstResponse: (modelId) => {
       firstResponseGates.get(modelId)?.resolve();
     },
     stop: async () => {
       // Never leave a held request owning the shared server during failure cleanup.
       for (const gate of firstResponseGates.values()) {
-        gate.resolve();
-      }
-      for (const gate of repeatedInvalidResponseGates.values()) {
         gate.resolve();
       }
       await new Promise<void>((resolve, reject) => {
@@ -267,13 +134,4 @@ export async function startRoutedMockModelServer(
       });
     },
   };
-}
-
-export async function startMockModelServer(
-  replyText: string,
-  opts: Omit<MockModelBehavior, "replyText"> = {},
-): Promise<MockModelServer> {
-  return await startRoutedMockModelServer({
-    "gpt-5.5": { replyText, ...opts },
-  });
 }

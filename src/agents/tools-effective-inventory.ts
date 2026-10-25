@@ -363,11 +363,7 @@ export async function resolveEffectiveToolInventory(
           modelProvider: params.modelProvider,
           modelId: params.modelId,
         });
-  const modelCompat = resolveConfiguredModelCompat({
-    cfg: params.cfg,
-    modelProvider: params.modelProvider,
-    modelId: params.modelId,
-  });
+  const modelCompat = resolveConfiguredModelCompat(params);
 
   const capabilityProfile =
     params.conversationCapabilityProfile ??

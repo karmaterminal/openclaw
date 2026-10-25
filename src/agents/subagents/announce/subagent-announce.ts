@@ -528,6 +528,7 @@ async function runSubagentAnnounceFlowBound(
             : undefined;
         const { internalEvents, triggerMessage } = buildSubagentAnnounceMessages({
           requesterIsSubagent,
+          requesterOrigin: directOrigin,
           completionTarget: params.completionTarget,
           childSessionKey: params.childSessionKey,
           childSessionId: announceSessionId,
@@ -606,6 +607,7 @@ async function runSubagentAnnounceFlowBound(
           signal: params.signal,
           continuationTriggerOverride: returnRoute.continuationTriggerOverride,
           ...(returnRoute.traceparent ? { traceparent: returnRoute.traceparent } : {}),
+          onAccepted: params.onAccepted,
           onExecutionStarted: params.onExecutionStarted,
           resolveGatewayContext: params.resolveGatewayContext,
           controllerInput: params.controllerInput,

@@ -20,7 +20,6 @@ import { applyDelegationCapability } from "../agents/delegation-capability.js";
 import { prepareExecDefaults, resolvePreparedExecDefaultsAsync } from "../agents/exec-defaults.js";
 import { applyGatewayToolPolicy } from "../agents/gateway-tool-policy.js";
 import { createLazyExecTool, resolveExecToolConfig } from "../agents/lazy-exec-tool.js";
-import { createOpenClawToolsAsync } from "../agents/openclaw-tools.js";
 import { filterRequesterYieldTools } from "../agents/openclaw-tools.requester-yield.js";
 import {
   applySwarmCollectorToolContract,
@@ -47,7 +46,6 @@ import {
   resolveToolProfilePolicy,
 } from "../agents/tool-policy.js";
 import type { AnyAgentTool } from "../agents/tools/common.js";
-import { buildInventoryContinuationToolOpts } from "../agents/tools/continuation-inventory-opts.js";
 import {
   captureFinalEffectiveCronCreatorToolAllowlist,
   replaceWithEffectiveCronCreatorToolAllowlist,
@@ -64,6 +62,7 @@ import type { SourceReplyDeliveryMode } from "../auto-reply/get-reply-options.ty
 import type { SessionEventSourcePolicy } from "../auto-reply/reply/session-event-contract.js";
 import type { ConversationReadInvocationOrigin } from "../channels/plugins/conversation-read-origin.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { readScheduledToolOptions } from "../cron/execution-context-registry.js";
 import { resolveEventSessionRoutingPolicy } from "../infra/event-session-routing.js";
 import { loadExecApprovalsReadOnlyAsync } from "../infra/exec-approvals-store.js";
 import { resolveExactExecModeFromPolicy } from "../infra/exec-approvals.js";
@@ -79,6 +78,7 @@ import {
   captureGatewayToolResolutionAuthority,
   resolveGatewayRequesterToolPolicies,
 } from "./tool-resolution-authority.js";
+import { createCatalogToolsAsync } from "./tool-resolution-continuation.js";
 
 type GatewayScopedToolSurface = "http" | "loopback";
 
@@ -89,7 +89,6 @@ export async function resolveGatewayScopedTools(
     | "senderIsOwner"
     | "currentMessageId"
     | "nativeCronCreatorToolAllowlist"
-    | "toolsAllow"
     | "nodeExecAllowed"
     | "cronCreatorCallerOrigin"
   > & {
@@ -390,11 +389,12 @@ export async function resolveGatewayScopedTools(
     wrapBeforeToolCallHook: false,
     agentAccountId: params.accountId,
   });
-  const openClawToolOptions: Parameters<typeof createOpenClawToolsAsync>[0] = {
+  const openClawToolOptions: Parameters<typeof createCatalogToolsAsync>[0] = {
     ...commonToolOptions(),
     computerExecutionId: params.admittedRunContext?.operationalRunInstance.instanceId,
     sessionPortalTarget,
     gatewayConfigReadAllowed,
+    requesterIsSubagent: subagentPolicy !== undefined,
     agentSessionKey: params.sessionKey,
     messageToolTurnCapability:
       surface === "loopback" && params.messageActionTurnCapability
@@ -436,6 +436,7 @@ export async function resolveGatewayScopedTools(
     gatewayCallerAccountId: gatewayCaller.accountId,
     gatewayCallerChannel: gatewayCaller.channel,
     gatewayCallerLocal: gatewayCaller.local,
+    ...readScheduledToolOptions(params.admittedRunContext, params.toolsAllow),
     sourceReplyOnly: params.sourceReplyOnly,
     agentTo: params.agentTo,
     agentThreadId: params.agentThreadId,
@@ -464,14 +465,8 @@ export async function resolveGatewayScopedTools(
     inheritedToolDenylist,
     inheritedToolPolicySource: requesterPolicies.inheritedToolPolicySource,
     delegatedToolPolicyUnavailable: Boolean(requesterPolicies.delegatedToolPolicy),
-    // Gateway tool-resolution builds the tool catalog for dispatch lookup, not
-    // for live execution. Register continue_work + request_compaction via inert
-    // stub callbacks so the catalog reflects the full continuation surface and
-    // the openclaw-tools.ts partial-registration warning is satisfied honestly
-    // (not suppressed).
-    ...buildInventoryContinuationToolOpts(params.cfg),
   };
-  const openClawTools = await createOpenClawToolsAsync(openClawToolOptions, { assertCurrent });
+  const openClawTools = await createCatalogToolsAsync(openClawToolOptions, { assertCurrent });
   assertCurrent();
   const execDefaults =
     nodeExecSurface || mediatedToolNames.size > 0
