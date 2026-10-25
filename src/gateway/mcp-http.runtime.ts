@@ -347,6 +347,7 @@ async function constructMcpLoopbackTools(
     ...context,
     messageActionTurnCapability: params.messageActionTurnCapability,
     memoryAudience: params.memoryAudience,
+    toolsAllow,
     cfg: params.cfg,
     authProfileStore: params.authProfileStore,
     onYield: params.onYield,

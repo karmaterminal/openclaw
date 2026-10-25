@@ -10,6 +10,7 @@ import { resolveSessionAgentId } from "../../agent-scope.js";
 import { reserveChildAdmissionSlot } from "../../child-admission.js";
 import { summarizeSpawnError } from "../../spawn-pipeline.js";
 import { resolveSpawnAdmission, resolveSpawnMode } from "../../spawn-plan.js";
+import { validateName } from "../../worktrees/name.js";
 import type { ContinuationSpawnParams } from "../announce/subagent-announce.runtime.js";
 import { listAncestorSessionKeys } from "../registry/subagent-registry-read.js";
 import { prepareSubagentSessionListReadCache } from "../registry/subagent-registry-state.js";
@@ -38,6 +39,13 @@ export async function resolveSubagentSpawnRequest(
   params: SpawnSubagentParams & ContinuationSpawnParams,
   ctx: SpawnSubagentContext,
 ) {
+  if (params.worktreeName !== undefined) {
+    try {
+      validateName(params.worktreeName);
+    } catch (error) {
+      return rejectSubagentSpawnRequest("error", summarizeSpawnError(error));
+    }
+  }
   const requestedAgentId = params.agentId?.trim();
   const taskNameResult = normalizeSubagentTaskName(params.taskName);
   if (taskNameResult.error) {

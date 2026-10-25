@@ -10,8 +10,10 @@ import {
 import { chunkItems } from "../../utils/chunk-items.js";
 import { cloneEnvWithPlatformSemantics } from "../config-env-vars.js";
 import type { ExactSessionEntry, SessionAccessScope } from "./session-accessor.sqlite-contract.js";
-import { prepareSqliteSessionEntryRowDecoder } from "./session-accessor.sqlite-entry-read.js";
-import { readExactSessionEntryRowValidated } from "./session-accessor.sqlite-entry-store.js";
+import {
+  prepareSqliteSessionEntryRowDecoder,
+  readExactSessionEntryRowValidated,
+} from "./session-accessor.sqlite-entry-read.js";
 import {
   getSessionKysely,
   resolveSqliteReadScope,

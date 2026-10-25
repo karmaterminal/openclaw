@@ -36,6 +36,7 @@ export type SubagentAnnounceFlowParams = Omit<
   /** Exact source reserved synchronously by the durable registry handoff. */
   controllerInput?: SessionControllerInput;
   signal?: AbortSignal;
+  onAccepted?: () => void;
   onExecutionStarted?: () => void;
   onDeliveryResult?: (delivery: SubagentAnnounceDeliveryResult) => void | Promise<void>;
   silentAnnounce?: boolean;

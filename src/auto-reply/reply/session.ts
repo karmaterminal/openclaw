@@ -70,7 +70,10 @@ import {
   toAgentStoreSessionKey,
 } from "../../routing/session-key.js";
 import { resolveAgentHarnessSessionContextError } from "../../sessions/agent-harness-session-key.js";
-import { isInterSessionInputProvenance } from "../../sessions/input-provenance.js";
+import {
+  isCronExecutionInputProvenance,
+  isInterSessionInputProvenance,
+} from "../../sessions/input-provenance.js";
 import {
   isModelSelectionLocked,
   MODEL_SELECTION_LOCKED_RESET_MESSAGE,
@@ -657,6 +660,7 @@ async function initSessionStateAttemptLocked(
     params.recordedSessionActivity.sessionKey === sessionKey
       ? params.recordedSessionActivity
       : undefined;
+  const preserveAutomationActivity = isCronExecutionInputProvenance(ctx.InputProvenance);
   let sessionEntry: SessionEntry = {
     ...baseEntry,
     ...preservedState,
@@ -669,7 +673,9 @@ async function initSessionStateAttemptLocked(
       ? 0
       : recordedActivity
         ? (baseEntry?.updatedAt ?? recordedActivity.at)
-        : Date.now(),
+        : preserveAutomationActivity && baseEntry
+          ? baseEntry.updatedAt
+          : Date.now(),
     sessionStartedAt: isNewSession
       ? now
       : (baseEntry?.sessionStartedAt ?? lifecycleTimestamps.sessionStartedAt),

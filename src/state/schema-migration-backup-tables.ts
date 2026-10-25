@@ -27,6 +27,12 @@ export const SCHEMA_MIGRATION_BACKUP_TABLES: Record<
     ],
     29: ["session_nodes", "session_reactions", "sqlite_stat1", "sqlite_stat4"],
     31: ["memory_index_sources", "memory_index_chunks"],
+    // PostgreSQL-only function replacement; SQLite advances metadata only.
+    32: [],
+    // PostgreSQL-only derived vector projection; SQLite advances metadata only.
+    33: [],
+    // PostgreSQL-only index ordering; SQLite advances metadata only.
+    34: [],
     // Continuation (karmaterminal): the authority step only creates its table. The fleet's own
     // schema 26 also crosses upstream's undeclared step 26, so Doctor keeps its full image
     // (isAgentFleetSchema26Migration).
@@ -54,5 +60,7 @@ export const SCHEMA_MIGRATION_BACKUP_TABLES: Record<
       "sqlite_stat1",
       "sqlite_stat4",
     ],
+    // PostgreSQL-only index ordering; SQLite advances metadata only.
+    32: [],
   },
 };

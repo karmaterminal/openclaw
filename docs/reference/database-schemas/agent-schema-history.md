@@ -48,7 +48,9 @@ backup and its matching build, not just reinstalling the older package.
 | 29      | Retire redundant reaction and unused last-interaction indexes without changing retained rows                                                                                                                                                           | `Unreleased` |
 | 30      | Brotli trajectory payloads with per-row codec markers and logical-byte retention                                                                                                                                                                       | `Unreleased` |
 | 31      | Memory publication advances the index revision once per committed batch instead of once per source or chunk row                                                                                                                                        | `Unreleased` |
-| 32      | Continuation: durable session-key recipient-authority generations for delayed named returns                                                                                                                                                            | Unreleased   |
+| 32      | Set-based PostgreSQL vector decoding with one TOAST materialization; metadata-only SQLite advance                                                                                                                                                      | `Unreleased` |
+| 33      | Approximate PostgreSQL memory vector search with generated binary sketches and exact cosine reranking; metadata-only SQLite advance                                                                                                                    | `Unreleased` |
+| 35      | Continuation: durable session-key recipient-authority generations for delayed named returns                                                                                                                                                            | Unreleased   |
 
 Schema 1 first appeared in `v2026.5.30-beta.1` and was also written by the
 extended-stable `v2026.7.35`. Versions 2, 4, 5–6, and 7 were development-only
@@ -68,6 +70,34 @@ including shared agent registration. Run `openclaw doctor --fix` with OpenClaw
 be verified, follow the explicit agent-restoration instructions it reports, then
 rerun Doctor before upgrading the copy. Schema-8 and later session migrations
 remain supported.
+
+### Agent schema 33
+
+Schema 33 adds a stored binary sketch to each admitted PostgreSQL vector
+projection. Memory search uses those sketches to select candidates by Hamming
+distance, then reranks them by exact float32 cosine distance. Filters apply
+before candidate selection, and small candidate-ID scopes stay exact. This
+approximate path is enabled by default and requires pgvector 0.7 or newer.
+
+The migration backfills existing projections without building an HNSW index.
+Canonical embeddings remain unchanged, zero vectors remain ineligible, and
+stores without optional vector search keep it absent. Ports and backups retain
+their existing rule for rebuilding derived memory indexes. SQLite advances only
+its version metadata and keeps exact vector search. Rollback requires the
+verified pre-upgrade backup and its matching build.
+
+### Agent schema 32
+
+Schema 32 replaces PostgreSQL's binary64-to-float32 vector decoder. It materializes
+stored embedding bytes once and decodes their coordinates as a set. Canonical
+embeddings, native vector bytes, raw-write projection triggers, indexes, and search
+results are unchanged. Existing rows are not rewritten. Stores without vector
+search keep that extension absent until their memory owner admits it.
+
+SQLite advances only its version metadata. Its scoped startup backup therefore
+contains metadata only; full updater and general Doctor backups keep their existing
+coverage. Older binaries require the verified pre-upgrade backup and matching build
+for rollback because PostgreSQL catalog admission includes the decoder definition.
 
 ### Agent schema 31
 
@@ -262,14 +292,14 @@ the existing [schema migration handoff](/reference/database-schemas/versioning#s
 
 ### Session recipient authority
 
-Agent schema **32** (continuation) adds `session_recipient_authority`, one durable
+Agent schema **35** (continuation) adds `session_recipient_authority`, one durable
 recipient-authority generation per canonical logical `sessionKey` for delayed named
-returns, on top of upstream's schema 31. The generation survives session materialization
+returns, on top of upstream's schema 34. The generation survives session materialization
 and deletion; the table has no `session_nodes` foreign key because deletion is one of
 its generation edges.
 
 The existing startup/Doctor schema owner creates the table in the same transaction
-that advances both schema markers. Some databases written before schema 32 already
+that advances both schema markers. Some databases written before schema 35 already
 carry the table; creation is idempotent and retains their rows. Some earlier
 databases also stored the epoch inside `session_nodes.entry_json`; the migration
 imports only valid UUID-v4 values and removes the field from valid JSON. Invalid
@@ -277,24 +307,27 @@ values never create authority, and malformed Doctor-owned session entries remain
 unchanged for Doctor repair. Transcript bytes, retention, and permissions are
 unchanged.
 
-Older builds refuse schema 32; rollback requires the pre-upgrade database backup and
+Older builds refuse schema 35; rollback requires the pre-upgrade database backup and
 matching build, not lower version markers. A continuation lane build briefly numbered
 this step 27; those unreleased databases are not recognised (upstream's schema 27 is
 the outbox sequence) and must be recreated or restored from their pre-upgrade backup.
+The pre-jump continuation candidate numbered this step 32, which upstream's 32 now
+names. On SQLite that database is upstream's 32 plus this table, because upstream's
+32–34 advance SQLite metadata only, so the idempotent step admits it and keeps its rows.
 
 Some fleet databases carry this table under earlier version markers, because the
 fleet received recipient authority as an unreleased schema 25 and then 26:
 
 - The fleet's schema 25 kept the legacy entry-validity and canonical-pending triggers
-  instead of upstream's schema 25. The schema 32 owner tells the two schema-25 shapes
+  instead of upstream's schema 25. The schema 35 owner tells the two schema-25 shapes
   apart by their physical schema (authority table plus legacy triggers, or neither).
   For the fleet shape it runs the canonical-writer validation, JSON predicate, upstream's
-  schema 27–31 steps, and the idempotent authority migration in one transaction.
+  schema 27–34 steps, and the idempotent authority migration in one transaction.
 - The fleet's schema 26 is upstream's schema 25 plus the authority table, without
   upstream's schema-26 JSON predicate columns. The owner tells the two schema-26 shapes
   apart by the authority table and the predicate columns on `session_nodes` and
   `transcript_events` (all or none). For the fleet shape it runs the JSON predicate
-  backfill and upstream's schema 27–31 steps and keeps the authority rows; for upstream's
+  backfill and upstream's schema 27–34 steps and keeps the authority rows; for upstream's
   shape it runs the same upstream steps and adds the table.
 
 Any other mixed shape is refused. Existing authority rows are kept. Rolling back means

@@ -32,6 +32,6 @@ CREATE TABLE "continuation_records" (
   CHECK ("attachment_id" IS NULL OR ("status" IN ('queued', 'running')))
 );
 
-CREATE INDEX "idx_continuation_records_due" ON "continuation_records" (("status") ASC NULLS FIRST, ("kind") ASC NULLS FIRST, ("due_at") ASC NULLS FIRST);
+CREATE INDEX "idx_continuation_records_due" ON "continuation_records" (("status") ASC, ("kind") ASC, ("due_at") ASC NULLS FIRST);
 
-CREATE INDEX "idx_continuation_records_owner" ON "continuation_records" (("owner_session_key") ASC NULLS FIRST, ("kind") ASC NULLS FIRST, ("status") ASC NULLS FIRST);
+CREATE INDEX "idx_continuation_records_owner" ON "continuation_records" (("owner_session_key") ASC, ("kind") ASC, ("status") ASC);
