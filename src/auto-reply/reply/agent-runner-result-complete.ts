@@ -120,6 +120,7 @@ export async function completeReplyAgentRun(input: {
         continuationSignalKind: effectiveContinuationSignal?.kind,
         followupRun,
         postCompactionDelegatesToPreserve: continuation.postCompactionDelegatesToPreserve,
+        releaseTraceparent: execution.compactionTraceparent,
         sessionEntry: activeSessionEntry,
         sessionKey,
         sessionStore: activeSessionStore,
