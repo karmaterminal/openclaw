@@ -315,7 +315,8 @@ function withLegacyAgentWriteLayout(schema: string): string {
 
 /** Compare historical migration targets against only the representation they support. */
 export function getOpenClawAgentMigrationSchema(targetVersion: number): string {
-  // Continuation's recipient authority (v32) sits above every upstream step.
+  // Continuation's recipient authority (AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION) sits above every
+  // upstream step.
   const authoritySchemaSql =
     targetVersion < AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION
       ? withoutSessionRecipientAuthoritySchema(OPENCLAW_AGENT_SCHEMA_SQL)

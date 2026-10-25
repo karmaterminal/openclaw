@@ -1,4 +1,4 @@
-// Agent schema 35 installs session recipient authority as its own versioned step (the
+// Agent schema 36 installs session recipient authority as its own versioned step (the
 // fleet first received it as an unreleased schema 25 and then 26; see the schema bridge tests).
 import fs from "node:fs";
 import path from "node:path";
@@ -220,12 +220,12 @@ describe("openclaw agent database", () => {
     ).toEqual({ session_key: validKey, epoch });
   });
 
-  it("creates a fresh database at schema 35 with recipient authority", () => {
+  it("creates a fresh database at schema 36 with recipient authority", () => {
     const env = { OPENCLAW_STATE_DIR: createTempStateDir() };
     const { db } = openOpenClawAgentDatabase({ agentId: "main", env });
 
-    expect(OPENCLAW_AGENT_SCHEMA_VERSION).toBe(35);
-    expect(readSchemaMarkers(db)).toEqual({ userVersion: 35, schemaVersion: 35 });
+    expect(OPENCLAW_AGENT_SCHEMA_VERSION).toBe(36);
+    expect(readSchemaMarkers(db)).toEqual({ userVersion: 36, schemaVersion: 36 });
     expect(hasRecipientAuthorityTable(db)).toBe(true);
   });
 
@@ -249,7 +249,7 @@ describe("openclaw agent database", () => {
 
     const migrated = await migrateAndOpenLegacyAgentDatabaseForTest({ agentId: "main", env });
 
-    expect(readSchemaMarkers(migrated.db)).toEqual({ userVersion: 35, schemaVersion: 35 });
+    expect(readSchemaMarkers(migrated.db)).toEqual({ userVersion: 36, schemaVersion: 36 });
     expect(
       migrated.db
         .prepare("SELECT name FROM pragma_table_info('session_recipient_authority') ORDER BY cid")
@@ -264,8 +264,8 @@ describe("openclaw agent database", () => {
     expect(migrated.db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   });
 
-  // Upstream's 32-34 change only PostgreSQL; on SQLite they advance metadata over schema 31.
-  it.each([32, 33, 34])(
+  // Upstream's 32-35 change only PostgreSQL; on SQLite they advance metadata over schema 31.
+  it.each([32, 33, 34, 35])(
     "adds recipient authority to upstream's schema-%i database",
     async (version) => {
       const env = { OPENCLAW_STATE_DIR: createTempStateDir() };
@@ -277,42 +277,46 @@ describe("openclaw agent database", () => {
 
       const migrated = await migrateAndOpenLegacyAgentDatabaseForTest({ agentId: "main", env });
 
-      expect(readSchemaMarkers(migrated.db)).toEqual({ userVersion: 35, schemaVersion: 35 });
+      expect(readSchemaMarkers(migrated.db)).toEqual({ userVersion: 36, schemaVersion: 36 });
       expect(hasRecipientAuthorityTable(migrated.db)).toBe(true);
       expect(migrated.db.prepare("SELECT * FROM session_recipient_authority").all()).toEqual([]);
     },
   );
 
-  // The pre-jump candidate numbered this step 32, which upstream's 32 now names. Its SQLite
-  // database is upstream's 32 plus the table, so the idempotent step keeps the rows.
-  it("migrates the pre-jump candidate's schema-32 database and keeps its authority rows", async () => {
-    const env = { OPENCLAW_STATE_DIR: createTempStateDir() };
-    stageCapturedAgentDatabase(env, agentDbTempDirs, {
-      ddl: OPENCLAW_AGENT_SCHEMA_SQL,
-      version: 32,
-      authorityRow: true,
-    });
-    const retained = {
-      session_key: AUTHORITY.sessionKey,
-      epoch: AUTHORITY.epoch,
-      created_at: 1,
-      updated_at: 2,
-    };
+  // Earlier candidates numbered this step 32 (before jump 5) and 35 (jump 5, live on four seats);
+  // upstream's 32 and 35 now name PostgreSQL-only steps. Such a SQLite database is upstream's
+  // same-numbered schema plus the table, so the idempotent step keeps the rows.
+  it.each([32, 35])(
+    "migrates an earlier candidate's schema-%i database and keeps its authority rows",
+    async (version) => {
+      const env = { OPENCLAW_STATE_DIR: createTempStateDir() };
+      stageCapturedAgentDatabase(env, agentDbTempDirs, {
+        ddl: OPENCLAW_AGENT_SCHEMA_SQL,
+        version,
+        authorityRow: true,
+      });
+      const retained = {
+        session_key: AUTHORITY.sessionKey,
+        epoch: AUTHORITY.epoch,
+        created_at: 1,
+        updated_at: 2,
+      };
 
-    const migrated = await migrateAndOpenLegacyAgentDatabaseForTest({ agentId: "main", env });
+      const migrated = await migrateAndOpenLegacyAgentDatabaseForTest({ agentId: "main", env });
 
-    expect(readSchemaMarkers(migrated.db)).toEqual({ userVersion: 35, schemaVersion: 35 });
-    expect(migrated.db.prepare("SELECT * FROM session_recipient_authority").all()).toEqual([
-      retained,
-    ]);
-    closeOpenClawAgentDatabasesForTest();
+      expect(readSchemaMarkers(migrated.db)).toEqual({ userVersion: 36, schemaVersion: 36 });
+      expect(migrated.db.prepare("SELECT * FROM session_recipient_authority").all()).toEqual([
+        retained,
+      ]);
+      closeOpenClawAgentDatabasesForTest();
 
-    const reopened = openOpenClawAgentDatabase({ agentId: "main", env });
-    expect(readSchemaMarkers(reopened.db)).toEqual({ userVersion: 35, schemaVersion: 35 });
-    expect(reopened.db.prepare("SELECT * FROM session_recipient_authority").all()).toEqual([
-      retained,
-    ]);
-  });
+      const reopened = openOpenClawAgentDatabase({ agentId: "main", env });
+      expect(readSchemaMarkers(reopened.db)).toEqual({ userVersion: 36, schemaVersion: 36 });
+      expect(reopened.db.prepare("SELECT * FROM session_recipient_authority").all()).toEqual([
+        retained,
+      ]);
+    },
+  );
 
   it("migrates a schema-24 database that already carries recipient authority idempotently", async () => {
     const env = { OPENCLAW_STATE_DIR: createTempStateDir() };
@@ -324,14 +328,14 @@ describe("openclaw agent database", () => {
 
     const migrated = await migrateAndOpenLegacyAgentDatabaseForTest({ agentId: "main", env });
 
-    expect(readSchemaMarkers(migrated.db)).toEqual({ userVersion: 35, schemaVersion: 35 });
+    expect(readSchemaMarkers(migrated.db)).toEqual({ userVersion: 36, schemaVersion: 36 });
     expect(migrated.db.prepare("SELECT * FROM session_recipient_authority").all()).toEqual([
       { session_key: authority.sessionKey, epoch: authority.epoch, created_at: 1, updated_at: 2 },
     ]);
     closeOpenClawAgentDatabasesForTest();
 
     const reopened = openOpenClawAgentDatabase({ agentId: "main", env });
-    expect(readSchemaMarkers(reopened.db)).toEqual({ userVersion: 35, schemaVersion: 35 });
+    expect(readSchemaMarkers(reopened.db)).toEqual({ userVersion: 36, schemaVersion: 36 });
     expect(reopened.db.prepare("SELECT * FROM session_recipient_authority").all()).toEqual([
       { session_key: authority.sessionKey, epoch: authority.epoch, created_at: 1, updated_at: 2 },
     ]);

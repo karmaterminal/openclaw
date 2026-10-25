@@ -1,4 +1,4 @@
-// Continuation (karmaterminal): agent schema 26 has two histories. Upstream's 26 → 35 run is
+// Continuation (karmaterminal): agent schema 26 has two histories. Upstream's 26 → 36 run is
 // covered by declared table scopes; the fleet's own 26 also crosses upstream's step 26, which
 // declares none, so Doctor must keep a full image for it.
 import fs from "node:fs";
