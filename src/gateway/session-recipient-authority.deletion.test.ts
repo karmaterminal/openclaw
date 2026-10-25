@@ -95,7 +95,8 @@ const deletions: ReadonlyArray<
     "ops",
     async (scope) => {
       // Best-effort by contract: a failed purge only logs, so the precondition below decides.
-      await purgeAgentSessionStoreEntries({}, scope.agentId, { env: scope.env });
+      // The purge reads the process state dir, which withAgentState stubs to scope.env's.
+      await purgeAgentSessionStoreEntries({}, scope.agentId);
     },
   ],
   [
