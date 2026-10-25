@@ -8,6 +8,7 @@ import { createDeferred as deferred } from "../../../../test/helpers/promise.js"
 import type { ApplicationContext } from "../../app/context.ts";
 import { mountRouterOutlet } from "../../app/router-outlet.test-support.tsx";
 import { resetServerUiPrefsSync } from "../../app/server-prefs.ts";
+import { configSnapshot } from "../../lib/config/config-snapshot.test-support.ts";
 import { createGatewayHarness } from "../../lib/config/config-test-harness.ts";
 import { createRuntimeConfigCapability } from "../../lib/config/runtime-config-capability.ts";
 import { createTestGatewayClient } from "../../test-helpers/gateway-client.ts";
@@ -51,13 +52,7 @@ describe("ConfigPage cold reads", () => {
       const retryRead = deferred<unknown>();
       const pendingConfig = deferred<unknown>();
       const config = { gateway: { port: 18789 } };
-      const configResponse = {
-        config,
-        hash: "recovered",
-        raw: JSON.stringify(config),
-        valid: true,
-        issues: [],
-      };
+      const configResponse = configSnapshot(config, "recovered", JSON.stringify(config));
       const schemaResponse = {
         schema: {
           type: "object",
@@ -102,9 +97,11 @@ describe("ConfigPage cold reads", () => {
         deps: "",
         cause: "navigation",
       });
-      // Both owner reads start before the page chunk can mount and request missing data.
-      expect(request).toHaveBeenCalledWith("config.get", {});
-      expect(request).toHaveBeenCalledWith("config.schema", {});
+      // The lazy editor admits both reads independently before page presentation.
+      await waitForSolid(() => {
+        expect(request).toHaveBeenCalledWith("config.get", {});
+        expect(request).toHaveBeenCalledWith("config.schema", {});
+      });
       const productionModule = await route.component();
       const provider = createSolidApplicationContextProvider(context);
       const render = productionModule.renderSolid;

@@ -29,6 +29,7 @@ import { chatPaneResourceProps } from "./chat-pane-resource-presentation.ts";
 import {
   createChatPaneQueuedEditProps,
   createChatPaneSessionActionCallbacks,
+  canDismissChatPendingInputs,
   readChatPaneMutationAccess,
   renderChatPaneComposerControls,
 } from "./chat-pane-session-controls.ts";
@@ -59,7 +60,7 @@ import { openSessionWorkspaceFile } from "./components/chat-session-workspace.ts
 import { chatFailureRunId, hasAbortableSessionRun, hasDirectSessionRun } from "./run-lifecycle.ts";
 import { lockChatScroll, scheduleChatScroll } from "./scroll.ts";
 import { createChatWidgetLayout } from "./session-message-cache.ts";
-import { resolveChatProjectionRunId } from "./tool-stream-status.ts";
+import { resolveChatProjectionRunId } from "./tool-stream-snapshot.ts";
 import { workspaceResultConflictFromPlacement } from "./workspace-conflict.ts";
 
 registerChatSessionEnglish();
@@ -68,7 +69,7 @@ registerChatSessionEnglish();
 const emptyTranscriptItems: [] = [];
 
 export class ChatPaneRuntime extends ChatPaneLayoutRender {
-  render(readProviderReview?: () => ChatProviderReviewOwner) {
+  render(readProviderReview?: () => ChatProviderReviewOwner | undefined) {
     const state = this.state;
     if (!state) {
       return { layout: null, capabilityDialogs: undefined, providerReviewSource: undefined };
@@ -175,8 +176,12 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
       updateSidebarLayout: (layout) => this.commitSidebarLayout(layout),
       onOpenPanel: this.onSidebarPanelOpened,
     });
+    const gatewayScope = gatewayPresentationScope(this.context.gateway);
     const selfUser = resolveCurrentSelfUser({
-      snapshotUser: gatewaySnapshot.selfUser,
+      snapshotUser:
+        gatewaySnapshot.selfUser === undefined
+          ? (gatewayScope.displayUser ?? undefined)
+          : gatewaySnapshot.selfUser,
       presenceEntries: readPresenceEntries(this.presence.snapshot),
       presenceInstanceId: gatewaySnapshot.client?.instanceId,
     });
@@ -356,6 +361,10 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
         ? this.captureProgressCardRefreshAction()
         : undefined;
     const props: ChatProps = {
+      canDismissPendingInputs: canDismissChatPendingInputs(mutationAccess, selectedSession, {
+        nativeConversation,
+        participationBlocked: sessionParticipationBlocked,
+      }),
       applicationContext: this.context,
       registerBrowserAnnotationFocus: this.registerBrowserAnnotationFocus,
       transcript: this.transcript,
@@ -411,7 +420,7 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
       progressCard: progressPresentation?.card ?? null,
       progressCardIdentity: progressPresentation?.identity,
       progressCardLifetime: progressPresentation?.lifetime,
-      gatewayScope: gatewayPresentationScope(this.context.gateway),
+      gatewayScope,
       progressCardInitialLoading: this.progressCardInitialLoading,
       progressCardRefresh: progressPresentation ? detailsProgressRefresh : undefined,
       collapseTaskProgress: state.settings.chatCollapseTaskProgress === true,
@@ -540,6 +549,8 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
         agentsList: state.agentsList,
         hello: state.hello,
       },
+      contextGateway: this.context.gateway,
+      onOpenContext: this.openContextPanel,
       operatorAuth: state.hello?.auth ?? null,
       providerUsage: {
         basePath: state.basePath,

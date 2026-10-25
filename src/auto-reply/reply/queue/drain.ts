@@ -269,7 +269,7 @@ async function executeClaim(
       item.controllerInput!.payload = claim.summary ? "summary" : "ready";
     }
     if (retrySources.length) {
-      queue.lastEnqueuedAt = Date.now();
+      queue.lastEnqueuedAt = performance.now();
     }
     for (const item of sources) {
       queue.activeSummarySources.delete(item);

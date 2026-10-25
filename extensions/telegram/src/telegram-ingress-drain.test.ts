@@ -115,6 +115,10 @@ function telegramSendError(errorCode: number, description: string): GrammyError 
   );
 }
 
+function forumFlag(chatId: number, isForum: boolean) {
+  return resolveTelegramForumFlag({ chatId, chatType: "supergroup", isGroup: true, isForum });
+}
+
 async function createTelegramMessageDispatchReplayForgetError(): Promise<unknown> {
   type ReplayGuard = Parameters<typeof commitTelegramMessageDispatchReplay>[0]["guard"];
   type ReplayClaim = import("openclaw/plugin-sdk/persistent-dedupe").ChannelReplayClaimHandle;
@@ -273,12 +277,7 @@ describe("createTelegramIngressMonitor", () => {
           chat: { id: -9017, type: "supergroup" },
         },
       };
-      await resolveTelegramForumFlag({
-        chatId: -9017,
-        chatType: "supergroup",
-        isGroup: true,
-        isForum: false,
-      });
+      await forumFlag(-9017, false);
       const ackEntered = deferred();
       const ackRelease = deferred();
       const receivedAt = 1_700_000_000_000;
@@ -308,12 +307,7 @@ describe("createTelegramIngressMonitor", () => {
           expect.objectContaining({ laneKey: "telegram:-9017", attempts: 0 }),
         ]);
         expect(delivered).toEqual([]);
-        await resolveTelegramForumFlag({
-          chatId: -9017,
-          chatType: "supergroup",
-          isGroup: true,
-          isForum: true,
-        });
+        await forumFlag(-9017, true);
         ackRelease.resolve();
         await admission;
         await monitor.waitForIdle();
@@ -336,12 +330,7 @@ describe("createTelegramIngressMonitor", () => {
       const eventId = "9".padStart(16, "0");
       const payload = updatePayload(9);
       payload.update.message.chat = { id: -9003, type: "supergroup" };
-      await resolveTelegramForumFlag({
-        chatId: -9003,
-        chatType: "supergroup",
-        isGroup: true,
-        isForum: true,
-      });
+      await forumFlag(-9003, true);
       await queue.enqueue(eventId, payload, { laneKey: "telegram:-9003" });
 
       const dispatch = vi.fn(async (_update, lifecycle) => {
