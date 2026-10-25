@@ -352,11 +352,7 @@ export function createChannelIngressDrainOwner<
       return;
     }
     clearStallTimer(state);
-    await state
-      .settleOnce(async () => {
-        await settle(state.claim);
-      })
-      .catch(() => undefined);
+    await state.settleOnce(async () => void (await settle(state.claim))).catch(() => undefined);
   };
 
   // A release between separate reads can hide a lane's head from both collections.
