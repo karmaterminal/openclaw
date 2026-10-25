@@ -49,7 +49,7 @@ import { isRetiredSubagentSessionOwner } from "./subagent-registry-restart-recov
 import { restoreSubagentRunMetadata } from "./subagent-registry-restore-metadata.js";
 import { createRestoredRequesterActivator } from "./subagent-registry-restore-requester.js";
 import type { SubagentLaunchManager } from "./subagent-registry-run-launch.js";
-import { isSubagentSpawnArmed } from "./subagent-registry-spawn-acceptance.js";
+import { isRestoredSubagentRunOwnedElsewhere } from "./subagent-registry-spawn-acceptance.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 import { getSubagentRunRuntimeKey, isSameSubagentRunOwner } from "./subagent-run-generation.js";
 import { deleteSubagentSessionForCleanup } from "./subagent-session-cleanup.js";
@@ -247,13 +247,8 @@ export function createSubagentRegistryRestorer(config: {
         if (!entry || entry.runId !== runId) {
           continue;
         }
-        // F1 (H1): an armed row is never resumed or relaunched; with no owner left
-        // after restart, the sweeper fails it closed (abort, then roll back/settle).
-        if (isSubagentSpawnArmed(entry)) {
-          continue;
-        }
-        // Restart recovery and accepted cancellation own their rows independently.
-        if (entry.execution.restartRecovery || entry.killIntent || entry.killReconciliation) {
+        // Restart recovery, accepted cancellation and spawn custody own their rows independently.
+        if (isRestoredSubagentRunOwnedElsewhere(entry)) {
           continue;
         }
         const authority = resolveSubagentChildAuthority(entry, sessionEntry);
@@ -261,11 +256,6 @@ export function createSubagentRegistryRestorer(config: {
           continue;
         }
         if (entry.collect && entry.execution.status === "queued") {
-          // Rollback custody means this launch already failed after the Gateway
-          // accepted its child; the sweeper terminates that child, never relaunches it.
-          if (entry.acceptedSpawnRollback) {
-            continue;
-          }
           const { childSessionIdentity: cleanupSessionEntry, queuedLaunch: launch } = entry;
           if (!launch || authority.status === "legacy-unverified") {
             void failAndCleanupRestoredQueuedRun(

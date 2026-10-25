@@ -1,7 +1,6 @@
 // Exercises slower TUI PTY paths against real local and Gateway backends.
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as waitForProcessTick } from "node:timers/promises";
@@ -10,13 +9,12 @@ import {
   GATEWAY_CLIENT_MODES,
   GATEWAY_CLIENT_NAMES,
 } from "../../packages/gateway-protocol/src/client-info.js";
-import { writeOpenAiResponsesText } from "../../test/helpers/openai-responses-sse.js";
 import {
   createOpenClawTestInstance,
   type OpenClawTestInstance,
 } from "../../test/helpers/openclaw-test-instance.js";
 import { isProcessAlive } from "../../test/helpers/process-wait.js";
-import { createDeferred, withinTest } from "../../test/helpers/promise.js";
+import { withinTest } from "../../test/helpers/promise.js";
 import { runQaGatewayFixture } from "../../test/helpers/qa-gateway-cleanup.js";
 import { reloadSharedAuthStoreOwnership } from "../agents/auth-profiles/path-resolve.js";
 import { loadAuthProfileStoreForRuntime } from "../agents/auth-profiles/store-runtime.js";
@@ -48,27 +46,14 @@ import {
   startGatewayCaseControlClient,
   waitForOutputAfter,
 } from "./tui-pty-local-test-support.js";
-import { readRequestBody, writeTuiModelHttpJson } from "./tui-pty-model-http-test-support.js";
+import {
+  startRoutedMockModelServer,
+  type MockModelBehavior,
+  type MockModelRequest,
+  type MockModelServer,
+} from "./tui-pty-mock-model-test-support.js";
 import { buildTuiProcessArgs } from "./tui-pty-process-test-support.js";
 import { startRuntimePty, waitFor, type PtyRun } from "./tui-pty-test-support.js";
-
-type MockModelServer = {
-  baseUrl: string;
-  requests: (modelId?: string) => MockModelRequest[];
-  releaseFirstResponse: (modelId: string) => void;
-  stop: () => Promise<void>;
-};
-
-type MockModelBehavior = {
-  replyText: string;
-  holdFirstResponse?: boolean;
-  followupReplyText?: string;
-};
-
-type MockModelRequest = {
-  authorization?: string;
-  body: Record<string, unknown>;
-};
 
 type GatewayScenario = MockModelBehavior & {
   agentId: string;
@@ -132,119 +117,6 @@ async function waitForModelRequests(
 type CleanupRegistrar = (cleanup: () => Promise<void>) => void;
 const writeJsonFixture = (file: string, value: unknown) =>
   writeFile(file, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-
-async function writeResponsesSse(
-  res: ServerResponse,
-  text: string,
-  completionGate?: Promise<void>,
-) {
-  await completionGate;
-  if (!res.destroyed) {
-    writeOpenAiResponsesText(res, {
-      text,
-      messageId: "msg_tui_pty_local",
-      responseId: "resp_tui_pty_local",
-    });
-  }
-}
-
-async function readJsonRequest(req: IncomingMessage): Promise<Record<string, unknown>> {
-  const raw = await readRequestBody(req);
-  return raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-}
-
-async function startRoutedMockModelServer(
-  behaviors: Readonly<Record<string, MockModelBehavior>>,
-): Promise<MockModelServer> {
-  const requests: MockModelRequest[] = [];
-  const requestsByModel = new Map<string, MockModelRequest[]>();
-  const firstResponseGates = new Map(
-    Object.entries(behaviors)
-      .filter(([, behavior]) => behavior.holdFirstResponse)
-      .map(([modelId]) => [modelId, createDeferred()] as const),
-  );
-  const server = createServer((req, res) => {
-    void (async () => {
-      const url = new URL(req.url ?? "/", "http://127.0.0.1");
-      if (req.method === "GET" && (url.pathname === "/healthz" || url.pathname === "/readyz")) {
-        writeTuiModelHttpJson(res, 200, { ok: true });
-        return;
-      }
-      if (req.method === "GET" && url.pathname === "/v1/models") {
-        writeTuiModelHttpJson(res, 200, {
-          data: Object.keys(behaviors).map((id) => ({
-            id,
-            object: "model",
-          })),
-        });
-        return;
-      }
-      if (req.method === "POST") {
-        const body = await readJsonRequest(req);
-        if (url.pathname === "/v1/responses" || url.pathname === "/responses") {
-          const modelId = typeof body.model === "string" ? body.model : "";
-          const request = {
-            authorization: req.headers.authorization,
-            body,
-          };
-          const behavior = behaviors[modelId];
-          if (!behavior) {
-            writeTuiModelHttpJson(res, 400, {
-              error: `unknown mock model: ${modelId || "missing"}`,
-            });
-            return;
-          }
-          const modelRequests = requestsByModel.get(modelId) ?? [];
-          if (!requestsByModel.has(modelId)) {
-            requestsByModel.set(modelId, modelRequests);
-          }
-          const requestIndex = modelRequests.length;
-          requests.push(request);
-          modelRequests.push(request);
-          await writeResponsesSse(
-            res,
-            requestIndex === 0
-              ? behavior.replyText
-              : (behavior.followupReplyText ?? behavior.replyText),
-            requestIndex === 0 ? firstResponseGates.get(modelId)?.promise : undefined,
-          );
-          return;
-        }
-        writeTuiModelHttpJson(res, 404, { error: "not found" });
-        return;
-      }
-      writeTuiModelHttpJson(res, 404, { error: "not found" });
-    })();
-  });
-
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => resolve());
-  });
-  const address = server.address();
-  if (!address || typeof address === "string") {
-    throw new Error("mock model server did not bind");
-  }
-  return {
-    baseUrl: `http://127.0.0.1:${address.port}`,
-    requests: (modelId) => (modelId ? (requestsByModel.get(modelId) ?? []) : requests),
-    releaseFirstResponse: (modelId) => {
-      firstResponseGates.get(modelId)?.resolve();
-    },
-    stop: async () => {
-      // Never leave a held request owning the shared server during failure cleanup.
-      for (const gate of firstResponseGates.values()) {
-        gate.resolve();
-      }
-      await new Promise<void>((resolve, reject) => {
-        server.close((error) => (error ? reject(error) : resolve()));
-        // Aborted local runs can leave a provider keep-alive open. Force-close
-        // test-owned connections so cleanup does not wait for idle expiry.
-        server.closeAllConnections();
-      });
-    },
-  };
-}
 
 function buildMockModelProvider(baseUrl: string, modelIds: string[]): ModelProviderConfig {
   return {
