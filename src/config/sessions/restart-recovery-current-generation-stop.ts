@@ -1,4 +1,4 @@
-import type { SessionEntry } from "./types.js";
+import type { InternalSessionEntry, SessionEntry } from "./types.js";
 
 /**
  * A stop or supersede in this generation leaves `abortedLastRun` beside a live
@@ -7,7 +7,7 @@ import type { SessionEntry } from "./types.js";
  * outlive its process and is not restart-interrupted work (openclaw#1468).
  */
 export function isMainSessionCurrentGenerationStop(
-  entry: SessionEntry,
+  entry: SessionEntry & Pick<InternalSessionEntry, "mainRestartRecovery">,
   lifecycleGeneration: string,
 ): boolean {
   return (
