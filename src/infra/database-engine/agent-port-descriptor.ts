@@ -35,6 +35,7 @@ import {
 import {
   AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
   RECIPIENT_AUTHORITY_TABLE,
+  withoutSessionRecipientAuthorityPostgresSchema,
 } from "../../state/openclaw-agent-recipient-authority-schema.js";
 import { OPENCLAW_AGENT_SCHEMA_SQL } from "../../state/openclaw-agent-schema.js";
 import { agentTranscriptSearchSchema } from "../../state/openclaw-agent-search-schema.js";
@@ -405,6 +406,10 @@ export async function loadAgentPortDescriptor(
     return descriptor;
   }
   const legacyRevision = sourceVersion < AGENT_MEMORY_REVISION_SCHEMA_VERSION;
+  // A source below the authority step has no authority table, matching its expected catalog.
+  const preData = hasRecipientAuthority
+    ? descriptor.preData
+    : withoutSessionRecipientAuthorityPostgresSchema(descriptor.preData);
   let postData = legacyRevision
     ? withLegacyAgentPostgresMemoryRevisionTriggers(descriptor.postData)
     : descriptor.postData;
@@ -414,7 +419,7 @@ export async function loadAgentPortDescriptor(
     postData = withLegacyPostgresIndexOrdering(
       postData,
       sourceVersion === 34 ? "schema-nullability" : "sqlite",
-      descriptor.preData,
+      preData,
     );
   }
   if (legacyTrajectory) {
@@ -443,9 +448,7 @@ export async function loadAgentPortDescriptor(
           }))
         : []),
     ],
-    preData: legacyTrajectory
-      ? withLegacyAgentPostgresTrajectoryStorage(descriptor.preData)
-      : descriptor.preData,
+    preData: legacyTrajectory ? withLegacyAgentPostgresTrajectoryStorage(preData) : preData,
     postData,
     expectedCatalog: catalog.map((fact) =>
       sourceVersion < 29 &&
