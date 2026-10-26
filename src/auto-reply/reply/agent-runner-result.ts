@@ -165,6 +165,7 @@ export async function finalizeReplyAgentRun(
             continuationSignalKind: effectiveContinuationSignal?.kind,
             followupRun,
             postCompactionDelegatesToPreserve: continuation.postCompactionDelegatesToPreserve,
+            releaseTraceparent: execution.compactionTraceparent,
             sessionEntry: activeSessionEntry,
             sessionKey,
             sessionStore: activeSessionStore,
