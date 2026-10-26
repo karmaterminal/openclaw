@@ -110,6 +110,8 @@ export const databaseWorkerCoreTestFiles = [
   "src/infra/database-engine/search-extension.postgres.test.ts",
   "src/infra/database-engine/multi-namespace.postgres.test.ts",
   "src/infra/database-engine/usage-cost-partitions.postgres.test.ts",
+  // Continuation (karmaterminal): the agent owner publishes its migrated admission facts.
+  "src/infra/database-engine/agent-recipient-authority-migration.postgres.test.ts",
   "src/infra/worker-task-pool.sqlite-idle.test.ts",
   "src/state/openclaw-state-db.postgres.test.ts",
   "src/state/openclaw-state.worker.settlement.test.ts",
