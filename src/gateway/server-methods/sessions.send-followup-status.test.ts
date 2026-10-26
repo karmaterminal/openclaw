@@ -1,7 +1,11 @@
+import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ErrorCodes } from "../../../packages/gateway-protocol/src/index.js";
+import { resolveUnsuffixedSqliteTargetFromSessionStorePath } from "../../config/sessions/session-sqlite-target-paths.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { closeOpenClawAgentDatabasesForTest } from "../../state/openclaw-agent-db.js";
+import { createSuiteTempRootTracker } from "../../test-helpers/temp-dir.js";
 import type { GatewayRequestContext, RespondFn } from "./types.js";
 
 const mocks = vi.hoisted(() => ({
@@ -62,6 +66,12 @@ import { flushPendingSessionsChangedEvents } from "./session-change-event.js";
 import { sessionMessagingHandlers } from "./sessions-messaging.js";
 
 let context: GatewayRequestContext;
+// The row projection resolves a store's sibling SQLite file. A shared /tmp path
+// can read stale host state even when the session entry itself is mocked.
+const tempRoots = createSuiteTempRootTracker({ prefix: "sessions-send-followup-" });
+let fixtureRoot = "";
+let fixtureStorePath = "";
+let workStorePath = "";
 
 async function send(
   params: Record<string, unknown>,
@@ -83,7 +93,7 @@ async function send(
 function loadSession(
   canonicalKey: string,
   sessionId: string,
-  storePath = "/tmp/sessions.json",
+  storePath = fixtureStorePath,
   cfg: OpenClawConfig = {},
 ) {
   mocks.load.mockReturnValue({ cfg, canonicalKey, storePath, entry: { sessionId } });
@@ -118,6 +128,23 @@ function respondWith(payload: unknown) {
 
 describe("sessions.send completed subagent follow-up status", () => {
   afterEach(() => flushPendingSessionsChangedEvents());
+  beforeAll(async () => {
+    fixtureRoot = await tempRoots.setup();
+    fixtureStorePath = path.join(fixtureRoot, "sessions.json");
+    workStorePath = path.join(fixtureRoot, "work", "sessions.json");
+  });
+  afterAll(async () => {
+    closeOpenClawAgentDatabasesForTest();
+    await tempRoots.cleanup();
+  });
+
+  it("resolves every fixture store path inside this suite's root", () => {
+    for (const storePath of [fixtureStorePath, workStorePath]) {
+      const resolved = resolveUnsuffixedSqliteTargetFromSessionStorePath(storePath).path;
+      expect(resolved.startsWith(`${fixtureRoot}${path.sep}`)).toBe(true);
+    }
+  });
+
   beforeEach(() => {
     context = {
       chatRunState: { runs: new Map() },
@@ -166,7 +193,7 @@ describe("sessions.send completed subagent follow-up status", () => {
   it("steers the selected global agent with committed receipt and interrupt facts", async () => {
     const cfg = { agents: { entries: { main: {}, work: {} } } };
     context.getRuntimeConfig = () => cfg;
-    loadSession("global", "sess-work-global", "/tmp/work/sessions.json", cfg);
+    loadSession("global", "sess-work-global", workStorePath, cfg);
     const payload = {
       runId: "run-work",
       status: "started",
