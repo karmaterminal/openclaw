@@ -1,6 +1,6 @@
 import path from "node:path";
 import { AgentHarnessPreflightError } from "openclaw/plugin-sdk/agent-harness-runtime";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   claimCodexAppServerLiveThread,
   isCodexAppServerLiveThreadClaimed,
@@ -12,7 +12,10 @@ import {
   tempDir,
   threadStartResult,
 } from "./run-attempt-test-harness.js";
-import { readCodexAppServerBinding } from "./session-binding.test-helpers.js";
+import {
+  readCodexAppServerBinding,
+  testCodexAppServerBindingStore,
+} from "./session-binding.test-helpers.js";
 import {
   createAppServerOptions,
   createLifecycleRequest,
@@ -49,6 +52,44 @@ function createParams(sessionFile: string, workspaceDir: string) {
 setupRunAttemptTestHooks({ isolateNativeSkillHome: true });
 
 describe("Codex warm subscription cleanup", () => {
+  it("releases a warm claim when the lifecycle binding lease fails after preparation", async () => {
+    const params = createParams(
+      path.join(tempDir, "warm-lease-loss.jsonl"),
+      path.join(tempDir, "workspace"),
+    );
+    const threadId = "warm-lease-loss-thread";
+    const fixture = await createLeasedCodexLifecycleHarness({
+      agentDir: path.join(tempDir, "agent"),
+      respond: createLifecycleRequest(async (method) => {
+        if (method === "thread/start" || method === "thread/resume") {
+          return threadStartResult(threadId);
+        }
+        throw new Error(`unexpected method: ${method}`);
+      }),
+    });
+    const common = { client: fixture.client, params, userMcpServersEnabled: false };
+    const started = await startOrResumeThread(common);
+    expect(await retainWarmThread(fixture.client, started)).toBe(true);
+
+    const withLease = testCodexAppServerBindingStore.withLease.bind(testCodexAppServerBindingStore);
+    const lostLease = new Error("Lost Codex binding lease after warm preparation");
+    const fault = vi
+      .spyOn(testCodexAppServerBindingStore, "withLease")
+      .mockImplementationOnce(async (identity, run, options) => {
+        await withLease(identity, run, options);
+        throw lostLease;
+      });
+    try {
+      await expect(startOrResumeThread(common)).rejects.toBe(lostLease);
+    } finally {
+      fault.mockRestore();
+    }
+    expect(isCodexAppServerLiveThreadClaimed(fixture.client, threadId)).toBe(false);
+    const retry = await startOrResumeThread(common);
+    expect(retry).toMatchObject({ threadId, lifecycle: { action: "resumed" } });
+    await retry.liveThreadOwnership?.release(threadId);
+    expect(isCodexAppServerLiveThreadClaimed(fixture.client, threadId)).toBe(false);
+  });
   it.for([false, true])(
     "recovers warm publication failure with background protection=%s",
     async (backgroundWork) => {

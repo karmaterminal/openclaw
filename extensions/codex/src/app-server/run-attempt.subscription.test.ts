@@ -253,12 +253,13 @@ describe("Codex attempt subscription recovery", () => {
 
   it.each<{
     failureAt: "monitor" | "turn request";
-    revoked?: "abort" | "host" | "binding" | "closed" | "expired" | "successor";
+    revoked?: "abort" | "host" | "binding" | "lease" | "closed" | "expired" | "successor";
   }>([
     { failureAt: "turn request" },
     { failureAt: "monitor", revoked: "abort" },
     { failureAt: "monitor", revoked: "host" },
     { failureAt: "monitor", revoked: "binding" },
+    { failureAt: "monitor", revoked: "lease" },
     { failureAt: "monitor", revoked: "closed" },
     { failureAt: "monitor", revoked: "expired" },
     { failureAt: "monitor", revoked: "successor" },
@@ -336,6 +337,9 @@ describe("Codex attempt subscription recovery", () => {
                     ...originalBinding!,
                     threadId: "replacement-thread",
                   });
+                } else if (revoked === "lease") {
+                  // Lease loss after warm claim transfer must not strand the next run.
+                  prompt.context.runtime.connection.releaseBindingAuthority();
                 } else if (revoked === "expired") {
                   resources.state.nativeSettlementExpired = true;
                   // No optional retention may enter a lease or durable row read.
@@ -388,6 +392,13 @@ describe("Codex attempt subscription recovery", () => {
         expect(await readCodexAppServerBinding(sessionFile)).toMatchObject({
           threadId: revoked === "binding" ? "replacement-thread" : threadId,
         });
+        if (revoked === "lease") {
+          const retry = runCodexAppServerAttempt({ ...params, runId: "run-after-lease-loss" });
+          await retry.waitForTurnAccepted();
+          await harness.completeTurn({ threadId, turnId: "turn-2" });
+          expect((await retry).terminal).toEqual({ kind: "ok" });
+          expect(isCodexAppServerLiveThreadClaimed(harness.client, threadId)).toBe(false);
+        }
         return;
       }
       expect(
