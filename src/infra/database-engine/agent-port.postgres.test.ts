@@ -307,7 +307,7 @@ describe.skipIf(!connection)("agent database port", () => {
     );
   }, 120_000);
 
-  it.each([27, 28, 29, 30, 32])(
+  it.each([27, 28, 29, 30, 32, 33, 34, 35])(
     "round-trips version %s with its historical trajectory layout and revision triggers",
     async (version) => {
       const descriptor = await agentPortProvider.loadDescriptor(undefined, version);
@@ -329,6 +329,15 @@ describe.skipIf(!connection)("agent database port", () => {
       const storeId = randomUUID();
       namespaces.add(namespace);
       await port(sqlite(source), pg(namespace), descriptor, storeId);
+      // A historical source sits below continuation's schema-36 step, so its port must not
+      // create the recipient-authority table (34 and 35 run through the renumbered descriptor).
+      expect(
+        await rows(
+          `SELECT 1 FROM information_schema.tables
+          WHERE table_schema = $1 AND table_name = 'session_recipient_authority'`,
+          [namespace],
+        ),
+      ).toEqual([]);
       const trajectoryColumns =
         version < 30
           ? {}
