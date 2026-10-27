@@ -402,7 +402,15 @@ describe("spawn-init continuation cancellation races", () => {
       if (!created) {
         throw new Error("expected created continuation flow");
       }
-      if (!(await concurrentPatch(created, { status: "running" }))) {
+      // The real dispatcher may claim this zero-delay wake between the read and the CAS; that
+      // claim is a revision bump, so re-read and promote again. A terminal flow still refuses.
+      let running = false;
+      for (let attempt = 0; attempt < 4 && !running; attempt += 1) {
+        running = await concurrentPatch(await requireRecord(created.recordId), {
+          status: "running",
+        });
+      }
+      if (!running) {
         throw new Error("expected continuation flow to enter running state");
       }
       const claim = registerContinuationDispatchClaim({
