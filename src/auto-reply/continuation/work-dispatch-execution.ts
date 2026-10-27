@@ -34,6 +34,7 @@ const CONTINUATION_TURN_DRAINING_REASON = "draining";
 // Non-retryable: the no-op replay guard tripped. The row is
 // terminal-parked (superseded) so the self-rearm loop stops; never requeued.
 const CONTINUATION_TURN_NOOP_REARM_BLOCKED_REASON = "noop-rearm-blocked";
+const CONTINUATION_TURN_REPLY_RUN_FAILED_REASON = "reply-run-failed";
 const CONTINUATION_TURN_RESET_REASON = "session-reset";
 const CONTINUATION_TURN_LIFECYCLE_CHANGED_REASON = "session-lifecycle-changed";
 const CONTINUATION_TURN_STALE_CLAIM_REASON = "stale-claim";
@@ -370,33 +371,68 @@ async function driveContinuationTurn(
   ) {
     return { status: "skipped", reason: CONTINUATION_TURN_LIFECYCLE_CHANGED_REASON };
   }
-  const reply = await runWithDiagnosticTraceparent(work.traceparent, () =>
-    getReplyFromConfig(
-      {
-        Body: wakeText,
-        BodyForCommands: wakeText,
-        CommandBody: wakeText,
-        Provider: "system",
-        Surface: "system",
-        From: "system",
-        To: "agent",
-        SessionKey: work.sessionKey,
-        RuntimePolicySessionKey: work.sessionKey,
-        ...(agentId ? { AgentId: agentId } : {}),
-      },
-      {
-        continuationTrigger: "work-wake",
-        abortSignal: signal,
-        parentRunId: work.parentRunId,
-        lane: continuationLane,
-        typingPolicy: "system_event",
-        suppressTyping: true,
-      },
-      cfg,
-    ),
-  );
-  if (!hasNonDrainReplyPayload(reply) && isGatewayDraining()) {
-    return { status: "skipped", reason: CONTINUATION_TURN_DRAINING_REASON };
+  let replyRunId: string | undefined;
+  let replyRunTerminalOutcome: "completed" | "failed" | undefined;
+  let reply: Awaited<ReturnType<typeof getReplyFromConfig>>;
+  try {
+    reply = await runWithDiagnosticTraceparent(work.traceparent, () =>
+      getReplyFromConfig(
+        {
+          Body: wakeText,
+          BodyForCommands: wakeText,
+          CommandBody: wakeText,
+          Provider: "system",
+          Surface: "system",
+          From: "system",
+          To: "agent",
+          SessionKey: work.sessionKey,
+          RuntimePolicySessionKey: work.sessionKey,
+          ...(agentId ? { AgentId: agentId } : {}),
+        },
+        {
+          continuationTrigger: "work-wake",
+          abortSignal: signal,
+          parentRunId: work.parentRunId,
+          lane: continuationLane,
+          typingPolicy: "system_event",
+          suppressTyping: true,
+          onPreparedAgentRunStart: ({ runId }) => {
+            replyRunId = runId;
+            replyRunTerminalOutcome = undefined;
+          },
+          onAgentRunTerminalOutcome: (outcome) => {
+            replyRunTerminalOutcome = outcome;
+          },
+        },
+        cfg,
+      ),
+    );
+  } catch (error) {
+    // A started run may already have spawned children or committed tools. Never
+    // replay that hop merely because its reply path threw after admission.
+    if (!replyRunId || signal.aborted) {
+      throw error;
+    }
+    log.warn(
+      `[continuation:work-reply-run-failed] flowId=${work.flowId ?? "none"} session=${work.sessionKey} runId=${replyRunId} terminal=${replyRunTerminalOutcome ?? "none"}`,
+    );
+    return { status: "skipped", reason: CONTINUATION_TURN_REPLY_RUN_FAILED_REASON };
+  }
+  if (replyRunId && replyRunTerminalOutcome !== "completed") {
+    return { status: "skipped", reason: CONTINUATION_TURN_REPLY_RUN_FAILED_REASON };
+  }
+  if (!hasNonDrainReplyPayload(reply)) {
+    if (isGatewayDraining()) {
+      return { status: "skipped", reason: CONTINUATION_TURN_DRAINING_REASON };
+    }
+    log.info(
+      `[continuation:work-empty-reply] flowId=${work.flowId ?? "none"} session=${work.sessionKey} runId=${replyRunId ?? "none"} terminal=${replyRunTerminalOutcome ?? "none"}`,
+    );
+    // Silent continuation and message-tool-only turns may legitimately return no
+    // payload. Only a completed reply run proves that such a wake was granted.
+    if (!replyRunId) {
+      throw new Error("Continuation reply returned without a completed reply run");
+    }
   }
   // The provider ran. Persist the replay guard before finishing, then advance
   // only with the committed revision-bearing value returned by the CAS.
