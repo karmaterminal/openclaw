@@ -8,6 +8,7 @@ import { requireNodeSqlite } from "../infra/node-sqlite.js";
 import type { EngineConnection } from "../infra/sql-connection.js";
 import { readSqliteUserVersion } from "../infra/sqlite-user-version.js";
 import { withoutAgentColdArchiveChunks } from "./openclaw-agent-cold-archive-chunks-schema.js";
+import { agentEngineSchema } from "./openclaw-agent-db-engine.js";
 import { withAgentDatabaseMaintenanceLease } from "./openclaw-agent-db-maintenance-lease.js";
 import {
   closeOpenClawAgentDatabasesForTest,
@@ -219,6 +220,16 @@ describe("openclaw agent database", () => {
         .prepare("SELECT session_key, epoch FROM session_recipient_authority WHERE session_key = ?")
         .get(validKey),
     ).toEqual({ session_key: validKey, epoch });
+  });
+
+  // Upstream freezes its historical PostgreSQL schemas byte for byte; the authority statement must
+  // leave with its blank-line separator or every predecessor carries a doubled one.
+  it("derives every historical PostgreSQL schema without a doubled separator", () => {
+    for (const migration of agentEngineSchema.postgresMigrations ?? []) {
+      expect(migration.fromSchema.postgres, `schema ${migration.version - 1}`).not.toContain(
+        "\n\n\n",
+      );
+    }
   });
 
   it("creates a fresh database at schema 38 with recipient authority", () => {

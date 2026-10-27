@@ -42,7 +42,10 @@ export function sessionRecipientAuthorityPostgresSql(postgres: string): string {
   return statement;
 }
 
-/** PostgreSQL schemas before the authority step. */
+/**
+ * PostgreSQL schemas before the authority step. The statement's blank-line separator leaves with
+ * it, so each historical schema is upstream's exact text.
+ */
 export function withoutSessionRecipientAuthorityPostgresSchema(postgres: string): string {
-  return postgres.replace(sessionRecipientAuthorityPostgresSql(postgres), "");
+  return postgres.replace(`${sessionRecipientAuthorityPostgresSql(postgres)}\n`, "");
 }
