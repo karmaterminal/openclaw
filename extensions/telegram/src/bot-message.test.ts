@@ -334,9 +334,7 @@ describe("telegram bot message processor", () => {
     const sendMessage = vi.fn().mockResolvedValue(undefined);
     const { processMessage, runtimeError, dispatchError } = createDispatchFailureHarness(
       {
-        chatId: 123,
         threadSpec: { id: 456, scope: "forum" },
-        route: { sessionKey: "agent:main:main" },
       },
       sendMessage,
     );
@@ -735,10 +733,7 @@ describe("telegram bot message processor", () => {
   it("aborts an isolated queued retry when its outer spool owner is cancelled", async () => {
     buildTelegramMessageContext.mockResolvedValue(createMessageContext());
     const outerAbortController = new AbortController();
-    let markDeferred: (() => void) | undefined;
-    const deferred = new Promise<void>((resolve) => {
-      markDeferred = resolve;
-    });
+    const { promise: deferred, resolve: markDeferred } = Promise.withResolvers<void>();
     let queuedAbortSignal: AbortSignal | undefined;
     dispatchTelegramMessage.mockImplementationOnce(async ({ turnAdoptionLifecycle }) => {
       const turnAbortSignal = turnAdoptionLifecycle?.abortSignal;
@@ -773,13 +768,7 @@ describe("telegram bot message processor", () => {
 
   it("does not record buffered spooled replay failures into the ambient update frame", async () => {
     const sendMessage = vi.fn().mockResolvedValue(undefined);
-    const { processMessage, dispatchError } = createDispatchFailureHarness(
-      {
-        chatId: 123,
-        route: { sessionKey: "agent:main:main" },
-      },
-      sendMessage,
-    );
+    const { processMessage, dispatchError } = createDispatchFailureHarness({}, sendMessage);
 
     const frame = await runWithTelegramUpdateProcessingFrame(async () =>
       processSampleMessage(processMessage, undefined, {}, { spooledReplay: true }),
@@ -793,9 +782,7 @@ describe("telegram bot message processor", () => {
     const sendMessage = vi.fn().mockResolvedValue(undefined);
     const { processMessage, dispatchError } = createDispatchFailureHarness(
       {
-        chatId: 123,
         threadSpec: { id: 1, scope: "forum" },
-        route: { sessionKey: "agent:main:main" },
       },
       sendMessage,
     );
@@ -813,10 +800,7 @@ describe("telegram bot message processor", () => {
   it("swallows fallback delivery failures after dispatch throws", async () => {
     const sendMessage = vi.fn().mockRejectedValue(new Error("blocked by user"));
     const { processMessage, runtimeError, dispatchError } = createDispatchFailureHarness(
-      {
-        chatId: 123,
-        route: { sessionKey: "agent:main:main" },
-      },
+      {},
       sendMessage,
     );
     const result = await processSampleMessage(processMessage);

@@ -43,6 +43,7 @@ import {
 import {
   getAcceptedChatHistorySession,
   getChatHistoryLoadState,
+  isChatHistoryLoading,
   isChatHistoryRetrying,
 } from "./chat-history-state.ts";
 import { createMobileSheetScrollFades } from "./chat-mobile-scroll-fades.ts";
@@ -223,7 +224,6 @@ export abstract class ChatPaneStateOwner {
   sessionKey = "";
   // This session-keyed pane retains its initial skeleton through URL canonicalization.
   routeLoadingSkeleton = false;
-  deferSnapshotRows = false;
   routeResolutionPending = false;
   agentId?: string = undefined;
   inputRegion: ChatInputRegion = "page";
@@ -282,8 +282,7 @@ export abstract class ChatPaneStateOwner {
   protected presentedChanged(_presented: boolean): void {}
   /** True while the authoritative transcript for this pane is still being fetched. */
   get transcriptLoading(): boolean {
-    const phase = this.state ? getChatHistoryLoadState(this.state).phase : "idle";
-    return phase === "pending-connection" || phase === "in-flight";
+    return Boolean(this.state && isChatHistoryLoading(getChatHistoryLoadState(this.state)));
   }
   /** Scoped transient recovery is presented once in the shell connection indicator. */
   get historyRecovering(): boolean {
@@ -476,11 +475,9 @@ export abstract class ChatPaneStateOwner {
   ) {
     const sessions = target ? this.swarm.hydrator?.rows : undefined;
     return {
-      swarm: target && this.swarm.enabled ? { ...target, sessions: sessions ?? [] } : undefined,
       subagentSessions: sessions,
       subagentSessionsHydrated: Boolean(target && this.swarm.hydrator?.hydrated),
       subagentSessionsPending: Boolean(target && this.swarm.hydrator?.pendingChildRead),
-      subagentSessionsRead: Boolean(target && this.swarm.hydrator?.childrenRead),
       // Carry the admitted owner forward; route aliases do not identify child ancestry.
       subagentParentKey: target
         ? scopedSessionArtifactKey(target.sessionKey, target.agentId)
@@ -610,6 +607,12 @@ export abstract class ChatPaneStateOwner {
     const sessionKey = this.state?.sessionKey;
     if (sessionKey) {
       this.context.placementStartup.retry(sessionKey);
+    }
+  };
+  protected readonly discardSessionPlacementStartup = () => {
+    const sessionKey = this.state?.sessionKey;
+    if (sessionKey) {
+      this.context.placementStartup.discard(sessionKey);
     }
   };
   protected headerRenameInitialValue = "";
