@@ -12,6 +12,7 @@ import { replaceSessionEntry } from "../../config/sessions/session-accessor.js";
 import type { InternalSessionEntry } from "../../config/sessions/types.js";
 import { createUserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
 import { getReplyPayloadMetadata } from "../reply-payload.js";
+import { createReplyContinuationController } from "./agent-runner-continuation.js";
 import { executePreparedReplyAgentRun } from "./agent-runner-execute.js";
 import {
   createFollowupRun,
@@ -110,6 +111,11 @@ it("settles a reply visibly when the reactivation cohort changes before replacem
     sessionId: target.sessionId,
   });
   followupRun.userTurnTranscriptRecorder = recorder;
+  const setActiveSessionEntry = (next: InternalSessionEntry | undefined) => {
+    if (next) {
+      entry = next;
+    }
+  };
   const result = await executePreparedReplyAgentRun({
     ...createMinimalRunAgentTurnParams({
       followupRun,
@@ -118,11 +124,21 @@ it("settles a reply visibly when the reactivation cohort changes before replacem
     }),
     ...target,
     ...admission,
+    continuation: createReplyContinuationController({
+      cfg: getRuntimeConfig(),
+      sessionKey,
+      storePath: undefined,
+      isContinuationWake: false,
+      activeSessionStore: undefined,
+      getActiveSessionEntry: () => entry,
+      setActiveSessionEntry,
+    }),
     replyOperation,
     activeIsNewSession: false,
     activeSessionStore: undefined,
     cfg: getRuntimeConfig(),
     defaultModel: "test",
+    isContinuationWake: false,
     queueKey: sessionKey,
     resolvedQueue: { mode: "followup" },
     shouldInjectGroupIntro: false,
@@ -134,6 +150,7 @@ it("settles a reply visibly when the reactivation cohort changes before replacem
     typing: createMockTypingController(),
     typingMode: "never",
     getActiveSessionEntry: () => entry,
+    setActiveSessionEntry,
     isRestartRecoveryArmed: admission.isArmed,
     onCompactionNoticePayload: () => {},
     resolveVisibleReplyDelivery: async () => false,
