@@ -20,6 +20,7 @@ const PendingWorkStateSchema = z.object({
   chainId: z.string().optional(),
   traceparent: z.string().optional(),
   traceparentProvenance: z.literal("internal").optional(),
+  operatorAuthorityRequired: z.boolean().optional(),
   // Finalization anchor + provenance. Origin identity is audit-only and must
   // stay separate from parentRunId so same-session work never becomes orphan-
   // reap eligible through its electing run.
@@ -90,6 +91,7 @@ export type PendingContinuationWork = {
   anchorFinalizedAt?: number;
   originRunId?: string;
   originTurnId?: string;
+  operatorAuthorityRequired?: boolean;
   deliveredAt?: number;
   foldedAt?: number;
   overdueByMs?: number;
@@ -166,6 +168,7 @@ export function encodeWorkState(work: PendingContinuationWork): PendingWorkState
     ...(traceparent ? { traceparent, traceparentProvenance: "internal" as const } : {}),
     ...(work.originRunId ? { originRunId: work.originRunId } : {}),
     ...(work.originTurnId ? { originTurnId: work.originTurnId } : {}),
+    ...(work.operatorAuthorityRequired ? { operatorAuthorityRequired: true } : {}),
     // a continue_work captured during an active turn parks on the
     // end-of-turn lifecycle event from the moment it is enqueued, so the marker
     // must survive the durable write (not just live on the runtime object).
@@ -192,6 +195,7 @@ export function buildFallbackWorkState(work: PendingContinuationWork): PendingWo
     ...(work.anchorFinalizedAt !== undefined ? { anchorFinalizedAt: work.anchorFinalizedAt } : {}),
     ...(work.originRunId ? { originRunId: work.originRunId } : {}),
     ...(work.originTurnId ? { originTurnId: work.originTurnId } : {}),
+    ...(work.operatorAuthorityRequired ? { operatorAuthorityRequired: true } : {}),
   };
 }
 
@@ -224,6 +228,7 @@ export function workToRuntime(
       : {}),
     ...(state.originRunId ? { originRunId: state.originRunId } : {}),
     ...(state.originTurnId ? { originTurnId: state.originTurnId } : {}),
+    ...(state.operatorAuthorityRequired ? { operatorAuthorityRequired: true } : {}),
     ...(state.deliveredAt !== undefined ? { deliveredAt: state.deliveredAt } : {}),
     ...(state.foldedAt !== undefined ? { foldedAt: state.foldedAt } : {}),
     ...(state.overdueByMs !== undefined ? { overdueByMs: state.overdueByMs } : {}),

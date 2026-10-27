@@ -28,6 +28,7 @@ const observedDetachedAuthority: Array<{
   requestClient: boolean;
   resolver: boolean;
 }> = [];
+const observedOperatorScopes: string[][] = [];
 // test state: toggle continuation enablement (disabled-gate), capture the
 // active diagnostic traceparent at reply time (traceparent re-entry), and force
 // a revision race after the turn ran (failed durable delivered-mark).
@@ -273,6 +274,9 @@ vi.mock("../reply/get-reply.js", () => ({
         resolver: scope?.resolveGatewayContext !== undefined,
       };
     }
+    const { readOperatorToolGatewayAuthority } =
+      await import("../../gateway/operator-tool-gateway-authority.js");
+    observedOperatorScopes.push([...(readOperatorToolGatewayAuthority()?.scopes ?? [])]);
     if (observeSubordinateAdmission) {
       const { isGatewaySubordinateWorkAdmissionClosed } =
         await import("../../process/gateway-work-admission.js");
@@ -572,6 +576,7 @@ describe("durable continuation_work dispatch", () => {
     observeSubordinateAdmission = false;
     observedSubordinateAdmissionClosed.length = 0;
     observedDetachedAuthority.length = 0;
+    observedOperatorScopes.length = 0;
     for (const key of Object.keys(mockSessionStore)) {
       delete mockSessionStore[key];
     }
@@ -837,5 +842,87 @@ describe("durable continuation_work dispatch", () => {
   });
   it("does not inherit settled request authority into a detached wake", async () => {
     await runDetachedAuthorityFossil({ mockSessionStore, observedDetachedAuthority, turnGrants });
+  });
+
+  it("re-enters retained role limits for an accepted operator wake", async () => {
+    const sessionKey = "agent:main:role-limited-wake";
+    mockSessionStore[sessionKey] = { sessionKey };
+    const { runWithOperatorToolGatewayAuthority } =
+      await import("../../gateway/operator-tool-gateway-authority.js");
+    const controller = new AbortController();
+    const custody = {
+      operatorAuthority: {},
+      assertCurrent: () => controller.signal.throwIfAborted(),
+      release: vi.fn(),
+      run: <T>(run: () => T): T =>
+        runWithOperatorToolGatewayAuthority(
+          {
+            scopes: ["operator.read"],
+            signal: controller.signal,
+            assertCurrent: () => controller.signal.throwIfAborted(),
+          },
+          run,
+        ),
+    };
+    await scheduleContinuationWork({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      request: { reason: "role-limited", delaySeconds: 0, operatorContinuation: custody },
+      config: { ...config, minDelayMs: 0, defaultDelayMs: 0 },
+    });
+    expect((await custodyRecords(sessionKey))[0]?.stateJson).toMatchObject({
+      operatorAuthorityRequired: true,
+    });
+    const result = await dispatchPendingContinuationWork({ sessionKey });
+    expect(result.dispatched).toBe(1);
+    expect(observedOperatorScopes).toEqual([["operator.read"]]);
+    expect(custody.release).toHaveBeenCalledOnce();
+  });
+
+  it("refuses a revoked or lost retained operator source without running the model", async () => {
+    const sessionKey = "agent:main:revoked-operator-wake";
+    mockSessionStore[sessionKey] = { sessionKey };
+    const controller = new AbortController();
+    const custody = {
+      operatorAuthority: {},
+      assertCurrent: () => controller.signal.throwIfAborted(),
+      release: vi.fn(),
+      run: <T>(run: () => T): T => run(),
+    };
+    await scheduleContinuationWork({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      request: { reason: "revoked", delaySeconds: 0, operatorContinuation: custody },
+      config: { ...config, minDelayMs: 0, defaultDelayMs: 0 },
+    });
+    controller.abort(new Error("operator revoked"));
+    const result = await dispatchPendingContinuationWork({ sessionKey });
+    expect(result.failed).toBe(1);
+    expect(turnGrants).toHaveLength(0);
+    expect((await custodyRecords())[0]?.status).toBe("failed");
+    expect(custody.release).toHaveBeenCalledOnce();
+  });
+
+  it("fails closed when durable operator work survives but volatile custody does not", async () => {
+    const sessionKey = "agent:main:recovered-operator-wake";
+    mockSessionStore[sessionKey] = { sessionKey };
+    const custody = {
+      operatorAuthority: {},
+      assertCurrent: vi.fn(),
+      release: vi.fn(),
+      run: <T>(run: () => T): T => run(),
+    };
+    await scheduleContinuationWork({
+      sessionKey,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      request: { reason: "recover", delaySeconds: 0, operatorContinuation: custody },
+      config: { ...config, minDelayMs: 0, defaultDelayMs: 0 },
+    });
+    resetContinuationWorkDispatchForTests();
+    const result = await dispatchPendingContinuationWork({ sessionKey });
+    expect(result.failed).toBe(1);
+    expect(turnGrants).toHaveLength(0);
+    expect((await custodyRecords(sessionKey))[0]?.status).toBe("failed");
+    expect(custody.release).toHaveBeenCalledOnce();
   });
 });

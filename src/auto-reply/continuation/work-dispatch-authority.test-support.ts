@@ -29,7 +29,7 @@ export async function runDetachedAuthorityFossil(params: {
       assertCurrent: () => {
         throw new Error("Gateway caller authority is no longer active.");
       },
-    } as Parameters<typeof runWithOperatorToolGatewayAuthority>[0],
+    } as unknown as Parameters<typeof runWithOperatorToolGatewayAuthority>[0],
     () =>
       withPluginRuntimeGatewayRequestScope(
         {

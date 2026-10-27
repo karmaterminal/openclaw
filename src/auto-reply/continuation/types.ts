@@ -221,6 +221,13 @@ export type ContinueWorkRequest = {
   delaySeconds: number;
   /** Runtime-captured diagnostic context. Never populated from model/tool arguments. */
   traceparent?: string;
+  /** Live, non-serializable policy custody captured when the tool was accepted. */
+  operatorContinuation?: {
+    operatorAuthority?: unknown;
+    assertCurrent: () => void;
+    run: <T>(run: () => T) => T;
+    release: () => void;
+  };
 };
 
 // ---------------------------------------------------------------------------
