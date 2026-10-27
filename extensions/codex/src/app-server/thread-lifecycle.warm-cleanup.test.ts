@@ -52,7 +52,7 @@ function createParams(sessionFile: string, workspaceDir: string) {
 setupRunAttemptTestHooks({ isolateNativeSkillHome: true });
 
 describe("Codex warm subscription cleanup", () => {
-  it("releases a warm claim when the lifecycle binding lease fails after preparation", async () => {
+  it("releases a warm claim when lease settlement fails after preparation", async () => {
     const params = createParams(
       path.join(tempDir, "warm-lease-loss.jsonl"),
       path.join(tempDir, "workspace"),
@@ -70,13 +70,19 @@ describe("Codex warm subscription cleanup", () => {
     const common = { client: fixture.client, params, userMcpServersEnabled: false };
     const started = await startOrResumeThread(common);
     expect(await retainWarmThread(fixture.client, started)).toBe(true);
+    const resumesBeforeFailure = fixture.request.mock.calls.filter(
+      ([method]) => method === "thread/resume",
+    ).length;
 
     const withLease = testCodexAppServerBindingStore.withLease.bind(testCodexAppServerBindingStore);
-    const lostLease = new Error("Lost Codex binding lease after warm preparation");
+    const lostLease = new Error("Lease settlement failed after warm preparation");
     const fault = vi
       .spyOn(testCodexAppServerBindingStore, "withLease")
       .mockImplementationOnce(async (identity, run, options) => {
-        await withLease(identity, run, options);
+        const prepared = await withLease(identity, run, options);
+        // Prove the failure lands after warm ownership transfers, not on a cold resume.
+        expect(isCodexAppServerLiveThreadClaimed(fixture.client, threadId)).toBe(true);
+        expect(prepared).toMatchObject({ liveThreadOwnership: expect.any(Object) });
         throw lostLease;
       });
     try {
@@ -85,6 +91,9 @@ describe("Codex warm subscription cleanup", () => {
       fault.mockRestore();
     }
     expect(isCodexAppServerLiveThreadClaimed(fixture.client, threadId)).toBe(false);
+    expect(
+      fixture.request.mock.calls.filter(([method]) => method === "thread/resume"),
+    ).toHaveLength(resumesBeforeFailure);
     const retry = await startOrResumeThread(common);
     expect(retry).toMatchObject({ threadId, lifecycle: { action: "resumed" } });
     await retry.liveThreadOwnership?.release(threadId);
