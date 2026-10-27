@@ -115,6 +115,8 @@ export type SessionEventOptions = {
   readmissionAttempt?: number;
   /** An explicitly silent source records its result without transport delivery. */
   deliver?: boolean;
+  /** Producer-owned terminal policy; only explicit silent continuation wakes may opt out. */
+  replyExpectation?: "optional";
   /**
    * Continuation (karmaterminal): wake lineage the turn's reply options carry, so a delegate
    * return keeps its chain budget (see continuation/continuation-wake.ts).

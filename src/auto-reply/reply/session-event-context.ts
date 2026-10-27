@@ -68,7 +68,12 @@ export function buildSessionEventContext(params: {
   text: string;
   options: Pick<
     SessionEventOptions,
-    "source" | "sourceTurnId" | "sourceRunId" | "readmissionAttempt" | "scheduledAutomation"
+    | "source"
+    | "sourceTurnId"
+    | "sourceRunId"
+    | "readmissionAttempt"
+    | "scheduledAutomation"
+    | "replyExpectation"
   >;
   occurrenceId: string;
   deliveryContext?: DeliveryContext;
@@ -83,6 +88,7 @@ export function buildSessionEventContext(params: {
     Body: text,
     BodyForAgent: text,
     InternalTurnSource: "event",
+    InternalEventReplyExpectation: options.replyExpectation,
     BodyForCommands: "",
     CommandBody: "",
     RawBody: "",
