@@ -916,6 +916,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/continuation/work-dispatch.durable-5.test.ts",
   "src/auto-reply/continuation/work-dispatch.durable-6.test.ts",
   "src/auto-reply/continuation/work-dispatch.durable-7.test.ts",
+  "src/auto-reply/continuation/work-dispatch.durable-8.test.ts",
   "src/auto-reply/continuation/work-dispatch.finalization-1.test.ts",
   "src/auto-reply/continuation/work-dispatch.finalization-2.test.ts",
   "src/auto-reply/continuation/work-dispatch.parent-lineage-and-restart.test.ts",
