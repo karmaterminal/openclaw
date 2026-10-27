@@ -151,11 +151,12 @@ export function buildSubagentSpawnEnvelope(params: {
     );
   }
 
+  const continuationLines: string[] = [];
   if (canSpawn && params.continuationEnabled) {
     const toolPrimaryContinuation = params.toolNames?.includes("continue_delegate") === true;
-    lines.push("## Continuation Chaining");
+    continuationLines.push("## Continuation Chaining");
     if (toolPrimaryContinuation) {
-      lines.push(
+      continuationLines.push(
         "Use the `continue_delegate` tool to keep a delegate branch moving without making the parent relay every hop.",
         "The tool supports structured parameters (`task`, `delaySeconds`, `mode`, `attachments`, `attachAs`) and multi-delegate fan-out.",
         "The typed `continue_delegate` tool can carry inline attachments into its new child workspace.",
@@ -172,7 +173,7 @@ export function buildSubagentSpawnEnvelope(params: {
         "",
       );
     } else {
-      lines.push(
+      continuationLines.push(
         "To dispatch a follow-up sub-agent from your output, end your ENTIRE response with:",
         "  [[CONTINUE_DELEGATE: task description]]",
         "",
@@ -193,7 +194,7 @@ export function buildSubagentSpawnEnvelope(params: {
   // Teach continue_work regardless of canSpawn — any subagent with continuation
   // enabled can elect its own next turn within the same session.
   if (params.continuationEnabled && params.toolNames?.includes("continue_work")) {
-    lines.push(
+    continuationLines.push(
       "## Self-Continuation",
       "Use `continue_work` to take another turn in this same session.",
       "This keeps your working context intact across turns (no state packing needed).",
@@ -209,7 +210,12 @@ export function buildSubagentSpawnEnvelope(params: {
     params.spawnMode === "run" &&
     isCronSessionKey(params.requesterSessionKey);
   return {
-    systemPrompt: buildSubagentStandingInstructions(params),
+    // Continuation guidance follows the standing policy as its own section, so the
+    // runner still strips the exact standing prefix it rebuilds on later turns.
+    systemPrompt: [
+      buildSubagentStandingInstructions(params),
+      ...(continuationLines.length ? [continuationLines.join("\n")] : []),
+    ].join("\n\n"),
     // Keep per-spawn identity after the shared system/tool prefix, with the task it describes.
     message: buildSubagentTaskMessage({
       ...params,
