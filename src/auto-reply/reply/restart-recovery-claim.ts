@@ -5,9 +5,9 @@ import { normalizeOptionalString } from "@openclaw/normalization-core/string-coe
 import { createRestartRecoveryOperatorSource } from "../../agents/operator-run-recovery-source.js";
 import { captureRequesterOrigin } from "../../agents/requester-origin.js";
 import { createRestartRecoveryRequesterSource } from "../../agents/requester-run-recovery-source.js";
+import { canReplaceAbortedRestartRecoveryClaim } from "../../config/sessions/restart-recovery-current-generation-stop.js";
 import {
   buildRestartRecoveryClaimCleanupPatch,
-  canReplaceAbortedRestartRecoveryClaim,
   getRestartRecoveryPendingFinalSourceRunId,
   hasRestartRecoverySourceClaim,
   hasRestartRecoveryTerminalRun,
@@ -466,15 +466,15 @@ export function createReplyRestartRecoveryClaimController(
       return "admitted";
     }
     const updatedAt = Date.now();
-    const canReplaceAbortedClaim = canReplaceAbortedRestartRecoveryClaim(
+    const replaceable = canReplaceAbortedRestartRecoveryClaim(
       entry,
-      params.sessionKey,
+      isMainRestartRecoveryCandidate(entry, params.sessionKey),
       admissionRunId,
       executionGeneration,
     );
     if (
       activeClaimRunId &&
-      !canReplaceAbortedClaim &&
+      !replaceable &&
       (entry.abortedLastRun === true ||
         !isTerminalSessionStatus(entry.status) ||
         entry.status === "interrupted" ||
@@ -490,9 +490,7 @@ export function createReplyRestartRecoveryClaimController(
         })
       : {};
     const transfersControlUiClaim =
-      canReplaceAbortedClaim &&
-      entry.restartRecoverySourceIngress === "control-ui" &&
-      !deliveryContext;
+      replaceable && entry.restartRecoverySourceIngress === "control-ui" && !deliveryContext;
     const hasClaim =
       deliveryContext || transfersControlUiClaim || operatorSource || requesterSource;
     const patch: SessionTranscriptTurnLifecyclePatch = {

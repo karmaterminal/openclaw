@@ -1,3 +1,4 @@
+import { normalizeOptionalString as normalizeRunId } from "@openclaw/normalization-core/string-coerce";
 import type { InternalSessionEntry, SessionEntry } from "./types.js";
 
 /**
@@ -15,5 +16,29 @@ export function isMainSessionCurrentGenerationStop(
     entry.mainRestartRecovery === undefined &&
     entry.restartRecoveryRuns?.some((run) => run.lifecycleGeneration !== lifecycleGeneration) !==
       true
+  );
+}
+
+/** A new turn may retire an aborted claim only when restart recovery will not resume it. */
+export function canReplaceAbortedRestartRecoveryClaim(
+  entry: SessionEntry,
+  isMainRecoveryCandidate: boolean,
+  admissionRunId: string | undefined,
+  lifecycleGeneration: string,
+): boolean {
+  const activeClaimRunId = normalizeRunId(entry.restartRecoveryDeliveryRunId);
+  return Boolean(
+    admissionRunId &&
+    activeClaimRunId &&
+    admissionRunId !== activeClaimRunId &&
+    entry.abortedLastRun === true &&
+    entry.pendingFinalDelivery === undefined &&
+    entry.restartRecoveryBeforeAgentReplyState === undefined &&
+    entry.restartRecoveryDeliveryReceiptState === undefined &&
+    // Session recovery resumes its claims before new input. Other lifecycle owners
+    // must be able to replace an interrupted claim when admitting a new turn.
+    (((entry.status === undefined || entry.status === "interrupted") &&
+      (entry.restartRecoverySourceIngress === "control-ui" || !isMainRecoveryCandidate)) ||
+      isMainSessionCurrentGenerationStop(entry, lifecycleGeneration)),
   );
 }
