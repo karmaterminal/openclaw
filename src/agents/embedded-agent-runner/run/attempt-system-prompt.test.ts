@@ -309,6 +309,47 @@ describe("buildAttemptSystemPrompt", () => {
       }),
   );
 
+  // Continuation (karmaterminal): a continuation-enabled child's launch prompt keeps its
+  // chaining guidance once, after the standing policy prepare rebuilds and strips.
+  it("keeps a continuation child's guidance once after its standing policy on launch", async () =>
+    withOpenClawTestState({ label: "continuation-guidance" }, async () => {
+      const config = {
+        agents: { defaults: { subagents: { maxSpawnDepth: 2 }, continuation: { enabled: true } } },
+      };
+      setRuntimeConfigSnapshot(config);
+      const childSessionKey = "agent:main:subagent:continuation-guidance";
+      await upsertSessionEntryCore(
+        { sessionKey: childSessionKey },
+        { sessionId: "continuation-guidance", updatedAt: 1, spawnDepth: 1 },
+      );
+      const child = buildSubagentSpawnEnvelope({
+        completionMode: "announce",
+        spawnMode: "run",
+        childDepth: 1,
+        maxSpawnDepth: 2,
+        task: "Inspect synthetic inputs.",
+        childSessionKey,
+        continuationEnabled: true,
+        toolNames: ["continue_work", "continue_delegate"],
+      });
+      const { prepared } = await preparePermissionPrompt({
+        attemptOverrides: {
+          sessionKey: childSessionKey,
+          promptMode: "minimal",
+          config,
+          cleanupBundleMcpOnRunEnd: true,
+          extraSystemPrompt: child.systemPrompt,
+        },
+      });
+      const system = prepared.systemPromptText;
+      expect(system.match(/(?<!#)# Subagent Context/g)).toHaveLength(1);
+      expect(system.match(/## Continuation Chaining/g)).toHaveLength(1);
+      expect(system.match(/## Self-Continuation/g)).toHaveLength(1);
+      expect(system.indexOf("# Subagent Context")).toBeLessThan(
+        system.indexOf("## Continuation Chaining"),
+      );
+    }));
+
   it("keeps watched membership and titles out of the system prefix across turns and refresh", async () => {
     await withOpenClawTestState({ label: "watched-turn-context" }, async () => {
       setRuntimeConfigSnapshot({});
