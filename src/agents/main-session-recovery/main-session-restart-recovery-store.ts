@@ -27,7 +27,6 @@ import { readRestartRecoveryRequesterSource } from "../requester-run-recovery-so
 import { isMainRestartRecoveryTerminalOnly } from "./main-session-recovery-state.js";
 import { commitMainSessionRecovery } from "./main-session-recovery-store.js";
 import type { ResumeMainSessionParams } from "./main-session-restart-dispatch.types.js";
-import { retireMainSessionLiveInterruptionWithoutRestartEvidence } from "./main-session-restart-live-interruption.js";
 import {
   completePendingFinalRecoveryWithNotice,
   markSessionCompletedAfterRecoveryCheckpoint,
@@ -54,7 +53,7 @@ import {
   prepareRequesterRestartRecovery,
   finishDelegatedRestartRecovery,
   settleFailedWorkerRestartRecovery,
-  tombstoneMainRestartRecoveryWithNotice,
+  tombstoneUnreplayableMainRestartRecovery,
 } from "./main-session-restart-recovery-failure.js";
 import {
   hasReplaySafeCodeModeCheckpointInCurrentTurn,
@@ -281,36 +280,18 @@ export async function recoverStore(params: {
         if (stopped()) {
           return result;
         }
-        // A turn that failed before replying on this live Gateway is not restart work.
-        const liveInterruption = await retireMainSessionLiveInterruptionWithoutRestartEvidence({
+        const tombstone = await tombstoneUnreplayableMainRestartRecovery({
+          cfg: params.cfg,
           entry,
+          gatewayRuntime: params.gatewayRuntime,
           lifecycleGeneration,
           recoveryView,
           target,
         });
-        if (liveInterruption) {
-          skip(liveInterruption);
-          continue;
-        }
-        const tombstone = await tombstoneMainRestartRecoveryWithNotice({
-          ...target,
-          cfg: params.cfg,
-          entry,
-          gatewayRuntime: params.gatewayRuntime,
-          observation: recoveryView.observation,
-          reason:
-            recoveryView.status === "exhausted"
-              ? recoveryView.reason
-              : "message-tool-only recovery authority is unavailable",
-        });
         if (tombstone === "notice_failed") {
           result.failed++;
         } else {
-          skip(
-            recoveryView.status === "exhausted"
-              ? "exhausted"
-              : "message_action_authority_unavailable",
-          );
+          skip(tombstone);
         }
         continue;
       }

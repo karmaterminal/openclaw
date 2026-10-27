@@ -1,5 +1,6 @@
 // Continuation fleet carry (D3b): live interruptions are not restart work. Kept beside the
-// restart recovery store, which sits at its line cap, so that store only calls this owner.
+// restart recovery store, which sits at its line cap; the tombstone owner calls this before
+// tombstoning a claim recovery cannot replay.
 import type { InternalSessionEntry as SessionEntry } from "../../config/sessions.js";
 import { hasMainSessionRestartEvidence } from "./main-session-recovery-restart-evidence.js";
 import {

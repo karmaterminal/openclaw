@@ -20,6 +20,8 @@ import {
   type MainSessionRecoveryObservation,
 } from "./main-session-recovery-state.js";
 import type { MainSessionRecoveryStoreTarget } from "./main-session-recovery-store.js";
+import type { MainSessionRecoveryView } from "./main-session-recovery-types.js";
+import { retireMainSessionLiveInterruptionWithoutRestartEvidence } from "./main-session-restart-live-interruption.js";
 import { resolveRestartRecoveryDeliveryContext } from "./main-session-restart-recovery-delivery.js";
 import {
   mainSessionRecoveryLog,
@@ -444,4 +446,47 @@ export async function tombstoneMainRestartRecoveryWithNotice(params: {
     );
   }
   return "tombstoned";
+}
+
+/**
+ * Settles a claim recovery cannot replay: an exhausted claim, or one whose message-tool
+ * authority is unavailable. Returns the store's skip reason, or "notice_failed" so the next
+ * recovery pass retries the tombstone notice.
+ */
+export async function tombstoneUnreplayableMainRestartRecovery(params: {
+  cfg?: OpenClawConfig;
+  entry: SessionEntry;
+  gatewayRuntime: GatewayRecoveryRuntime;
+  lifecycleGeneration: string;
+  recoveryView: Extract<MainSessionRecoveryView, { status: "recoverable" | "exhausted" }>;
+  target: MainSessionRecoveryStoreTarget & { agentId: string };
+}): Promise<
+  | "exhausted"
+  | "live_interruption_retired"
+  | "message_action_authority_unavailable"
+  | "notice_failed"
+  | "state_changed"
+> {
+  // Continuation fleet carry (D3b): a turn that failed before replying on this live Gateway
+  // is not restart work.
+  const liveInterruption = await retireMainSessionLiveInterruptionWithoutRestartEvidence(params);
+  if (liveInterruption) {
+    return liveInterruption;
+  }
+  const { entry, recoveryView, target } = params;
+  const tombstone = await tombstoneMainRestartRecoveryWithNotice({
+    ...target,
+    cfg: params.cfg,
+    entry,
+    gatewayRuntime: params.gatewayRuntime,
+    observation: recoveryView.observation,
+    reason:
+      recoveryView.status === "exhausted"
+        ? recoveryView.reason
+        : "message-tool-only recovery authority is unavailable",
+  });
+  if (tombstone === "notice_failed") {
+    return tombstone;
+  }
+  return recoveryView.status === "exhausted" ? "exhausted" : "message_action_authority_unavailable";
 }
