@@ -58,7 +58,7 @@ export function resetWorkOperatorContinuationsForTests(): void {
 }
 
 /** Refuse missing/revoked policy custody; never retry an operator wake as system work. */
-export async function runWithWorkOperatorContinuation<T>(
+async function runWithWorkOperatorContinuation<T>(
   work: PendingContinuationWork,
   run: () => Promise<T>,
 ): Promise<T | undefined> {
