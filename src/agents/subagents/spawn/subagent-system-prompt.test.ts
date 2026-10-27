@@ -1,6 +1,9 @@
 import { expect, it } from "vitest";
 import { stripInternalRuntimeContext } from "../../internal-runtime-context.js";
-import { buildSubagentSpawnEnvelope } from "./subagent-system-prompt.js";
+import {
+  buildSubagentSpawnEnvelope,
+  buildSubagentStandingInstructions,
+} from "./subagent-system-prompt.js";
 
 const task = "UNIQUE_TASK\n  preserve indentation";
 function buildEnvelope(overrides: Partial<Parameters<typeof buildSubagentSpawnEnvelope>[0]> = {}) {
@@ -105,4 +108,19 @@ it("keeps per-spawn identity out of the system prompt so prompts stay cacheable"
     expect(stripInternalRuntimeContext(envelope.message)).toBe(task);
     expect(envelope.systemPrompt).toBe(stablePrompt);
   }
+});
+
+it("teaches continuation after the standing policy the runner rebuilds on later turns", () => {
+  const options = { childDepth: 1, maxSpawnDepth: 2 };
+  const standing = buildSubagentStandingInstructions({ ...options, spawnMode: "run" });
+  const { systemPrompt } = buildEnvelope({
+    ...options,
+    continuationEnabled: true,
+    toolNames: ["continue_work", "continue_delegate"],
+  });
+  // attempt-system-prompt-prepare strips exactly this prefix before re-adding standing policy.
+  expect(systemPrompt.startsWith(`${standing}\n\n`)).toBe(true);
+  expect(systemPrompt).toContain("Use the `continue_delegate` tool");
+  expect(systemPrompt).toContain("Use `continue_work` to take another turn in this same session.");
+  expect(buildEnvelope(options).systemPrompt).toBe(standing);
 });
