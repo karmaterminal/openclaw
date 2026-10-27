@@ -1,10 +1,19 @@
 /** Durable same-session continuation_work dispatch. */
 
 import type { SubagentRunLiveness } from "../../agents/subagents/registry/subagent-run-liveness.js";
+import {
+  withoutGatewayToolCallerIdentity,
+  getGatewayToolCallerIdentity,
+} from "../../agents/tools/gateway-caller-context.js";
+import { runOutsideOperatorToolGatewayAuthority } from "../../gateway/operator-tool-gateway-authority.js";
 import { emitContinuationWorkSpan } from "../../infra/continuation-tracer.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import {
+  withPluginRuntimeGatewayContextResolver,
+  getPluginRuntimeGatewayRequestScope,
+} from "../../plugins/runtime/gateway-request-scope.js";
 import { runWithGatewayIndependentRootWorkAdmission } from "../../process/gateway-work-admission.js";
 import { clampDelayMs, resolveContinuationRuntimeConfig } from "./config.js";
 import {
@@ -68,11 +77,26 @@ type DispatchPendingContinuationWorkParams = {
 
 // Timer and idle-wait callbacks inherit the request context that armed them.
 // Re-enter at fire time so a released parent root cannot reject the new turn.
-function dispatchPendingContinuationWorkFromDetachedCallback(
+export function dispatchPendingContinuationWorkFromDetachedCallback(
   params: DispatchPendingContinuationWorkParams,
 ): Promise<{ dispatched: number; failed: number; reaped: number }> {
-  return runWithGatewayIndependentRootWorkAdmission(
-    async () => await dispatchPendingContinuationWork(params),
+  // The timer inherits the scheduling request's async frame. Keep its Gateway
+  // owner, but never let the settled request's caller or operator grant govern
+  // a newly admitted continuation turn.
+  const requestScope = getPluginRuntimeGatewayRequestScope();
+  const resolveGatewayContext =
+    requestScope?.resolveGatewayContext ?? getGatewayToolCallerIdentity()?.gatewayContextResolver;
+  return runOutsideOperatorToolGatewayAuthority(() =>
+    withoutGatewayToolCallerIdentity(() =>
+      withPluginRuntimeGatewayContextResolver(
+        resolveGatewayContext,
+        () =>
+          runWithGatewayIndependentRootWorkAdmission(
+            async () => await dispatchPendingContinuationWork(params),
+          ),
+        { inheritRequestScope: false },
+      ),
+    ),
   );
 }
 

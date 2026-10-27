@@ -23,6 +23,11 @@ const loadSessionEntryMock = vi.fn();
 let mockStorePath = "test-store";
 let observeSubordinateAdmission = false;
 const observedSubordinateAdmissionClosed: boolean[] = [];
+const observedDetachedAuthority: Array<{
+  direct: boolean;
+  requestClient: boolean;
+  resolver: boolean;
+}> = [];
 // test state: toggle continuation enablement (disabled-gate), capture the
 // active diagnostic traceparent at reply time (traceparent re-entry), and force
 // a revision race after the turn ran (failed durable delivered-mark).
@@ -255,6 +260,19 @@ vi.mock("../../process/command-queue.js", () => ({
 vi.mock("../reply/get-reply.js", () => ({
   getReplyFromConfig: vi.fn(async (context: unknown, options: unknown, cfg: unknown) => {
     workTransitionEvents.push("provider-called");
+    if (observedDetachedAuthority.length === 1) {
+      const [{ readOperatorToolGatewayAuthority }, { getPluginRuntimeGatewayRequestScope }] =
+        await Promise.all([
+          import("../../gateway/operator-tool-gateway-authority.js"),
+          import("../../plugins/runtime/gateway-request-scope.js"),
+        ]);
+      const scope = getPluginRuntimeGatewayRequestScope();
+      observedDetachedAuthority[0] = {
+        direct: readOperatorToolGatewayAuthority() !== undefined,
+        requestClient: scope?.client !== undefined,
+        resolver: scope?.resolveGatewayContext !== undefined,
+      };
+    }
     if (observeSubordinateAdmission) {
       const { isGatewaySubordinateWorkAdmissionClosed } =
         await import("../../process/gateway-work-admission.js");
@@ -372,6 +390,7 @@ import {
   pendingDelegateCount,
 } from "./delegate-store.js";
 import type { ContinuationRuntimeConfig } from "./types.js";
+import { runDetachedAuthorityFossil } from "./work-dispatch-authority.test-support.js";
 import {
   describeWorkTransition,
   resetWorkDispatchCustodyHooks,
@@ -552,6 +571,7 @@ describe("durable continuation_work dispatch", () => {
     activeQueueHandleAvailable = true;
     observeSubordinateAdmission = false;
     observedSubordinateAdmissionClosed.length = 0;
+    observedDetachedAuthority.length = 0;
     for (const key of Object.keys(mockSessionStore)) {
       delete mockSessionStore[key];
     }
@@ -814,5 +834,8 @@ describe("durable continuation_work dispatch", () => {
     await consumePendingWork(sessionKey, { includeRunning: true });
     expect((await readCustodyRecordForTest(flow.recordId))?.status).toBe("succeeded");
     expect(hasLiveOrRecentlyDispatchedContinuationWork(sessionKey)).toBe(false);
+  });
+  it("does not inherit settled request authority into a detached wake", async () => {
+    await runDetachedAuthorityFossil({ mockSessionStore, observedDetachedAuthority, turnGrants });
   });
 });
