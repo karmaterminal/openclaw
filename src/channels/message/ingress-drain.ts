@@ -42,8 +42,13 @@ export { isIngressAdoptionLostError } from "./ingress-drain-state.js";
 /** Default claim→adoption stall before applying the shared retry disposition. */
 export const DEFAULT_INGRESS_ADOPTION_STALL_MS = 5 * 60 * 1000;
 export const DEFAULT_INGRESS_START_LIMIT = 32;
-/** Revisit a lane the pending-disposition pass held; no queue write wakes it. */
-const PENDING_DISPOSITION_RECHECK_MS = 1_000;
+/**
+ * Revisit a lane the pending-disposition pass held; no queue write wakes it.
+ * A hold can span a gateway outage, so the quiet-path recheck backs off; new
+ * work still wakes the drain at once and re-evaluates the held row.
+ */
+export const PENDING_DISPOSITION_RECHECK_MS = 1_000;
+export const PENDING_DISPOSITION_RECHECK_MAX_MS = 60_000;
 
 export type ChannelIngressDrain = {
   recoverStaleClaims: () => Promise<number>;
@@ -116,6 +121,7 @@ export function createChannelIngressDrainOwner<
   const laneKeyFor = (record: ChannelIngressQueueRecord<TPayload, TMetadata>) =>
     resolveLaneKey(record, options.deriveLaneKey, options.reconcileStoredLaneKey);
   let disposed = false;
+  let heldRecheckMs = 0;
 
   const log = (message: string) => options.onLog?.(message);
 
@@ -644,7 +650,13 @@ export function createChannelIngressDrainOwner<
       pendingLaneKeys.add(laneKey);
     }
     if (disposition.blockedLaneKeys.size > 0) {
-      retryAt = Math.min(retryAt ?? Infinity, currentTime + PENDING_DISPOSITION_RECHECK_MS);
+      heldRecheckMs =
+        heldRecheckMs === 0
+          ? PENDING_DISPOSITION_RECHECK_MS
+          : Math.min(heldRecheckMs * 2, PENDING_DISPOSITION_RECHECK_MAX_MS);
+      retryAt = Math.min(retryAt ?? Infinity, currentTime + heldRecheckMs);
+    } else {
+      heldRecheckMs = 0;
     }
     options.onRetryAt?.(retryAt);
 

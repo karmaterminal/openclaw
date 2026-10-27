@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db.js";
-import { createChannelIngressDrain } from "./ingress-drain.js";
+import {
+  createChannelIngressDrain,
+  createChannelIngressDrainOwner,
+  PENDING_DISPOSITION_RECHECK_MAX_MS,
+  PENDING_DISPOSITION_RECHECK_MS,
+} from "./ingress-drain.js";
 import { createTestIngressQueue, withTempState } from "./ingress-drain.test-helpers.js";
 
 describe("channel ingress pending disposition", () => {
@@ -425,4 +430,49 @@ describe("channel ingress pending disposition", () => {
       });
     },
   );
+  it("backs off the quiet-path recheck while a lane stays held, and resets once released", async () => {
+    await withTempState(async (stateDir) => {
+      const queue = createTestIngressQueue(stateDir);
+      await queue.enqueue(
+        "held",
+        { text: "unclassifiable yet" },
+        { laneKey: "lane:a", receivedAt: 0 },
+      );
+      const now = 1_000_000;
+      let hold = true;
+      const delays: Array<number | undefined> = [];
+      const drain = createChannelIngressDrainOwner({
+        queue,
+        now: () => now,
+        resolvePendingDisposition: () => (hold ? { kind: "defer" } : null),
+        onRetryAt: (retryAt) => delays.push(retryAt === undefined ? undefined : retryAt - now),
+        dispatchClaimedEvent: async (_claim, lifecycle) => {
+          await lifecycle.onAdopted();
+        },
+      });
+
+      // A fixed clock and nine held passes: the delay doubles, then stays at the cap.
+      for (let pass = 0; pass < 9; pass += 1) {
+        expect(await drain.drainOnce()).toEqual({ started: 0 });
+      }
+      const expected: number[] = [];
+      for (let delay = PENDING_DISPOSITION_RECHECK_MS; expected.length < 9;) {
+        expected.push(delay);
+        delay = Math.min(delay * 2, PENDING_DISPOSITION_RECHECK_MAX_MS);
+      }
+      expect(delays).toEqual(expected);
+      expect(delays.at(-1)).toBe(PENDING_DISPOSITION_RECHECK_MAX_MS);
+
+      // Released: the row starts, no recheck is scheduled, and the next hold starts over.
+      hold = false;
+      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      await drain.waitForIdle();
+      expect(delays.at(-1)).toBeUndefined();
+      hold = true;
+      await queue.enqueue("held-2", { text: "held again" }, { laneKey: "lane:b", receivedAt: 1 });
+      await drain.drainOnce();
+      expect(delays.at(-1)).toBe(PENDING_DISPOSITION_RECHECK_MS);
+      drain.dispose();
+    });
+  });
 });
