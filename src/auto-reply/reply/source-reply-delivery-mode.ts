@@ -32,6 +32,7 @@ export type SourceReplyDeliveryModeContext = Pick<
   | "WasMentioned"
   | "MentionSource"
   | "InputProvenance"
+  | "InternalEventReplyExpectation"
 >;
 
 export function isUnauthorizedTextSlashCommand(ctx: SourceReplyDeliveryModeContext): boolean {
@@ -110,6 +111,9 @@ export function resolveSourceReplyExpectation(params: {
   });
   if (commandExpectation === "result-required") {
     return commandExpectation;
+  }
+  if (params.ctx.InternalEventReplyExpectation === "optional") {
+    return "optional";
   }
   if (
     isSyntheticSourceReplyTurn({

@@ -28,6 +28,7 @@ import {
   type SystemEvent,
 } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { isSubagentSessionKey } from "../../sessions/session-key-utils.js";
 import type { ContinuationTrigger } from "../get-reply-options.types.js";
 import { enqueueSessionEventForHost } from "../reply/session-event-handoff.js";
 import { getSessionEventRuntimeConfig } from "../reply/session-event-target.js";
@@ -190,6 +191,9 @@ async function handOffContinuationWake(wake: PendingWake): Promise<void> {
             preserveOccurrenceOnRejection: true,
             ...(wake.parentRunId ? { sourceRunId: wake.parentRunId } : {}),
             ...(wake.silent ? { deliver: false } : {}),
+            ...(wake.silent && !isSubagentSessionKey(wake.sessionKey)
+              ? { replyExpectation: "optional" as const }
+              : {}),
             continuation: {
               ...(wake.continuationTrigger
                 ? { continuationTrigger: wake.continuationTrigger }

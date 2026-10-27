@@ -314,6 +314,8 @@ export type MsgContext = Partial<CanonicalInboundText> & {
   InputProvenance?: InputProvenance;
   /** Internal wake cause, independent of transport, transcript provenance, and execution authority. */
   InternalTurnSource?: "heartbeat" | "cron" | "exec" | "event" | "progress-card-refresh";
+  /** Producer-owned terminal policy for a scoped internal event. */
+  InternalEventReplyExpectation?: "optional";
   /** Explicit owner allowlist overrides (trusted, configuration-derived). */
   OwnerAllowFrom?: Array<string | number>;
   SenderName?: string;

@@ -264,6 +264,7 @@ it("keeps silent-wake enrichment transport-silent and mid-chain", async ({ signa
 
     expect(prompts).toHaveLength(1);
     expect(prompts[0]).toContain("enrichment from delegate");
+    expect(runEmbeddedAgentMock.mock.calls[0]?.[0].terminalReplyExpectation).toBe("optional");
     expect(await rowPending(row)).toBe(false);
     // Recorded in the transcript, never sent to the channel.
     expect(sendText).not.toHaveBeenCalled();
@@ -273,6 +274,32 @@ it("keeps silent-wake enrichment transport-silent and mid-chain", async ({ signa
       continuationChainId: "chain-before-wake",
     });
   });
+});
+
+it("preserves a subagent's owed result on a silent-wake return", async ({ signal }) => {
+  await withWakeFixture(
+    "silent-subagent",
+    async ({ sessionKey, prompts }) => {
+      answerTurns(prompts, "Nested result reviewed.");
+      const row = await produceReturn(sessionKey, "nested enrichment", {
+        wakeRecipients: false,
+        returnWake: { reason: "silent-wake-enrichment", parentRunId: "nested-child" },
+      });
+      requestContinuationWake({
+        sessionKey,
+        agentId: AGENT_ID,
+        reason: "silent-wake-enrichment",
+        parentRunId: "nested-child",
+        deliveryIds: [row],
+      });
+      await withinTest(settleContinuationWakesForTest(), signal);
+      expect(prompts).toHaveLength(1);
+      expect(runEmbeddedAgentMock.mock.calls[0]?.[0].terminalReplyExpectation).toBe(
+        "result-required",
+      );
+    },
+    { sessionKey: "agent:main:subagent:silent-nested-parent" },
+  );
 });
 
 it("coalesces several pending returns into one turn without merging their rows", async ({
