@@ -63,6 +63,7 @@ import {
   resolveQueueSettings,
   withSubagentRequesterDelivery,
 } from "./subagent-announce-delivery.runtime.js";
+import { withDirectAnnounceContinuationFields } from "./subagent-announce-direct-delivery.continuation.js";
 import { createDirectAnnounceResponseClassifier } from "./subagent-announce-direct-response.js";
 import {
   sourceOwnerChangedResult,
@@ -459,11 +460,7 @@ async function sendSubagentAnnounceDirectlyBound(
         sourceChannel: INTERNAL_PROVENANCE_SOURCE_CHANNEL,
         sourceTool: params.sourceTool ?? "subagent_announce",
       },
-      ...(completionSourceReplyDeliveryMode
-        ? { sourceReplyDeliveryMode: completionSourceReplyDeliveryMode }
-        : {}),
-      continuationTrigger: params.continuationTriggerOverride,
-      ...(params.traceparent ? { traceparent: params.traceparent } : {}),
+      ...withDirectAnnounceContinuationFields(completionSourceReplyDeliveryMode, params),
       idempotencyKey: params.directIdempotencyKey,
     };
     // Public completions bind the selected requester, including a nested fallback.
