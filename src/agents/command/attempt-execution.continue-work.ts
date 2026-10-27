@@ -1,10 +1,12 @@
 import { sanitizeForLog } from "../../../packages/terminal-core/src/ansi.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { runOutsideOperatorToolGatewayAuthority } from "../../gateway/operator-tool-gateway-authority.js";
 import { generateChainId } from "../../infra/secure-random.js";
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { EmbeddedAgentRunResult } from "../embedded-agent.js";
+import { withoutGatewayToolCallerIdentity } from "../tools/gateway-caller-context.js";
 
 const log = createSubsystemLogger("agents/attempt-execution");
 
@@ -101,7 +103,14 @@ export async function scheduleSpawnInitContinueWorkWake(
     enqueueSystemEvent(text, { sessionKey: params.sessionKey, trusted: true });
   };
   try {
-    await scheduleSpawnInitContinueWorkWakeOnce(params, notifyNotScheduled);
+    // An in-process launch (sessions_spawn, continue_delegate) runs this whole turn inside
+    // the spawning tool's caller frame, which expires with the parent's run. The settled
+    // run owns its continuation work; never capture custody from the launching turn.
+    await withoutGatewayToolCallerIdentity(() =>
+      runOutsideOperatorToolGatewayAuthority(() =>
+        scheduleSpawnInitContinueWorkWakeOnce(params, notifyNotScheduled),
+      ),
+    );
   } catch (error) {
     if (!sessionNotified) {
       notifyContinueWorkWakeUnconfirmed(params.sessionKey);
