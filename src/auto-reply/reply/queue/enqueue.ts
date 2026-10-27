@@ -199,7 +199,7 @@ export function enqueueFollowupRun(
         const onDropped = lifecycle.onDropped;
         if (onDropped) {
           lifecycle.onDropped = (reason) => {
-            if (mailbox.recentSources.get(recentMessageIdKey)?.input === recentInput) {
+            if (mailbox.recentSources.get(recentMessageIdKey)?.inputInstance === inputInstance) {
               mailbox.recentSources.delete(recentMessageIdKey);
             }
             return onDropped(reason);

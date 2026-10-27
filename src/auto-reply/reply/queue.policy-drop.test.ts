@@ -13,7 +13,7 @@ describe("followup queue policy drop", () => {
       await dropCommit.promise;
     });
     const abandoned = vi.fn();
-    const victim = createQueueTestRun({ prompt: "victim" });
+    const victim = createQueueTestRun({ prompt: "victim", messageId: "victim-source" });
     victim.turnAdoptionLifecycle = {
       admission: "exclusive",
       onAdopted: vi.fn(),
@@ -22,9 +22,11 @@ describe("followup queue policy drop", () => {
     };
     try {
       expect(enqueueFollowupRun(key, victim, settings)).toBe(true);
+      expect(victim.controllerInput!.mailbox.recentSources.size).toBe(1);
       expect(enqueueFollowupRun(key, createQueueTestRun({ prompt: "survivor" }), settings)).toBe(
         true,
       );
+      expect(victim.controllerInput!.mailbox.recentSources.size).toBe(0);
       expect(dropped).toHaveBeenCalledExactlyOnceWith("queue-cap-old");
       expect(abandoned).not.toHaveBeenCalled();
       const settled = vi.fn();
