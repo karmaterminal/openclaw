@@ -16,6 +16,11 @@ import {
 } from "../../infra/diagnostic-trace-context.js";
 import { createContinueWorkTool, type ContinueWorkRequest } from "./continue-work-tool.js";
 
+const captureOperatorContinuation = vi.hoisted(() => vi.fn());
+vi.mock("../../gateway/server-plugin-in-process-authority.js", () => ({
+  captureOperatorToolGatewayContinuationContext: captureOperatorContinuation,
+}));
+
 // Mock continuation config for deterministic delay resolution in tests.
 // mock-isolation: Fixed bounds stand in for the operator config; the real module loads the config loader.
 vi.mock("../../auto-reply/continuation/config.js", () => ({
@@ -82,6 +87,7 @@ function createRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
 
 describe("continue_work tool", () => {
   afterEach(() => {
+    captureOperatorContinuation.mockReset();
     resetContinuationTracer();
     resetDiagnosticTraceContextForTest();
   });
@@ -123,6 +129,27 @@ describe("continue_work tool", () => {
       status: "scheduled",
       delaySeconds: 0,
     });
+  });
+
+  it("captures live operator custody before accepting a continue_work request", async () => {
+    const custody = {
+      operatorAuthority: {},
+      assertCurrent: vi.fn(),
+      release: vi.fn(),
+      run: <T>(run: () => T): T => run(),
+    };
+    captureOperatorContinuation.mockReturnValue(Promise.resolve(custody));
+    const requestContinuation = vi.fn();
+    const tool = makeTool({ requestContinuation });
+    await tool.execute("call-operator", { reason: "bounded follow-up" });
+    expect(captureOperatorContinuation).toHaveBeenCalledWith({ sessionKey: "test-session" });
+    expect(requestContinuation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "bounded follow-up",
+        operatorContinuation: custody,
+      }),
+    );
+    expect(custody.release).not.toHaveBeenCalled();
   });
 
   it("tells models not to use continue_work for wait or park loops", () => {

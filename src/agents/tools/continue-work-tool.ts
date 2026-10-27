@@ -5,6 +5,7 @@ import {
   resolveContinuationRuntimeConfig,
 } from "../../auto-reply/continuation/config.js";
 import type { ContinueWorkRequest } from "../../auto-reply/continuation/types.js";
+import { captureOperatorToolGatewayContinuationContext } from "../../gateway/server-plugin-in-process-authority.js";
 import { formatCurrentSpanContinuationTraceparent } from "../../infra/continuation-tracer.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { AnyAgentTool } from "./common.js";
@@ -32,7 +33,7 @@ const ContinueWorkToolSchema = Type.Object({
 
 type ContinueWorkToolOpts = {
   agentSessionKey?: string;
-  requestContinuation: (request: ContinueWorkRequest) => void;
+  requestContinuation: (request: ContinueWorkRequest) => void | Promise<void>;
 };
 
 export function createContinueWorkTool(opts: ContinueWorkToolOpts): AnyAgentTool {
@@ -72,11 +73,25 @@ export function createContinueWorkTool(opts: ContinueWorkToolOpts): AnyAgentTool
       log.debug(
         `[continue_work:request] session=${sessionKey} delaySeconds=${delaySeconds} reason=${reason.slice(0, 80)}`,
       );
-      opts.requestContinuation({
-        reason,
-        delaySeconds,
-        ...traceContextFields,
-      });
+      const preparation = captureOperatorToolGatewayContinuationContext({ sessionKey });
+      const captured = preparation ? await preparation : undefined;
+      // No operator source means the existing system-event wake, not a borrowed
+      // request-client lifetime. Only operator-owned work needs retained policy.
+      const operatorContinuation = captured?.operatorAuthority ? captured : undefined;
+      if (!operatorContinuation) {
+        captured?.release();
+      }
+      try {
+        await opts.requestContinuation({
+          reason,
+          delaySeconds,
+          ...traceContextFields,
+          ...(operatorContinuation ? { operatorContinuation } : {}),
+        });
+      } catch (error) {
+        operatorContinuation?.release();
+        throw error;
+      }
 
       // Report the resolved delay (post-clamp) so the model knows when its
       // next turn will actually fire, not just the raw input value.

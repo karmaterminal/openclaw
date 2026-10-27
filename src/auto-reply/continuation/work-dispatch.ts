@@ -1,10 +1,19 @@
 /** Durable same-session continuation_work dispatch. */
 
 import type { SubagentRunLiveness } from "../../agents/subagents/registry/subagent-run-liveness.js";
+import {
+  withoutGatewayToolCallerIdentity,
+  getGatewayToolCallerIdentity,
+} from "../../agents/tools/gateway-caller-context.js";
+import { runOutsideOperatorToolGatewayAuthority } from "../../gateway/operator-tool-gateway-authority.js";
 import { emitContinuationWorkSpan } from "../../infra/continuation-tracer.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import {
+  withPluginRuntimeGatewayContextResolver,
+  getPluginRuntimeGatewayRequestScope,
+} from "../../plugins/runtime/gateway-request-scope.js";
 import { runWithGatewayIndependentRootWorkAdmission } from "../../process/gateway-work-admission.js";
 import { clampDelayMs, resolveContinuationRuntimeConfig } from "./config.js";
 import {
@@ -21,15 +30,23 @@ import type {
   ContinuationWorkScheduleParams,
   ContinuationWorkScheduleResult,
 } from "./types.js";
+import { computeBusySkipBackoffMs } from "./work-dispatch-backoff.js";
 import {
   commitFoldedContinuationWork,
-  executePendingContinuationWork,
   getContinuationReplyRunRegistry,
   prepareFoldedContinuationWork,
   type ContinuationWorkExecutionDirective,
   type ContinuationWorkIdleRetryTrigger,
 } from "./work-dispatch-execution.js";
 import type { ContinuationWorkReasonCategory, PendingContinuationWork } from "./work-flow-state.js";
+import {
+  captureWorkOperatorContinuation,
+  releaseSessionWorkOperatorContinuations,
+  releaseWorkOperatorContinuation,
+  resetWorkOperatorContinuationsForTests,
+  retainWorkOperatorContinuation,
+  executePendingWorkWithOperatorContinuation,
+} from "./work-operator-continuation.js";
 import { scheduleContinuationWorkBatchWith } from "./work-scheduling-batch.js";
 import { enqueueContinuationWorkForSchedule } from "./work-scheduling-replacement.js";
 import {
@@ -43,6 +60,8 @@ import {
   peekSoonestUnmaturedWorkDueAt,
 } from "./work-store.js";
 import { drainPendingTerminalNotices } from "./work-terminal-notice.js";
+
+export { computeBusySkipBackoffMs } from "./work-dispatch-backoff.js";
 
 const log = createSubsystemLogger("continuation/work-dispatch");
 const HEDGE_DISPATCH_FAILURE_RETRY_MS = 30_000;
@@ -68,11 +87,26 @@ type DispatchPendingContinuationWorkParams = {
 
 // Timer and idle-wait callbacks inherit the request context that armed them.
 // Re-enter at fire time so a released parent root cannot reject the new turn.
-function dispatchPendingContinuationWorkFromDetachedCallback(
+export function dispatchPendingContinuationWorkFromDetachedCallback(
   params: DispatchPendingContinuationWorkParams,
 ): Promise<{ dispatched: number; failed: number; reaped: number }> {
-  return runWithGatewayIndependentRootWorkAdmission(
-    async () => await dispatchPendingContinuationWork(params),
+  // The timer inherits the scheduling request's async frame. Keep its Gateway
+  // owner, but never let the settled request's caller or operator grant govern
+  // a newly admitted continuation turn.
+  const requestScope = getPluginRuntimeGatewayRequestScope();
+  const resolveGatewayContext =
+    requestScope?.resolveGatewayContext ?? getGatewayToolCallerIdentity()?.gatewayContextResolver;
+  return runOutsideOperatorToolGatewayAuthority(() =>
+    withoutGatewayToolCallerIdentity(() =>
+      withPluginRuntimeGatewayContextResolver(
+        resolveGatewayContext,
+        () =>
+          runWithGatewayIndependentRootWorkAdmission(
+            async () => await dispatchPendingContinuationWork(params),
+          ),
+        { inheritRequestScope: false },
+      ),
+    ),
   );
 }
 
@@ -103,6 +137,7 @@ function clearIdleRetryControllersForTests(): void {
 
 /** Cancel timers and idle waiters that can re-drive one session's durable work. */
 export function clearContinuationWorkDispatch(sessionKey: string): void {
+  releaseSessionWorkOperatorContinuations(sessionKey);
   clearWorkTimer(sessionKey);
   clearIdleRetryFailureTimer(sessionKey);
   for (const trigger of [
@@ -180,6 +215,7 @@ function armIdleRetryFailureTimer(sessionKey: string, fireAt: number): void {
 }
 
 export function resetContinuationWorkDispatchForTests(): void {
+  resetWorkOperatorContinuationsForTests();
   for (const handle of workTimers.values()) {
     clearTimeout(handle);
   }
@@ -205,16 +241,6 @@ export function resetContinuationWorkDispatchForTests(): void {
  * `ceilingMs`. `factor ** n` overflowing to Infinity is harmless — `Math.min`
  * clamps it to the ceiling.
  */
-type BusySkipBackoffParams = { baseMs: number; ceilingMs: number; factor: number };
-
-export function computeBusySkipBackoffMs(
-  busySkipCount: number,
-  params: BusySkipBackoffParams,
-): number {
-  const exponent = Math.max(0, busySkipCount);
-  return Math.min(params.ceilingMs, params.baseMs * params.factor ** exponent);
-}
-
 /**
  * bucket-1 — orphan-reap verdict for a busy-deferred continuation flow.
  *
@@ -556,6 +582,7 @@ export async function dispatchPendingContinuationWork(
         stale,
         `Superseded by a newer continue_work election after a ${overdueMs}ms stale backlog.`,
       );
+      releaseWorkOperatorContinuation(stale.flowId);
     }
     enqueueSystemEvent(
       `[system:continuation-note] ${superseded.length} stale continue_work wake(s) were folded into the newest election (backlog coalesce).`,
@@ -619,13 +646,16 @@ export async function dispatchPendingContinuationWork(
     });
     let directive: ContinuationWorkExecutionDirective;
     try {
-      directive = await executePendingContinuationWork(
+      directive = await executePendingWorkWithOperatorContinuation(
         work,
         executionPolicyForWork(work, runtimeConfig),
         activeDispatch.controller.signal,
       );
     } finally {
       activeDispatch.release();
+    }
+    if (directive.kind !== "requeued") {
+      releaseWorkOperatorContinuation(work.flowId);
     }
     await applyExecutionDirective(directive);
     if (directive.kind === "dispatched") {
@@ -669,8 +699,13 @@ export async function scheduleContinuationWork(
   // `reason` remains provenance/rate metadata, never an admission gate.
   const replyRunRegistry = await getContinuationReplyRunRegistry();
   if (params.abortSignal?.aborted) {
+    params.request.operatorContinuation?.release();
     return { scheduled: false, capped: false, chainState: params.chainState };
   }
+  const operatorContinuation = await captureWorkOperatorContinuation(
+    params.request,
+    params.sessionKey,
+  );
   const electingTurnActive = replyRunRegistry.isActive(params.sessionKey);
   const recoveryHedgeAt = electedAt + params.config.maxDelayMs;
   const idleRetry = electingTurnActive
@@ -697,15 +732,26 @@ export async function scheduleContinuationWork(
     ...(params.request.traceparent ? { traceparent: params.request.traceparent } : {}),
     ...(params.originRunId ? { originRunId: params.originRunId } : {}),
     ...(params.originTurnId ? { originTurnId: params.originTurnId } : {}),
+    ...(operatorContinuation?.operatorAuthority ? { operatorAuthorityRequired: true } : {}),
     ...(electingTurnActive ? { anchorPending: true } : { anchorFinalizedAt: electedAt }),
     ...(idleRetry ? { idleRetry } : {}),
   };
   const enqueueResult = await enqueueContinuationWorkForSchedule({ work, schedule: params });
   if (!enqueueResult.scheduled) {
+    operatorContinuation?.release();
     return enqueueResult;
   }
   if (!enqueueResult.work.flowId) {
+    operatorContinuation?.release();
     throw new Error("continuation work enqueue did not return a durable record ID");
+  }
+  retainWorkOperatorContinuation(
+    enqueueResult.work.flowId,
+    params.sessionKey,
+    operatorContinuation,
+  );
+  for (const superseded of enqueueResult.supersededFlows) {
+    releaseWorkOperatorContinuation(superseded.recordId);
   }
   params.onFlowEnqueued?.(enqueueResult.work.flowId);
   emitContinuationWorkSpan({
