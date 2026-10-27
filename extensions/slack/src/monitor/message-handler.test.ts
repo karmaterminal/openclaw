@@ -355,7 +355,7 @@ describe("createSlackMessageHandler", () => {
       dispatchMock.mockImplementationOnce(async (prepared) => {
         prepared.turnAdoptionLifecycle?.onDeferred?.();
       });
-      const { handler } = createHandlerWithTracker();
+      const handler = testHandler({ trackEvent: vi.fn() });
       const handled = handler(makeMessage("1709000000.000551", "drop me"), {
         awaitDispatch: true,
         turnAdoptionLifecycle,
