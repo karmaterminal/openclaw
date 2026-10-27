@@ -383,8 +383,10 @@ async function agentCommandInternalOwned(
         // The commit already happened. Cleanup must retain ownership even if
         // cancellation invalidates the task during the awaited session write.
         sessionEntry = persisted;
+        trackedRestartRecoveryDeliveryClaim = persisted?.restartRecoveryDeliveryRunId === runId;
         if (automaticReset && persisted) {
           // Continuation: the reply-session reset owner also settles continuation authority.
+          // A failed cancellation fails the command after the commit, so the claim is tracked first.
           await clearReplacedSessionRuntimeState({
             previousSessionEntry: initialEntry,
             previousSessionEndReason: automaticReset.reason,
@@ -394,7 +396,6 @@ async function agentCommandInternalOwned(
             signal: opts.abortSignal,
           });
         }
-        trackedRestartRecoveryDeliveryClaim = persisted?.restartRecoveryDeliveryRunId === runId;
         const completion = bindCommandHarnessCompletionAssertion({
           claim: guardedHarnessCompletion,
           persisted,

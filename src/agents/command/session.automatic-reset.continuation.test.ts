@@ -2,7 +2,7 @@
 // custody through the reply-session reset owner. A legacy pending-reset marker (`reset`) cancels
 // pending work; an idle or daily expiry keeps it (bootstrap#1727 ruling 6434991502).
 import { expectDefined } from "@openclaw/normalization-core/expect";
-import { beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   createContinuationRecord,
   listContinuationRecords,
@@ -10,18 +10,43 @@ import {
 import { useContinuationCustodyTestState } from "../../auto-reply/continuation/custody/custody.test-support.js";
 import {
   agentCommand,
+  agentCommandFromGatewayIngress,
   compactionTestRuntime,
   compactionTestState as state,
+  GATEWAY_INGRESS_ARGS,
   makeCompactionResult,
   registerAgentCommandCompactionTestHooks,
   requireCompactionStorePath,
 } from "../agent-command.compaction.test-support.js";
+
+// Failure seam over the real custody store; unarmed writes run the real owner.
+const custodyWrite = vi.hoisted(() => ({ failure: undefined as string | undefined }));
+
+vi.mock("../../auto-reply/continuation/custody/custody-store.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../auto-reply/continuation/custody/custody-store.js")>();
+  return {
+    ...actual,
+    updateContinuationRecords: async (
+      ...args: Parameters<typeof actual.updateContinuationRecords>
+    ) => {
+      if (custodyWrite.failure) {
+        throw new Error(custodyWrite.failure);
+      }
+      return await actual.updateContinuationRecords(...args);
+    },
+  };
+});
 
 const { loadSessionEntry, replaceSessionEntry } = compactionTestRuntime;
 registerAgentCommandCompactionTestHooks();
 useContinuationCustodyTestState();
 
 const SESSION_KEY = "agent:main:main";
+
+afterEach(() => {
+  custodyWrite.failure = undefined;
+});
 
 beforeEach(() => {
   state.runAgentAttemptMock.mockImplementation(async (params) => {
@@ -89,6 +114,36 @@ it("cancels pending continuation work when agent-command resets a session marked
     status: "cancelled",
     phase: "Cancelled by session reset",
   });
+});
+
+it("settles the run's own delivery claim when reset cancellation fails after the commit", async () => {
+  const target = await seedResetSession("marker");
+  const runId = "announce:requester-settle:synthetic-cohort:after-reset";
+  custodyWrite.failure = "custody write unavailable";
+
+  await expect(
+    agentCommandFromGatewayIngress(
+      {
+        sessionKey: SESSION_KEY,
+        runId,
+        message: "Synthesize the completed child results",
+        allowModelOverride: false,
+        inputProvenance: {
+          kind: "inter_session",
+          sourceSessionKey: "agent:main:subagent:synthetic-child",
+          sourceChannel: "internal",
+          sourceTool: "subagent_settle",
+        },
+      },
+      ...GATEWAY_INGRESS_ARGS,
+    ),
+  ).rejects.toThrow("could not cancel continuation record pending-work-marker");
+
+  // The reset committed before cleanup failed; failure cleanup still owns the claim it wrote.
+  const committed = loadSessionEntry(target);
+  expect(committed?.lifecycleRevision).not.toBe("before-reset");
+  expect(committed?.restartRecoveryDeliveryRunId).toBeUndefined();
+  expect(state.runAgentAttemptMock).not.toHaveBeenCalled();
 });
 
 it.each(["idle", "daily"] as const)(
