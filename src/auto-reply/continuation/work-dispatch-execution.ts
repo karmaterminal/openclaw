@@ -370,6 +370,8 @@ async function driveContinuationTurn(
   ) {
     return { status: "skipped", reason: CONTINUATION_TURN_LIFECYCLE_CHANGED_REASON };
   }
+  let replyRunId: string | undefined;
+  let replyRunTerminalOutcome: "completed" | "failed" | undefined;
   const reply = await runWithDiagnosticTraceparent(work.traceparent, () =>
     getReplyFromConfig(
       {
@@ -391,6 +393,13 @@ async function driveContinuationTurn(
         lane: continuationLane,
         typingPolicy: "system_event",
         suppressTyping: true,
+        onPreparedAgentRunStart: ({ runId }) => {
+          replyRunId = runId;
+          replyRunTerminalOutcome = undefined;
+        },
+        onAgentRunTerminalOutcome: (outcome) => {
+          replyRunTerminalOutcome = outcome;
+        },
       },
       cfg,
     ),
@@ -399,9 +408,14 @@ async function driveContinuationTurn(
     if (isGatewayDraining()) {
       return { status: "skipped", reason: CONTINUATION_TURN_DRAINING_REASON };
     }
-    // A return without a reply payload does not prove that a continuation turn ran.
-    // Keep the claimed row recoverable through the bounded transient-error path.
-    throw new Error("Continuation reply returned without a non-drain payload");
+    log.info(
+      `[continuation:work-empty-reply] flowId=${work.flowId ?? "none"} session=${work.sessionKey} runId=${replyRunId ?? "none"} terminal=${replyRunTerminalOutcome ?? "none"}`,
+    );
+    // Silent continuation and message-tool-only turns may legitimately return no
+    // payload. Only a completed reply run proves that such a wake was granted.
+    if (!replyRunId || replyRunTerminalOutcome !== "completed") {
+      throw new Error("Continuation reply returned without a completed reply run");
+    }
   }
   // The provider ran. Persist the replay guard before finishing, then advance
   // only with the committed revision-bearing value returned by the CAS.

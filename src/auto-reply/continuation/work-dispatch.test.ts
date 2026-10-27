@@ -14,6 +14,7 @@ let mainQueueSize = 0;
 let [gatewayDraining, drainAfterReply] = [false, false];
 let replyError: Error | undefined, commandLaneIdleError: Error | undefined;
 let replyPayloadOverride: unknown;
+let simulateSilentReplyRun = false;
 let activeQueueMode: "delivered" | "queued-without-proof" | "rejected" = "delivered";
 let [activeQueueHandleAvailable, continuationEnabledForTest] = [true, true];
 const mockSessionStore: Record<string, unknown> = {};
@@ -272,6 +273,15 @@ vi.mock("../reply/get-reply.js", () => ({
     }
     if (replyError) {
       throw replyError;
+    }
+    if (simulateSilentReplyRun) {
+      const observers = options as {
+        onPreparedAgentRunStart?: (start: { runId: string; transcriptStart: null }) => void;
+        onAgentRunTerminalOutcome?: (outcome: "completed") => void;
+      };
+      observers.onPreparedAgentRunStart?.({ runId: "silent-hop-run", transcriptStart: null });
+      observers.onAgentRunTerminalOutcome?.("completed");
+      turnGrants.push({ context, options, cfg });
     }
     if (replyPayloadOverride !== undefined) {
       if (drainAfterReply) {
@@ -541,6 +551,7 @@ describe("durable continuation_work dispatch", () => {
     commandLaneIdleError = undefined;
     drainAfterReply = false;
     replyPayloadOverride = undefined;
+    simulateSilentReplyRun = false;
     activeQueueMode = "delivered";
     activeQueueHandleAvailable = true;
     observeSubordinateAdmission = false;
@@ -944,6 +955,29 @@ describe("durable continuation_work dispatch", () => {
     expect(workTransitionEvents).not.toContain(
       "flow-finished:Same-session continuation turn granted",
     );
+  });
+
+  it("grants a silent subagent continuation once when a reply run completed", async () => {
+    const sessionKey = "agent:main:subagent:continuation-silent-run";
+    mockSessionStore[sessionKey] = { sessionKey };
+    replyPayloadOverride = [];
+    simulateSilentReplyRun = true;
+    await enqueuePendingWork({
+      sessionKey,
+      hop: 2,
+      delayMs: 0,
+      electedAt: Date.now(),
+      dueAt: Date.now(),
+      maxChainLength: 200,
+      reason: "silent subagent hop-2",
+    });
+
+    const result = await dispatchPendingContinuationWork({ sessionKey });
+
+    expect(result).toEqual({ dispatched: 1, failed: 0, reaped: 0 });
+    expect(turnGrants).toHaveLength(1);
+    expect(workTransitionEvents).toContain("delivered-mark-committed");
+    expect(workTransitionEvents).toContain("flow-finished:Same-session continuation turn granted");
   });
 
   it("commits an active-turn transcript and fold delivery before finishing the row", async () => {
