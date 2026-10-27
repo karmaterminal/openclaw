@@ -1,4 +1,4 @@
-import type { EmbeddedForegroundPromptContext } from "./params.js";
+import type { EmbeddedForegroundPromptContext, RunEmbeddedAgentParams } from "./params.js";
 import type { EmbeddedRunAttemptParams } from "./types.js";
 
 export function projectEmbeddedMessageContext(run: Partial<EmbeddedForegroundPromptContext>) {
@@ -21,6 +21,24 @@ export function projectEmbeddedMessageContext(run: Partial<EmbeddedForegroundPro
     currentMessageId: run.currentMessageId,
     currentInboundAudio: run.currentInboundAudio,
     replyToMode: run.replyToMode,
+  };
+}
+
+/** Continuation (karmaterminal): the run's continuation tool options, forwarded to the attempt. */
+export function projectContinuationOpts(
+  run: Pick<
+    RunEmbeddedAgentParams,
+    | "drainsContinuationDelegateQueue"
+    | "disableContinuationTools"
+    | "continueWorkOpts"
+    | "requestCompactionOpts"
+  >,
+) {
+  return {
+    drainsContinuationDelegateQueue: run.drainsContinuationDelegateQueue,
+    disableContinuationTools: run.disableContinuationTools,
+    continueWorkOpts: run.continueWorkOpts,
+    requestCompactionOpts: run.requestCompactionOpts,
   };
 }
 
