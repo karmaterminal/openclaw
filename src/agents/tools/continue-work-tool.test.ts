@@ -17,6 +17,7 @@ import {
 import { createContinueWorkTool, type ContinueWorkRequest } from "./continue-work-tool.js";
 
 const captureOperatorContinuation = vi.hoisted(() => vi.fn());
+// mock-isolation: The real capture reads the live Gateway caller's operator authority; these cases script which custody continue_work retains.
 vi.mock("../../gateway/server-plugin-in-process-authority.js", () => ({
   captureOperatorToolGatewayContinuationContext: captureOperatorContinuation,
 }));
