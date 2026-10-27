@@ -651,7 +651,6 @@ describe("createFollowupRunner", () => {
   ])(
     "arms continuation only after the terminal completion commits (completion $name)",
     async ({ fails }) => {
-      const turn = createTurn();
       const order: string[] = [];
       state.withCompletion = async (_params, consume) =>
         consume({
