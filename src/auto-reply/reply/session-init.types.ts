@@ -29,3 +29,23 @@ export type SessionInitResult = Required<
   bodyStripped?: string;
   triggerBodyNormalized: string;
 };
+
+export type InitSessionLifecycleMutation = {
+  kind: "lifecycle-mutation";
+  cyberAccessProgram?: SessionEntry["cyberAccessProgram"];
+  sessionId: string;
+  sessionKey: string;
+  lifecycleRevision?: string;
+  resetTriggered: boolean;
+  /** Continuation: the successor revision a reset's retention marks already name. */
+  nextLifecycleRevision?: string;
+};
+export type InitSessionStateAttemptOutcome =
+  | { kind: "complete"; result: SessionInitResult }
+  | InitSessionLifecycleMutation;
+
+export type ReplySessionPreprocessingState = {
+  sessionEntry?: SessionEntry;
+  sessionKey: string;
+  storePath: string;
+};

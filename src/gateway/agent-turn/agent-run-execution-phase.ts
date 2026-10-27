@@ -326,7 +326,7 @@ async function executeAgentRun(
               : { task: message }),
             gatewayContextResolver: params.context.resolveGatewayContext,
             assertCurrent: assertDispatchCurrent,
-            acpSession: params,
+            session: params,
           });
         }
         emitAgentRunSessionChanges(params);

@@ -86,11 +86,11 @@ async function prepareHistoryRead(
         }));
     }
     case "transcript-latest-assistant": {
-      const { readLatestAssistantTextFromDatabase } =
-        await import("./session-accessor.sqlite-transcript-metadata-read.js");
+      const { readLatestSessionTranscriptAssistantInWorker } =
+        await import("./session-cold-storage-read.worker.js");
       const read = await prepareDatabaseRead(
         { ...request.database, env: request.scope.env },
-        (database) => readLatestAssistantTextFromDatabase(database, request.resolved),
+        (database) => readLatestSessionTranscriptAssistantInWorker(database, request.resolved),
         () => undefined,
         { snapshot: true, admission: request.admission },
       );
@@ -222,20 +222,20 @@ async function prepareHistoryRead(
       return () => ({ kind: request.kind, result: readSessionRowAvailability(request.scope) });
     }
     case "transcript-match": {
-      const [{ findTranscriptEventMatchingInDatabase }, { withOpenClawAgentDatabaseReadOnly }] =
+      const [{ findSessionTranscriptEventInWorker }, { withOpenClawAgentDatabaseReadOnly }] =
         await Promise.all([
-          import("./session-transcript-match-read.js"),
+          import("./session-cold-storage-read.worker.js"),
           import("../../state/openclaw-agent-db-readonly.js"),
         ]);
       return () => {
         if (retainedDatabase) {
           return {
             kind: request.kind,
-            result: findTranscriptEventMatchingInDatabase(retainedDatabase, request.request),
+            result: findSessionTranscriptEventInWorker(retainedDatabase, request.request),
           };
         }
         const opened = withOpenClawAgentDatabaseReadOnly(
-          (database) => findTranscriptEventMatchingInDatabase(database, request.request),
+          (database) => findSessionTranscriptEventInWorker(database, request.request),
           {
             ...request.database,
             env: cloneEnvWithPlatformSemantics(request.request.target.env ?? process.env),
@@ -347,11 +347,12 @@ async function prepareHistoryRead(
       return () => ({ kind: request.kind, stats: read() });
     }
     case "transcript-message-presence": {
-      const { hasSessionTranscriptMessageInDatabase } =
-        await import("./session-accessor.sqlite-transcript-metadata-read.js");
+      const { readSessionTranscriptMessagePresenceInWorker } =
+        await import("./session-cold-storage-read.worker.js");
       const read = await prepareDatabaseRead(
         { ...request.database, env: request.scope.env },
-        (database) => hasSessionTranscriptMessageInDatabase(database, request.scope.sessionId),
+        (database) =>
+          readSessionTranscriptMessagePresenceInWorker(database, request.scope.sessionId),
         () => false,
       );
       return () => ({ kind: request.kind, present: read() });

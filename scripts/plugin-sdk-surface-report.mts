@@ -295,9 +295,11 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +3: shared Decisions support/evaluation functions and the canonical capability schema.
       // +2: openRecord and ToolArgumentValidationError on the existing tool-plugin facade.
       // +1: resolveManagedResourceStateDir keeps plugin-managed model caches and binaries on the operator root during redirected agent exec.
+      // +2: shared SystemOne question encoder and response decoder on the Decisions facade.
+      // +4: capability-aware auth context and transport model types in core/plugin-entry.
       // +11: the continuation feature's public contracts (runtime, trace, channel-ingress,
-      // system-event, diagnostics). Provisional upstream 3816 + 11; re-measured after the jump-7 merge.
-      3827,
+      // system-event, diagnostics). Provisional upstream 3822 + 11; re-measured after the jump-8 merge.
+      3833,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -343,9 +345,10 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +2: the same shared Decisions support predicate and evaluator.
       // +1: the same openRecord helper; ToolArgumentValidationError is construct-only.
       // +1: resolveManagedResourceStateDir keeps plugin-managed model caches and binaries on the operator root during redirected agent exec.
-      // +4: the continuation feature's callable contracts. Provisional upstream 2212 + 4; re-measured
-      // after the jump-7 merge.
-      2216,
+      // +2: the same shared SystemOne codec functions.
+      // +4: the continuation feature's callable contracts. Provisional upstream 2214 + 4; re-measured
+      // after the jump-8 merge.
+      2218,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(

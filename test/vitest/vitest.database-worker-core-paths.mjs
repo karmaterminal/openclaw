@@ -1,5 +1,6 @@
 // These consumers need the host-owned SQLite broker, which runs in forked processes.
 export const databaseWorkerCoreTestFiles = [
+  "src/agents/subagents/registry/subagent-controller-inputs.test.ts",
   "src/commands/doctor/shared/model-replacement.test.ts",
   "src/infra/database-engine/memory-path-migration.conformance.test.ts",
   "src/auto-reply/reply/get-reply.fallback-transcript.test.ts",
@@ -569,6 +570,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/system-agent/setup-apply.concurrency.test.ts",
   "src/agents/bash-tools.exec-authorization.integration.test.ts",
   "src/agents/bash-tools.exec-background-followup.test.ts",
+  "src/agents/bash-tools.exec-notify.test.ts",
   "src/agents/bash-tools.exec-request-stop.test.ts",
   "src/auto-reply/reply/abort.target-owner.test.ts",
   "src/agents/bash-tools.exec-foreground-failures.test.ts",
@@ -581,7 +583,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/bash-tools.exec.security-floor.test.ts",
   "src/agents/bash-tools.github-auth-selection.test.ts",
   "src/agents/bash-tools.github-identity.test.ts",
-  "src/agents/bash-tools.process.finished-retention.test.ts",
+  "src/agents/bash-tools.process.scope.test.ts",
   "src/agents/bash-tools.test.ts",
   "src/agents/code-mode.agent-loop.test.ts",
   "src/agents/code-mode-session-store.test.ts",
@@ -686,6 +688,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/embedded-agent-runner/run-orchestrator.projection.test.ts",
   "src/agents/embedded-agent-runner/run.prepared-harness-source-delivery.integration.test.ts",
   "src/agents/embedded-agent-runner/run.prepared-runtime-workspace.integration.test.ts",
+  "src/agents/model-fallback.shared-rate-limit.integration.test.ts",
   "src/agents/embedded-agent-runner/run.shared-integration.test.ts",
   // Continuation scenarios share the run.shared-integration harness and real session SQLite.
   "src/agents/embedded-agent-runner/run.continuation-integration.test.ts",
@@ -832,6 +835,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/boards/sqlite-board-store.worker.test.ts",
   "src/canvas/widget-tool.test.ts",
   "src/claws/add-stateless.test.ts",
+  "src/claws/mcp.test.ts",
   "src/claws/gateway-add-apply.plugin-batch.test.ts",
   "src/claws/packages.runtime.test.ts",
   "src/claws/packages.capability-consent.test.ts",
@@ -1385,6 +1389,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/tools/sessions-tool.batch.test.ts",
   "src/agents/subagents/announce/subagent-announce.requester-settle-cancel.test.ts",
   "src/agents/subagents/completion/subagent-completion-admission.store.test.ts",
+  "src/agents/subagents/completion/subagent-completion-admission.queue-receipt.test.ts",
   "src/agents/subagent-announce.continuation.test.ts",
   "src/agents/subagent-announce.targeted-return.integration.test.ts",
   // Reply-side continuation suites on real continuation custody.

@@ -43,8 +43,10 @@ export async function sweepCollectorArchiveGroups(
     runContextEngineSubagentEnded: (params: ContextEngineSubagentEndedParams) => Promise<void>;
     clearPendingLifecycleError: (runId: string) => void;
     warn: (message: string, meta?: Record<string, unknown>) => void;
+    /** A Gateway restart drain leaves the remaining groups for the next Gateway. */
+    drainSignal: AbortSignal;
   },
-): Promise<void> {
+): Promise<"drained" | "swept"> {
   collectorGroups: for (const { requesterSessionKey, groupId, requesterAgentId } of candidates) {
     const readGroup = () => [
       ...params.getRunsForCollectorGroup(requesterSessionKey, groupId, requesterAgentId),
@@ -80,6 +82,9 @@ export async function sweepCollectorArchiveGroups(
       );
     };
     for (const [candidateRunId, candidate] of groupEntries) {
+      if (params.drainSignal.aborted) {
+        return "drained";
+      }
       let current = runs.get(candidateRunId);
       if (!isGroupCurrent() || !isCleanupCurrent(current, candidate)) {
         continue collectorGroups;
@@ -185,4 +190,5 @@ export async function sweepCollectorArchiveGroups(
       }
     }
   }
+  return "swept";
 }

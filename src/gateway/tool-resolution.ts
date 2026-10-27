@@ -20,7 +20,6 @@ import { applyDelegationCapability } from "../agents/delegation-capability.js";
 import { prepareExecDefaults, resolvePreparedExecDefaultsAsync } from "../agents/exec-defaults.js";
 import { applyGatewayToolPolicy } from "../agents/gateway-tool-policy.js";
 import { createLazyExecTool, resolveExecToolConfig } from "../agents/lazy-exec-tool.js";
-import { filterRequesterYieldTools } from "../agents/openclaw-tools.requester-yield.js";
 import {
   applySwarmCollectorToolContract,
   createSwarmCollectorWriteAuthority,
@@ -720,7 +719,7 @@ export async function resolveGatewayScopedTools(
 
   return {
     agentId: sessionAgentId,
-    tools: applyToolAvailabilityDescriptions(filterRequesterYieldTools(tools, params.sessionKey)),
+    tools: applyToolAvailabilityDescriptions(tools),
     workspaceDir,
     // Only the MCP owner knows which tools survived its grant and schema gates.
     captureFinalCronCreatorTools: cronCreatorToolAllowlistCaptureRef

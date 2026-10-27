@@ -3,6 +3,7 @@ import type { GatewayRecoveryRuntime } from "../../../gateway/server-instance-ru
 import { hasLiveAgentRunContext } from "../../../infra/agent-run-registry.js";
 import { isFastTestRuntimeEnv } from "../../../infra/env.js";
 import {
+  getGatewayRestartDrainSignal,
   isGatewayRestartDrainError,
   runWithGatewayDetachedWorkAdmission,
 } from "../../../process/gateway-work-admission.js";
@@ -13,6 +14,7 @@ import {
   blockSubagentCompletionDelivery,
   reconcileRetiredSubagentCancellation,
 } from "../completion/subagent-completion-admission.store.js";
+import { settleSubagentCompletionReservation } from "./subagent-controller-inputs.js";
 import { shouldSuppressSubagentRecoverySessionEffects } from "./subagent-recovery-state.js";
 import type { createSubagentRegistryCompletionRuntime } from "./subagent-registry-completion-runtime.js";
 import { retryDeferredSubagentCompletionSource } from "./subagent-registry-gateway-owner.js";
@@ -233,6 +235,7 @@ export function createSubagentRegistrySweeper(params: {
       return;
     }
     sweepInProgress = true;
+    const drainSignal = getGatewayRestartDrainSignal();
     try {
       const now = Date.now();
       recovery.prune();
@@ -290,6 +293,10 @@ export function createSubagentRegistrySweeper(params: {
         );
       }
       for (const [runId, snapshot] of runEntries) {
+        // Finish admitted cleanup, but leave the remaining durable backlog for the next Gateway.
+        if (drainSignal.aborted) {
+          return;
+        }
         const deferredSource = retryDeferredSubagentCompletionSource(snapshot);
         if (deferredSource) {
           await deferredSource;
@@ -299,28 +306,37 @@ export function createSubagentRegistrySweeper(params: {
         if (!selected || !isSameSubagentRunOwner(selected, snapshot)) {
           continue;
         }
-        let entry: SubagentRunRecord = selected;
-        if (getRecordedSubagentChildAuthority(entry).status === "mismatch") {
-          continue;
-        }
-        if (isRestoredQueuedFailureSettlementClaimed(entry)) {
+        if (isRestoredQueuedFailureSettlementClaimed(selected)) {
           // The restored FIFO callback owns this row until durable settlement.
           continue;
         }
-        // H1 v4 §3.3a: armed/custody rows are decided before retired authority (Stop first).
-        if (isAcceptedSpawnCustodyRow(entry)) {
-          const candidate = await decideAcceptedSpawnCustodyRow({ runId, entry, runs, now });
+        // H1 v4 §3.3a: armed/custody rows are decided before reservation settlement and
+        // retired authority (Stop first). A mismatched owner is never adopted.
+        if (
+          getRecordedSubagentChildAuthority(selected).status !== "mismatch" &&
+          isAcceptedSpawnCustodyRow(selected)
+        ) {
+          const candidate = await decideAcceptedSpawnCustodyRow({
+            runId,
+            entry: selected,
+            runs,
+            now,
+          });
           if (candidate) {
             acceptedSpawnRollbackCandidates.push({ runId, entry: candidate });
           }
           continue;
         }
+        if (await settleSubagentCompletionReservation(selected, now, params)) {
+          continue;
+        }
         if (
-          (entry.delivery?.status === "pending" || entry.delivery?.status === "in_progress") &&
-          subagentRuns.isCompletionAuthorityRetired(entry)
+          (selected.delivery?.status === "pending" ||
+            selected.delivery?.status === "in_progress") &&
+          subagentRuns.isCompletionAuthorityRetired(selected)
         ) {
           await blockSubagentCompletionDelivery({
-            subagent: entry,
+            subagent: selected,
             reason: "store replaced",
             suspendedReason: "permanent_failure",
             storeReplaced: true,
@@ -328,16 +344,16 @@ export function createSubagentRegistrySweeper(params: {
           continue;
         }
         if (
-          entry.killReconciliation &&
-          (await reconcileRetiredSubagentCancellation(entry, now)) === false
+          selected.killReconciliation &&
+          (await reconcileRetiredSubagentCancellation(selected, now)) === false
         ) {
           continue;
         }
         const reconciled = runs.get(runId);
-        if (!reconciled || !isSameSubagentRunOwner(reconciled, entry)) {
+        if (!reconciled || !isSameSubagentRunOwner(reconciled, selected)) {
           continue;
         }
-        entry = reconciled;
+        let entry = reconciled;
         if (entry.acceptedSpawnRollback || isSubagentSpawnArmed(entry)) {
           // A provisional-kill reconcile can publish custody or an arm; the next
           // pass decides it in the hoisted branch above.
@@ -568,13 +584,17 @@ export function createSubagentRegistrySweeper(params: {
           );
         }
       }
-      await sweepCollectorArchiveGroups(
-        collectorArchiveCandidates.values(),
-        runs,
-        now,
-        cleanupIdentities,
-        { ...params, deleteSession },
-      );
+      if (
+        (await sweepCollectorArchiveGroups(
+          collectorArchiveCandidates.values(),
+          runs,
+          now,
+          cleanupIdentities,
+          { ...params, deleteSession, drainSignal },
+        )) === "drained"
+      ) {
+        return;
+      }
       params.sweepPendingLifecycle(now);
 
       const acceptedSpawnRollbackCandidate = selectNextAcceptedSpawnRollbackCandidate(
