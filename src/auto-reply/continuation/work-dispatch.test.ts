@@ -1,3 +1,4 @@
+/* oxlint-disable max-lines -- Keep the causal wake variants on the same custody fixture. */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -13,8 +14,9 @@ const laneIdleWaiters = new Map<string, Array<(idle: boolean) => void>>();
 let mainQueueSize = 0;
 let [gatewayDraining, drainAfterReply] = [false, false];
 let replyError: Error | undefined, commandLaneIdleError: Error | undefined;
+let replyErrorAfterRunStart: Error | undefined;
 let replyPayloadOverride: unknown;
-let simulateSilentReplyRun = false;
+let simulatedSilentReplyRunOutcome: "completed" | "failed" | undefined;
 let activeQueueMode: "delivered" | "queued-without-proof" | "rejected" = "delivered";
 let [activeQueueHandleAvailable, continuationEnabledForTest] = [true, true];
 const mockSessionStore: Record<string, unknown> = {};
@@ -274,14 +276,17 @@ vi.mock("../reply/get-reply.js", () => ({
     if (replyError) {
       throw replyError;
     }
-    if (simulateSilentReplyRun) {
+    if (simulatedSilentReplyRunOutcome) {
       const observers = options as {
         onPreparedAgentRunStart?: (start: { runId: string; transcriptStart: null }) => void;
-        onAgentRunTerminalOutcome?: (outcome: "completed") => void;
+        onAgentRunTerminalOutcome?: (outcome: "completed" | "failed") => void;
       };
       observers.onPreparedAgentRunStart?.({ runId: "silent-hop-run", transcriptStart: null });
-      observers.onAgentRunTerminalOutcome?.("completed");
+      observers.onAgentRunTerminalOutcome?.(simulatedSilentReplyRunOutcome);
       turnGrants.push({ context, options, cfg });
+      if (replyErrorAfterRunStart) {
+        throw replyErrorAfterRunStart;
+      }
     }
     if (replyPayloadOverride !== undefined) {
       if (drainAfterReply) {
@@ -548,10 +553,11 @@ describe("durable continuation_work dispatch", () => {
     mainQueueSize = 0;
     gatewayDraining = false;
     replyError = undefined;
+    replyErrorAfterRunStart = undefined;
     commandLaneIdleError = undefined;
     drainAfterReply = false;
     replyPayloadOverride = undefined;
-    simulateSilentReplyRun = false;
+    simulatedSilentReplyRunOutcome = undefined;
     activeQueueMode = "delivered";
     activeQueueHandleAvailable = true;
     observeSubordinateAdmission = false;
@@ -961,7 +967,7 @@ describe("durable continuation_work dispatch", () => {
     const sessionKey = "agent:main:subagent:continuation-silent-run";
     mockSessionStore[sessionKey] = { sessionKey };
     replyPayloadOverride = [];
-    simulateSilentReplyRun = true;
+    simulatedSilentReplyRunOutcome = "completed";
     await enqueuePendingWork({
       sessionKey,
       hop: 2,
@@ -978,6 +984,51 @@ describe("durable continuation_work dispatch", () => {
     expect(turnGrants).toHaveLength(1);
     expect(workTransitionEvents).toContain("delivered-mark-committed");
     expect(workTransitionEvents).toContain("flow-finished:Same-session continuation turn granted");
+  });
+
+  it("terminalizes a failed silent reply run without retrying its side effects", async () => {
+    const sessionKey = "agent:main:subagent:continuation-failed-run";
+    mockSessionStore[sessionKey] = { sessionKey };
+    replyPayloadOverride = [];
+    simulatedSilentReplyRunOutcome = "failed";
+    await enqueuePendingWork({
+      sessionKey,
+      hop: 2,
+      delayMs: 0,
+      electedAt: Date.now(),
+      dueAt: Date.now(),
+      maxChainLength: 200,
+      reason: "failed subagent hop-2",
+    });
+
+    const result = await dispatchPendingContinuationWork({ sessionKey });
+
+    expect(result).toEqual({ dispatched: 0, failed: 1, reaped: 0 });
+    expect(getReplyFromConfigMock).toHaveBeenCalledTimes(1);
+    expect(await firstWorkRecord()).toMatchObject({ status: "failed" });
+    expect(workTransitionEvents).not.toContain("delivered-mark-committed");
+  });
+
+  it("terminalizes a started reply run that throws without replaying the hop", async () => {
+    const sessionKey = "agent:main:subagent:continuation-thrown-run";
+    mockSessionStore[sessionKey] = { sessionKey };
+    simulatedSilentReplyRunOutcome = "failed";
+    replyErrorAfterRunStart = new Error("run failed after effects");
+    await enqueuePendingWork({
+      sessionKey,
+      hop: 2,
+      delayMs: 0,
+      electedAt: Date.now(),
+      dueAt: Date.now(),
+      maxChainLength: 200,
+      reason: "thrown subagent hop-2",
+    });
+
+    const result = await dispatchPendingContinuationWork({ sessionKey });
+
+    expect(result).toEqual({ dispatched: 0, failed: 1, reaped: 0 });
+    expect(getReplyFromConfigMock).toHaveBeenCalledTimes(1);
+    expect(await firstWorkRecord()).toMatchObject({ status: "failed" });
   });
 
   it("commits an active-turn transcript and fold delivery before finishing the row", async () => {
