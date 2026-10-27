@@ -24,10 +24,8 @@ import { patchSessionEntryCore } from "./session-accessor.sqlite-entry.js";
 import type { SessionActorAuthority } from "./session-actor-contract.js";
 import { memorySessionActorOwners } from "./session-actor-memory-owner.js";
 import { commitMemory } from "./session-actor-memory-publication.test-support.js";
-import {
-  acquireSessionActorStorage,
-  runWithSessionActorStorage,
-} from "./session-actor-storage-binding.js";
+import { acquireSessionActorStorage } from "./session-actor-storage-acquisition.js";
+import { runWithSessionActorStorage } from "./session-actor-storage-binding.js";
 import { isSessionRecipientAuthorityCurrentInWorker } from "./session-recipient-authority-current.js";
 import {
   sessionRecipientAuthorityMatches,
