@@ -191,7 +191,9 @@ async function bootGateway() {
     workTool(requests: Array<{ reason: string; delaySeconds: number }>) {
       return workTool.createContinueWorkTool({
         agentSessionKey: OWNER,
-        requestContinuation: (request) => requests.push(request),
+        requestContinuation: (request) => {
+          requests.push(request);
+        },
       });
     },
     compactionTool(triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean }>) {

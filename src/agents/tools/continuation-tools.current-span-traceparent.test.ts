@@ -55,7 +55,9 @@ const typedContinuationTools: ReadonlyArray<{
       const requests: ContinueWorkRequest[] = [];
       const tool = createContinueWorkTool({
         agentSessionKey: SESSION_KEY,
-        requestContinuation: (request) => requests.push(request),
+        requestContinuation: (request) => {
+          requests.push(request);
+        },
       });
       await runWithDiagnosticTraceContext(trace, () =>
         tool.execute("call-1", { reason: "finish the current turn's work" }),

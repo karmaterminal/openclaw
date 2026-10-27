@@ -409,7 +409,9 @@ async function runTypedContinuationTurn(params: {
   const tool = wrapToolWithBeforeToolCallHook(
     createContinueWorkTool({
       agentSessionKey: params.plan.sessionKey,
-      requestContinuation: (request) => requests.push(request),
+      requestContinuation: (request) => {
+        requests.push(request);
+      },
     }),
     {
       runId: params.plan.runId,
