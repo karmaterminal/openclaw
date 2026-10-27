@@ -1209,6 +1209,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/reply/session-reset-cleanup.test.ts",
   // Reset-cleanup proofs: reply resets close continuation custody through the shared-state worker.
   "src/auto-reply/reply/session-reset-cleanup.stale-scope.proof.test.ts",
+  "src/agents/command/session.automatic-reset.continuation.test.ts",
   "src/auto-reply/reply/session.reset-custody.proof.test.ts",
   "src/auto-reply/reply/session.reset-scope.proof.test.ts",
   // /new preemption cancels continuation custody; F3 (a669f3eaba) fails that read closed without the broker.
