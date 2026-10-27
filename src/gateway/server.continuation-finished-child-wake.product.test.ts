@@ -15,6 +15,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { isSessionRunActiveForKey } from "../sessions/session-controller.queries.js";
 import { sessionControllers } from "../sessions/session-controller.storage.js";
 import { createOpenClawTestState } from "../test-utils/openclaw-test-state.js";
+import { sleep } from "../utils/sleep.js";
 import { writeToolCall } from "./gateway-provider-fixture.test-support.js";
 import {
   createSubagentModelConfig,
@@ -29,6 +30,7 @@ const WAKE_TURN_BOUND_MS = 20_000;
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   await resetSubagentRegistryForTests({ persist: false });
 });
 
@@ -112,7 +114,7 @@ function observeWorkWakes() {
 async function waitFor(predicate: () => boolean, timeoutMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!predicate() && Date.now() <= deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await sleep(50);
   }
 }
 
@@ -176,7 +178,9 @@ it("runs the next turn of a finished gateway-agent child that elected continue_w
           if (receipt) {
             childAccepted.resolve(receipt);
           } else {
-            childAccepted.reject(new Error(`sessions_spawn refused: ${readToolOutputs(body)}`));
+            childAccepted.reject(
+              new Error(`sessions_spawn refused: ${readToolOutputs(body).join("\n")}`),
+            );
           }
           reply("Child accepted.");
         }
@@ -200,6 +204,9 @@ it("runs the next turn of a finished gateway-agent child that elected continue_w
       }
     },
   });
+  // Wakes drive the full reply runtime; a child's wake may precede the first chat
+  // dispatch that marks the runtime config complete for the fast-reply test guard.
+  vi.stubEnv("OPENCLAW_ALLOW_SLOW_REPLY_TESTS", "1");
   const state = await createOpenClawTestState({ label: "finished-child-wake" });
   const gateway = await startGatewayWithClient({
     cfg: continuationConfig(state.workspaceDir, `${model.baseUrl}/v1`),
