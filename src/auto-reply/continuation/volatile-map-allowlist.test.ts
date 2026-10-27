@@ -123,6 +123,17 @@ const ALLOWLIST = [
       "Lost on process restart, which is the correct post-restart state: the next turn starts at a zero admission count and the durable delegate queue is unaffected.",
   },
   {
+    file: "src/auto-reply/continuation/work-operator-continuation.ts",
+    symbol: "retained",
+    owner: "continuation work operator custody",
+    purpose:
+      "Holds the live operator policy custody captured when continue_work was accepted, per work flow, until that flow's wake re-enters it.",
+    safeVolatileClassification:
+      "The custody is a live Gateway operator authority with a release handle; persisting it would let a restarted process claim authority it no longer holds.",
+    restartContract:
+      "Lost on process restart; the flow's durable operatorAuthorityRequired marker makes its wake fail ('Retained operator authority unavailable; wake refused.') instead of running as system work.",
+  },
+  {
     file: "src/auto-reply/continuation/work-dispatch-flow-mock.test-support.ts",
     symbol: "custodyCommandNamesInFlight",
     owner: "continuation work-dispatch test support",
