@@ -8,6 +8,9 @@ import {
   type SubagentCompletionMode,
 } from "./subagent-system-prompt.js";
 
+const STRUCTURED_OUTPUT_INSTRUCTION =
+  'Call structured_output with {"result": <your final result>} until one payload is accepted, with at most one retry after a rejected attempt. The result value must match the requested JSON Schema. Do not call structured_output again after acceptance.';
+
 type PreparedSubagentSpawnEnvelope = {
   completionMode: SubagentCompletionMode;
   envelope: ReturnType<typeof buildSubagentSpawnEnvelope>;
@@ -31,6 +34,8 @@ export function prepareSubagentSpawnEnvelope(params: {
   childRuntimeSandboxed: boolean;
   childDepth: number;
   maxSpawnDepth: number;
+  /** Withhold session keys: they name the agent and identify the run. */
+  blind?: boolean;
   drainsContinuationDelegateQueue: boolean;
   outputSchema?: Record<string, unknown>;
   /** The subagent profile's instructions follow the envelope, before the output contract. */
@@ -72,24 +77,21 @@ export function prepareSubagentSpawnEnvelope(params: {
     requesterOrigin: params.requesterOrigin,
     childSessionKey: params.childSessionKey,
     label: params.label,
+    childDepth: params.childDepth,
+    maxSpawnDepth: params.maxSpawnDepth,
+    blind: params.blind,
     acpEnabled: isAcpRuntimeSpawnAvailable({
       config: params.cfg,
       sandboxed: params.childRuntimeSandboxed,
     }),
-    nativeCommandGuidanceLines: listRegisteredPluginAgentPromptGuidance({
-      surface: "subagent",
-    }),
-    childDepth: params.childDepth,
-    maxSpawnDepth: params.maxSpawnDepth,
+    nativeCommandGuidanceLines: listRegisteredPluginAgentPromptGuidance({ surface: "subagent" }),
     toolNames,
     continuationEnabled,
   });
-  const outputSchemaInstruction =
-    'Call structured_output with {"result": <your final result>} until one payload is accepted, with at most one retry after a rejected attempt. The result value must match the requested JSON Schema. Do not call structured_output again after acceptance.';
-  const basePrompt = params.systemPrompt(envelope.systemPrompt);
+  const profiledSystemPrompt = params.systemPrompt(envelope.systemPrompt);
   const childSystemPrompt = params.outputSchema
-    ? `${basePrompt}\n\n${outputSchemaInstruction}`
-    : basePrompt;
+    ? `${profiledSystemPrompt}\n\n${STRUCTURED_OUTPUT_INSTRUCTION}`
+    : profiledSystemPrompt;
 
   return { completionMode, envelope, childSystemPrompt };
 }

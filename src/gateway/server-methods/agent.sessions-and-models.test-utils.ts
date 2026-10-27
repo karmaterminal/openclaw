@@ -1186,7 +1186,7 @@ describe("gateway agent handler", () => {
     expect(call.to).toBeUndefined();
   });
 
-  it("rolls stale gateway agent sessions even when updatedAt was recently touched", async () => {
+  it("resets stale gateway agent sessions without rotating a recently touched transcript", async () => {
     const now = Date.parse("2026-04-25T12:00:00.000Z");
     vi.useFakeTimers();
     vi.setSystemTime(now);
@@ -1227,7 +1227,7 @@ describe("gateway agent handler", () => {
         sessionKey?: string;
       }>();
       expect(call.sessionKey).toBe("agent:main:main");
-      expect(call.sessionId).not.toBe("stale-session-id");
+      expect(call.sessionId).toBe("stale-session-id");
       expect(getCapturedEntry()?.sessionStartedAt).toBe(now);
       expect(getCapturedEntry()?.lastInteractionAt).toBe(now);
       expect(mocks.emitGatewaySessionEndPluginHook).toHaveBeenCalledTimes(1);
@@ -1347,7 +1347,7 @@ describe("gateway agent handler", () => {
     }
   });
 
-  it("emits idle lifecycle reason when inactivity rotates a gateway agent session", async () => {
+  it("emits idle lifecycle reason when inactivity resets a gateway agent session", async () => {
     const now = Date.parse("2026-04-25T12:00:00.000Z");
     vi.useFakeTimers();
     vi.setSystemTime(now);
@@ -1387,7 +1387,7 @@ describe("gateway agent handler", () => {
         sessionKey?: string;
       }>();
       expect(call.sessionKey).toBe("agent:main:main");
-      expect(call.sessionId).not.toBe("idle-session-id");
+      expect(call.sessionId).toBe("idle-session-id");
       expectRecordFields(
         mockCallArg(mocks.emitGatewaySessionEndPluginHook) as Record<string, unknown>,
         {
@@ -1411,7 +1411,7 @@ describe("gateway agent handler", () => {
     }
   });
 
-  it("emits lifecycle hooks when a committed rotation later fails delivery validation", async () => {
+  it("emits lifecycle hooks when a committed reset later fails delivery validation", async () => {
     const now = Date.parse("2026-04-25T12:00:00.000Z");
     vi.useFakeTimers();
     vi.setSystemTime(now);
@@ -1580,7 +1580,7 @@ describe("gateway agent handler", () => {
         sessionKey?: string;
       }>();
       expect(call.sessionKey).toBe("agent:main:main");
-      expect(call.sessionId).not.toBe("stale-session-id");
+      expect(call.sessionId).toBe("stale-session-id");
       expect(getCapturedEntry()?.sessionStartedAt).toBe(now);
       expect(getCapturedEntry()?.lastInteractionAt).toBe(now);
     } finally {

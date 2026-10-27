@@ -140,6 +140,15 @@ const policyTestWatches: readonly PolicyTestWatch[] = [
     sourceOnly: true,
   },
   {
+    testFile: "test/e2e/qa-lab/runtime/gateway-session-steering.e2e.test.ts",
+    watchGlobs: [
+      "src/sessions/session-controller*.ts",
+      "src/auto-reply/reply/agent-runner-steer-adoption.ts",
+      "src/auto-reply/reply/queue/{enqueue,drain,drain-admission-scope}.ts",
+    ],
+    sourceOnly: true,
+  },
+  {
     testFile: "test/scripts/node-runtime-recovery.built-cli.e2e.test.ts",
     watchGlobs: [
       "node-runtime-recovery.mjs",
@@ -535,7 +544,7 @@ const policyTestWatches: readonly PolicyTestWatch[] = [
     watchGlobs: ["src/boards/sqlite-board-store.worker.ts"],
   })),
   ...[
-    "src/cli/capability-cli/model.account-secrets.provenance.test.ts",
+    "src/cli/capability-cli/model.resources.test.ts",
     "src/commands/models/list.probe.resources.test.ts",
   ].map((testFile): PolicyTestWatch => ({
     testFile,
@@ -703,6 +712,7 @@ const policyTestWatches: readonly PolicyTestWatch[] = [
     ],
   })),
   ...[
+    "src/config/sessions/session-accessor.pending-input-retention.test.ts",
     "src/config/sessions/session-accessor.pending-inputs.test.ts",
     "src/config/sessions/session-accessor.question-answer-transcript.test.ts",
   ].map((testFile): PolicyTestWatch => ({
@@ -1673,7 +1683,6 @@ const policyTestWatches: readonly PolicyTestWatch[] = [
     "src/gateway/server-methods/models-auth-login.catalog.integration.test.ts",
     "src/gateway/server-methods/models-auth-refresh.catalog.integration.test.ts",
     "src/gateway/server-methods/models-dispatch.catalog.integration.test.ts",
-    "src/gateway/server-methods/models-list.discovery-lifecycle.integration.test.ts",
     "src/gateway/server-methods/models-list.worker-recovery.integration.test.ts",
   ].map((testFile): PolicyTestWatch => ({
     testFile,

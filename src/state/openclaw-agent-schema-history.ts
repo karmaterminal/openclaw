@@ -1,5 +1,7 @@
 import { extractSqliteTableSchema } from "../infra/sqlite-schema-sql.js";
+import { withoutAgentColdArchiveChunks } from "./openclaw-agent-cold-archive-chunks-schema.js";
 import {
+  AGENT_COLD_ARCHIVE_CHUNKS_SCHEMA_VERSION,
   AGENT_INDEX_RETIREMENT_SCHEMA_VERSION,
   AGENT_JSON_PREDICATE_SCHEMA_VERSION,
   AGENT_MEMORY_REVISION_SCHEMA_VERSION,
@@ -321,10 +323,14 @@ export function getOpenClawAgentMigrationSchema(targetVersion: number): string {
     targetVersion < AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION
       ? withoutSessionRecipientAuthoritySchema(OPENCLAW_AGENT_SCHEMA_SQL)
       : OPENCLAW_AGENT_SCHEMA_SQL;
+  const coldArchiveSchemaSql =
+    targetVersion < AGENT_COLD_ARCHIVE_CHUNKS_SCHEMA_VERSION
+      ? withoutAgentColdArchiveChunks(authoritySchemaSql)
+      : authoritySchemaSql;
   const revisionSchemaSql =
     targetVersion < AGENT_MEMORY_REVISION_SCHEMA_VERSION
-      ? withLegacyAgentMemoryRevisionTriggers(authoritySchemaSql)
-      : authoritySchemaSql;
+      ? withLegacyAgentMemoryRevisionTriggers(coldArchiveSchemaSql)
+      : coldArchiveSchemaSql;
   const trajectorySchemaSql =
     targetVersion < AGENT_TRAJECTORY_STORAGE_SCHEMA_VERSION
       ? withoutTrajectoryPayloadColumns(revisionSchemaSql)
@@ -375,7 +381,9 @@ export const OPENCLAW_AGENT_BOARD_SCHEMA_SQL = extractSqliteTableSchema(
 );
 export const AGENT_V14_BOARD_SCHEMA_SQL = OPENCLAW_AGENT_BOARD_SCHEMA_SQL;
 const OPENCLAW_AGENT_SCHEMA_WITHOUT_BOARD_SQL = withLegacyAgentIndexes(
-  withoutTrajectoryPayloadColumns(withLegacyAgentMemoryRevisionTriggers(OPENCLAW_AGENT_SCHEMA_SQL)),
+  withoutTrajectoryPayloadColumns(
+    withLegacyAgentMemoryRevisionTriggers(withoutAgentColdArchiveChunks(OPENCLAW_AGENT_SCHEMA_SQL)),
+  ),
 ).replace(OPENCLAW_AGENT_BOARD_SCHEMA_SQL, "");
 
 export const SESSION_PROGRESS_CARDS_TABLE = "session_progress_cards";

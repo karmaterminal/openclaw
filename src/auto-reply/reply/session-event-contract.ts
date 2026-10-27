@@ -30,18 +30,6 @@ import type { DeliveryContext } from "../../utils/delivery-context.types.js";
 import type { GetReplyOptions } from "../get-reply-options.types.js";
 import type { NormalizeReplySkipReason } from "./normalize-reply-skip-reason.js";
 
-type SessionEventSource =
-  | "exec"
-  | "node"
-  | "task"
-  | "hook"
-  | "restart"
-  | "session"
-  | "device"
-  | "plugin"
-  | "cron"
-  // Continuation (karmaterminal): delegate returns and notices (continuation/continuation-wake.ts).
-  | "continuation";
 export type SessionEventOutcome = {
   status: "completed" | "failed" | "cancelled";
   executionStarted: boolean;
@@ -91,7 +79,20 @@ export type SessionEventTarget = {
 export type SessionEventOptions = {
   agentId: string;
   sessionKey: string;
-  source: SessionEventSource;
+  source:
+    | "exec"
+    | "node"
+    | "task"
+    | "hook"
+    | "restart"
+    | "session"
+    | "device"
+    | "plugin"
+    // A yielded tool's result resuming its own conversation; hidden from chat display.
+    | "tool_handoff"
+    | "cron"
+    // Continuation (karmaterminal): delegate returns and notices (continuation/continuation-wake.ts).
+    | "continuation";
   contextKey?: string;
   /** Stable identity for durable host producers across restart handoffs. */
   sourceTurnId?: string;

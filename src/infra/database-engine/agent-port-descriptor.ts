@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
+import { MEMORY_PATH_POSTGRES_INDEXES } from "../../../packages/memory-host-sdk/src/host/memory-path-postgres.js";
 import {
   memoryStandingIntentSearchSchema,
   memoryTextSearchSchema,
@@ -7,8 +8,10 @@ import {
 } from "../../../packages/memory-host-sdk/src/host/memory-search-schema.js";
 import { readTranscriptPayload } from "../../config/sessions/transcript-payload.js";
 import { deriveTranscriptPredicateFields } from "../../config/sessions/transcript-predicate-fields.js";
+import { withoutAgentPostgresColdArchiveChunks } from "../../state/openclaw-agent-cold-archive-chunks-schema.js";
 import { FIRST_USE_ADDITIVE_AGENT_COLUMN_DEFINITIONS } from "../../state/openclaw-agent-db-additive-columns.js";
 import {
+  AGENT_COLD_ARCHIVE_CHUNKS_SCHEMA_VERSION,
   AGENT_MEMORY_REVISION_SCHEMA_VERSION,
   AGENT_VECTOR_DECODER_SCHEMA_VERSION,
   AGENT_VECTOR_SEARCH_SCHEMA_VERSION,
@@ -28,6 +31,7 @@ import {
 import { ensureOpenClawAgentDatabaseSchema } from "../../state/openclaw-agent-db-schema.js";
 import type { DB } from "../../state/openclaw-agent-db.generated.js";
 import { withLegacyAgentPostgresIndexes } from "../../state/openclaw-agent-index-retirement-migration.js";
+import { withLegacyAgentPostgresMemoryPaths } from "../../state/openclaw-agent-memory-path-migration.js";
 import {
   LEGACY_MEMORY_REVISION_SQLITE_TRIGGERS,
   withLegacyAgentPostgresMemoryRevisionTriggers,
@@ -152,13 +156,14 @@ export async function loadAgentPortDescriptor(
     if (backup?.version === sourceVersion && backup.id === "agent") {
       return backup;
     }
-    // Schema 30 appends columns; 31–35 change only PostgreSQL search, triggers, or indexes;
-    // schema 36 (continuation) adds the recipient-authority table, which older sources omit.
+    // Schema 30 appends columns; 31–36 change only PostgreSQL search, triggers, or indexes.
+    // Schema 37 adds a cold archive companion table; schema 38 (continuation) adds the
+    // recipient-authority table, which older sources omit.
     // Pin the remaining shared layout so future DDL gets its own descriptor.
     if (
       backup ||
-      OPENCLAW_AGENT_SCHEMA_VERSION !== 36 ||
-      ![27, 28, 29, 30, 31, 32, 33, 34, 35].includes(sourceVersion)
+      OPENCLAW_AGENT_SCHEMA_VERSION !== 38 ||
+      ![27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37].includes(sourceVersion)
     ) {
       throw new DatabasePortDataError(
         `Missing agent PostgreSQL backup descriptor for version ${sourceVersion}`,
@@ -171,9 +176,12 @@ export async function loadAgentPortDescriptor(
   const historical = sourceVersion !== agentEngineSchema.version;
   const legacyTrajectory = sourceVersion < 30;
   const hasRecipientAuthority = sourceVersion >= AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION;
+  // Continuation's 38 makes upstream's 37 a historical source that already has the chunk table.
+  const legacyColdArchive = sourceVersion < AGENT_COLD_ARCHIVE_CHUNKS_SCHEMA_VERSION;
   const catalog = agentPostgresRuntime.expectedCatalog.filter(
     (fact) =>
       (hasRecipientAuthority || fact.table !== RECIPIENT_AUTHORITY_TABLE) &&
+      !(legacyColdArchive && fact.table === "session_transcript_cold_archive_chunks") &&
       (!legacyTrajectory ||
         fact.table !== "trajectory_runtime_events" ||
         !isColumn(fact) ||
@@ -191,6 +199,9 @@ export async function loadAgentPortDescriptor(
     tables: [
       ...metadata.tables
         .filter(({ name }) => hasRecipientAuthority || name !== RECIPIENT_AUTHORITY_TABLE)
+        .filter(
+          ({ name }) => !(legacyColdArchive && name === "session_transcript_cold_archive_chunks"),
+        )
         .map(({ name, identities }) => ({
           name,
           identities,
@@ -413,8 +424,9 @@ export async function loadAgentPortDescriptor(
   let postData = legacyRevision
     ? withLegacyAgentPostgresMemoryRevisionTriggers(descriptor.postData)
     : descriptor.postData;
-  // Continuation's 36 sits above upstream's 35 and changes no index, so a historical source at
-  // 35 already has the current ordering.
+  if (sourceVersion < 36) {
+    postData = withLegacyAgentPostgresMemoryPaths(postData);
+  }
   if (sourceVersion < 35) {
     postData = withLegacyPostgresIndexOrdering(
       postData,
@@ -448,18 +460,28 @@ export async function loadAgentPortDescriptor(
           }))
         : []),
     ],
-    preData: legacyTrajectory ? withLegacyAgentPostgresTrajectoryStorage(preData) : preData,
-    postData,
+    preData: legacyColdArchive
+      ? withoutAgentPostgresColdArchiveChunks(
+          legacyTrajectory ? withLegacyAgentPostgresTrajectoryStorage(preData) : preData,
+        )
+      : preData,
+    postData: legacyColdArchive ? withoutAgentPostgresColdArchiveChunks(postData) : postData,
     expectedCatalog: catalog.map((fact) =>
-      sourceVersion < 29 &&
-      fact.kind === "indexes" &&
-      (fact.table === "session_nodes" || fact.table === "session_reactions")
-        ? { table: fact.table, kind: fact.kind, value: Number(fact.value) + 1 }
-        : sourceVersion < 28 &&
-            fact.table === "transcript_event_identities" &&
-            fact.kind === "indexes"
-          ? { table: fact.table, kind: fact.kind, value: 5 }
-          : fact,
+      sourceVersion < 36 && fact.kind === "indexes" && fact.table === "memory_index_sources"
+        ? {
+            table: fact.table,
+            kind: fact.kind,
+            value: Number(fact.value) - MEMORY_PATH_POSTGRES_INDEXES.length,
+          }
+        : sourceVersion < 29 &&
+            fact.kind === "indexes" &&
+            (fact.table === "session_nodes" || fact.table === "session_reactions")
+          ? { table: fact.table, kind: fact.kind, value: Number(fact.value) + 1 }
+          : sourceVersion < 28 &&
+              fact.table === "transcript_event_identities" &&
+              fact.kind === "indexes"
+            ? { table: fact.table, kind: fact.kind, value: 5 }
+            : fact,
     ),
     inspectSqliteSource: undefined,
     migrateSqliteSource: undefined,

@@ -65,6 +65,8 @@ export function buildSubagentSpawnEnvelope(params: {
   toolNames?: string[];
   /** Whether continuation chaining is enabled. Defaults to config value. */
   continuationEnabled?: boolean;
+  /** Withhold session keys: they name the agent and identify the run. */
+  blind?: boolean;
 }) {
   const childDepth = params.childDepth ?? 1;
   const maxSpawnDepth = params.maxSpawnDepth ?? DEFAULT_SUBAGENT_MAX_SPAWN_DEPTH;
@@ -196,13 +198,13 @@ export function buildSubagentSpawnEnvelope(params: {
       sessionContext: [
         "## Session Context",
         params.label ? `- Label: ${params.label}` : undefined,
-        params.requesterSessionKey
+        params.requesterSessionKey && !params.blind
           ? `- Requester session: ${params.requesterSessionKey}.`
           : undefined,
         params.requesterOrigin?.channel
           ? `- Requester channel: ${params.requesterOrigin.channel}.`
           : undefined,
-        `- Your session: ${params.childSessionKey}.`,
+        params.blind ? undefined : `- Your session: ${params.childSessionKey}.`,
       ]
         .filter(Boolean)
         .join("\n"),

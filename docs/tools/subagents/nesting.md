@@ -84,6 +84,8 @@ execution budget; its children do not share the root session's slots.
 
 A full in-place conversation reset cancels unfinished native subagents associated with that session, including yielded children and children whose completion requester differs from their controller. Chat `/reset` and `sessions.reset` use the same cleanup owner. If child cancellation is incomplete, reset reports a failure before clearing the conversation; inspect the remaining tasks and retry. Child transcripts and unrelated sessions are preserved.
 
+Completed subagent history does not block reset. Completed children still participate in cleanup when they retain commands, pending completion wakes, controller disposal, or unfinished descendants.
+
 **Interaction with continuation knobs:** when `agents.defaults.continuation.enabled === true`, the per-agent children cap acts as a complementary guard alongside the continuation runaway-safety guards (`maxDelegatesPerTurn`, `maxChainLength`, `costCapTokens`). Token budget (`costCapTokens`) and chain length (`maxChainLength`) remain the primary runaway-safety guards; `maxChildrenPerAgent` provides per-session pressure relief for wide-fanout patterns like large-scale distribution, code-agent fan-out, or batch deployment chains.
 
 ### Cascade stop

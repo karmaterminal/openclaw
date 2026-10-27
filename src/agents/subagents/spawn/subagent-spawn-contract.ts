@@ -1,3 +1,4 @@
+import type { CyberAccessProgram } from "../../../../packages/gateway-protocol/src/schema/sessions-row.js";
 import type { SessionSourceAssertion } from "../../../config/sessions/session-source-authority.js";
 import type { ContinuationSpawnFailurePhase } from "../../../shared/continuation-run-key.js";
 import type { FastMode } from "../../../shared/fast-mode.js";
@@ -56,6 +57,7 @@ export type SpawnSubagentParams = {
   taskName?: string;
   thinking?: string;
   fastMode?: FastMode;
+  cyberAccessProgram?: CyberAccessProgram;
   collect?: boolean;
   outputSchema?: Record<string, unknown>;
   groupId?: string;
@@ -75,6 +77,8 @@ export type SpawnSubagentParams = {
   sandbox?: SpawnSubagentSandboxMode;
   context?: SpawnSubagentContextMode;
   lightContext?: boolean;
+  /** The child's rendered prompt omits its model, agent/session identity and workspace path. */
+  blind?: boolean;
   expectsCompletionMessage?: boolean;
   completionTarget?: "parent";
   attachments?: Array<{
@@ -111,6 +115,8 @@ export type SpawnSubagentContext = SpawnedToolContext &
     continuationDelegateAdmission?: SpawnSubagentAdmissionAuthority;
     /** Private invocation fence, consumed only before registration transfers ownership. */
     assertActive?: SessionSourceAssertion;
+    /** Cancels initial preparation only; accepted children own their execution lifetime. */
+    signal?: AbortSignal;
   };
 
 export type SpawnSubagentResult = {
@@ -129,6 +135,8 @@ export type SpawnSubagentResult = {
   /** Provider prefix parsed from resolvedModel when the ref includes one. */
   resolvedProvider?: string;
   modelApplied?: boolean;
+  /** Session Access applied to the child; omitted when the child uses its model default. */
+  cyberAccessProgram?: CyberAccessProgram;
   error?: string;
   /**
    * Pipeline phase that failed, reported only to launch-keyed continuation spawns. Only an

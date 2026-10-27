@@ -453,6 +453,8 @@ type SessionEntryCore = SessionRestartRecoveryState &
     subagentRole?: "orchestrator" | "leaf";
     /** Explicit control scope assigned at spawn time for subagent control decisions. */
     subagentControlScope?: "children" | "none";
+    /** Spawn-time blind child: its rendered prompt omits its model, identity and workspace path. */
+    blindPrompt?: true;
     /** Version of the requester tool-policy snapshot captured when this child was spawned. */
     inheritedToolPolicyVersion?: 1;
     /** Sender/channel restriction provenance retained with the inherited tool snapshot. */
@@ -568,6 +570,8 @@ type SessionEntryCore = SessionRestartRecoveryState &
     responseUsage?: "on" | "off" | "tokens" | "full";
     providerOverride?: string;
     modelOverride?: string;
+    /** Last submitted selection, retained when picker edits clear runtime fields. */
+    lastSubmittedModel?: { provider: string; model: string };
     /** Session-scoped agent runtime/harness override selected with the model picker. */
     agentRuntimeOverride?: string;
     /**
@@ -717,8 +721,6 @@ export type SessionProfileInvolvement = {
 };
 
 export type InternalSessionEntryCore = SessionEntryCore & {
-  /** One refinement attempt for a generated Dashboard name, scoped to this session. */
-  titleRefinement?: { sessionId: string; generatedName: string; remainingMessages: number };
   /** Original unbound files, private to this conversation's adopted workspace. */
   priorWorkspace?: {
     worktreeId: string;

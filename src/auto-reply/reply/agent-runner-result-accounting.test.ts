@@ -2,17 +2,21 @@ import { beforeEach, expect, it, vi } from "vitest";
 import type { SessionEntry } from "../../config/sessions.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { AgentTurnCompaction } from "./agent-runner-execution.types.js";
+import {
+  createDefaults,
+  createSettledExecution,
+  createTurn,
+} from "./followup-delivery.test-helpers.js";
 import type { FollowupExecutionResult } from "./followup-turn-execution.js";
-import { createQueueTestRun } from "./queue.test-helpers.js";
 import type { AdmittedFollowupTurn, FollowupRunnerParams } from "./reply-agent-turn-preparation.js";
 
+const mocks = vi.hoisted(() => ({ refreshQueuedFollowupSession: vi.fn() }));
 const state = vi.hoisted(() => ({
   dispatchPostCompactionDelegates: vi.fn(),
   emitContinuationCompactionReleasedSpan: vi.fn(),
   formatCurrentSpanContinuationTraceparent: vi.fn<() => string | undefined>(),
   incrementCompactionCount: vi.fn(),
   recordNoOpRearmOutcome: vi.fn(),
-  refreshQueuedFollowupSession: vi.fn(),
   scheduleContinuation: vi.fn(),
   resolveContinuationTraceparent: vi.fn<(value: string | undefined) => string | undefined>(),
 }));
@@ -22,29 +26,9 @@ vi.mock("../../agents/context.js", () => ({
   resolveContextTokensForModel: () => 200_000,
 }));
 
-vi.mock("../../agents/fast-mode.js", () => ({
-  resolveFastModeState: () => ({ enabled: false }),
-}));
-
 // mock-isolation: Continuation scheduling is recorded without persisting chain state or queuing work.
 vi.mock("./agent-runner-continuation-schedule.js", () => ({
   scheduleReplyContinuation: (...args: unknown[]) => state.scheduleContinuation(...args),
-}));
-
-vi.mock("../fallback-state.js", () => ({
-  resolveFallbackTransition: () => ({
-    stateChanged: true,
-    nextState: {
-      selectedModel: "anthropic/claude",
-      activeModel: "openai/gpt-4o",
-      reason: "rate limit",
-    },
-  }),
-}));
-
-vi.mock("./agent-runner-core.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./agent-runner-core.js")>()),
-  resolveFallbackOriginModel: () => ({ provider: "anthropic", model: "claude" }),
 }));
 
 // mock-isolation: Compaction counts are recorded without writing the session store.
@@ -81,9 +65,8 @@ vi.mock("../../infra/continuation-tracer.js", () => ({
     state.resolveContinuationTraceparent(value),
 }));
 
-// mock-isolation: Followup refreshes are recorded without the process-wide followup queue.
 vi.mock("./queue.js", () => ({
-  refreshQueuedFollowupSession: (...args: unknown[]) => state.refreshQueuedFollowupSession(...args),
+  refreshQueuedFollowupSession: (...args: unknown[]) => mocks.refreshQueuedFollowupSession(...args),
 }));
 
 vi.mock("./reply-usage-state.js", () => ({
@@ -116,7 +99,7 @@ const continuationConfig = {
   },
 } satisfies OpenClawConfig;
 
-function createTurn(): AdmittedFollowupTurn {
+function createContinuationTurn(): AdmittedFollowupTurn {
   let currentEntry: SessionEntry | undefined = {
     sessionId: "session-1",
     updatedAt: 1,
@@ -226,75 +209,37 @@ function createParams(
   authProfileOverrideCompactionCount?: number,
 ): Parameters<typeof accountFollowupTurn>[0] {
   const entry: SessionEntry = {
-    sessionId: "session-1",
+    sessionId: "session",
     updatedAt: 1,
     authProfileOverride: "openai:work",
     authProfileOverrideCompactionCount,
   };
-  const sessionStore = { main: entry };
-  const turn = {
-    runId: "run-1",
-    queued: createQueueTestRun(
-      { prompt: "queued prompt", enqueuedAt: 1 },
-      {
-        sessionId: "session-1",
-        sessionKey: "main",
-        provider: "anthropic",
-        model: "claude",
-      },
-    ),
-    operation: {},
-    config: {},
+  const turn = createTurn({
     session: {
       kind: "session",
       key: "main",
-      current: () => sessionStore.main,
-      publish: (next: SessionEntry | undefined) =>
-        next && Object.assign(sessionStore, { main: next }),
+      current: () => entry,
+      publish: () => {},
     },
-    sessionStore,
-    sendPolicy: "allow",
-    preflightCompactionApplied: false,
-  } as unknown as AdmittedFollowupTurn;
-  const defaults = {
-    typing: {} as FollowupRunnerParams["typing"],
-    typingMode: "never",
-    defaultModel: "claude",
-    sessionKey: "main",
-  } satisfies FollowupRunnerParams;
-  const execution = {
-    commentaryPayloadsEnabled: false,
+  });
+  const execution = createSettledExecution();
+  execution.outcome.resolved = { provider: "openai", model: "gpt-4o" };
+  return {
+    turn,
+    defaults: createDefaults(async () => {}),
     execution: {
-      runId: "run-1",
-      outcome: {
-        kind: "settled",
-        status: "ok",
-        result: { payloads: [], meta: { durationMs: 0 } },
-        resolved: { provider: "openai", model: "gpt-4o" },
-        fallback: {
-          exhausted: false,
-          attempts: [
-            {
-              provider: "anthropic",
-              model: "claude",
-              error: "rate limited",
-              reason: "rate_limit",
-            },
-          ],
-        },
-        autoCompactionCount: 0,
-      },
+      commentaryPayloadsEnabled: false,
+      execution,
+      runStartedAt: 1,
+      sessionCtx: {},
+      pendingToolTasks: new Set(),
+      progress: { drain: async () => {} },
     },
-    runStartedAt: 1,
-    sessionCtx: {},
-    pendingToolTasks: new Set(),
-    progress: { drain: async () => {} },
-  } as FollowupExecutionResult;
-  return { turn, defaults, execution };
+  };
 }
 
 it("forwards queued continue_work requests into continuation scheduling", async () => {
-  const turn = createTurn();
+  const turn = createContinuationTurn();
   const defaults = {
     typing: {} as FollowupRunnerParams["typing"],
     typingMode: "never",
@@ -328,7 +273,7 @@ it("forwards queued continue_work requests into continuation scheduling", async 
 });
 
 it("prefers a delegate token retained only in raw terminal text over typed continue_work", async () => {
-  const turn = createTurn();
+  const turn = createContinuationTurn();
   const currentTraceparent = "00-11111111111111111111111111111111-2222222222222222-01";
   const inheritedTraceparent = "00-11111111111111111111111111111111-3333333333333333-01";
   turn.queued.run.traceparent = inheritedTraceparent;
@@ -372,8 +317,8 @@ it.each([
   async (authProfileOverrideCompactionCount, expectedSource) => {
     await accountFollowupTurn(createParams(authProfileOverrideCompactionCount));
 
-    expect(state.refreshQueuedFollowupSession).toHaveBeenCalledOnce();
-    expect(state.refreshQueuedFollowupSession).toHaveBeenCalledWith(
+    expect(mocks.refreshQueuedFollowupSession).toHaveBeenCalledOnce();
+    expect(mocks.refreshQueuedFollowupSession).toHaveBeenCalledWith(
       expect.objectContaining({
         key: "main",
         nextProvider: "openai",
@@ -386,7 +331,7 @@ it.each([
 );
 
 it("forwards a work token retained only in raw terminal text", async () => {
-  const turn = createTurn();
+  const turn = createContinuationTurn();
   const defaults = {
     typing: {} as FollowupRunnerParams["typing"],
     typingMode: "never",
@@ -412,7 +357,7 @@ it("forwards a work token retained only in raw terminal text", async () => {
 });
 
 it("does not recover a non-terminal delegate token from raw text", async () => {
-  const turn = createTurn();
+  const turn = createContinuationTurn();
   const defaults = {
     typing: {} as FollowupRunnerParams["typing"],
     typingMode: "never",
@@ -438,7 +383,7 @@ it("does not recover a non-terminal delegate token from raw text", async () => {
 });
 
 it("does not recover selected raw text when the settled fallback result is replay-unsafe", async () => {
-  const turn = createTurn();
+  const turn = createContinuationTurn();
   const defaults = {
     typing: {} as FollowupRunnerParams["typing"],
     typingMode: "never",
@@ -470,7 +415,7 @@ it("does not recover selected raw text when the settled fallback result is repla
 });
 
 it("releases staged delegates before scheduling same-turn post-compaction work", async () => {
-  const turn = createTurn();
+  const turn = createContinuationTurn();
   const defaults = {
     typing: {} as FollowupRunnerParams["typing"],
     typingMode: "never",

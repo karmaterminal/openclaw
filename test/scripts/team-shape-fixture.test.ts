@@ -34,6 +34,7 @@ it("rejects unsafe ports and refuses to overwrite existing state", async () => {
     ["--worktree-files", "500001"],
     ["--projects", "0", "--worktree-files", "1"],
     ["--projects", "0", "--nested-repository"],
+    ["--projects", "0", "--worktree-local-origin"],
     ["--projects", "0", "--github-options-connected"],
     ["--cron-announce-last", "--cron", "0"],
     ["--cron-announce-last", "--sessions", "1", "--runs", "0"],
@@ -145,9 +146,19 @@ it("creates canonical sessions, retained lifecycle states and isolated supportin
     const generated = await generateTeamShapeFixture(
       options(
         stateDir,
-        "--sessions 20 --runs 20 --approvals 3 --cron 2 --projects 1 --transcript-mib 1",
+        "--sessions 20 --runs 20 --approvals 3 --cron 2 --projects 1 --transcript-mib 1 --worktree-local-origin --worktree-files 5 --worktree-file-bytes 256",
       ),
     );
+    const project = generated.summary.projectWorktrees[0]!;
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-C", project.repoRoot, ...args], {
+        env: generated.env,
+        encoding: "utf8",
+      }).trim();
+    const origin = git("remote", "get-url", "origin");
+    expect(path.dirname(origin)).toBe(at("fixture-remotes"));
+    expect(git("ls-remote", "--symref", "origin", "HEAD")).toContain("ref: refs/heads/main\tHEAD");
+    expect(git("--git-dir", origin, "rev-parse", "HEAD")).toBe(git("rev-parse", "refs/heads/main"));
     expect(process.env === originalEnv).toBe(true);
     expect(generated.env).toMatchObject({
       OPENCLAW_PROFILE: "team-shape-40967",
@@ -262,7 +273,7 @@ it("retains settled history and seeds disabled announce/last jobs without delive
   expect(JSON.parse(String(target?.entry_json))).not.toHaveProperty("deliveryContext");
 });
 
-it("seeds the stress category mix with readable targets and settled unarchived subagents", async () => {
+it("seeds the stress category mix with readable collector parents and settled unarchived children", async () => {
   const stateDir = path.join(temporary.make("team-shape-load-"), "state");
   const { summary } = await generateTeamShapeFixture(
     options(
@@ -285,8 +296,17 @@ it("seeds the stress category mix with readable targets and settled unarchived s
     "session_nodes WHERE session_key LIKE 'agent:main:dashboard:%' AND archived_at IS NULL": 4,
   });
   expectCounts(state, {
-    "subagent_runs WHERE child_session_key LIKE 'agent:main:subagent:%' AND json_extract(payload_json, '$.execution.status') = 'terminal' AND json_extract(payload_json, '$.delivery.status') = 'delivered'": 43,
+    "subagent_runs WHERE child_session_key LIKE 'agent:main:subagent:%' AND json_extract(payload_json, '$.execution.status') = 'terminal' AND json_extract(payload_json, '$.delivery.status') = 'not_required' AND json_extract(payload_json, '$.collect') = 1 AND json_extract(payload_json, '$.collectorCompletion.status') IN ('done', 'failed')": 43,
   });
+  expectCounts(state, {
+    "subagent_runs WHERE json_extract(payload_json, '$.swarmRequesterSessionKey') = requester_session_key AND json_extract(payload_json, '$.groupId') IS NOT NULL": 43,
+  });
+  const oldest = state
+    .prepare(
+      "SELECT min(json_extract(payload_json, '$.completion.capturedAt')) AS at FROM subagent_runs",
+    )
+    .get();
+  expect(Number(oldest?.at)).toBeGreaterThan(summary.now - 31 * 60_000);
   expect(summary.stressTargets?.length).toBeGreaterThan(0);
   for (const target of summary.stressTargets ?? []) {
     const row = agent
@@ -300,6 +320,8 @@ it("seeds the stress category mix with readable targets and settled unarchived s
       .get(String(row?.session_id));
     expect(Number(transcript?.n)).toBeGreaterThan(1);
   }
-  const agents = readJson(path.join(stateDir, "openclaw.json")).agents.entries;
+  const agentConfig = readJson(path.join(stateDir, "openclaw.json")).agents;
+  expect(agentConfig.defaults.subagents.archiveAfterMinutes).toBeGreaterThanOrEqual(120);
+  const agents = agentConfig.entries;
   expect(Object.keys(agents).toSorted()).toEqual(["main", "planner", "researcher", "reviewer"]);
 });

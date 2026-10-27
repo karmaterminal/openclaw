@@ -50,6 +50,7 @@ export type RunEmbeddedAgentParams = Pick<
   | "memberRoleIds"
   | "permissionMode"
   | "sessionRoot"
+  | "blindPrompt"
   | "modelSelectionLocked"
   | "authProfileIdSource"
   | "verboseLevel"

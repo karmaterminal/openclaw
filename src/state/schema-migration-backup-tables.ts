@@ -35,6 +35,9 @@ export const SCHEMA_MIGRATION_BACKUP_TABLES: Record<
     34: [],
     // PostgreSQL-only partial-index ordering; SQLite advances metadata only.
     35: [],
+    // PostgreSQL-only exact-path index; SQLite advances metadata only.
+    36: [],
+    37: ["session_transcript_cold_archive_chunks"],
     // Continuation (karmaterminal): the authority step only creates its table. The fleet's own
     // schema 26 also crosses upstream's undeclared step 26, so Doctor keeps its full image
     // (isAgentFleetSchema26Migration).
@@ -66,5 +69,7 @@ export const SCHEMA_MIGRATION_BACKUP_TABLES: Record<
     32: [],
     // PostgreSQL-only partial-index ordering; SQLite advances metadata only.
     33: [],
+    // Default cron identity is one machine-state binding; existing partition rows stay untouched.
+    34: ["config_machine_state"],
   },
 };

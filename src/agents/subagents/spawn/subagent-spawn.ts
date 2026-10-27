@@ -19,6 +19,7 @@ import { createSubagentChildRunLauncher } from "./subagent-spawn-child-launch.js
 import { resolveSubagentChildPlan } from "./subagent-spawn-child-plan.js";
 import {
   bindSubagentSpawnCleanup,
+  captureSubagentSessionCleanupIdentity,
   cleanupFailedSpawnBeforeAgentStart,
   cleanupProvisionalSession,
 } from "./subagent-spawn-cleanup.js";
@@ -127,6 +128,7 @@ export async function spawnSubagentDirect(
     continuationTargetSessionKeys,
     continuationRecipientAuthorityBinding,
     childIdem: resolvedChildIdem,
+    blind,
   } = requestResolution.resolved;
   const childIdem = resolveSubagentContinuationChildRunId(params, resolvedChildIdem);
 
@@ -141,6 +143,7 @@ export async function spawnSubagentDirect(
   let canAbortRegisteredRun: (() => boolean) | undefined;
   let canRetireReservation: (() => boolean) | undefined;
   let provisionalCleanupOpen = true;
+  let cleanupUnlaunchedSession: (() => Promise<boolean>) | undefined;
   let contextEnginePreparation: PreparedContextEngineSubagentSpawn | undefined;
   let pipelineEntered = false;
   try {
@@ -192,6 +195,7 @@ export async function spawnSubagentDirect(
       modelPlan: plan,
       launchAuthorization,
       resolvedModelMetadata,
+      acceptedModelFields,
     } = childPlan.resolved;
     const childSessionKey = resolveSubagentContinuationChildSessionKey(
       params,
@@ -204,9 +208,42 @@ export async function spawnSubagentDirect(
       error,
       childSessionKey,
     });
+    let provisionalSessionIdentity = captureSubagentSessionCleanupIdentity();
+    let cleanupOwner: ReturnType<typeof bindSubagentSpawnCleanup> | undefined;
+    const ownsCleanup = () => canCleanupCreatedSession?.() ?? provisionalCleanupOpen;
+    const ownsAcceptedRun = () =>
+      ownsCleanup() || (!params.collect && canAbortRegisteredRun?.() === true);
+    const isCleanupCurrent = () => cleanupOwner?.isCurrent() ?? ownsCleanup();
+    const isAbortCurrent = () => cleanupOwner?.isCurrent("chat.abort") ?? ownsAcceptedRun();
+    const cleanupCreatedSession = (emitLifecycleHooks = false) =>
+      cleanupProvisionalSession(childSessionKey, {
+        emitLifecycleHooks,
+        ...provisionalSessionIdentity,
+        isCurrent: isCleanupCurrent,
+        ...(cleanupOwner ? { callGateway: cleanupOwner.callGateway } : {}),
+      });
     const initialSession = await runWithAgentToolSourceExecutionScope(assertActive, () =>
       createInitialSubagentSession({
         assertActive,
+        signal: ctx.signal,
+        onCreated: (session) => {
+          provisionalSessionIdentity = captureSubagentSessionCleanupIdentity(session.entry);
+          const cleanupContext = gatewayContextResolver?.();
+          cleanupOwner =
+            gatewayContextResolver &&
+            (operatorAuthority ||
+              (!params.collect && cleanupContext && cleanupContext.localEmbedded !== true))
+              ? bindSubagentSpawnCleanup({
+                  childSessionKey,
+                  target: session.controllerTarget,
+                  resolveGatewayContext: gatewayContextResolver,
+                  isCurrent: ownsCleanup,
+                  canAbortAcceptedRun: ownsAcceptedRun,
+                  getSessionIdentity: () => provisionalSessionIdentity,
+                })
+              : undefined;
+          cleanupUnlaunchedSession = () => cleanupCreatedSession(threadBindingReady);
+        },
         cfg,
         requesterAgentId,
         targetAgentId,
@@ -233,6 +270,7 @@ export async function spawnSubagentDirect(
         continuationPatch: buildContinuationSessionPatch(params),
         swarmGroupId,
         collect: params.collect === true,
+        blind,
         outputSchema: params.outputSchema,
         continuationDelegateAdmission: ctx.continuationDelegateAdmission,
         firstAdmission: childPlan.resolved.firstAdmission,
@@ -241,36 +279,6 @@ export async function spawnSubagentDirect(
     if (initialSession.status === "error") {
       return sessionError(initialSession.error);
     }
-    let provisionalSessionIdentity = {
-      expectedSessionId: initialSession.entry?.sessionId,
-      expectedLifecycleRevision: initialSession.entry?.lifecycleRevision,
-    };
-    const ownsCleanup = () => canCleanupCreatedSession?.() ?? provisionalCleanupOpen;
-    const ownsAcceptedRun = () =>
-      ownsCleanup() || (!params.collect && canAbortRegisteredRun?.() === true);
-    const cleanupContext = gatewayContextResolver?.();
-    const cleanupOwner =
-      gatewayContextResolver &&
-      (operatorAuthority ||
-        (!params.collect && cleanupContext && cleanupContext.localEmbedded !== true))
-        ? bindSubagentSpawnCleanup({
-            childSessionKey,
-            target: initialSession.controllerTarget,
-            resolveGatewayContext: gatewayContextResolver,
-            isCurrent: ownsCleanup,
-            canAbortAcceptedRun: ownsAcceptedRun,
-            getSessionIdentity: () => provisionalSessionIdentity,
-          })
-        : undefined;
-    const isCleanupCurrent = cleanupOwner?.isCurrent ?? ownsCleanup;
-    const isAbortCurrent = () => cleanupOwner?.isCurrent("chat.abort") ?? ownsAcceptedRun();
-    const cleanupCreatedSession = (emitLifecycleHooks = false) =>
-      cleanupProvisionalSession(childSessionKey, {
-        emitLifecycleHooks,
-        ...provisionalSessionIdentity,
-        isCurrent: isCleanupCurrent,
-        ...(cleanupOwner ? { callGateway: cleanupOwner.callGateway } : {}),
-      });
     const preparedSpawnContext = await runWithAgentToolSourceExecutionScope(assertActive, () =>
       prepareSubagentSessionContext({
         assertActive,
@@ -283,17 +291,13 @@ export async function spawnSubagentDirect(
       }),
     );
     if (preparedSpawnContext.status === "error") {
-      await cleanupCreatedSession();
       return sessionError(preparedSpawnContext.error);
     }
     const childEntry = preparedSpawnContext.childEntry ?? initialSession.entry;
     if (childEntry) {
       // Only preparation's committed entry can advance cleanup ownership. A reread
       // of the key could capture a reset/rebound successor that this spawn does not own.
-      provisionalSessionIdentity = {
-        expectedSessionId: childEntry.sessionId,
-        expectedLifecycleRevision: childEntry.lifecycleRevision,
-      };
+      provisionalSessionIdentity = captureSubagentSessionCleanupIdentity(childEntry);
     }
     if (requestThreadBinding) {
       const bindResult = await runWithAgentToolSourceExecutionScope(assertActive, () =>
@@ -314,7 +318,6 @@ export async function spawnSubagentDirect(
         }),
       );
       if (bindResult.status === "error") {
-        await cleanupCreatedSession();
         return sessionError(bindResult.error);
       }
       threadBindingReady = true;
@@ -343,6 +346,7 @@ export async function spawnSubagentDirect(
       childRuntimeSandboxed,
       childDepth,
       maxSpawnDepth,
+      blind,
       drainsContinuationDelegateQueue: params.drainsContinuationDelegateQueue === true,
       outputSchema: params.outputSchema,
       systemPrompt,
@@ -363,7 +367,6 @@ export async function spawnSubagentDirect(
       }),
     );
     if (materializedAttachments && materializedAttachments.status !== "ok") {
-      await cleanupCreatedSession(threadBindingReady);
       return materializedAttachments;
     }
     const attachmentId = materializedAttachments?.attachmentId;
@@ -523,6 +526,8 @@ export async function spawnSubagentDirect(
         });
       },
     };
+    // The pipeline now owns initialization, dispatch and registration failures.
+    cleanupUnlaunchedSession = undefined;
     pipelineEntered = true;
     const pipelineResult = await runSpawnPipeline({
       ...withExecRequestOwners({}, readExecRequestOwners(ctx)),
@@ -686,8 +691,7 @@ export async function spawnSubagentDirect(
         ]
           .filter(Boolean)
           .join(" ") || undefined,
-      ...resolvedModelMetadata,
-      modelApplied: plan.modelApplied || undefined,
+      ...acceptedModelFields,
       attachments: materializedAttachments?.receipt,
       ...acceptance.buildAcceptedSpawnHandles(pipelineResult, ctx),
     };
@@ -697,6 +701,7 @@ export async function spawnSubagentDirect(
     }
     throw error;
   } finally {
+    await cleanupUnlaunchedSession?.();
     provisionalCleanupOpen = false;
     preparationHold.finish();
     admissionReservation?.release();

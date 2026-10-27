@@ -50,7 +50,11 @@ backup and its matching build, not just reinstalling the older package.
 | 31      | Memory publication advances the index revision once per committed batch instead of once per source or chunk row                                                                                                                                        | `Unreleased` |
 | 32      | Set-based PostgreSQL vector decoding with one TOAST materialization; metadata-only SQLite advance                                                                                                                                                      | `Unreleased` |
 | 33      | Approximate PostgreSQL memory vector search with generated binary sketches and exact cosine reranking; metadata-only SQLite advance                                                                                                                    | `Unreleased` |
-| 35      | Continuation: durable session-key recipient-authority generations for delayed named returns                                                                                                                                                            | Unreleased   |
+| 34      | Native PostgreSQL index ordering for non-null keys; metadata-only SQLite advance ([#183015](https://github.com/openclaw/openclaw/pull/183015))                                                                                                         | `Unreleased` |
+| 35      | Native PostgreSQL ordering for predicate-proven non-null partial-index keys; metadata-only SQLite advance ([#183443](https://github.com/openclaw/openclaw/pull/183443))                                                                                | `Unreleased` |
+| 36      | Indexed PostgreSQL exact-path memory candidates with unchanged ranking; metadata-only SQLite advance                                                                                                                                                   | `Unreleased` |
+| 37      | Ordered cold transcript archive chunks with a 64 MiB uncompressed bound per file                                                                                                                                                                       | `Unreleased` |
+| 38      | Continuation: durable session-key recipient-authority generations for delayed named returns                                                                                                                                                            | `Unreleased` |
 
 Schema 1 first appeared in `v2026.5.30-beta.1` and was also written by the
 extended-stable `v2026.7.35`. Versions 2, 4, 5–6, and 7 were development-only
@@ -70,6 +74,55 @@ including shared agent registration. Run `openclaw doctor --fix` with OpenClaw
 be verified, follow the explicit agent-restoration instructions it reports, then
 rerun Doctor before upgrading the copy. Schema-8 and later session migrations
 remain supported.
+
+### Agent schema 37
+
+Schema 37 adds `session_transcript_cold_archive_chunks`, keyed by session ID and
+chunk index. Each row records one immutable file's name, SHA-256, sequence range,
+event and byte counts, and optional compressed backup payload. The parent cold
+archive row keeps the window totals and storage location; deleting it cascades to
+its chunk metadata. Existing single-file archives retain their representation.
+
+The forward migration creates only the empty child table and advances schema
+metadata. It does not rewrite or backfill transcript or archive rows, build an
+index on existing data, or add DDL to ordinary database admission. Its SQLite
+startup backup scope contains the child table and schema metadata. Existing
+integrity admission and full updater recovery-backup requirements still apply.
+PostgreSQL installs the equivalent generated table through its forward runner.
+
+Older binaries cannot interpret a chunked window and refuse schema 37 before
+reading it. The supported updater's Doctor retains its existing private rehearsal
+and verified backup handoff for older update drivers. Rollback requires restoring
+the verified pre-upgrade backup with its matching build; never lower schema markers.
+See [cold transcript storage](/reference/session-management-compaction/maintenance#cold-transcript-storage)
+for bounded preparation, restore, retention, and missing-file recovery.
+
+### Agent schema 36
+
+Schema 36 adds three PostgreSQL B-tree expression indexes for normalized memory
+paths, basenames, and extensionless basenames. Keyword searches use them to select
+exact path candidates before computing their existing specificity and relevance
+scores. The indexes store bounded digests; the original exact-path predicate
+rechecks every candidate, preserving results, ordering, and scores.
+
+Doctor builds only these indexes under the existing agent migration transaction.
+Canonical paths, chunks, embeddings, and other indexes stay unchanged. SQLite
+advances version metadata only. Rollback requires the verified pre-upgrade backup
+and its matching build. SQLite's Unicode keyword fallback can still scan broadly;
+this migration does not change that engine's search behavior.
+
+### Agent schemas 34 and 35
+
+Schema 34 gives non-null PostgreSQL index keys native null ordering. Schema 35
+extends that rule to direct keys whose partial-index predicate proves they are
+non-null. Doctor rebuilds only changed indexes on existing tables under the
+agent migration transaction; retained rows and primary-key indexes stay intact.
+SQLite advances metadata only.
+
+Stop writers and run `openclaw doctor --fix` before opening an older PostgreSQL
+agent store. Doctor backs up the predecessor and applies consecutive migrations,
+including schema 36 when needed. Rollback requires the verified pre-upgrade
+backup and matching build. See the [ordering migration contract](/reference/database-schemas/storage-changes#postgresql-index-ordering-migrations).
 
 ### Agent schema 33
 
@@ -292,14 +345,14 @@ the existing [schema migration handoff](/reference/database-schemas/versioning#s
 
 ### Session recipient authority
 
-Agent schema **35** (continuation) adds `session_recipient_authority`, one durable
+Agent schema **38** (continuation) adds `session_recipient_authority`, one durable
 recipient-authority generation per canonical logical `sessionKey` for delayed named
-returns, on top of upstream's schema 34. The generation survives session materialization
+returns, on top of upstream's schema 37. The generation survives session materialization
 and deletion; the table has no `session_nodes` foreign key because deletion is one of
 its generation edges.
 
 The existing startup/Doctor schema owner creates the table in the same transaction
-that advances both schema markers. Some databases written before schema 35 already
+that advances both schema markers. Some databases written before schema 38 already
 carry the table; creation is idempotent and retains their rows. Some earlier
 databases also stored the epoch inside `session_nodes.entry_json`; the migration
 imports only valid UUID-v4 values and removes the field from valid JSON. Invalid
@@ -307,27 +360,31 @@ values never create authority, and malformed Doctor-owned session entries remain
 unchanged for Doctor repair. Transcript bytes, retention, and permissions are
 unchanged.
 
-Older builds refuse schema 35; rollback requires the pre-upgrade database backup and
+Older builds refuse schema 38; rollback requires the pre-upgrade database backup and
 matching build, not lower version markers. A continuation lane build briefly numbered
 this step 27; those unreleased databases are not recognised (upstream's schema 27 is
 the outbox sequence) and must be recreated or restored from their pre-upgrade backup.
-The pre-jump continuation candidate numbered this step 32, which upstream's 32 now
-names. On SQLite that database is upstream's 32 plus this table, because upstream's
-32–34 advance SQLite metadata only, so the idempotent step admits it and keeps its rows.
+Earlier continuation candidates numbered this step 32, then 35, then 36; upstream's
+32–36 now name PostgreSQL-only steps. On SQLite such a database is upstream's
+same-numbered schema plus this table, because upstream's 32–36 advance SQLite metadata
+only, so upstream's schema-37 step adds the empty cold-archive chunk table and the
+idempotent authority step admits the database and keeps its rows. A PostgreSQL agent
+database at an earlier candidate's number fails closed before upstream's next step;
+restore it from its pre-upgrade backup or re-port it from SQLite.
 
 Some fleet databases carry this table under earlier version markers, because the
 fleet received recipient authority as an unreleased schema 25 and then 26:
 
 - The fleet's schema 25 kept the legacy entry-validity and canonical-pending triggers
-  instead of upstream's schema 25. The schema 35 owner tells the two schema-25 shapes
+  instead of upstream's schema 25. The schema 38 owner tells the two schema-25 shapes
   apart by their physical schema (authority table plus legacy triggers, or neither).
   For the fleet shape it runs the canonical-writer validation, JSON predicate, upstream's
-  schema 27–34 steps, and the idempotent authority migration in one transaction.
+  schema 27–37 steps, and the idempotent authority migration in one transaction.
 - The fleet's schema 26 is upstream's schema 25 plus the authority table, without
   upstream's schema-26 JSON predicate columns. The owner tells the two schema-26 shapes
   apart by the authority table and the predicate columns on `session_nodes` and
   `transcript_events` (all or none). For the fleet shape it runs the JSON predicate
-  backfill and upstream's schema 27–34 steps and keeps the authority rows; for upstream's
+  backfill and upstream's schema 27–37 steps and keeps the authority rows; for upstream's
   shape it runs the same upstream steps and adds the table.
 
 Any other mixed shape is refused. Existing authority rows are kept. Rolling back means

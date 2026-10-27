@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { MEMORY_PATH_POSTGRES_INDEX_SQL } from "../../packages/memory-host-sdk/src/host/memory-path-postgres.js";
 import { admitStoreSearch } from "../infra/database-engine/adapters.js";
 import { getDatabaseEngineInput } from "../infra/database-engine/context.js";
 import type { SearchSchema, StoreSchema } from "../infra/database-engine/contract.js";
@@ -18,6 +19,11 @@ import { captureSqliteSchemaFacts } from "../infra/sqlite-schema-admission.js";
 import { admitSqliteSchema, getAdmittedSqliteSchemaFacts } from "../infra/sqlite-schema-facts.js";
 import { VERSION } from "../version.js";
 import {
+  agentColdArchiveChunksPostgresMigration,
+  withoutAgentPostgresColdArchiveChunks,
+} from "./openclaw-agent-cold-archive-chunks-schema.js";
+import {
+  AGENT_COLD_ARCHIVE_CHUNKS_SCHEMA_VERSION,
   AGENT_INDEX_RETIREMENT_SCHEMA_VERSION,
   AGENT_MEMORY_REVISION_SCHEMA_VERSION,
   AGENT_VECTOR_DECODER_SCHEMA_VERSION,
@@ -36,6 +42,7 @@ import {
   AGENT_INDEX_RETIREMENT_SQL,
   withLegacyAgentPostgresIndexes,
 } from "./openclaw-agent-index-retirement-migration.js";
+import { withLegacyAgentPostgresMemoryPaths } from "./openclaw-agent-memory-path-migration.js";
 import {
   AGENT_MEMORY_REVISION_POSTGRES_SQL,
   withLegacyAgentPostgresMemoryRevisionTriggers,
@@ -95,8 +102,10 @@ export function admitAgentEngineSearchExtensions(
 }
 
 const agentPostgresSql = `${agentPostgresRuntime.sql}\n${agentSearchPostgresRuntime.sql}`;
-// Continuation's recipient authority (v36) sits above upstream's v35; schema 35 lacks its table.
-const agentPostgresV35Sql = withoutSessionRecipientAuthorityPostgresSchema(agentPostgresSql);
+// Continuation's recipient authority (v38) sits above upstream's v37; schema 37 lacks its table.
+const agentPostgresV37Sql = withoutSessionRecipientAuthorityPostgresSchema(agentPostgresSql);
+const agentPostgresV36Sql = withoutAgentPostgresColdArchiveChunks(agentPostgresV37Sql);
+const agentPostgresV35Sql = withLegacyAgentPostgresMemoryPaths(agentPostgresV36Sql);
 const agentPostgresV34Sql = withLegacyPostgresIndexOrdering(
   agentPostgresV35Sql,
   "schema-nullability",
@@ -226,9 +235,47 @@ export const agentEngineSchema: StoreSchema = {
         WHERE meta_key = 'primary';`,
     },
     {
-      version: AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
+      version: 36,
       fromSchema: {
         postgres: agentPostgresV35Sql,
+        postgresVectorDecoderVersion: 2,
+        postgresVectorSearchVersion: 2,
+      },
+      schema: {
+        postgres: agentPostgresV36Sql,
+        postgresVectorDecoderVersion: 2,
+        postgresVectorSearchVersion: 2,
+      },
+      sql: `${MEMORY_PATH_POSTGRES_INDEX_SQL}
+        UPDATE schema_meta
+        SET schema_version = 36,
+          app_version = '${VERSION.replaceAll("'", "''")}',
+          updated_at = CAST(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP) * 1000 AS bigint)
+        WHERE meta_key = 'primary';`,
+    },
+    {
+      version: AGENT_COLD_ARCHIVE_CHUNKS_SCHEMA_VERSION,
+      fromSchema: {
+        postgres: agentPostgresV36Sql,
+        postgresVectorDecoderVersion: 2,
+        postgresVectorSearchVersion: 2,
+      },
+      schema: {
+        postgres: agentPostgresV37Sql,
+        postgresVectorDecoderVersion: 2,
+        postgresVectorSearchVersion: 2,
+      },
+      sql: `${agentColdArchiveChunksPostgresMigration(agentPostgresSql)}
+        UPDATE schema_meta
+        SET schema_version = ${AGENT_COLD_ARCHIVE_CHUNKS_SCHEMA_VERSION},
+          app_version = '${VERSION.replaceAll("'", "''")}',
+          updated_at = CAST(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP) * 1000 AS bigint)
+        WHERE meta_key = 'primary';`,
+    },
+    {
+      version: AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
+      fromSchema: {
+        postgres: agentPostgresV37Sql,
         postgresVectorDecoderVersion: 2,
         postgresVectorSearchVersion: 2,
       },

@@ -11,7 +11,7 @@ import {
 } from "./schema-migration.test-support.js";
 
 const predecessor = 30;
-// Continuation (karmaterminal): recipient authority (36) is the step after upstream's 35 and
+// Continuation (karmaterminal): recipient authority (38) is the step after upstream's 37 and
 // creates its table, so a migration from 30 reaches it too.
 const target = OPENCLAW_AGENT_SCHEMA_VERSION;
 const scope = [
@@ -19,6 +19,7 @@ const scope = [
   "memory_index_sources",
   "schema_meta",
   "session_recipient_authority",
+  "session_transcript_cold_archive_chunks",
 ];
 
 const withFixture = migrationFixture({ seed, predecessor, target, scope, admission: true });

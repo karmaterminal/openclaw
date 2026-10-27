@@ -73,7 +73,7 @@ import {
   resolveSilentReplyPromptMode,
 } from "./system-prompt-messaging.js";
 import { buildOwnerIdentityLine, type OwnerIdDisplay } from "./system-prompt-owner-identity.js";
-import { buildRuntimeLine } from "./system-prompt-runtime.js";
+import { blindRuntime, blindWorkspace, buildRuntimeLine } from "./system-prompt-runtime.js";
 import { buildSkillsSection } from "./system-prompt-skills.js";
 import {
   buildSystemPromptToolLines,
@@ -274,6 +274,8 @@ export function buildAgentSystemPrompt(params: {
   runtimeInfo?: SystemPromptRuntimeInfo;
   messageToolHints?: string[];
   toolSchemaDirectoryPrompt?: string;
+  /** Deferred directory tools can be invoked by name in the embedded harness. */
+  deferredToolsDirectlyCallable?: boolean;
   /** Guidance published by the MCP servers backing this prompt's visible tools. */
   mcpServerInstructions?: readonly McpServerInstruction[];
   messageTool?: Parameters<typeof buildUiPresentationPrompt>[0]["messageTool"];
@@ -301,7 +303,7 @@ export function buildAgentSystemPrompt(params: {
 }) {
   const promptMode = params.promptMode ?? "full";
   const runtimeInfo = params.runtimeInfo;
-  const modelIdentityLine = buildModelIdentityPromptLine(runtimeInfo?.model);
+  const modelIdentityLine = buildModelIdentityPromptLine(blindRuntime(runtimeInfo)?.model);
   if (promptMode === "none") {
     params.onRenderedSkillsPrompt?.("");
     return ["You are a personal assistant running inside OpenClaw.", modelIdentityLine]
@@ -451,23 +453,16 @@ export function buildAgentSystemPrompt(params: {
     }),
     "",
   ];
-  // CLI backends own native file tools outside OpenClaw's projected tool list.
-  // Keep their skill catalog visible while embedded runs require a real read tool.
-  const canAccessSkills = params.codeModeActive
-    ? visibleTools.has("exec")
-    : visibleTools.has("read") ||
-      availableTools.has("skills_read") ||
-      promptSurface === "cli_backend";
-  const skillsSection = canAccessSkills
-    ? buildSkillsSection({
-        skillsPrompt,
-        readToolName,
-        codeModeActive: params.codeModeActive,
-        installedSkillSearch: availableTools.has("skills_search"),
-        installedSkillRead: availableTools.has("skills_read"),
-      })
-    : [];
-  params.onRenderedSkillsPrompt?.(canAccessSkills ? (skillsPrompt ?? "") : "");
+  const { section: skillsSection, skillsPrompt: renderedSkillsPrompt } = buildSkillsSection({
+    skillsPrompt,
+    readToolName,
+    codeModeActive: params.codeModeActive,
+    promptSurface,
+    visibleTools,
+    availableTools,
+    deferredToolsDirectlyCallable: params.deferredToolsDirectlyCallable,
+  });
+  params.onRenderedSkillsPrompt?.(renderedSkillsPrompt);
   const skillWorkshopSection = availableTools.has(SKILL_WORKSHOP_TOOL_NAME)
     ? buildSkillWorkshopPromptSection()
     : [];
@@ -875,10 +870,10 @@ export function buildAgentSystemPrompt(params: {
     // Only Runtime facts may move behind tools. Close the region before callers
     // append hook instructions or permission notices that must retain their role.
     SYSTEM_PROMPT_RELOCATABLE_BOUNDARY,
-    `${buildRuntimeLine(runtimeInfo, runtimeChannel, runtimeCapabilities)}${SYSTEM_PROMPT_RELOCATABLE_BOUNDARY_END}`,
+    `${buildRuntimeLine(blindRuntime(runtimeInfo), runtimeChannel, runtimeCapabilities)}${SYSTEM_PROMPT_RELOCATABLE_BOUNDARY_END}`,
   );
 
-  return joinPromptLines(lines);
+  return blindWorkspace(joinPromptLines(lines), params);
 }
 
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

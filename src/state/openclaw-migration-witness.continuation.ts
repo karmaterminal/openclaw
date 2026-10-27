@@ -11,7 +11,7 @@ import {
 
 export { RECIPIENT_AUTHORITY_TABLE };
 
-/** Agent schemas a witness admits: upstream's 24..35 and continuation's authority step. */
+/** Agent schemas a witness admits: upstream's 24..37 and continuation's authority step. */
 export const AGENT_WITNESS_SCHEMA_VERSIONS: ReadonlySet<number> = new Set([
   24,
   25,
@@ -25,6 +25,8 @@ export const AGENT_WITNESS_SCHEMA_VERSIONS: ReadonlySet<number> = new Set([
   33,
   34,
   35,
+  36,
+  37,
   AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
 ]);
 
