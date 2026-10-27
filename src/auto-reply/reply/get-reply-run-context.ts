@@ -227,11 +227,16 @@ export async function prepareReplyRunContext(params: RunPreparedReplyParams) {
   const groupIntro = isGroupChat
     ? buildGroupIntro({ activation: conversation.activation, defaultActivation })
     : "";
-  const terminalReplyExpectation = resolveSourceReplyExpectation({
-    ctx: promptSessionCtx,
-    cfg,
-    scheduledAutomation: opts?.scheduledAutomation !== undefined,
-  });
+  // An explicitly silent system event records its turn without source delivery. Its empty
+  // terminal is a valid completion, including when the target is an internal/subagent session.
+  const terminalReplyExpectation =
+    opts?.internalEventExecution?.deliver === false
+      ? "optional"
+      : resolveSourceReplyExpectation({
+          ctx: promptSessionCtx,
+          cfg,
+          scheduledAutomation: opts?.scheduledAutomation !== undefined,
+        });
   const replyOperationRunState = resolveReplyOperationRunState(opts);
   const setReplyCompletion = (evidence: Parameters<typeof resolveReplyCompletion>[1]) => {
     if (replyOperationRunState) {
