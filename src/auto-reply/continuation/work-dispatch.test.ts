@@ -919,6 +919,33 @@ describe("durable continuation_work dispatch", () => {
     ]);
   });
 
+  it("does not grant a subagent continuation when the reply path returns no payload", async () => {
+    const sessionKey = "agent:main:subagent:continuation-silent-return";
+    mockSessionStore[sessionKey] = { sessionKey };
+    replyPayloadOverride = [];
+    await enqueuePendingWork({
+      sessionKey,
+      hop: 2,
+      delayMs: 0,
+      electedAt: Date.now(),
+      dueAt: Date.now(),
+      maxChainLength: 200,
+      reason: "subagent hop-2 silent return",
+    });
+
+    const result = await dispatchPendingContinuationWork({ sessionKey });
+
+    expect(result).toEqual({ dispatched: 0, failed: 0, reaped: 0 });
+    expect(await firstWorkRecord()).toMatchObject({
+      status: "queued",
+      phase: "Requeued same-session continuation wake",
+    });
+    expect(workTransitionEvents).not.toContain("delivered-mark-committed");
+    expect(workTransitionEvents).not.toContain(
+      "flow-finished:Same-session continuation turn granted",
+    );
+  });
+
   it("commits an active-turn transcript and fold delivery before finishing the row", async () => {
     const sessionKey = "agent:main:fold-finish-order";
     mockSessionStore[sessionKey] = { sessionKey };

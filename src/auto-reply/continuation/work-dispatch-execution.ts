@@ -395,8 +395,13 @@ async function driveContinuationTurn(
       cfg,
     ),
   );
-  if (!hasNonDrainReplyPayload(reply) && isGatewayDraining()) {
-    return { status: "skipped", reason: CONTINUATION_TURN_DRAINING_REASON };
+  if (!hasNonDrainReplyPayload(reply)) {
+    if (isGatewayDraining()) {
+      return { status: "skipped", reason: CONTINUATION_TURN_DRAINING_REASON };
+    }
+    // A return without a reply payload does not prove that a continuation turn ran.
+    // Keep the claimed row recoverable through the bounded transient-error path.
+    throw new Error("Continuation reply returned without a non-drain payload");
   }
   // The provider ran. Persist the replay guard before finishing, then advance
   // only with the committed revision-bearing value returned by the CAS.
