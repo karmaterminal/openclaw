@@ -436,6 +436,14 @@ export function createTelegramIngressMonitor(params: CreateTelegramIngressMonito
                   await telegramLifecycle.onFailed(terminal.error);
                   return;
                 }
+                if (terminal.kind === "dropped") {
+                  if (telegramLifecycle.onDropped) {
+                    await telegramLifecycle.onDropped(terminal.reason);
+                  } else {
+                    await telegramLifecycle.onAbandoned();
+                  }
+                  return;
+                }
                 await lifecycle.onAdopted();
               },
               async (error: unknown) => {
@@ -465,6 +473,13 @@ export function createTelegramIngressMonitor(params: CreateTelegramIngressMonito
           // Released budget-free; the settled claim leaves nothing to complete.
           await telegramLifecycle.onCancelled();
           return { kind: "deferred" };
+        }
+        if (outcome?.kind === "dropped") {
+          if (!lifecycle.onDropped) {
+            return { kind: "failed-retryable", error: new Error("terminal drop is unsupported") };
+          }
+          await lifecycle.onDropped(outcome.reason);
+          return { kind: "transferred" };
         }
         // A dispatched update that records no outcome and defers no participant
         // was consumed silently; completing here tombstones the spool row with

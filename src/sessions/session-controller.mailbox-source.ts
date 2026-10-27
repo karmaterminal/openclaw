@@ -1,3 +1,4 @@
+import type { FollowupQueueDisposition } from "../auto-reply/get-reply-options.types.js";
 /** Exact input identity and custody; scheduling remains with the mailbox selector. */
 import type { FollowupRun, QueueSettings } from "../auto-reply/reply/queue/types.js";
 import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
@@ -531,6 +532,7 @@ function notifySessionControllerSourceAbandonment(
   run: Pick<FollowupRun, "turnAdoptionLifecycle">,
   state: SessionControllerSourceCustody,
   cancelled: boolean,
+  dropReason?: FollowupQueueDisposition,
 ): void | Promise<void> {
   const prior = state.abandonment;
   if (prior) {
@@ -543,14 +545,14 @@ function notifySessionControllerSourceAbandonment(
   state.abandonment = notification;
   try {
     const lifecycle = run.turnAdoptionLifecycle;
-    // Cancellation ended ownership before the reply lane, so it settles through
-    // the cancel callback and leaves the retry budget untouched. An explicit
-    // "cancelled" disposition and an already-aborted signal are the same end of
-    // ownership, so either takes the cancel path.
+    // A queue-policy drop is terminal. Cancellation reopens the source without
+    // spending retry budget; genuine abandonment spends an attempt.
     const completion =
-      (cancelled || lifecycle?.abortSignal?.aborted) && lifecycle?.onCancelled
-        ? lifecycle.onCancelled()
-        : lifecycle?.onAbandoned?.();
+      dropReason && lifecycle?.onDropped
+        ? lifecycle.onDropped(dropReason)
+        : (cancelled || lifecycle?.abortSignal?.aborted) && lifecycle?.onCancelled
+          ? lifecycle.onCancelled()
+          : lifecycle?.onAbandoned?.();
     if (completion) {
       notification.completion = Promise.resolve(completion);
       void notification.completion.catch(() => {});
@@ -566,7 +568,7 @@ function notifySessionControllerSourceAbandonment(
 export function completeSessionControllerSourceLifecycle(
   run: Pick<FollowupRun, "turnAdoptionLifecycle" | "controllerInput" | "controllerClaim">,
   state: SessionControllerSourceCustody,
-  disposition?: "consumed" | "cancelled",
+  disposition?: "consumed" | "cancelled" | { kind: "dropped"; reason: FollowupQueueDisposition },
 ): void {
   if (state.completed) {
     return;
@@ -591,7 +593,12 @@ export function completeSessionControllerSourceLifecycle(
     try {
       abandonment =
         disposition !== "consumed" && !state.adopted
-          ? notifySessionControllerSourceAbandonment(run, state, disposition === "cancelled")
+          ? notifySessionControllerSourceAbandonment(
+              run,
+              state,
+              disposition === "cancelled",
+              typeof disposition === "object" ? disposition.reason : undefined,
+            )
           : undefined;
     } catch (error) {
       return afterFailure(error);

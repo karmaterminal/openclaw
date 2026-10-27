@@ -28,6 +28,7 @@ import {
   IngressAdoptionLostError,
   isPreAdoptionState,
   resolveLaneKey,
+  settlePreAdoptionFailure,
   type ActiveHandlerState,
   type ChannelIngressDrainDispatchResult,
 } from "./ingress-drain-state.js";
@@ -35,6 +36,7 @@ import {
   supersedeActiveStatesIfNeeded,
   type IngressSupersedeDecision,
 } from "./ingress-drain-supersede.js";
+import { IngressQueueCapDropError, resolveQueueCapDropFailure } from "./ingress-queue-cap-drop.js";
 import type {
   ChannelIngressQueue,
   ChannelIngressQueueClaim,
@@ -286,7 +288,8 @@ export function createChannelIngressDrainOwner<
       err,
       event: claim,
       formatError,
-      resolveNonRetryableFailure: options.resolveNonRetryableFailure,
+      resolveNonRetryableFailure: (failure) =>
+        resolveQueueCapDropFailure(failure, options.resolveNonRetryableFailure),
       config: options.retryPolicy,
       now: now(),
     });
@@ -433,13 +436,7 @@ export function createChannelIngressDrainOwner<
         // stall watchdog race and dead-letter an about-to-complete event.
         clearStallTimer(state);
       },
-      onFailed: async (error) => {
-        if (!isPreAdoptionState(state)) {
-          return;
-        }
-        // Keep recovery armed until disposition commits; removeActive clears it after success.
-        await state.settleOnce(() => applyFailureDisposition(state.claim, error));
-      },
+      onFailed: (error) => settlePreAdoptionFailure(state, error, applyFailureDisposition),
       onCancelled: async () => {
         // Cancellation means ownership ended before delivery, so preserve every
         // prior retry fact while reopening the canonical row for replacement.
@@ -451,6 +448,12 @@ export function createChannelIngressDrainOwner<
           applyFailureDisposition(claim, new Error("turn-abandoned")),
         );
       },
+      onDropped: (reason) =>
+        settlePreAdoptionFailure(
+          state,
+          new IngressQueueCapDropError(reason),
+          applyFailureDisposition,
+        ),
     };
   };
 

@@ -1,7 +1,10 @@
 import { defaultRuntime } from "../../../runtime.js";
 import { completeSessionControllerSourceLifecycle } from "../../../sessions/session-controller.mailbox-source.js";
 import { submitSessionControllerInput } from "../../../sessions/session-controller.mailbox.js";
-import type { TurnAdoptionLifecycle } from "../../get-reply-options.types.js";
+import type {
+  FollowupQueueDisposition,
+  TurnAdoptionLifecycle,
+} from "../../get-reply-options.types.js";
 import type { ReplyOperationRunState } from "../reply-operation-run-state.js";
 import {
   startFollowupRunPreAdoptionHeartbeatWithCustody,
@@ -192,12 +195,19 @@ export function releaseBeforeTurnAdoptionRetry(
       return onCancelled();
     };
   }
+  const onDropped = lifecycle.onDropped;
+  if (onDropped) {
+    lifecycle.onDropped = (reason) => {
+      release();
+      return onDropped(reason);
+    };
+  }
 }
 
 /** Adapter registers source identity before the canonical custody owner settles it. */
 export function completeFollowupRunLifecycle(
   run: FollowupRun | FollowupLifecycleSource,
-  disposition?: "consumed" | "cancelled",
+  disposition?: "consumed" | "cancelled" | { kind: "dropped"; reason: FollowupQueueDisposition },
 ): void {
   const state = custody(run);
   if (!state.completed && disposition === "consumed") {

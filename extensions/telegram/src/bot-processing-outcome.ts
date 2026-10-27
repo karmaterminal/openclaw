@@ -8,6 +8,10 @@ export type TelegramMessageProcessingResult =
   | { kind: "skipped" }
   /** Ownership ended by intent before adoption; settles without retry budget. */
   | { kind: "cancelled" }
+  | {
+      kind: "dropped";
+      reason: Parameters<NonNullable<ChannelIngressMonitorLifecycle["onDropped"]>>[0];
+    }
   | { kind: "failed-retryable"; error: unknown };
 
 type TelegramUpdateProcessingFrame = {
