@@ -1,8 +1,5 @@
 // #1488 silent-run dispositions on the shared continuation_work custody fixture (split from
 // work-dispatch.test.ts under its 1,000-line cap, like work-dispatch.durable-2..7).
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const turnGrants: unknown[] = [];
 const systemEvents: unknown[] = [];
@@ -87,54 +84,6 @@ function waitForMockIdle(
       signal.addEventListener("abort", abortHandler, { once: true });
     }
   });
-}
-
-function resolveReplyRunIdle(sessionKey: string): void {
-  activeSessions.delete(sessionKey);
-  const waiters = replyIdleWaiters.get(sessionKey) ?? [];
-  for (const finish of Array.from(waiters)) {
-    finish(true);
-  }
-}
-
-function resolveCommandLaneIdle(lane = "main"): void {
-  mainQueueSize = 0;
-  const waiters = laneIdleWaiters.get(lane) ?? [];
-  for (const finish of Array.from(waiters)) {
-    finish(true);
-  }
-}
-
-async function flushAsyncWork(iterations = 8): Promise<void> {
-  for (let i = 0; i < iterations; i++) {
-    await Promise.resolve();
-  }
-  await settleWorkDispatchCustody();
-}
-
-async function waitForMockWaiter(
-  waiters: Map<string, Array<(idle: boolean) => void>>,
-  key: string,
-): Promise<void> {
-  for (let i = 0; i < 20; i++) {
-    if ((waiters.get(key)?.length ?? 0) > 0) {
-      return;
-    }
-    await vi.advanceTimersByTimeAsync(0);
-    await flushAsyncWork();
-  }
-  throw new Error(`expected idle waiter for ${key}`);
-}
-
-async function waitForTurnGrantCount(count: number): Promise<void> {
-  for (let i = 0; i < 50; i++) {
-    if (turnGrants.length >= count) {
-      return;
-    }
-    await vi.advanceTimersByTimeAsync(0);
-    await flushAsyncWork();
-  }
-  throw new Error(`expected at least ${count} turn grant(s), got ${turnGrants.length}`);
 }
 
 // mock-isolation: Work dispatch reads a synthetic session-store config, never the operator's config file.
@@ -360,34 +309,13 @@ vi.mock("./custody/custody-store.js", async (importOriginal) =>
 );
 
 import { subagentRuns } from "../../agents/subagents/registry/subagent-registry-memory.js";
-import type { SubagentRunRecord } from "../../agents/subagents/registry/subagent-registry.types.js";
-import { STALE_UNENDED_SUBAGENT_RUN_MS } from "../../agents/subagents/registry/subagent-run-liveness.js";
-import {
-  deleteSubagentSessionForCleanup,
-  resetSubagentSessionCleanupForTests,
-} from "../../agents/subagents/registry/subagent-session-cleanup.js";
+import { resetSubagentSessionCleanupForTests } from "../../agents/subagents/registry/subagent-session-cleanup.js";
 import { resetGatewayWorkAdmission } from "../../process/gateway-work-admission.js";
-import { runWithGatewayRootWorkAdmissionForTest as runWithGatewayRootWorkAdmission } from "../../process/gateway-work-admission.test-helpers.js";
 import { getReplyFromConfig } from "../reply/get-reply.js";
 import {
-  DEFAULT_NO_OP_REARM_THRESHOLD,
-  recordNoOpRearmOutcome,
-} from "../reply/no-op-rearm-guard.js";
-import { clearSessionResetRuntimeState } from "../reply/session-reset-cleanup.js";
-import { updateContinuationRecords } from "./custody/custody-store.js";
-import {
-  custodyStateForTest,
   listCustodyRecordsForTest,
-  readCustodyRecordForTest,
   useContinuationCustodyTestState,
 } from "./custody/custody.test-support.js";
-import {
-  cancelPendingDelegates,
-  enqueuePendingDelegate,
-  pendingDelegateCount,
-} from "./delegate-store.js";
-import { cancelSessionContinuations } from "./session-reset.js";
-import type { ContinuationRuntimeConfig } from "./types.js";
 import {
   describeWorkTransition,
   resetWorkDispatchCustodyHooks,
@@ -395,150 +323,18 @@ import {
   workDispatchCustodyHooks,
 } from "./work-dispatch-flow-mock.test-support.js";
 import {
-  bucket1ReapVerdict,
-  classifyContinuationWorkReason,
-  clearContinuationWorkDispatch,
-  computeBusySkipBackoffMs,
   dispatchPendingContinuationWork,
-  partitionSupersededWork,
-  recoverPendingContinuationWork,
   resetContinuationWorkDispatchForTests,
-  scheduleContinuationWork,
-  scheduleContinuationWorkBatch,
 } from "./work-dispatch.js";
-import {
-  consumePendingWork,
-  hasLiveOrRecentlyDispatchedContinuationWork,
-  markPendingWorkDelivered,
-  markPendingWorkFoldDelivered,
-  requeuePendingWork,
-} from "./work-store.js";
 import { enqueuePendingWork } from "./work-store.test-support.js";
 
 const getReplyFromConfigMock = vi.mocked(getReplyFromConfig);
-
-function addSubagentRun(childSessionKey: string, overrides: Partial<SubagentRunRecord> = {}): void {
-  const runId = overrides.runId ?? `run-${childSessionKey}-${subagentRuns.size + 1}`;
-  subagentRuns.set(runId, {
-    runId,
-    childSessionKey,
-    requesterSessionKey: overrides.requesterSessionKey ?? "agent:main:requester",
-    requesterDisplayKey: overrides.requesterDisplayKey ?? "requester",
-    task: overrides.task ?? "delegated task",
-    cleanup: overrides.cleanup ?? "keep",
-    createdAt: overrides.createdAt ?? Date.now(),
-    execution: overrides.execution ?? { status: "running" },
-    ...overrides,
-  });
-}
-
-const config = {
-  enabled: true,
-  maxChainLength: 8,
-  maxDelegatesPerTurn: 4,
-  maxPendingWork: 32,
-  defaultDelayMs: 1_000,
-  minDelayMs: 1_000,
-  maxDelayMs: 60_000,
-  costCapTokens: 0,
-  crossSessionTargeting: "enabled",
-  busySkipBackoff: { baseMs: 1_000, ceilingMs: 60_000, factor: 2 },
-} satisfies ContinuationRuntimeConfig;
-
-async function flushTimers(): Promise<void> {
-  await settleWorkDispatchCustody();
-  await vi.runOnlyPendingTimersAsync();
-  await settleWorkDispatchCustody();
-}
 
 async function firstWorkRecord() {
   return (await listCustodyRecordsForTest({ kinds: ["work"] })).at(0);
 }
 
-async function bumpRecordRevision(recordId: string): Promise<void> {
-  const record = await readCustodyRecordForTest(recordId);
-  if (!record) {
-    throw new Error(`expected custody record ${recordId}`);
-  }
-  const bumped = await updateContinuationRecords(
-    [
-      {
-        recordId,
-        ownerSessionKey: record.ownerSessionKey,
-        expectedRevision: record.revision,
-        patch: { updatedAt: record.updatedAt },
-      },
-    ],
-    { now: record.updatedAt },
-  );
-  if (bumped.outcome !== "applied") {
-    throw new Error(`expected concurrent revision bump to commit: ${bumped.outcome}`);
-  }
-}
-
-async function claimMaturedWork(sessionKey: string) {
-  const enqueued = await enqueuePendingWork({
-    sessionKey,
-    hop: 1,
-    delayMs: 0,
-    electedAt: Date.now(),
-    dueAt: Date.now(),
-    maxChainLength: 8,
-    reason: "immutable transition characterization",
-  });
-  if (!enqueued) {
-    throw new Error("expected continuation work enqueue");
-  }
-  const [work] = await consumePendingWork(sessionKey);
-  if (!work) {
-    throw new Error("expected matured continuation work claim");
-  }
-  return work;
-}
-const splitLintUse = [
-  os,
-  path,
-  resolveReplyRunIdle,
-  resolveCommandLaneIdle,
-  waitForTurnGrantCount,
-  STALE_UNENDED_SUBAGENT_RUN_MS,
-  deleteSubagentSessionForCleanup,
-  runWithGatewayRootWorkAdmission,
-  DEFAULT_NO_OP_REARM_THRESHOLD,
-  recordNoOpRearmOutcome,
-  cancelPendingDelegates,
-  enqueuePendingDelegate,
-  pendingDelegateCount,
-  bucket1ReapVerdict,
-  classifyContinuationWorkReason,
-  computeBusySkipBackoffMs,
-  partitionSupersededWork,
-  recoverPendingContinuationWork,
-  scheduleContinuationWorkBatch,
-  hasLiveOrRecentlyDispatchedContinuationWork,
-  addSubagentRun,
-  flushTimers,
-];
-void splitLintUse;
-
 useContinuationCustodyTestState();
-
-/** Advance fake time; custody work started before or by the fired timers settles on both sides. */
-async function advanceTimers(ms: number): Promise<void> {
-  await settleWorkDispatchCustody();
-  await vi.advanceTimersByTimeAsync(ms);
-  await settleWorkDispatchCustody();
-}
-
-/**
- * Fake timers owned by continuation dispatch. Every custody command re-arms
- * the shared-state worker's one idle-retirement timer, which is not dispatch
- * state, so the count is taken right after a custody read and excludes it.
- */
-async function dispatchTimerCount(): Promise<number> {
-  await listCustodyRecordsForTest();
-  return vi.getTimerCount() - 1;
-}
 
 describe("durable continuation_work dispatch", () => {
   beforeEach(() => {
