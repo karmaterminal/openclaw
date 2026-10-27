@@ -1,4 +1,6 @@
 import type { ExpressionBuilder } from "kysely";
+import { engineGreatest } from "../../infra/database-engine/scalar.js";
+import type { EngineConnection } from "../../infra/sql-connection.js";
 import type { DB } from "../../state/openclaw-state-db.generated.js";
 import type { ChannelIngressQueueRecordGeneration } from "./ingress-queue.types.js";
 
@@ -8,9 +10,10 @@ import type { ChannelIngressQueueRecordGeneration } from "./ingress-queue.types.
  * updated_at) names one row generation. Generation-fenced writes rely on it.
  */
 export const nextUpdatedAt = (
+  db: EngineConnection,
   eb: ExpressionBuilder<Pick<DB, "channel_ingress_events">, "channel_ingress_events">,
   now: number,
-) => eb.fn<number>("max", [eb.val(now), eb("updated_at", "+", 1)]);
+) => engineGreatest<number>(db, [eb.val(now), eb("updated_at", "+", 1)]);
 
 /** Fences a write to the row generation the caller inspected (see nextUpdatedAt). */
 export type ChannelIngressGenerationFence = { generation?: ChannelIngressQueueRecordGeneration };

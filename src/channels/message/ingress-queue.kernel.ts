@@ -138,7 +138,7 @@ function tombstoneCorruptRow(
                 .end(),
             }),
         ...CLEARED_CLAIM_COLUMNS,
-        updated_at: nextUpdatedAt(eb, now),
+        updated_at: nextUpdatedAt(db, eb, now),
       }))
       .where("queue_name", "=", row.queue_name)
       .where("event_id", "=", row.event_id)
@@ -277,7 +277,7 @@ export function claimChannelIngressInDatabase(
         claim_token: randomUUID(),
         claim_owner: input.ownerId,
         claimed_at: transitionAt,
-        updated_at: nextUpdatedAt(eb, transitionAt),
+        updated_at: nextUpdatedAt(db, eb, transitionAt),
         ...(input.laneKey ? { lane_key: input.laneKey } : {}),
       }))
       .where("queue_name", "=", input.queueName)
@@ -353,7 +353,7 @@ export function recoverChannelIngressClaimInDatabase(
         ...CLEARED_CLAIM_COLUMNS,
         attempts: eb("attempts", "+", 1),
         last_attempt_at: input.now,
-        updated_at: nextUpdatedAt(eb, input.now),
+        updated_at: nextUpdatedAt(db, eb, input.now),
       }))
       .where("queue_name", "=", current.queue_name)
       .where("event_id", "=", current.event_id)
@@ -388,7 +388,7 @@ export function refreshChannelIngressClaimInDatabase(
     db,
     selectedMutation(db, input).set((eb) => ({
       claimed_at: input.now,
-      updated_at: nextUpdatedAt(eb, input.now),
+      updated_at: nextUpdatedAt(db, eb, input.now),
     })),
   );
 }
@@ -408,7 +408,7 @@ export function completeChannelIngressInDatabase(
       ...CLEARED_CLAIM_COLUMNS,
       last_attempt_at: null,
       last_error: null,
-      updated_at: nextUpdatedAt(eb, input.now),
+      updated_at: nextUpdatedAt(db, eb, input.now),
     })),
   );
   if (affectedRows(update) > 0) {
@@ -455,7 +455,7 @@ export function releaseChannelIngressInDatabase(
         ? {}
         : { attempts: eb("attempts", "+", 1), last_attempt_at: input.now }),
       ...(input.lastError === undefined ? {} : { last_error: input.lastError }),
-      updated_at: nextUpdatedAt(eb, input.now),
+      updated_at: nextUpdatedAt(db, eb, input.now),
     })),
   );
 }
@@ -483,7 +483,7 @@ export function failChannelIngressInDatabase(
         .else(eb.ref("payload_json"))
         .end(),
       ...CLEARED_CLAIM_COLUMNS,
-      updated_at: nextUpdatedAt(eb, input.now),
+      updated_at: nextUpdatedAt(db, eb, input.now),
     })),
   );
 }
@@ -633,7 +633,7 @@ export function resubmitChannelIngressInDatabase(
         status: "pending",
         payload_json: row.payload_json === FAILED_NULL_PAYLOAD_SENTINEL ? "null" : row.payload_json,
         received_at: input.now,
-        updated_at: nextUpdatedAt(eb, input.now),
+        updated_at: nextUpdatedAt(db, eb, input.now),
         attempts: 0,
         last_attempt_at: null,
         last_error: null,
