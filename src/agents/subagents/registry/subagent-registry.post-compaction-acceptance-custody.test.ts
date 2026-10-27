@@ -23,7 +23,7 @@ import type {
 } from "../../../auto-reply/reply/post-compaction-delegate-delivery.types.js";
 import * as sessionAccessorModule from "../../../config/sessions/session-accessor.js";
 import { formatContinuationChildRunId } from "../../../shared/continuation-run-key.js";
-import { closeOpenClawStateDatabaseForTest } from "../../../state/openclaw-state-db.js";
+import { closeStateDatabaseForTest } from "../../../test-utils/database-cleanup.js";
 import { runSpawnPipeline } from "../../spawn-pipeline.js";
 import { subagentRuns } from "./subagent-registry-memory.js";
 import { restoreSubagentRunsFromDisk } from "./subagent-registry-persistence.js";
@@ -231,7 +231,8 @@ function queuedEntry(): QueuedPostCompactionDelegateDelivery {
 }
 
 async function restartFrom(image: Map<string, SubagentRunRecord>) {
-  closeOpenClawStateDatabaseForTest();
+  // Session maintenance holds async state reads (#180610); join them before closing.
+  await closeStateDatabaseForTest();
   await resetSubagentRegistryForTests({ persist: false });
   saveSubagentRegistryToSqlite(image);
   // A new process holds no in-memory write fences.
@@ -269,6 +270,8 @@ describe("post-compaction delegate final acceptance (H1 T8)", () => {
     const crashImage = loadSubagentRegistryFromSqlite();
     expect(crashImage.get(childRunId)).toBeDefined();
 
+    // The crashed process's in-flight work ends under its faults; the restart never joins it.
+    await closeStateDatabaseForTest();
     liftFaults();
     abortSucceeds = true;
     abortCalls.length = 0;
