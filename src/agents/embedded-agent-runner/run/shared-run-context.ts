@@ -24,8 +24,15 @@ export function projectEmbeddedMessageContext(run: Partial<EmbeddedForegroundPro
   };
 }
 
+/** Continuation (karmaterminal): the attempt's message context plus the run's continuation options. */
+export function projectEmbeddedAttemptContext(
+  run: Partial<EmbeddedForegroundPromptContext> & Parameters<typeof projectContinuationOpts>[0],
+) {
+  return { ...projectEmbeddedMessageContext(run), ...projectContinuationOpts(run) };
+}
+
 /** Continuation (karmaterminal): the run's continuation tool options, forwarded to the attempt. */
-export function projectContinuationOpts(
+function projectContinuationOpts(
   run: Pick<
     RunEmbeddedAgentParams,
     | "drainsContinuationDelegateQueue"

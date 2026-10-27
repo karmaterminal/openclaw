@@ -39,7 +39,7 @@ import type { PreparedEmbeddedAttemptDispatchInput } from "./execution-context.j
 import { resolveEmbeddedAttemptBasePrompt } from "./helpers.js";
 import type { EmbeddedRunAttemptInternalParams } from "./internal-params.js";
 import { prepareEmbeddedAttemptPromptExecution } from "./prompt-image-preparation.js";
-import { projectContinuationOpts, projectEmbeddedMessageContext } from "./shared-run-context.js";
+import { projectEmbeddedAttemptContext } from "./shared-run-context.js";
 import { MAX_BEFORE_AGENT_FINALIZE_REVISIONS } from "./terminal-retry-state.js";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
 
@@ -403,7 +403,6 @@ export async function prepareAndDispatchEmbeddedRunAttempt(
     operation: "attempt",
     sessionId,
     sessionKey: resolvedSessionKey,
-    ...projectContinuationOpts(params),
     memoryAudience,
     conversationRecall: params.conversationRecall,
     promptCacheKey: params.promptCacheKey,
@@ -433,7 +432,7 @@ export async function prepareAndDispatchEmbeddedRunAttempt(
     memberRoleIds: params.memberRoleIds,
     spawnedBy: params.spawnedBy,
     isCanonicalWorkspace,
-    ...projectEmbeddedMessageContext(params),
+    ...projectEmbeddedAttemptContext(params),
     hasRepliedRef: params.hasRepliedRef,
     sessionFile,
     ...(sessionManager ? { sessionManager } : { sessionTarget: resolvedSessionTarget }),
