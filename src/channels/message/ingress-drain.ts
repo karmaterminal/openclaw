@@ -21,6 +21,7 @@ import {
   registerLiveIngressDrainInstance,
 } from "./ingress-claim-owner.js";
 import { createIngressWriter } from "./ingress-claim-writes.js";
+import { createIngressDeadLetterNotifier } from "./ingress-dead-letter-notice.js";
 import type { ChannelIngressDispatchLifecycle } from "./ingress-drain-lifecycle.js";
 import type { CreateChannelIngressDrainOptions } from "./ingress-drain-options.js";
 import { applyIngressPendingDispositions } from "./ingress-drain-pending-disposition.js";
@@ -124,6 +125,7 @@ export function createChannelIngressDrainOwner<
   let heldRecheckMs = 0;
 
   const log = (message: string) => options.onLog?.(message);
+  const notifyDeadLetter = createIngressDeadLetterNotifier(options.onDeadLetter, log, formatError);
 
   const clearStallTimer = (state: ActiveHandlerState<TPayload, TMetadata>) => {
     clearTimeout(state.stallTimer);
@@ -251,13 +253,9 @@ export function createChannelIngressDrainOwner<
     }
     if (disposition.kind === "fail") {
       log(
-        `spooled update ${displayId} failed with non-retryable ${disposition.reason}: ${disposition.message}; dead-lettered`,
+        `spooled update ${displayId} on lane ${claim.laneKey ?? displayId} failed after ${disposition.attempt} attempts (${disposition.reason}): ${disposition.message}; dead-lettered`,
       );
-      if (disposition.reason === "retry-limit-exceeded") {
-        log(
-          `spooled update ${displayId} on lane ${claim.laneKey ?? displayId} reached retry limit after ${disposition.attempt} attempts; dead-lettered`,
-        );
-      }
+      await notifyDeadLetter(claim, disposition);
       return;
     }
     log(`spooled update ${displayId} failed; keeping for retry: ${disposition.message}`);

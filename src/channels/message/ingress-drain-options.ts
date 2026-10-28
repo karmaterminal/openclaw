@@ -1,4 +1,5 @@
 /** Options for createChannelIngressDrain; ingress-drain.ts re-exports them. */
+import type { IngressDeadLetterNotice } from "./ingress-dead-letter-notice.js";
 import type { ChannelIngressDispatchLifecycle } from "./ingress-drain-lifecycle.js";
 import type { ResolveChannelIngressPendingDisposition } from "./ingress-drain-pending-disposition.js";
 import type { ChannelIngressDrainDispatchResult } from "./ingress-drain-state.js";
@@ -31,6 +32,8 @@ export type CreateChannelIngressDrainOptions<
     lifecycle: ChannelIngressDispatchLifecycle,
   ) => Promise<ChannelIngressDrainDispatchResult | void> | ChannelIngressDrainDispatchResult | void;
   resolveNonRetryableFailure?: (err: unknown) => IngressNonRetryableFailure | null;
+  /** Best-effort transport notice, only after this claim's dead-letter write commits. */
+  onDeadLetter?: IngressDeadLetterNotice<TPayload, TMetadata>;
   /** A returned guard is checked synchronously before cancelling pre-adoption work. */
   shouldSupersedePending?: (
     newEvent:

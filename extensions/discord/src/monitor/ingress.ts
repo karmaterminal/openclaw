@@ -1,5 +1,5 @@
 // Discord plugin module owns raw gateway-message durable ingress and replay draining.
-import { GatewayDispatchEvents, type APIMessage } from "discord-api-types/v10";
+import type { APIMessage } from "discord-api-types/v10";
 import { prepareChannelIngressEvent } from "openclaw/plugin-sdk/channel-ingress-runtime";
 import {
   createChannelIngressError,
@@ -14,7 +14,7 @@ import { danger, type RuntimeEnv } from "openclaw/plugin-sdk/runtime-env";
 import { normalizeNullableString as nonEmptyString } from "openclaw/plugin-sdk/string-coerce-runtime";
 import type { Client } from "../internal/discord.js";
 import type { DiscordGatewayChannelInfo } from "../internal/gateway-channel-inventory.js";
-import { mapGatewayDispatchData } from "../internal/gateway-dispatch.js";
+import { createMessageDispatchData } from "../internal/gateway-dispatch.js";
 import { getDiscordRuntime } from "../runtime.js";
 import { getGateway } from "./gateway-registry.js";
 import { createDiscordStaleAmbientPendingDisposition } from "./ingress-stale-policy.js";
@@ -120,6 +120,7 @@ export function createDiscordIngressMonitor(params: {
   /** Defaults to the live gateway inventory registered for this account. */
   resolveChannelInfo?: (channelId: string) => DiscordGatewayChannelInfo | undefined;
   isChannelInventoryHydrating?: (guildId: string) => boolean;
+  onDeadLetter?: (event: DiscordMessageEvent, signal: AbortSignal) => Promise<void>;
   queue?: ChannelIngressQueue<DiscordIngressPayload>;
 }): DiscordIngressMonitor {
   const readPolicy = params.readPolicy;
@@ -167,11 +168,7 @@ export function createDiscordIngressMonitor(params: {
     },
     // Gateway mapping is intentionally delayed until after the durable claim.
     deliver: async (rawMessage, lifecycle) => {
-      const event = mapGatewayDispatchData(
-        params.client,
-        GatewayDispatchEvents.MessageCreate,
-        rawMessage,
-      ) as DiscordMessageEvent;
+      const event = createMessageDispatchData(params.client, rawMessage);
       return await params.dispatch(event, lifecycle);
     },
     pollIntervalMs: DISCORD_INGRESS_DRAIN_INTERVAL_MS,
@@ -215,6 +212,10 @@ export function createDiscordIngressMonitor(params: {
           return { reason: "authentication-failed", message: formatErrorMessage(error) };
         }
         return null;
+      },
+      onDeadLetter: async (claim, _failure, signal) => {
+        const { rawMessage } = decodeDiscordIngressPayload(claim.payload, claim.id).body;
+        await params.onDeadLetter?.(createMessageDispatchData(params.client, rawMessage), signal);
       },
       onLog: (message) => params.runtime.error?.(danger(`discord ingress: ${message}`)),
     },
