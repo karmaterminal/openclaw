@@ -16,6 +16,10 @@ import { asOptionalRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { WebSocket } from "openclaw/plugin-sdk/websocket-runtime";
 import type * as ws from "ws";
 import type { Client } from "./client.js";
+import {
+  DiscordGatewayChannelInventory,
+  type DiscordGatewayChannelInfo,
+} from "./gateway-channel-inventory.js";
 import { canResumeAfterGatewayClose, isFatalGatewayCloseCode } from "./gateway-close-codes.js";
 import { mapGatewayDispatchData } from "./gateway-dispatch.js";
 import { sharedGatewayIdentifyLimiter } from "./gateway-identify-limiter.js";
@@ -80,6 +84,7 @@ export class GatewayPlugin implements GatewayPluginContract {
   private firstHeartbeatTimeout?: NodeJS.Timeout;
   private reconnectTimeout?: NodeJS.Timeout;
   private readonly voiceStateCache = new DiscordGatewayVoiceStateCache();
+  private readonly channelInventory = new DiscordGatewayChannelInventory();
   private outboundLimiter = new GatewaySendLimiter(
     (payload) => {
       if (!this.ws || this.ws.readyState !== READY_STATE_OPEN) {
@@ -105,6 +110,16 @@ export class GatewayPlugin implements GatewayPluginContract {
 
   listVoiceChannelStates(guildId: string, channelId: string): APIVoiceState[] | null {
     return this.voiceStateCache.listVoiceChannelStates(guildId, channelId);
+  }
+
+  /** Authoritative gateway channel facts; undefined means "not known here". */
+  getGatewayChannelInfo(channelId: string): DiscordGatewayChannelInfo | undefined {
+    return this.channelInventory.get(channelId);
+  }
+
+  /** True before READY, and between READY and the guild's GUILD_CREATE snapshot. */
+  isGatewayChannelInventoryHydrating(guildId: string): boolean {
+    return !this.isConnected || this.channelInventory.isGuildHydrating(guildId);
   }
 
   async fetchGuildEmojis<T>(guildId: string, fetcher: () => Promise<T>): Promise<T> {
@@ -281,6 +296,7 @@ export class GatewayPlugin implements GatewayPluginContract {
     this.reconnectAttempts = 0;
     this.consecutiveResumeFailures = 0;
     this.voiceStateCache.clear();
+    this.channelInventory.clear();
     this.selfUserId = null;
   }
 
@@ -368,6 +384,7 @@ export class GatewayPlugin implements GatewayPluginContract {
       this.isConnected = true;
     }
     this.voiceStateCache.apply(payload);
+    this.channelInventory.apply(payload);
     if (
       payload.t === GatewayDispatchEvents.VoiceServerUpdate ||
       (payload.t === GatewayDispatchEvents.VoiceStateUpdate &&
@@ -398,6 +415,7 @@ export class GatewayPlugin implements GatewayPluginContract {
     this.sequence = null;
     this.consecutiveResumeFailures = 0;
     this.voiceStateCache.clear();
+    this.channelInventory.clear();
   }
 
   private getResumeState(): { sessionId: string; sequence: number } | null {
