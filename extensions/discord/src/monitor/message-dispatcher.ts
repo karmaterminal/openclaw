@@ -54,6 +54,8 @@ type DiscordMessageDispatcher = (
 
 type DiscordMessageDispatcherWithLifecycle = DiscordMessageDispatcher & {
   deactivate: () => Promise<void>;
+  /** The one live policy reader for this account, shared with durable ingress. */
+  readPolicy: DiscordLivePolicyReader;
   notifyDeadLetter: (
     data: DiscordMessageEvent,
     client: Client,
@@ -381,6 +383,7 @@ export function createDiscordMessageDispatcher(
     return options?.turnAdoptionLifecycle ? result : result.then(() => undefined);
   };
 
+  handler.readPolicy = readPolicy;
   handler.notifyDeadLetter = async (data, client, signal) => {
     const abortSignal = AbortSignal.any([
       signal,

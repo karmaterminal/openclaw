@@ -21,11 +21,10 @@ import {
   registerLiveIngressDrainInstance,
 } from "./ingress-claim-owner.js";
 import { createIngressWriter } from "./ingress-claim-writes.js";
-import {
-  createIngressDeadLetterNotifier,
-  type IngressDeadLetterNotice,
-} from "./ingress-dead-letter-notice.js";
+import { createIngressDeadLetterNotifier } from "./ingress-dead-letter-notice.js";
 import type { ChannelIngressDispatchLifecycle } from "./ingress-drain-lifecycle.js";
+import type { CreateChannelIngressDrainOptions } from "./ingress-drain-options.js";
+import { applyIngressPendingDispositions } from "./ingress-drain-pending-disposition.js";
 import {
   activeClaimKey,
   createIngressSettleOwner,
@@ -33,79 +32,24 @@ import {
   isPreAdoptionState,
   resolveLaneKey,
   type ActiveHandlerState,
-  type ChannelIngressDrainDispatchResult,
 } from "./ingress-drain-state.js";
-import {
-  supersedeActiveStatesIfNeeded,
-  type IngressSupersedeDecision,
-} from "./ingress-drain-supersede.js";
-import type {
-  ChannelIngressQueue,
-  ChannelIngressQueueClaim,
-  ChannelIngressQueueRecord,
-} from "./ingress-queue.types.js";
-import {
-  createIngressRetryPolicy,
-  type IngressNonRetryableFailure,
-  type IngressRetryPolicyConfig,
-} from "./ingress-retry-policy.js";
+import { supersedeActiveStatesIfNeeded } from "./ingress-drain-supersede.js";
+import type { ChannelIngressQueueClaim, ChannelIngressQueueRecord } from "./ingress-queue.types.js";
+import { createIngressRetryPolicy } from "./ingress-retry-policy.js";
 export { bindIngressLifecycleToReplyOptions } from "./ingress-drain-lifecycle.js";
+export type { CreateChannelIngressDrainOptions } from "./ingress-drain-options.js";
 export { isIngressAdoptionLostError } from "./ingress-drain-state.js";
 
 /** Default claim→adoption stall before applying the shared retry disposition. */
 export const DEFAULT_INGRESS_ADOPTION_STALL_MS = 5 * 60 * 1000;
 export const DEFAULT_INGRESS_START_LIMIT = 32;
-
-type DeferredLaneOccupancy = "hold" | "release";
-
-export type CreateChannelIngressDrainOptions<
-  TPayload,
-  TMetadata = unknown,
-  TCompletedMetadata = unknown,
-> = {
-  queue: ChannelIngressQueue<TPayload, TMetadata, TCompletedMetadata>;
-  /**
-   * Dispatch a claimed event. Wire lifecycle into reply options (see
-   * bindIngressLifecycleToReplyOptions). Return deferred when ownership will
-   * transfer at reply-lane admission; otherwise complete or throw.
-   */
-  dispatchClaimedEvent: (
-    event: ChannelIngressQueueClaim<TPayload, TMetadata>,
-    lifecycle: ChannelIngressDispatchLifecycle,
-  ) => Promise<ChannelIngressDrainDispatchResult | void> | ChannelIngressDrainDispatchResult | void;
-  resolveNonRetryableFailure?: (err: unknown) => IngressNonRetryableFailure | null;
-  /** Best-effort transport notice, only after this claim's dead-letter write commits. */
-  onDeadLetter?: IngressDeadLetterNotice<TPayload, TMetadata>;
-  /** A returned guard is checked synchronously before cancelling pre-adoption work. */
-  shouldSupersedePending?: (
-    newEvent:
-      | ChannelIngressQueueRecord<TPayload, TMetadata>
-      | ChannelIngressQueueClaim<TPayload, TMetadata>,
-    pendingEvent: ChannelIngressQueueClaim<TPayload, TMetadata>,
-  ) => IngressSupersedeDecision | Promise<IngressSupersedeDecision>;
-  deriveLaneKey?: (record: ChannelIngressQueueRecord<TPayload, TMetadata>) => string | undefined;
-  reconcileStoredLaneKey?: (
-    record: ChannelIngressQueueRecord<TPayload, TMetadata>,
-    storedLaneKey: string,
-    derivedLaneKey: string,
-  ) => boolean;
-  ownerId?: string;
-  adoptionStallTimeoutMs?: number;
-  claimLeaseMs?: number;
-  /**
-   * Whether a claimed event keeps occupying its ingress serialization lane after
-   * dispatch hands ownership to deferred work. Default "hold" (current behavior).
-   */
-  deferredLaneOccupancy?: DeferredLaneOccupancy;
-  retryPolicy?: IngressRetryPolicyConfig;
-  now?: () => number;
-  formatError?: (err: unknown) => string;
-  onLog?: (message: string) => void;
-  abortSignal?: AbortSignal;
-  orderBy?: "received" | "id";
-  scanLimit?: number;
-  startLimit?: number;
-};
+/**
+ * Revisit a lane the pending-disposition pass held; no queue write wakes it.
+ * A hold can span a gateway outage, so the quiet-path recheck backs off; new
+ * work still wakes the drain at once and re-evaluates the held row.
+ */
+const PENDING_DISPOSITION_RECHECK_MS = 1_000;
+const PENDING_DISPOSITION_RECHECK_MAX_MS = 60_000;
 
 export type ChannelIngressDrain = {
   recoverStaleClaims: () => Promise<number>;
@@ -178,6 +122,7 @@ export function createChannelIngressDrainOwner<
   const laneKeyFor = (record: ChannelIngressQueueRecord<TPayload, TMetadata>) =>
     resolveLaneKey(record, options.deriveLaneKey, options.reconcileStoredLaneKey);
   let disposed = false;
+  let heldRecheckMs = 0;
 
   const log = (message: string) => options.onLog?.(message);
   const notifyDeadLetter = createIngressDeadLetterNotifier(options.onDeadLetter, log, formatError);
@@ -652,7 +597,21 @@ export function createChannelIngressDrainOwner<
       await recoverStaleClaims();
     }
 
-    const { pending, claims } = await readUnsettled();
+    const unsettled = await readUnsettled();
+    // One clock for the whole snapshot: disposition awaits must not let retry
+    // delays be measured against a later instant than the rows they gate.
+    const snapshotNow = now();
+    const disposition = await applyIngressPendingDispositions({
+      pending: unsettled.pending,
+      now: snapshotNow,
+      queue,
+      ...(options.resolvePendingDisposition ? { resolve: options.resolvePendingDisposition } : {}),
+      resolveLaneKey: (record) =>
+        resolveLaneKey(record, options.deriveLaneKey, options.reconcileStoredLaneKey),
+      log,
+    });
+    const pending = disposition.pending;
+    const claims = unsettled.claims;
     const activeLaneKeys = new Set(laneOwnerByKey.keys());
     const claimedLaneKeys = new Set(
       claims
@@ -678,7 +637,7 @@ export function createChannelIngressDrainOwner<
     // The ordered snapshot owns selection for this pass. A delayed head blocks its lane.
     for (const [index, event] of pending.entries()) {
       const laneKey = laneKeyFor(event);
-      if (retry.delay(event, options.retryPolicy, now()) > 0) {
+      if (retry.delay(event, options.retryPolicy, snapshotNow) > 0) {
         retryDelayed[index] = 1;
         if (!pendingLaneKeys.has(laneKey)) {
           retryDelayedLaneKeys.add(laneKey);
@@ -688,6 +647,15 @@ export function createChannelIngressDrainOwner<
       }
       pendingLaneKeys.add(laneKey);
     }
+    if (disposition.blockedLaneKeys.size > 0) {
+      heldRecheckMs =
+        heldRecheckMs === 0
+          ? PENDING_DISPOSITION_RECHECK_MS
+          : Math.min(heldRecheckMs * 2, PENDING_DISPOSITION_RECHECK_MAX_MS);
+      retryAt = Math.min(retryAt ?? Infinity, currentTime + heldRecheckMs);
+    } else {
+      heldRecheckMs = 0;
+    }
     options.onRetryAt?.(retryAt);
 
     // Keep claimed and retry-delayed lanes out of this pass.
@@ -695,6 +663,7 @@ export function createChannelIngressDrainOwner<
       ...activeLaneKeys,
       ...claimedLaneKeys,
       ...retryDelayedLaneKeys,
+      ...disposition.blockedLaneKeys,
     ]);
 
     // Optional supersede scan: pending events may abort unadopted same-lane work.
@@ -704,6 +673,11 @@ export function createChannelIngressDrainOwner<
         break;
       }
       const laneKey = laneKeyFor(event);
+      // A lane the disposition hook holds is fenced for this pass: its rows
+      // neither cancel active work nor get their block lifted.
+      if (disposition.blockedLaneKeys.has(laneKey)) {
+        continue;
+      }
       if (await supersedeActiveIfNeeded(event, laneKey)) {
         blockedLaneKeys.delete(laneKey);
       }
