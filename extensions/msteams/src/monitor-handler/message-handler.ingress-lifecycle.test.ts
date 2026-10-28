@@ -5,6 +5,7 @@ import { createInboundDebouncer } from "openclaw/plugin-sdk/channel-inbound-debo
 import {
   closeOpenClawStateDatabaseForTest,
   createChannelIngressQueueForTests,
+  observeChannelIngressQueueWrite,
 } from "openclaw/plugin-sdk/channel-ingress-test-runtime";
 import {
   createChannelIngressMonitor,
@@ -132,7 +133,7 @@ describe("Microsoft Teams drain claim ownership", () => {
     }
   });
 
-  it("preserves abandon retry accounting, backoff, threshold, and restart behavior", async () => {
+  it("preserves abandon retry accounting and backoff, then dead-letters at the threshold without restart redispatch", async () => {
     vi.useFakeTimers();
     const now = Date.UTC(2026, 0, 2);
     vi.setSystemTime(now);
@@ -156,14 +157,7 @@ describe("Microsoft Teams drain claim ownership", () => {
     dispatchMock.mockRejectedValue(new Error("Microsoft Teams dispatch failed before adoption"));
 
     let stopCurrent: (() => Promise<void>) | undefined;
-    type Pending = Awaited<ReturnType<typeof queue.listPending>>[number];
-    const restart = async (
-      timestamp: number,
-      expected: number | Pending,
-      dispatches: number,
-      replay = true,
-    ) => {
-      vi.setSystemTime(timestamp);
+    const createIntegratedIngress = () => {
       const clock = createDebounceControl();
       const handler = createHandler(openDM, clock.createDebouncer);
       const ingress = createMSTeamsIngress({
@@ -183,13 +177,24 @@ describe("Microsoft Teams drain claim ownership", () => {
         await clock.flush(40);
         await ingress.stop();
       };
+      return { ...ingress, waitForIdle: monitor.waitForIdle, flushDebounce: clock.flush };
+    };
+    type Pending = Awaited<ReturnType<typeof queue.listPending>>[number];
+    const restart = async (
+      timestamp: number,
+      expected: number | Pending,
+      dispatches: number,
+      replay = true,
+    ) => {
+      vi.setSystemTime(timestamp);
+      const ingress = createIntegratedIngress();
       ingress.start();
       if (replay) {
         await ingress.accept(incoming);
       }
-      await monitor.waitForIdle();
+      await ingress.waitForIdle();
       if (typeof expected === "number") {
-        await clock.flush(40);
+        await ingress.flushDebounce(40);
       }
       const pending = await queue.listPending({ limit: "all" });
       expect(pending).toEqual([
@@ -226,18 +231,45 @@ describe("Microsoft Teams drain claim ownership", () => {
           releasedAt: secondAttempt.lastAttemptAt,
         });
       }
-      const thresholdAttempt = await restart(
-        secondAttempt.lastAttemptAt + 64_001,
-        DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
-        3,
-      );
+      // Abandonment is a real attempt, so the last one hits the shared retry
+      // ceiling and dead-letters (the activity is two days old, past the age
+      // floor) instead of retrying without bound.
+      const failedCeiling = {
+        id: "activity-abandon",
+        reason: "retry-limit-exceeded",
+        message: "turn-abandoned",
+        // fail() never increments; the claim-time budget is what is retained.
+        attempts: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS - 1,
+      };
+      vi.setSystemTime(secondAttempt.lastAttemptAt + 64_001);
+      const threshold = createIntegratedIngress();
+      const deadLettered = observeChannelIngressQueueWrite(queue, "fail", "activity-abandon");
+      threshold.start();
+      await threshold.accept(incoming);
+      await threshold.waitForIdle();
+      await threshold.flushDebounce(40);
+      await expect(deadLettered).resolves.toBe(true);
+      expect(await queue.listPending({ limit: "all" })).toEqual([]);
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([
+        expect.objectContaining(failedCeiling),
+      ]);
+      expect(dispatchMock).toHaveBeenCalledTimes(3);
+      // Dead-lettering releases the claim too; a retained claim would block the lane.
+      expect(await queue.listClaims()).toEqual([]);
+      await threshold.stop();
 
-      const beyondAttempt = await restart(
-        thresholdAttempt.lastAttemptAt + 128_001,
-        DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS + 1,
-        4,
-      );
-      await restart(beyondAttempt.lastAttemptAt + 1_000, beyondAttempt, 4);
+      // A dead-lettered activity stays retired across restarts: no redispatch.
+      vi.setSystemTime(secondAttempt.lastAttemptAt + 192_001);
+      const beyond = createIntegratedIngress();
+      beyond.start();
+      await beyond.accept(incoming);
+      await beyond.waitForIdle();
+      expect(dispatchMock).toHaveBeenCalledTimes(3);
+      expect(await queue.listPending({ limit: "all" })).toEqual([]);
+      expect(await queue.listFailed?.({ limit: "all" })).toEqual([
+        expect.objectContaining(failedCeiling),
+      ]);
+      await beyond.stop();
     } finally {
       try {
         await stopCurrent?.();

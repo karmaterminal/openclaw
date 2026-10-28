@@ -199,6 +199,43 @@ describe("Slack durable ingress", () => {
     });
   });
 
+  it("forwards a terminal queue drop through the routed durable lifecycle", async () => {
+    await withQueue(async (queue) => {
+      const captured =
+        createDeferred<NonNullable<ReturnType<typeof resolveSlackIngressTurnLifecycle>>>();
+      const releaseFirst = createDeferred<void>();
+      const processEvent = vi.fn(async (event: ReceiverEvent) => {
+        const lifecycle = resolveSlackIngressTurnLifecycle(event.customProperties)!;
+        if ((event.body as { event_id: string }).event_id === "Ev-queue-drop") {
+          captured.resolve(lifecycle);
+          await releaseFirst.promise;
+          return;
+        }
+        await lifecycle.onAdopted();
+      });
+      const { ingress, receive } = attachIngress(queue, processEvent);
+      ingress.start();
+      try {
+        await receive(createReceiverEvent("Ev-queue-drop"));
+        const routed = await captured.promise;
+        await routed.onSessionRouted?.("agent:main:slack:channel:C_TEST");
+        expect(routed.onDropped).toBeTypeOf("function");
+        await routed.onDropped?.("queue-cap-old");
+        await vi.waitFor(async () =>
+          expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
+            { reason: "queue-cap-old" },
+          ]),
+        );
+        expect(await queue.listPending({ limit: "all" })).toEqual([]);
+        await receive(createReceiverEvent("Ev-after-drop", undefined, { ts: "1700000001.000100" }));
+        await vi.waitFor(() => expect(processEvent).toHaveBeenCalledTimes(2), { timeout: 500 });
+      } finally {
+        releaseFirst.resolve();
+        await ingress.stop();
+      }
+    });
+  });
+
   it("releases a waiting duplicate's channel lane while preserving its migration fence", async () => {
     await withQueue(async (queue) => {
       const duplicate = createDeferred<boolean>();
@@ -251,6 +288,78 @@ describe("Slack durable ingress", () => {
         expect([await queue.listPending(), await queue.listClaims()]).toEqual([[], []]);
       } finally {
         duplicate.resolve(true);
+        await ingress.stop();
+      }
+    });
+  });
+
+  it("releases a cancelled deferred turn's migration fence without spending its retry budget", async () => {
+    await withQueue(async (queue) => {
+      const starts: string[] = [];
+      const redeliveredAttempts: number[] = [];
+      let routed: ReturnType<typeof resolveSlackIngressTurnLifecycle> | undefined;
+      const routedDeferred = Promise.withResolvers<void>();
+      const migrationStarted = Promise.withResolvers<void>();
+      const migrationClaimed = Promise.withResolvers<void>();
+      // The drain's own claim commit, so the test waits on it instead of polling.
+      const claim = queue.claim.bind(queue);
+      queue.claim = async (...args) => {
+        const claimed = await claim(...args);
+        if (claimed?.id === "Ev-migration") {
+          migrationClaimed.resolve();
+        }
+        return claimed;
+      };
+      const processEvent = vi.fn(async (receiverEvent: ReceiverEvent) => {
+        const id = (receiverEvent.body as { event_id: string }).event_id;
+        const lifecycle = resolveSlackIngressTurnLifecycle(receiverEvent.customProperties)!;
+        starts.push(id);
+        if (id === "Ev-migration") {
+          migrationStarted.resolve();
+        }
+        if (id === "Ev-routed" && !routed) {
+          await lifecycle.onSessionRouted?.("agent:main:slack:channel:C_TEST");
+          lifecycle.onDeferred();
+          routed = lifecycle;
+          routedDeferred.resolve();
+          return;
+        }
+        if (id === "Ev-routed") {
+          const claims = await queue.listClaims();
+          redeliveredAttempts.push(...claims.filter((c) => c.id === id).map((c) => c.attempts));
+        }
+        await lifecycle.onAdopted();
+      });
+      const { ingress, receive } = attachIngress(queue, processEvent);
+      ingress.start();
+      try {
+        await receive(createReceiverEvent("Ev-routed"));
+        await routedDeferred.promise;
+        await receive(
+          createReceiverEvent("Ev-migration", undefined, {
+            event: {
+              type: "channel_id_changed",
+              old_channel_id: "C_OLD",
+              new_channel_id: "C_TEST",
+            },
+          }),
+        );
+        await migrationClaimed.promise;
+        expect(await queue.listClaims()).toHaveLength(2);
+        expect(starts).toEqual(["Ev-routed"]);
+
+        // The reply lane settles a cleared queued turn through onCancelled and
+        // falls back to abandonment only when the lifecycle cannot cancel.
+        await (routed?.onCancelled ? routed.onCancelled() : routed?.onAbandoned());
+
+        await migrationStarted.promise;
+        await ingress.waitForIdle();
+        expect(await queue.listFailed?.()).toEqual([]);
+        expect(await queue.listClaims()).toEqual([]);
+        expect(await queue.listPending()).toEqual([]);
+        // Cancellation reopened the routed row without recording an attempt.
+        expect(redeliveredAttempts).toEqual([0]);
+      } finally {
         await ingress.stop();
       }
     });

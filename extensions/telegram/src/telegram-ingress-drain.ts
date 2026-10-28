@@ -426,8 +426,22 @@ export function createTelegramIngressMonitor(params: CreateTelegramIngressMonito
                   );
                   return;
                 }
+                if (terminal.kind === "cancelled") {
+                  // A cancelled coalesced turn reaches every member here; none
+                  // of them may spend retry budget on it.
+                  await telegramLifecycle.onCancelled();
+                  return;
+                }
                 if (terminal.kind === "failed-retryable") {
                   await telegramLifecycle.onFailed(terminal.error);
+                  return;
+                }
+                if (terminal.kind === "dropped") {
+                  if (telegramLifecycle.onDropped) {
+                    await telegramLifecycle.onDropped(terminal.reason);
+                  } else {
+                    await telegramLifecycle.onAbandoned();
+                  }
                   return;
                 }
                 await lifecycle.onAdopted();
@@ -454,6 +468,18 @@ export function createTelegramIngressMonitor(params: CreateTelegramIngressMonito
         const outcome = result.value;
         if (outcome?.kind === "failed-retryable") {
           return { kind: "failed-retryable", error: wrapFailure(outcome.error) };
+        }
+        if (outcome?.kind === "cancelled") {
+          // Released budget-free; the settled claim leaves nothing to complete.
+          await telegramLifecycle.onCancelled();
+          return { kind: "deferred" };
+        }
+        if (outcome?.kind === "dropped") {
+          if (!lifecycle.onDropped) {
+            return { kind: "failed-retryable", error: new Error("terminal drop is unsupported") };
+          }
+          await lifecycle.onDropped(outcome.reason);
+          return { kind: "transferred" };
         }
         // A dispatched update that records no outcome and defers no participant
         // was consumed silently; completing here tombstones the spool row with
