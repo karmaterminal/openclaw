@@ -344,7 +344,7 @@ export async function runReplyAgent(
         input: controllerInput,
         followupRun,
         runId,
-        assertCurrent: assertReadCurrent,
+        assertCurrent: restartRecovery.assertCurrent,
         enqueue: () =>
           enqueueFollowupRun(
             queueKey,

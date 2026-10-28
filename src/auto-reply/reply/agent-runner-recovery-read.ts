@@ -18,6 +18,8 @@ import { readChannelSourceTurnId } from "./source-turn-id.js";
 type ReplyRestartRecoveryRead = {
   sourceTurnId: string | undefined;
   entry: SessionEntry | undefined;
+  /** The read's lifecycle and operator-authority check; queued admission reuses it. */
+  assertCurrent: () => void;
   /** Provider redelivered a source this session already owns; the caller must not run it. */
   duplicate: boolean;
   /** Entry after a duplicate's terminal source claim was retired, when one was. */
@@ -60,12 +62,12 @@ export async function readReplyRestartRecoverySource(
       : activeSessionEntry;
   assertReadCurrent();
   if (!sourceTurnId || !isDuplicateRestartRecoverySource(entry, sourceTurnId)) {
-    return { sourceTurnId, entry, duplicate: false };
+    return { sourceTurnId, entry, assertCurrent: assertReadCurrent, duplicate: false };
   }
   // Durable source ownership identifies provider redelivery even if the run
   // became terminal before its claim cleanup committed.
   if (!sessionKey || !storePath || !hasRestartRecoverySourceClaim(entry, sourceTurnId)) {
-    return { sourceTurnId, entry, duplicate: true };
+    return { sourceTurnId, entry, assertCurrent: assertReadCurrent, duplicate: true };
   }
   if (!target) {
     throw new Error("Restart recovery retirement has no admitted session target");
@@ -76,5 +78,11 @@ export async function readReplyRestartRecoverySource(
     sessionId: entry.sessionId,
     sourceTurnId,
   });
-  return { sourceTurnId, entry, duplicate: true, retiredEntry };
+  return {
+    sourceTurnId,
+    entry,
+    assertCurrent: assertReadCurrent,
+    duplicate: true,
+    retiredEntry,
+  };
 }
