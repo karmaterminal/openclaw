@@ -30,9 +30,11 @@ import {
   IngressAdoptionLostError,
   isPreAdoptionState,
   resolveLaneKey,
+  settlePreAdoptionFailure,
   type ActiveHandlerState,
 } from "./ingress-drain-state.js";
 import { supersedeActiveStatesIfNeeded } from "./ingress-drain-supersede.js";
+import { IngressQueueCapDropError, resolveQueueCapDropFailure } from "./ingress-queue-cap-drop.js";
 import type { ChannelIngressQueueClaim, ChannelIngressQueueRecord } from "./ingress-queue.types.js";
 import { createIngressRetryPolicy } from "./ingress-retry-policy.js";
 export { bindIngressLifecycleToReplyOptions } from "./ingress-drain-lifecycle.js";
@@ -236,7 +238,8 @@ export function createChannelIngressDrainOwner<
       err,
       event: claim,
       formatError,
-      resolveNonRetryableFailure: options.resolveNonRetryableFailure,
+      resolveNonRetryableFailure: (failure) =>
+        resolveQueueCapDropFailure(failure, options.resolveNonRetryableFailure),
       config: options.retryPolicy,
       now: now(),
     });
@@ -292,19 +295,16 @@ export function createChannelIngressDrainOwner<
     state.stallTimer.unref?.();
   };
 
-  const releaseUnadopted = async (
+  // One pre-adoption settlement guard; callers choose the claim disposition.
+  const settleUnadopted = async (
     state: ActiveHandlerState<TPayload, TMetadata>,
-    releaseOptions: { lastError?: string; recordAttempt?: boolean },
+    settle: (claim: ChannelIngressQueueClaim<TPayload, TMetadata>) => Promise<unknown>,
   ) => {
     if (!isPreAdoptionState(state)) {
       return;
     }
     clearStallTimer(state);
-    await state
-      .settleOnce(async () => {
-        await releaseClaim(state.claim, releaseOptions);
-      })
-      .catch(() => undefined);
+    await state.settleOnce(async () => void (await settle(state.claim))).catch(() => undefined);
   };
 
   // A release between separate reads can hide a lane's head from both collections.
@@ -386,21 +386,24 @@ export function createChannelIngressDrainOwner<
         // stall watchdog race and dead-letter an about-to-complete event.
         clearStallTimer(state);
       },
-      onFailed: async (error) => {
-        if (!isPreAdoptionState(state)) {
-          return;
-        }
-        // Keep recovery armed until disposition commits; removeActive clears it after success.
-        await state.settleOnce(() => applyFailureDisposition(state.claim, error));
-      },
+      onFailed: (error) => settlePreAdoptionFailure(state, error, applyFailureDisposition),
       onCancelled: async () => {
         // Cancellation means ownership ended before delivery, so preserve every
         // prior retry fact while reopening the canonical row for replacement.
-        await releaseUnadopted(state, { recordAttempt: false });
+        await settleUnadopted(state, (claim) => releaseClaim(claim, { recordAttempt: false }));
       },
       onAbandoned: async () => {
-        await releaseUnadopted(state, { lastError: "turn-abandoned" });
+        // Genuine abandonment is a real attempt, so maxAttempts bounds its retries.
+        await settleUnadopted(state, (claim) =>
+          applyFailureDisposition(claim, new Error("turn-abandoned")),
+        );
       },
+      onDropped: (reason) =>
+        settlePreAdoptionFailure(
+          state,
+          new IngressQueueCapDropError(reason),
+          applyFailureDisposition,
+        ),
     };
   };
 

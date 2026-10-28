@@ -12,7 +12,6 @@ import {
   getExistingSessionControllerMailbox,
   sessionControllerMailboxes,
   clearSessionControllerMailbox,
-  retireSessionControllerInput,
   type SessionControllerMailbox,
 } from "../../../sessions/session-controller.mailbox.js";
 import {
@@ -20,7 +19,7 @@ import {
   type SessionTarget,
 } from "../../../sessions/session-controller.target.js";
 import { normalizeThinkLevel } from "../../thinking.js";
-import { completeFollowupRunLifecycle } from "./lifecycle.js";
+import { cancelFollowupRunLifecycle, completeFollowupRunLifecycle } from "./lifecycle.js";
 import type { FollowupRun, QueueDropPolicy, QueueSettings } from "./types.js";
 
 export const DEFAULT_QUEUE_DEBOUNCE_MS = 500;
@@ -118,10 +117,9 @@ export function trimSummaryElisionsToCap(queue: SummaryElisionCapState): void {
       sourceCount -= 1;
       if (source) {
         source.onQueueDisposition?.("queue-cap-old");
-        // Eviction closes selection synchronously; callback completion is asynchronous.
-        if (source.controllerInput) {
-          retireSessionControllerInput(source.controllerInput);
-        }
+        // Eviction closes selection synchronously; callback completion retains
+        // source custody until the durable policy-drop receipt settles.
+        completeFollowupRunLifecycle(source, { kind: "dropped", reason: "queue-cap-old" });
       }
       if (entry.sources.length === 0) {
         queue.summaryElisions.splice(entryIndex, 1);
@@ -155,7 +153,8 @@ export function getFollowupQueue(
 /** @internal Exposed for unit tests only. */
 export function clearFollowupQueue(key: string, captured?: SessionControllerMailbox): number {
   const queue = captured ?? getExistingSessionControllerMailbox(key.trim());
-  return queue ? clearSessionControllerMailbox(queue, completeFollowupRunLifecycle) : 0;
+  // A cleared queue relinquishes its turns on purpose: cancellation, not abandonment.
+  return queue ? clearSessionControllerMailbox(queue, cancelFollowupRunLifecycle) : 0;
 }
 
 export function clearRemovedQueuedAuthProfiles(params: {
