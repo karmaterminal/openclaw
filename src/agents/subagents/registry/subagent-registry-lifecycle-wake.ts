@@ -286,13 +286,10 @@ export function scheduleRequesterSettleWake(
 ): void {
   const params = context.options;
   const published = params.runs.get(runId);
-  if (published && !isSameSubagentRunOwner(published, observedEntry)) {
-    return;
-  }
   let entry = published ?? observedEntry;
-  if (entry.spawnAcceptance) {
-    // G2 (H1): the requester is not woken for an unconfirmed spawn; the
-    // confirmation flush replays the wake, a rollback suppresses it.
+  // G2 (H1): the requester is not woken for an unconfirmed spawn; the
+  // confirmation flush replays the wake, a rollback suppresses it.
+  if ((published && !isSameSubagentRunOwner(published, observedEntry)) || entry.spawnAcceptance) {
     return;
   }
   const pendingSettlement = pendingRequesterSettlements.get(getSubagentRunRuntimeKey(entry));

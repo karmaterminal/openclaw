@@ -135,7 +135,7 @@ async function readChildSessionRunLiveness(
 ): Promise<SubagentRunLiveness> {
   const [{ subagentRuns }, { classifyChildSessionRunLivenessFromRuns }] = await Promise.all([
     import("../../agents/subagents/registry/subagent-registry-memory.js"),
-    import("../../agents/subagents/registry/subagent-registry-queries.js"),
+    import("../../agents/subagents/registry/subagent-registry-queries.continuation.js"),
   ]);
   return classifyChildSessionRunLivenessFromRuns(subagentRuns, sessionKey, options);
 }

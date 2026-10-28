@@ -12,12 +12,12 @@ import {
   immutableSubagentRunSessionList,
   subagentRuns,
 } from "./subagent-registry-memory.js";
+import { listAncestorSessionKeysFromRuns } from "./subagent-registry-queries.continuation.js";
 import {
   buildLatestSubagentRunReadIndexFromRuns,
   buildSubagentRunReadIndexFromRuns,
   getLatestSubagentRunForChild,
   getSubagentRunByChildSessionKeyFromRuns,
-  listAncestorSessionKeysFromRuns,
   listRunsForControllerFromRuns,
   listRunsForRequesterFromRuns,
   shouldIgnorePostCompletionAnnounceForSessionFromRuns,

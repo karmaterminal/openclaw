@@ -18,11 +18,9 @@ import {
   recordLatestSubagentRun,
 } from "./subagent-run-generation.js";
 import {
-  classifySubagentRunLiveness,
   getSubagentRunStaleAt,
   hasSubagentRunEnded,
   isRetainedUnendedSubagentRun,
-  type SubagentRunLiveness,
 } from "./subagent-run-liveness.js";
 
 function isDeliveryTerminalForRequesterSettle(
@@ -84,15 +82,8 @@ export function listRunsForRequesterFromRuns(
       ? undefined
       : buildLatestSubagentRunReadIndexFromRuns(runs);
 
-  return [...candidates].filter((entry) => {
-    const boundRequesterRunId = entry.requesterTurnRunId?.trim();
-    const belongsToRequesterRun =
-      !requesterRunId ||
-      (boundRequesterRunId
-        ? boundRequesterRunId === requesterRunId
-        : (typeof lowerBound !== "number" || entry.createdAt >= lowerBound) &&
-          (typeof upperBound !== "number" || entry.createdAt <= upperBound));
-    return (
+  return [...candidates].filter(
+    (entry) =>
       entry.requesterSessionKey === key &&
       (options?.requesterSessionId === undefined ||
         matchesSubagentRequesterSession(entry, {
@@ -105,9 +96,12 @@ export function listRunsForRequesterFromRuns(
         resolveRecordedRequester(entry) === options.requesterAgentId) &&
       (options?.requesterStorePath === undefined ||
         (entry.requesterStorePath ?? null) === options.requesterStorePath) &&
-      belongsToRequesterRun
-    );
-  });
+      // A child bound to its requester turn belongs to that turn, whatever its creation time.
+      (entry.requesterTurnRunId?.trim() && requesterRunId
+        ? entry.requesterTurnRunId.trim() === requesterRunId
+        : (typeof lowerBound !== "number" || entry.createdAt >= lowerBound) &&
+          (typeof upperBound !== "number" || entry.createdAt <= upperBound)),
+  );
 }
 
 export function selectConnectedSettledSubagentWave(
@@ -582,24 +576,6 @@ export function getLatestSubagentRunByChildSessionKeyFromRuns<T extends Subagent
   );
 }
 
-/**
- * Three-state liveness of the latest run for a child session (orphan-reap).
- *
- * READ-TIME JOIN: liveness mutates after a continuation flow is classified
- * (a driver can die or finish between the classify and this read), so the
- * verdict is computed fresh against the live `runs` map at each dispatch — never
- * persisted onto the flow row. A missing record resolves to `uncertain`
- * (never reap) so same-session/main flows with no child-run record are safe.
- */
-export function classifyChildSessionRunLivenessFromRuns(
-  runs: Map<string, SubagentRunRecord>,
-  childSessionKey: string,
-  options?: { now?: number; staleCutoffMs?: number },
-): SubagentRunLiveness {
-  const latest = getLatestSubagentRunByChildSessionKeyFromRuns(runs, childSessionKey);
-  return classifySubagentRunLiveness(latest, options ?? {});
-}
-
 /** Admission prefers a retained active run, then the latest generation. */
 export function getSubagentRunByChildSessionKeyFromRuns<T extends SubagentRunReadRecord>(
   runs: Map<string, T>,
@@ -633,30 +609,6 @@ export function getLatestSubagentRunForChild(
     undefined,
     child.childAgentId,
   );
-}
-
-export function listAncestorSessionKeysFromRuns(
-  runs: Map<string, SubagentRunRecord>,
-  sessionKey: string,
-): string[] {
-  const first = sessionKey.trim();
-  if (!first) {
-    return [];
-  }
-  const ancestors: string[] = [];
-  const visited = new Set<string>();
-  let current = first;
-  while (current && !visited.has(current)) {
-    ancestors.push(current);
-    visited.add(current);
-    const latest = getLatestSubagentRunByChildSessionKeyFromRuns(runs, current);
-    const parent = latest?.requesterSessionKey.trim();
-    if (!parent || parent === current) {
-      break;
-    }
-    current = parent;
-  }
-  return ancestors;
 }
 
 export function shouldIgnorePostCompletionAnnounceForSessionFromRuns(
