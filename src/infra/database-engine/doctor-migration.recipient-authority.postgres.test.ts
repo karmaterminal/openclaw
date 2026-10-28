@@ -9,6 +9,7 @@ import { getEnvironmentData } from "node:worker_threads";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { Client, type QueryResultRow } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { memoryTextSearchSchema } from "../../../packages/memory-host-sdk/src/host/memory-search-schema.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { backupDoctorPostgresMigration } from "../../commands/doctor-postgres-migration.js";
 import { prepareDoctorDatabaseMigrations } from "../../commands/doctor-schema-migrations.js";
@@ -40,7 +41,9 @@ import { stateBootstrapReadOperations } from "../../state/state-bootstrap-read.w
 import { acquireGatewayLock } from "../gateway-lock.js";
 import { inspectGatewayOwnerLease } from "../gateway-owner-lease.worker.js";
 import { openNodeSqliteDatabase } from "../node-sqlite.js";
+import type { EngineConnection } from "../sql-connection.js";
 import { publishSqliteDatabaseSchemaChange } from "../sqlite-database-admission.js";
+import { admitStoreSearch } from "./adapters.js";
 import { installDatabaseProcessRole, withEngineStoreAdmission } from "./admission-scope.js";
 import { rebuildAgentPortProjections } from "./agent-port-projections.js";
 import { installDatabaseEngineSelection } from "./context.js";
@@ -170,7 +173,12 @@ describe.skipIf(!connection)("Doctor PostgreSQL export of recipient-authority sc
     (await client.query<T>(sql, values)).rows;
 
   /** Bootstrap and seal a layout the way the binary that owned it did. */
-  function install(schema: StoreSchema, anchorPath: string, existingOnly = false) {
+  function install(
+    schema: StoreSchema,
+    anchorPath: string,
+    existingOnly = false,
+    use?: (db: EngineConnection) => void,
+  ) {
     return withEngineStoreAdmission(() => {
       using anchor = openNodeSqliteDatabase(anchorPath);
       const db = openEngineStore({
@@ -185,6 +193,7 @@ describe.skipIf(!connection)("Doctor PostgreSQL export of recipient-authority sc
         existingOnly,
       });
       try {
+        use?.(db);
         const facts = getPostgresPhysicalFacts(db)!;
         namespaces.add(facts.namespace);
         return facts;
@@ -524,6 +533,39 @@ describe.skipIf(!connection)("Doctor PostgreSQL export of recipient-authority sc
     });
   });
 
+  // The jump-8 memory text extension kept the generated column too; the export checks it against
+  // that definition before omitting it, so the original text search must cover extensions.
+  it("exports a jump-8 store whose memory text search keeps the generated column", async () => {
+    const { agentPath, namespace } = await agentStore("jump8-memory", jump8, "full");
+    install(historical(jump8), agentPath, true, (db) =>
+      admitStoreSearch(db, memoryTextSearchSchema("unicode61"), { extension: "memory.text" }),
+    );
+    await client.query(`
+      INSERT INTO "${namespace}".memory_index_sources (path, source, hash, mtime, size)
+        VALUES ('memory/notes.md', 'memory', 'hash', 1, 1);
+      INSERT INTO "${namespace}".memory_index_chunks
+        (id, path, source, start_line, end_line, hash, model, text, embedding, updated_at)
+        VALUES ('chunk', 'memory/notes.md', 'memory', 1, 1, 'hash', 'fixture', 'see server.py', '\\x00', 1);
+    `);
+    expect(
+      await rows(
+        `SELECT a.attgenerated AS generated FROM pg_attribute a
+         JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = $1 AND c.relname = 'memory_index_chunks' AND a.attname = 'openclaw_search'`,
+        [namespace],
+      ),
+    ).toEqual([{ generated: "s" }]);
+    const { changes } = await backupDoctorPostgresMigration(agentPath, input, {
+      assertAdmission() {},
+    });
+    const [directory, ...extra] = backups(agentPath);
+    expect(extra).toEqual([]);
+    expect(changes).toEqual([`Saved pre-migration PostgreSQL backup: ${directory}`]);
+    const manifest = await verifyMatchedPostgresBackup(directory!, "exact");
+    expect(manifest.verification.tables.memory_index_chunks?.rows).toBe(1);
+    expect(manifest.verification.tables.session_recipient_authority?.rows).toBe(2);
+  });
+
   it("leaves the store unchanged and never starts the migration when its export fails", async () => {
     const { agentPath, namespace } = await agentStore("jump8-failed-export", jump8, "full");
     const anchorBytes = fs.readFileSync(agentPath);
@@ -566,6 +608,12 @@ describe.skipIf(!connection)("Doctor PostgreSQL export of recipient-authority sc
       );
       expect(migrationStatements(observation.statements)).toEqual([]);
     }
+    // The export refused it: the only capture is incomplete, so the migration never ran.
+    const [directory, ...extra] = backups(agentPath);
+    expect(extra).toEqual([]);
+    await expect(verifyMatchedPostgresBackup(directory!, "exact")).rejects.toThrow(
+      "PostgreSQL backup is incomplete.",
+    );
     expect(await snapshot(namespace)).toEqual(before);
     expect(fs.readFileSync(agentPath)).toEqual(anchorBytes);
     expect(await scratchNamespaces()).toEqual(scratch);
@@ -588,5 +636,14 @@ describe.skipIf(!connection)("Doctor PostgreSQL export of recipient-authority sc
     expect(manifest.source).toMatchObject({ schemaVersion: 38, namespace });
     expect(manifest.verification.tables.session_recipient_authority).toBeUndefined();
     expect(manifest.verification.tables.transcript_events?.rows).toBe(2);
+    const restored = await preparePostgresRestore({
+      directory: directory!,
+      anchorPath: path.join(path.dirname(agentPath), "restored.sqlite"),
+      config,
+      profile: "exact",
+      assertCurrent() {},
+    });
+    namespaces.add(restored.namespace);
+    expect(await catalog(restored.namespace)).toEqual(await catalog(namespace));
   });
 });
