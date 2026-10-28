@@ -1,10 +1,11 @@
 import { expectDefined } from "@openclaw/normalization-core/expect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createDeferred } from "../../../test/helpers/promise.js";
+import { createDeferred, nextEventLoopTurn } from "../../../test/helpers/promise.js";
 import { persistAbortTargetEntry } from "../../auto-reply/reply/commands-session-store.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/io.js";
 import type { InternalSessionEntry as SessionEntry } from "../../config/sessions.js";
 import * as sessionAccessor from "../../config/sessions/session-accessor.js";
+import { assertNoRetainedSessionSharingReads } from "../../config/sessions/session-accessor.sqlite-diagnostics.test-support.js";
 import type { callGateway as gatewayCall } from "../../gateway/call.js";
 import type { GatewayRecoveryRuntime } from "../../gateway/server-instance-runtime.types.js";
 import { persistGatewaySessionLifecycleEvent } from "../../gateway/session-lifecycle-state.js";
@@ -32,9 +33,10 @@ const callGateway = vi.fn<(params: Parameters<typeof gatewayCall>[0]) => Promise
 const sendRecoveryNotice = vi.fn<GatewayRecoveryRuntime["sendRecoveryNotice"]>(async () => ({
   suppressed: false,
 }));
+let dispatchSettlement = createDeferred();
 const mockRecoveryRuntime = createRecoveryRuntimeFixture({
   callGateway,
-  getDispatchSettlement: () => createDeferred().promise,
+  getDispatchSettlement: () => dispatchSettlement.promise,
   sendRecoveryNotice,
 });
 const retryRestartAbortedMainSessionRecovery = (
@@ -44,6 +46,7 @@ const { makeMainSessionFixture, writeTranscript } = createRestartRecoveryStoreFi
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  dispatchSettlement = createDeferred();
   callGateway.mockReset();
   callGateway.mockImplementation(async () => ({ runId: "run-resumed" }));
   resetAgentEventsForTest();
@@ -54,9 +57,16 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  resetGatewayWorkAdmission();
-  clearRuntimeConfigSnapshot();
-  await state.cleanup();
+  // A started recovery run keeps its prepared session read until its dispatch settles.
+  dispatchSettlement.resolve();
+  await nextEventLoopTurn();
+  try {
+    assertNoRetainedSessionSharingReads();
+  } finally {
+    resetGatewayWorkAdmission();
+    clearRuntimeConfigSnapshot();
+    await state.cleanup();
+  }
 });
 
 // openclaw#1468: a live stop or supersede must not look like restart-interrupted work.
