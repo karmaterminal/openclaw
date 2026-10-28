@@ -41,9 +41,20 @@ export type DatabasePortPluginOwners = Record<
 >;
 
 type Endpoint = PortEndpoint;
-function selectFragments(descriptor: PortDescriptor, tables: ReadonlySet<string>): PortDescriptor {
-  if (descriptor.activeFragments) {
-    return descriptor;
+function selectFragments(declared: PortDescriptor, tables: ReadonlySet<string>): PortDescriptor {
+  if (declared.activeFragments) {
+    return declared;
+  }
+  const { alternates, ...descriptor } = declared;
+  // The tables only an alternate adds select it; the exact catalog check refuses any other shape.
+  const alternate = alternates?.find((layout) => {
+    const added = layout.tables.filter(
+      (table) => !descriptor.tables.some((known) => known.name === table.name),
+    );
+    return added.length > 0 && added.every((table) => tables.has(table.name));
+  });
+  if (alternate) {
+    return selectFragments(alternate, tables);
   }
   const active =
     descriptor.fragments?.filter((fragment) =>
