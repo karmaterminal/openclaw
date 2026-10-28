@@ -31,6 +31,26 @@ function toolResult(
 }
 
 describe("projectSettledCodexMessages", () => {
+  it("distinguishes pending current calls from a current turn with no completed result", () => {
+    expect(() => projectSettledCodexMessages([toolCall()])).toThrowError(
+      new CodexHistoryRejection("current_pending_calls"),
+    );
+    expect(() =>
+      projectSettledCodexMessages([message({ role: "user", content: "Hello" })]),
+    ).toThrowError(new CodexHistoryRejection("current_no_completed_results"));
+  });
+
+  it("accepts a completed tool exchange with assistant text before the result", () => {
+    expect(
+      projectSettledCodexMessages([
+        message({ role: "user", content: "Send the update." }),
+        toolCall(),
+        message({ role: "assistant", content: [{ type: "text", text: "Working on it." }] }),
+        toolResult(),
+      ]).at(-1),
+    ).toEqual({ type: "function_call_output", call_id: "call-1", output: "Message sent." });
+  });
+
   it("projects a canonical completed tool exchange without exposing reasoning", () => {
     expect(
       projectSettledCodexMessages([
