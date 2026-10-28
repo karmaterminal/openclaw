@@ -177,7 +177,11 @@ describe("Microsoft Teams drain claim ownership", () => {
         await clock.flush(40);
         await ingress.stop();
       };
-      return { ...ingress, waitForIdle: monitor.waitForIdle, flushDebounce: clock.flush };
+      return {
+        ...ingress,
+        waitForIdle: monitor.waitForIdle,
+        flushDebounce: (milliseconds: number) => clock.flush(milliseconds),
+      };
     };
     type Pending = Awaited<ReturnType<typeof queue.listPending>>[number];
     const restart = async (
