@@ -78,8 +78,9 @@ import { withLegacyPostgresIndexOrdering } from "./postgres-index-ordering.js";
 import { pgSearchName, postgresSearchSql } from "./postgres-search-schema.js";
 import { resolveDatabaseFamilyEngines } from "./registry.js";
 
-const agentSourceSearchPostData: NonNullable<PortDescriptor["postgresSourcePostData"]> = async (
-  source,
+const agentSourceSearchPostData = async (
+  source: Parameters<NonNullable<PortDescriptor["postgresSourcePostData"]>>[0],
+  textSearchVersion?: 1 | 2,
 ) => {
   const row = (
     await source.db.query<{ metadata: { version: number; search_extensions?: string | null } }>(
@@ -129,7 +130,7 @@ const agentSourceSearchPostData: NonNullable<PortDescriptor["postgresSourcePostD
   if (!schemas.length) {
     return undefined;
   }
-  return (namespace) => {
+  return (namespace: string) => {
     const shared = { text: true, vector: false };
     return schemas
       .map((schema) => {
@@ -139,7 +140,7 @@ const agentSourceSearchPostData: NonNullable<PortDescriptor["postgresSourcePostD
           shared,
           row!.metadata.version >= AGENT_VECTOR_DECODER_SCHEMA_VERSION ? 2 : 1,
           row!.metadata.version >= AGENT_VECTOR_SEARCH_SCHEMA_VERSION ? 2 : 1,
-          row!.metadata.version >= AGENT_TEXT_SEARCH_SCHEMA_VERSION ? 2 : 1,
+          textSearchVersion ?? (row!.metadata.version >= AGENT_TEXT_SEARCH_SCHEMA_VERSION ? 2 : 1),
         );
         shared.vector ||= Object.keys(schema.vector ?? {}).length > 0;
         return sql;
@@ -160,7 +161,7 @@ export async function loadAgentPortDescriptor(
     }
     // Schema 30 appends columns; 31–36 and 38 change only PostgreSQL search, triggers, or indexes.
     // Schema 37 adds a cold archive companion table; schema 39 (continuation) adds the
-    // recipient-authority table, which older sources omit.
+    // recipient-authority table, which older sources omit except the jump-8 candidate's 38.
     // Pin the remaining shared layout so future DDL gets its own descriptor.
     if (
       backup ||
@@ -492,6 +493,26 @@ export async function loadAgentPortDescriptor(
             ? { table: fact.table, kind: fact.kind, value: 5 }
             : fact,
     ),
+    inspectSqliteSource: undefined,
+    migrateSqliteSource: undefined,
+    admit: undefined,
+    ...(sourceVersion === AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION - 1 && {
+      alternates: [await loadJump8AgentPortDescriptor()],
+    }),
+  };
+}
+
+// Continuation (karmaterminal): the jump-8 candidate numbered recipient authority 38, so its
+// PostgreSQL stores read 38 while holding upstream's 37 plus the authority table, without
+// upstream's 38 text search. That is this schema's layout with the original text search; step 39
+// admits it as an alternate source, and Doctor's exact export must first capture it whole.
+async function loadJump8AgentPortDescriptor(): Promise<PortDescriptor> {
+  return {
+    ...(await loadAgentPortDescriptor()),
+    version: AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION - 1,
+    postgresPostData: (namespace) =>
+      postgresSearchSql(agentTranscriptSearchSchema, namespace, {}, 1, 1, 1),
+    postgresSourcePostData: (source) => agentSourceSearchPostData(source, 1),
     inspectSqliteSource: undefined,
     migrateSqliteSource: undefined,
     admit: undefined,

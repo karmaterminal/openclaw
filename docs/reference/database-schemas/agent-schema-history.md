@@ -380,14 +380,15 @@ upstream's 32–36 and 38 now name PostgreSQL-only steps. On SQLite such a datab
 upstream's same-numbered schema plus this table, because those upstream steps advance
 SQLite metadata only, so upstream's later steps run (below 37 the schema-37 step adds the
 empty cold-archive chunk table) and the idempotent authority step admits the database
-and keeps its rows. The PostgreSQL schema 39 step also recognises the 38 candidate
+and keeps its rows. On PostgreSQL the schema 39 step also admits the 38 candidate
 (upstream's 37 plus this table, without upstream's 38 text search) by its exact
-catalog, keeping the table and rows and applying only upstream's text-search split.
-Doctor's exact pre-migration PostgreSQL export still describes version 38 as
-upstream's, so `openclaw doctor --fix` refuses such a database at its backup, before
-any write. A PostgreSQL agent database at the 35, 36 or 38 candidate's number cannot be
-upgraded in place through Doctor; restore it from its pre-upgrade backup or re-port it
-from SQLite.
+catalog: it keeps the table and rows and applies only upstream's text-search split.
+Doctor's exact pre-migration export captures that candidate first with its own layout,
+chosen by the authority table and verified against its exact catalog, so the backup
+restores the candidate's store; any other schema-38 shape, such as upstream's text search
+with this table or a partial table, is refused before any write. A
+PostgreSQL agent database at the 35 or 36 candidate's number fails closed before
+upstream's next step; restore it from its pre-upgrade backup or re-port it from SQLite.
 
 Some fleet databases carry this table under earlier version markers, because the
 fleet received recipient authority as an unreleased schema 25 and then 26:
