@@ -47,8 +47,8 @@ export const DEFAULT_INGRESS_START_LIMIT = 32;
  * A hold can span a gateway outage, so the quiet-path recheck backs off; new
  * work still wakes the drain at once and re-evaluates the held row.
  */
-export const PENDING_DISPOSITION_RECHECK_MS = 1_000;
-export const PENDING_DISPOSITION_RECHECK_MAX_MS = 60_000;
+const PENDING_DISPOSITION_RECHECK_MS = 1_000;
+const PENDING_DISPOSITION_RECHECK_MAX_MS = 60_000;
 
 export type ChannelIngressDrain = {
   recoverStaleClaims: () => Promise<number>;

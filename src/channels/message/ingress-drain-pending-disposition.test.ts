@@ -1,12 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db.js";
-import {
-  createChannelIngressDrain,
-  createChannelIngressDrainOwner,
-  PENDING_DISPOSITION_RECHECK_MAX_MS,
-  PENDING_DISPOSITION_RECHECK_MS,
-} from "./ingress-drain.js";
+import { createChannelIngressDrain, createChannelIngressDrainOwner } from "./ingress-drain.js";
 import { createTestIngressQueue, withTempState } from "./ingress-drain.test-helpers.js";
 
 describe("channel ingress pending disposition", () => {
@@ -455,13 +450,7 @@ describe("channel ingress pending disposition", () => {
       for (let pass = 0; pass < 9; pass += 1) {
         expect(await drain.drainOnce()).toEqual({ started: 0 });
       }
-      const expected: number[] = [];
-      for (let delay = PENDING_DISPOSITION_RECHECK_MS; expected.length < 9;) {
-        expected.push(delay);
-        delay = Math.min(delay * 2, PENDING_DISPOSITION_RECHECK_MAX_MS);
-      }
-      expect(delays).toEqual(expected);
-      expect(delays.at(-1)).toBe(PENDING_DISPOSITION_RECHECK_MAX_MS);
+      expect(delays).toEqual([1_000, 2_000, 4_000, 8_000, 16_000, 32_000, 60_000, 60_000, 60_000]);
 
       // Released: the row starts, no recheck is scheduled, and the next hold starts over.
       hold = false;
@@ -471,7 +460,7 @@ describe("channel ingress pending disposition", () => {
       hold = true;
       await queue.enqueue("held-2", { text: "held again" }, { laneKey: "lane:b", receivedAt: 1 });
       await drain.drainOnce();
-      expect(delays.at(-1)).toBe(PENDING_DISPOSITION_RECHECK_MS);
+      expect(delays.at(-1)).toBe(1_000);
       drain.dispose();
     });
   });
