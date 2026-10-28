@@ -5,8 +5,9 @@ import { extractSqliteTableSchema } from "../infra/sqlite-schema-sql.js";
 // (openclaw-agent-fleet-schema-history.ts); the lane's unreleased 27 is not recognised. Earlier
 // candidates numbered this step 32, 35, 36 and then 38, all since taken upstream (32-36 and 38 are
 // PostgreSQL-only steps); on SQLite such a database is upstream's same-numbered schema plus this
-// table, so the idempotent step admits it after upstream's later steps run. On PostgreSQL only the
-// 38 candidate is admitted (an alternate predecessor of this step); earlier ones are refused.
+// table, so the idempotent step admits it after upstream's later steps run. On PostgreSQL the
+// step's migration also admits the 38 candidate (an alternate predecessor), but Doctor's exact
+// pre-migration export describes 38 as upstream's and refuses it first; earlier ones are refused.
 export const AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION = 39;
 export const RECIPIENT_AUTHORITY_TABLE = "session_recipient_authority";
 

@@ -320,6 +320,7 @@ export const agentEngineSchema: StoreSchema = {
         ${recipientAuthorityMetaSql}`,
       // The j8 candidate numbered this step 38: upstream's 37 plus the authority table, without
       // upstream's 38 text search. It keeps its table and rows and gains only the token split.
+      // Its DDL is the current one; re-derive it like the predecessors when a later step changes it.
       alternateSources: [
         {
           fromSchema: {

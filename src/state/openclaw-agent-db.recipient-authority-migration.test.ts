@@ -350,7 +350,8 @@ describe("openclaw agent database", () => {
     },
   );
 
-  // Re-run safety: the step keeps rows when its table exists and imports a legacy epoch once.
+  // Re-run safety: the step keeps rows when its table exists, imports a legacy epoch once, and
+  // never lets a legacy epoch replace existing authority.
   it("applies the schema-39 step twice to a migrated jump-8 database with one effect", async () => {
     const env = { OPENCLAW_STATE_DIR: createTempStateDir() };
     const databasePath = stageCapturedAgentDatabase(env, agentDbTempDirs, {
@@ -373,6 +374,20 @@ describe("openclaw agent database", () => {
           sessionId: "late",
           updatedAt: 2,
           recipientAuthorityEpoch: "77777777-7777-4777-8777-777777777777",
+        }),
+      );
+    // A legacy epoch for a key that already has authority must not replace it.
+    database
+      .prepare(
+        "INSERT INTO session_nodes (session_key, current_session_id, entry_json, updated_at) VALUES (?, ?, ?, 3)",
+      )
+      .run(
+        AUTHORITY.sessionKey,
+        "retained",
+        JSON.stringify({
+          sessionId: "retained",
+          updatedAt: 3,
+          recipientAuthorityEpoch: "99999999-9999-4999-8999-999999999999",
         }),
       );
     const read = () => ({
@@ -403,6 +418,11 @@ describe("openclaw agent database", () => {
       }),
       { session_key: AUTHORITY.sessionKey, epoch: AUTHORITY.epoch, created_at: 1, updated_at: 2 },
     ]);
+    expect(
+      database
+        .prepare("SELECT entry_json FROM session_nodes WHERE session_key = ?")
+        .get(AUTHORITY.sessionKey),
+    ).toEqual({ entry_json: JSON.stringify({ sessionId: "retained", updatedAt: 3 }) });
     apply();
     expect(read()).toEqual(once);
     expect(database.prepare("PRAGMA integrity_check").all()).toEqual([{ integrity_check: "ok" }]);
