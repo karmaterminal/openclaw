@@ -130,7 +130,7 @@ const agentSourceSearchPostData = async (
   if (!schemas.length) {
     return undefined;
   }
-  return (namespace) => {
+  return (namespace: string) => {
     const shared = { text: true, vector: false };
     return schemas
       .map((schema) => {
