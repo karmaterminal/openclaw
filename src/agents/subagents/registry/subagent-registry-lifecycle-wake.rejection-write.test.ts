@@ -35,7 +35,11 @@ vi.mock("./subagent-registry-lifecycle-delivery.js", () => ({
   safeSetSubagentTaskDeliveryStatus: vi.fn(),
 }));
 // mock-isolation: The completion batch publishes without the admission store's database writes.
-vi.mock("../completion/subagent-completion-admission.store.js", () => ({
+// The wake's catch path classifies the store's real error classes (upstream #186443).
+vi.mock("../completion/subagent-completion-admission.store.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../completion/subagent-completion-admission.store.js")
+  >()),
   blockSubagentCompletionDelivery: vi.fn(),
   // Upstream 10e951e857 reads the settlement's publication receipt.
   mutateRequesterCompletionBatch: vi.fn(async () => ({ applied: true, publication: "published" })),
