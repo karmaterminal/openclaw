@@ -11,7 +11,7 @@ import {
 } from "./schema-migration.test-support.js";
 
 const predecessor = 30;
-// Continuation (karmaterminal): recipient authority (38) is the step after upstream's 37 and
+// Continuation (karmaterminal): recipient authority (39) is the step after upstream's 38 and
 // creates its table, so a migration from 30 reaches it too.
 const target = OPENCLAW_AGENT_SCHEMA_VERSION;
 const scope = [

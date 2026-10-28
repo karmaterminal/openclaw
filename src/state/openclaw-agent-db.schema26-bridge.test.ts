@@ -1,7 +1,7 @@
 // Agent schema 26 has two histories. Upstream's schema 26 promotes JSON predicates to
 // columns; the fleet's earlier (unreleased) schema 26 instead added session recipient
-// authority on top of upstream's schema 25. Schema 38 must tell them apart by shape,
-// migrate each to the same schema-38 database, and refuse a mix.
+// authority on top of upstream's schema 25. Schema 39 must tell them apart by shape,
+// migrate each to the same schema-39 database, and refuse a mix.
 import { constants } from "node:sqlite";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { cleanupTempDirs, makeTempDir } from "../../test/helpers/temp-dir.js";
@@ -58,7 +58,7 @@ afterEach(() => {
   closeOpenClawStateDatabaseForTest();
 });
 
-describe("agent schema 26 → 38 bridge", () => {
+describe("agent schema 26 → 39 bridge", () => {
   it.each(["fleet-migrated", "fleet-fresh"] as const)(
     "migrates the fleet's %s recipient-authority schema 26 by backfilling JSON predicates, keeping authority and session rows",
     async (history) => {
@@ -74,8 +74,8 @@ describe("agent schema 26 → 38 bridge", () => {
       await migrateAgentDatabase(env, tempDirs);
 
       expect(readShape(databasePath)).toEqual({
-        userVersion: 38,
-        schemaVersion: 38,
+        userVersion: 39,
+        schemaVersion: 39,
         authorityTable: true,
         legacyTriggers: false,
         predicateColumns: "all",
@@ -88,7 +88,7 @@ describe("agent schema 26 → 38 bridge", () => {
       expect(readCapturedSessionStartedAt(databasePath)).toBe(
         CAPTURED_SESSION.entry.sessionStartedAt,
       );
-      expect(readSqliteUserVersion(openAgentDatabase(env, tempDirs).db)).toBe(38);
+      expect(readSqliteUserVersion(openAgentDatabase(env, tempDirs).db)).toBe(39);
     },
   );
 
@@ -104,8 +104,8 @@ describe("agent schema 26 → 38 bridge", () => {
     await migrateAgentDatabase(env, tempDirs);
 
     expect(readShape(databasePath)).toEqual({
-      userVersion: 38,
-      schemaVersion: 38,
+      userVersion: 39,
+      schemaVersion: 39,
       authorityTable: true,
       legacyTriggers: false,
       predicateColumns: "all",
@@ -115,7 +115,7 @@ describe("agent schema 26 → 38 bridge", () => {
       current_session_id: CAPTURED_SESSION.entry.sessionId,
       entry_json: JSON.stringify(CAPTURED_SESSION.entry),
     });
-    expect(readSqliteUserVersion(openAgentDatabase(env, tempDirs).db)).toBe(38);
+    expect(readSqliteUserVersion(openAgentDatabase(env, tempDirs).db)).toBe(39);
   });
 
   it("reopens a migrated fleet schema 26 database unchanged", async () => {
@@ -125,7 +125,7 @@ describe("agent schema 26 → 38 bridge", () => {
     const migrated = readShape(databasePath);
 
     await migrateAgentDatabase(env, tempDirs);
-    expect(readSqliteUserVersion(openAgentDatabase(env, tempDirs).db)).toBe(38);
+    expect(readSqliteUserVersion(openAgentDatabase(env, tempDirs).db)).toBe(39);
     closeOpenClawAgentDatabasesForTest();
 
     expect(readShape(databasePath)).toEqual(migrated);
@@ -169,7 +169,7 @@ describe("agent schema 26 → 38 bridge", () => {
     let reachedPublication = false;
     // Fail at the final marker publication, after the predicate backfill has run.
     database.setAuthorizer((action, name, value) => {
-      if (action === constants.SQLITE_PRAGMA && name === "user_version" && value === "38") {
+      if (action === constants.SQLITE_PRAGMA && name === "user_version" && value === "39") {
         reachedPublication = true;
         return constants.SQLITE_DENY;
       }
