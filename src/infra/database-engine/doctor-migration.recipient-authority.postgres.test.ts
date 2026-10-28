@@ -10,6 +10,7 @@ import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { Client, type QueryResultRow } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
+import { backupDoctorPostgresMigration } from "../../commands/doctor-postgres-migration.js";
 import { prepareDoctorDatabaseMigrations } from "../../commands/doctor-schema-migrations.js";
 import { deriveTranscriptPredicateFields } from "../../config/sessions/transcript-predicate-fields.js";
 import {
@@ -23,6 +24,7 @@ import {
   AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
   sessionRecipientAuthorityPostgresSql,
 } from "../../state/openclaw-agent-recipient-authority-schema.js";
+import { withOpenClawStateReadOnlyLocation } from "../../state/openclaw-state-db-read-connection.js";
 import {
   closeOpenClawStateDatabaseForTest,
   runOpenClawStateWriteTransaction,
@@ -81,8 +83,6 @@ vi.mock("./port.worker.js", async (importOriginal) => {
 async function readInProcess(command: OpenClawStateReadCommand, source: OpenClawStateReadLocation) {
   const databasePath = source.context.admission.databasePath;
   if (command.type === "stateBootstrap.inspect" || command.type === "stateBootstrap.ownership") {
-    const { withOpenClawStateReadOnlyLocation } =
-      await import("../../state/openclaw-state-db-read-connection.js");
     return withEngineStoreAdmission(() =>
       withOpenClawStateReadOnlyLocation(
         ({ db }) => ({
@@ -494,6 +494,11 @@ describe.skipIf(!connection)("Doctor PostgreSQL export of recipient-authority sc
     });
     namespaces.add(restored.namespace);
     expect(readBackupEngine(restoredPath)).toMatchObject({ namespace: restored.namespace });
+    expect(
+      await rows(
+        `SELECT store, version, store_id FROM "${restored.namespace}".openclaw_schema_meta`,
+      ),
+    ).toEqual([{ store: "agent", version: "38", store_id: manifest.source.storeId }]);
     const copy = await snapshot(restored.namespace);
     expect(copy.catalog).toEqual(before.catalog);
     const {
@@ -573,14 +578,15 @@ describe.skipIf(!connection)("Doctor PostgreSQL export of recipient-authority sc
       step(AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION).fromSchema,
       "none",
     );
-    const result = await runDoctor(agentPath);
-    expect(result.warnings).toEqual([]);
-    const [directory] = backups(agentPath);
+    const { changes } = await backupDoctorPostgresMigration(agentPath, input, {
+      assertAdmission() {},
+    });
+    const [directory, ...extra] = backups(agentPath);
+    expect(extra).toEqual([]);
+    expect(changes).toEqual([`Saved pre-migration PostgreSQL backup: ${directory}`]);
     const manifest = await verifyMatchedPostgresBackup(directory!, "exact");
     expect(manifest.source).toMatchObject({ schemaVersion: 38, namespace });
     expect(manifest.verification.tables.session_recipient_authority).toBeUndefined();
-    expect(await rows(`SELECT version FROM "${namespace}".openclaw_schema_meta`)).toEqual([
-      { version: String(AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION) },
-    ]);
+    expect(manifest.verification.tables.transcript_events?.rows).toBe(2);
   });
 });
