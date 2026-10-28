@@ -100,23 +100,39 @@ export const databaseEngineAdapters: {
           }
           const snapshot = readPostgresSchema(db, store.namespace!, store.schema.id);
           const schema = withPostgresSearchExtensions(store.schema, snapshot);
-          verifyPostgresSchema(
-            db,
-            store.namespace!,
-            {
-              ...schema,
-              version: version - 1,
-              postgres: migration.fromSchema.postgres,
-              postgresFragments: migration.fromSchema.postgresFragments,
-              postgresVectorDecoderVersion: migration.fromSchema.postgresVectorDecoderVersion,
-              postgresVectorSearchVersion: migration.fromSchema.postgresVectorSearchVersion,
-              postgresTextSearchVersion: migration.fromSchema.postgresTextSearchVersion,
-            },
-            snapshot,
-          );
+          // Only an exact predecessor is migrated. A failed check writes nothing (the definition
+          // check runs under a savepoint); if no source matches, the declared source's refusal
+          // stands.
+          let source: { fromSchema: typeof migration.fromSchema; sql: string } | undefined;
+          let refusal: unknown;
+          for (const candidate of [migration, ...(migration.alternateSources ?? [])]) {
+            try {
+              verifyPostgresSchema(
+                db,
+                store.namespace!,
+                {
+                  ...schema,
+                  version: version - 1,
+                  postgres: candidate.fromSchema.postgres,
+                  postgresFragments: candidate.fromSchema.postgresFragments,
+                  postgresVectorDecoderVersion: candidate.fromSchema.postgresVectorDecoderVersion,
+                  postgresVectorSearchVersion: candidate.fromSchema.postgresVectorSearchVersion,
+                  postgresTextSearchVersion: candidate.fromSchema.postgresTextSearchVersion,
+                },
+                snapshot,
+              );
+              source = candidate;
+              break;
+            } catch (error) {
+              refusal ??= error;
+            }
+          }
+          if (!source) {
+            throw refusal;
+          }
           if (
             migration.schema.postgresVectorSearchVersion === 2 &&
-            migration.fromSchema.postgresVectorSearchVersion !== 2
+            source.fromSchema.postgresVectorSearchVersion !== 2
           ) {
             for (const definition of [
               schema.search,
@@ -134,7 +150,7 @@ export const databaseEngineAdapters: {
               snapshot.catalog.filter((fact) => fact.kind === "table").map((fact) => fact.table),
             ),
           );
-          db.exec(migration.sql);
+          db.exec(source.sql);
           db.prepare("UPDATE openclaw_schema_meta SET version = ? WHERE store = ?").run(
             version,
             store.schema.id,

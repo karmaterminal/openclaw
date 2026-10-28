@@ -1,6 +1,6 @@
-// Continuation (karmaterminal): recipient authority is agent schema 38, above upstream's
-// PostgreSQL-only steps 34-36 and the cold-archive chunk step 37. These cases run that ladder in
-// place through the agent owner.
+// Continuation (karmaterminal): recipient authority is agent schema 39, above upstream's
+// PostgreSQL-only steps 34-36 and 38 and the cold-archive chunk step 37. These cases run that
+// ladder in place through the agent owner, including the jump-8 candidate's own schema 38.
 import { channel } from "node:diagnostics_channel";
 import path from "node:path";
 import { getEnvironmentData } from "node:worker_threads";
@@ -35,6 +35,17 @@ const connection = typeof configured === "string" ? configured : undefined;
 const dirs = useAutoCleanupTempDirTracker(afterAll);
 const step = (version: number) =>
   agentEngineSchema.postgresMigrations!.find((migration) => migration.version === version)!;
+type Predecessor = ReturnType<typeof step>["fromSchema"];
+/** A historical layout; search versions it omits stay historical instead of inheriting current. */
+const historical = (version: number, from: Predecessor): StoreSchema => ({
+  ...agentEngineSchema,
+  ...from,
+  postgresVectorDecoderVersion: from.postgresVectorDecoderVersion,
+  postgresVectorSearchVersion: from.postgresVectorSearchVersion,
+  postgresTextSearchVersion: from.postgresTextSearchVersion,
+  version,
+  postgresMigrations: [],
+});
 // Upstream's step 35 drops explicit NULLS ordering from these nullable-column indexes.
 const step35Indexes = [
   "idx_agent_cache_expiry",
@@ -198,13 +209,10 @@ describe.skipIf(!connection)("PostgreSQL agent recipient-authority migration", (
     };
   }
 
-  it("migrates a populated schema-34 store through 35-38 in place and re-admits it without DDL", async () => {
+  it("migrates a populated schema-34 store through 35-39 in place and re-admits it without DDL", async () => {
     const root = dirs.make("pg-authority-chain-");
     const anchorPath = path.join(root, "openclaw-agent.sqlite");
-    const namespace = install(
-      { ...agentEngineSchema, ...step(35).fromSchema, version: 34, postgresMigrations: [] },
-      anchorPath,
-    );
+    const namespace = install(historical(34, step(35).fromSchema), anchorPath);
     await seed(namespace, 34);
     const reference = install(agentEngineSchema, path.join(root, "reference.sqlite"));
     const before = await snapshot(namespace);
@@ -241,7 +249,7 @@ describe.skipIf(!connection)("PostgreSQL agent recipient-authority migration", (
       session_recipient_authority: "[]",
       session_transcript_cold_archive_chunks: "[]",
     });
-    // The in-place result is the catalog a fresh schema-38 store bootstraps.
+    // The in-place result is the catalog a fresh schema-39 store bootstraps.
     expect(after.catalog).toEqual(await catalog(reference));
     // Step 35 rebuilds only its own indexes; every other relation keeps its storage.
     const rebuilt = before.relations
@@ -274,22 +282,14 @@ describe.skipIf(!connection)("PostgreSQL agent recipient-authority migration", (
     expect(await snapshot(namespace)).toEqual(after);
   });
 
-  // Upstream's own 35-37 stores reach 38 in place and gain only the empty authority table
-  // (and, below 37, the empty cold-archive chunk table).
-  it.each([35, 36, 37])(
-    "migrates upstream's populated schema-%i store to 38 in place and re-admits it without DDL",
+  // Upstream's own 35-38 stores reach 39 in place and gain only the empty authority table
+  // (and, below 37, the empty cold-archive chunk table). 38 is upstream's text-search split.
+  it.each([35, 36, 37, 38])(
+    "migrates upstream's populated schema-%i store to 39 in place and re-admits it without DDL",
     async (version) => {
       const root = dirs.make(`pg-authority-upstream-${version}-`);
       const anchorPath = path.join(root, "openclaw-agent.sqlite");
-      const namespace = install(
-        {
-          ...agentEngineSchema,
-          ...step(version + 1).fromSchema,
-          version,
-          postgresMigrations: [],
-        },
-        anchorPath,
-      );
+      const namespace = install(historical(version, step(version + 1).fromSchema), anchorPath);
       await seed(namespace, version);
       const reference = install(agentEngineSchema, path.join(root, "reference.sqlite"));
       const before = await snapshot(namespace);
@@ -321,6 +321,123 @@ describe.skipIf(!connection)("PostgreSQL agent recipient-authority migration", (
     },
   );
 
+  // The jump-8 candidate numbered recipient authority 38: upstream's 37 plus the authority table,
+  // without upstream's 38 text search. Step 39 admits that exact catalog, keeps the table and its
+  // rows, and applies only upstream's token split.
+  const jump8: Predecessor = {
+    postgres: agentEngineSchema.postgres!,
+    postgresVectorDecoderVersion: 2,
+    postgresVectorSearchVersion: 2,
+  };
+  async function seedTranscriptSearch(namespace: string) {
+    await client.query(`
+      INSERT INTO "${namespace}".session_transcript_fts_rows (id, session_id, message_id)
+        VALUES (1, 'active', 'message');
+      INSERT INTO "${namespace}".session_transcript_fts
+        (rowid, text, session_id, message_id, role, timestamp)
+        VALUES (1, 'the fix to server.py landed', 'active', 'message', 'user', 1);
+    `);
+  }
+  const searchVector = async (namespace: string) =>
+    (
+      await rows<{ vector: string }>(
+        `SELECT openclaw_search::text AS vector FROM "${namespace}".session_transcript_fts`,
+      )
+    )[0]!.vector;
+  const generatedSearch = async (namespace: string) =>
+    (
+      await rows<{ generated: string }>(
+        `SELECT a.attgenerated AS generated FROM pg_attribute a
+         JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = $1 AND c.relname = 'session_transcript_fts'
+           AND a.attname = 'openclaw_search'`,
+        [namespace],
+      )
+    )[0]!.generated;
+
+  it("admits the jump-8 candidate's populated schema-38 store at 39, keeping its authority rows", async () => {
+    const root = dirs.make("pg-authority-jump8-");
+    const anchorPath = path.join(root, "openclaw-agent.sqlite");
+    const namespace = install(historical(38, jump8), anchorPath);
+    await seed(namespace, 38);
+    await seedTranscriptSearch(namespace);
+    await client.query(`INSERT INTO "${namespace}".session_recipient_authority
+      (session_key, epoch, created_at, updated_at) VALUES ('agent:main:main', 'epoch-1', 1, 2)`);
+    const reference = install(agentEngineSchema, path.join(root, "reference.sqlite"));
+    const before = await snapshot(namespace);
+    expect(before.tables.session_recipient_authority).toContain('"epoch-1"');
+    // The historical generated column keeps "server.py" whole.
+    expect(await generatedSearch(namespace)).toBe("s");
+    expect(await searchVector(namespace)).toContain("'server.py'");
+
+    expect(await openAgent(anchorPath)).toMatchObject({
+      namespace,
+      version: AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
+    });
+
+    const after = await snapshot(namespace);
+    expect(
+      await rows(`SELECT meta_key, role, schema_version, agent_id FROM "${namespace}".schema_meta`),
+    ).toEqual([
+      {
+        meta_key: "primary",
+        role: "agent",
+        schema_version: String(AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION),
+        agent_id: "main",
+      },
+    ]);
+    const {
+      schema_meta: _version,
+      openclaw_schema_meta: _seal,
+      session_transcript_fts: _search,
+      ...retained
+    } = before.tables;
+    expect(after.tables).toMatchObject(retained);
+    expect(after.tables.session_recipient_authority).toBe(
+      before.tables.session_recipient_authority,
+    );
+    // Upstream's 38: a plain column kept by its sync trigger, reparsed once.
+    expect(await generatedSearch(namespace)).toBe("");
+    expect(await searchVector(namespace)).toMatch(/'py'.*'server'/u);
+    expect(after.catalog).toEqual(await catalog(reference));
+    {
+      using observation = observeStatements();
+      await openAgent(anchorPath, publishSqliteDatabaseSchemaChange);
+      expect(
+        observation.statements.filter((sql) => /^\s*(?:CREATE|ALTER|DROP|DO)\b/iu.test(sql)),
+      ).toEqual([]);
+    }
+    expect(await snapshot(namespace)).toEqual(after);
+  });
+
+  // Upstream's text search with the authority table is neither predecessor: refused unchanged.
+  it("refuses a schema-38 store carrying both the token split and the authority table", async () => {
+    const anchorPath = path.join(dirs.make("pg-authority-mixed38-"), "openclaw-agent.sqlite");
+    const namespace = install(
+      historical(38, {
+        ...step(AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION).fromSchema,
+        postgres: agentEngineSchema.postgres!,
+      }),
+      anchorPath,
+    );
+    await seed(namespace, 38);
+    const before = await snapshot(namespace);
+    {
+      using observation = observeStatements();
+      await expect(openAgent(anchorPath)).rejects.toMatchObject({
+        message:
+          "PostgreSQL schema drift detected against generated DDL. Use a compatible OpenClaw binary or restore the matching PostgreSQL schema and anchor; do not edit schema metadata.",
+      });
+      expect(
+        // Checking the jump-8 source builds its DDL only in a rolled-back scratch schema.
+        observation.statements.filter((sql) =>
+          /\bUPDATE (?:openclaw_)?schema_meta\b|DROP EXPRESSION/u.test(sql),
+        ),
+      ).toEqual([]);
+    }
+    expect(await snapshot(namespace)).toEqual(before);
+  });
+
   // Earlier candidates numbered recipient authority 35 (upstream's 34 plus the authority table,
   // without upstream's 35 index ordering) and 36 (jump 6: upstream's 35 plus the table, without
   // upstream's 36 exact-path indexes). Neither is an upstream schema, so the owner refuses it.
@@ -342,7 +459,7 @@ describe.skipIf(!connection)("PostgreSQL agent recipient-authority migration", (
         "openclaw-agent.sqlite",
       );
       const namespace = install(
-        { ...agentEngineSchema, postgres: ddl, version, postgresMigrations: [] },
+        historical(version, { ...step(version).schema, postgres: ddl }),
         anchorPath,
       );
       await seed(namespace, version);

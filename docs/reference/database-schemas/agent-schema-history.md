@@ -380,9 +380,11 @@ upstream's 32–36 and 38 now name PostgreSQL-only steps. On SQLite such a datab
 upstream's same-numbered schema plus this table, because those upstream steps advance
 SQLite metadata only, so upstream's later steps run (below 37 the schema-37 step adds the
 empty cold-archive chunk table) and the idempotent authority step admits the database
-and keeps its rows. A PostgreSQL agent database at an earlier candidate's number fails
-closed before upstream's next step; restore it from its pre-upgrade backup or re-port it
-from SQLite.
+and keeps its rows. On PostgreSQL the schema 39 step also admits the 38 candidate
+(upstream's 37 plus this table, without upstream's 38 text search) by its exact
+catalog: it keeps the table and rows and applies only upstream's text-search split. A
+PostgreSQL agent database at the 35 or 36 candidate's number fails closed before
+upstream's next step; restore it from its pre-upgrade backup or re-port it from SQLite.
 
 Some fleet databases carry this table under earlier version markers, because the
 fleet received recipient authority as an unreleased schema 25 and then 26:

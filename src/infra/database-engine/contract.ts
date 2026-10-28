@@ -61,6 +61,11 @@ export type StoreSchema = {
     schema: PostgresSchemaDefinition;
     /** Exact predecessor export needed before Doctor may advance this family. */
     backup?: PortDescriptor;
+    /**
+     * Other exact predecessors recorded at `version - 1` by another release line, each with the
+     * SQL that converges it to `schema`. The first source whose catalog verifies is migrated.
+     */
+    alternateSources?: readonly { fromSchema: PostgresSchemaDefinition; sql: string }[];
   }[];
   postgresFragments?: readonly PostgresSchemaFragment[];
   /** Historical schemas default to the original vector decoder. */

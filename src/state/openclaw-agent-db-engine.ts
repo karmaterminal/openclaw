@@ -118,6 +118,12 @@ const agentPostgresV30Sql = withLegacyAgentPostgresMemoryRevisionTriggers(agentP
 const agentPostgresV29Sql = withLegacyAgentPostgresTrajectoryStorage(agentPostgresV30Sql);
 const agentPostgresV28Sql = withLegacyAgentPostgresIndexes(agentPostgresV29Sql);
 
+const recipientAuthorityMetaSql = `UPDATE schema_meta
+        SET schema_version = ${AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION},
+          app_version = '${VERSION.replaceAll("'", "''")}',
+          updated_at = CAST(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP) * 1000 AS bigint)
+        WHERE meta_key = 'primary';`;
+
 export const agentEngineSchema: StoreSchema = {
   id: "agent",
   version: OPENCLAW_AGENT_SCHEMA_VERSION,
@@ -311,11 +317,20 @@ export const agentEngineSchema: StoreSchema = {
         postgresTextSearchVersion: 2,
       },
       sql: `${sessionRecipientAuthorityPostgresSql(agentPostgresSql)}
-        UPDATE schema_meta
-        SET schema_version = ${AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION},
-          app_version = '${VERSION.replaceAll("'", "''")}',
-          updated_at = CAST(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP) * 1000 AS bigint)
-        WHERE meta_key = 'primary';`,
+        ${recipientAuthorityMetaSql}`,
+      // The j8 candidate numbered this step 38: upstream's 37 plus the authority table, without
+      // upstream's 38 text search. It keeps its table and rows and gains only the token split.
+      alternateSources: [
+        {
+          fromSchema: {
+            postgres: agentPostgresSql,
+            postgresVectorDecoderVersion: 2,
+            postgresVectorSearchVersion: 2,
+          },
+          sql: `${AGENT_TEXT_SEARCH_POSTGRES_SQL}
+            ${recipientAuthorityMetaSql}`,
+        },
+      ],
     },
   ],
 };
