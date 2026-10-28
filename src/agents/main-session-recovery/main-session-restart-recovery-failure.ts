@@ -3,6 +3,7 @@ import { normalizeOptionalString } from "@openclaw/normalization-core/string-coe
 import { stripInternalMetadataForDisplay } from "../../auto-reply/reply/display-text-sanitize.js";
 import { getRuntimeConfig } from "../../config/config.js";
 import type { InternalSessionEntry as SessionEntry } from "../../config/sessions.js";
+import { buildUpdatedSessionGoalStatus } from "../../config/sessions/goals-transitions.js";
 import { hasRestartRecoveryTerminalRun } from "../../config/sessions/restart-recovery-state.js";
 import type { RestartRecoveryTerminalDeliveryEvidenceResult } from "../../config/sessions/restart-recovery-types.js";
 import { readSessionEntryReadOnlyInWorker } from "../../config/sessions/session-entry-read-runtime.js";
@@ -101,6 +102,17 @@ async function settleInterruptedRestartRecovery(params: {
     entry.restartRecoveryDeliverySourceRunId ??
     `main-session-restart-recovery:${params.observation?.cycleId}:interrupted`;
   const endedAt = Date.now();
+  const goal =
+    entry.goal?.status === "active" && entry.goal.updatedAt <= endedAt
+      ? buildUpdatedSessionGoalStatus(
+          entry,
+          {
+            status: "paused",
+            note: "Paused after restart recovery failed. Resume to continue. " + reason,
+          },
+          endedAt,
+        )
+      : undefined;
   const capturedReply =
     entry.pendingFinalDelivery?.kind === "replayable"
       ? stripInternalMetadataForDisplay(entry.pendingFinalDelivery.text).trim()
@@ -113,6 +125,7 @@ async function settleInterruptedRestartRecovery(params: {
     expectedLifecycleRevision: entry.lifecycleRevision ?? null,
     expectedSessionState: {
       ...buildRestartRecoveryExpectedState(entry, params.observation),
+      ...(goal ? { goal: entry.goal } : {}),
       pendingFinalDelivery: entry.pendingFinalDelivery ?? null,
     },
     assertCurrent: params.assertCurrent,
@@ -131,6 +144,7 @@ async function settleInterruptedRestartRecovery(params: {
         terminalDeliveryEvidence: params.terminalDeliveryEvidence,
         clearRecoveryState: params.clearRecoveryState,
       }),
+      ...(goal ? { goal } : {}),
       status: params.terminalStatus ?? "interrupted",
       pendingFinalDelivery: undefined,
       lifecycleRunId: undefined,
@@ -335,7 +349,7 @@ function buildTombstonedSessionNotice(reason: string): string {
   return (
     `I couldn't continue this session after a gateway restart: ${reason}. ` +
     "Your transcript is safe. In WebChat, use Resume to continue in this session; " +
-    "in other channels, use /new or /reset to start a replacement session."
+    "in other channels, use /new or /reset to start a replacement session, then describe the unfinished work."
   );
 }
 
@@ -367,15 +381,27 @@ export async function tombstoneMainRestartRecoveryWithNotice(params: {
   });
   const { entry, observation } = params;
   const tombstoned = { ...entry };
+  const endedAt = Date.now();
   const transition = transitionMainSessionRecovery(tombstoned, {
     kind: "tombstone",
-    now: Date.now(),
+    now: endedAt,
     observation,
     reason: params.reason,
   });
   if (transition.kind !== "tombstoned") {
     return "skipped";
   }
+  const goal =
+    entry.goal?.status === "active" && entry.goal.updatedAt <= endedAt
+      ? buildUpdatedSessionGoalStatus(
+          entry,
+          {
+            status: "paused",
+            note: "Paused after restart recovery failed. Resume to continue. " + params.reason,
+          },
+          endedAt,
+        )
+      : undefined;
   // Keep automatic recovery pending until its parent outcome is durable. A restart
   // between these writes retries the same notice through its idempotency key.
   if (!(await notifyInterruptedChildParent(params, true))) {
@@ -395,10 +421,12 @@ export async function tombstoneMainRestartRecoveryWithNotice(params: {
     ...params,
     expectedSessionState: {
       ...buildRestartRecoveryExpectedState(entry, observation),
+      ...(goal ? { goal: entry.goal } : {}),
       pendingFinalDelivery: pending ?? null,
     },
     sessionLifecyclePatch: {
       abortedLastRun: tombstoned.abortedLastRun,
+      ...(goal ? { goal } : {}),
       endedAt: tombstoned.endedAt,
       lifecycleRunId: tombstoned.lifecycleRunId,
       lastRunId: tombstoned.lastRunId,

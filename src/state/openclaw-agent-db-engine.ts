@@ -27,6 +27,7 @@ import {
   AGENT_INDEX_RETIREMENT_SCHEMA_VERSION,
   AGENT_MEMORY_REVISION_SCHEMA_VERSION,
   AGENT_VECTOR_DECODER_SCHEMA_VERSION,
+  AGENT_TEXT_SEARCH_SCHEMA_VERSION,
   AGENT_VECTOR_SEARCH_SCHEMA_VERSION,
   AGENT_WRITE_LAYOUT_SCHEMA_VERSION,
   AGENT_TRAJECTORY_STORAGE_SCHEMA_VERSION,
@@ -53,6 +54,7 @@ import {
   withoutSessionRecipientAuthorityPostgresSchema,
 } from "./openclaw-agent-recipient-authority-schema.js";
 import { agentTranscriptSearchSchema } from "./openclaw-agent-search-schema.js";
+import { AGENT_TEXT_SEARCH_POSTGRES_SQL } from "./openclaw-agent-text-search-migration.js";
 import {
   AGENT_TRAJECTORY_STORAGE_POSTGRES_MIGRATION_SQL,
   withLegacyAgentPostgresTrajectoryStorage,
@@ -102,7 +104,8 @@ export function admitAgentEngineSearchExtensions(
 }
 
 const agentPostgresSql = `${agentPostgresRuntime.sql}\n${agentSearchPostgresRuntime.sql}`;
-// Continuation's recipient authority (v38) sits above upstream's v37; schema 37 lacks its table.
+// Continuation's recipient authority (v39) sits above upstream's v38, which changes only text
+// search, so schemas 37 and 38 share this DDL without the authority table.
 const agentPostgresV37Sql = withoutSessionRecipientAuthorityPostgresSchema(agentPostgresSql);
 const agentPostgresV36Sql = withoutAgentPostgresColdArchiveChunks(agentPostgresV37Sql);
 const agentPostgresV35Sql = withLegacyAgentPostgresMemoryPaths(agentPostgresV36Sql);
@@ -122,6 +125,7 @@ export const agentEngineSchema: StoreSchema = {
   postgres: agentPostgresSql,
   postgresVectorDecoderVersion: 2,
   postgresVectorSearchVersion: 2,
+  postgresTextSearchVersion: 2,
   search: agentTranscriptSearchSchema,
   postgresMigrations: [
     {
@@ -273,16 +277,38 @@ export const agentEngineSchema: StoreSchema = {
         WHERE meta_key = 'primary';`,
     },
     {
-      version: AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
+      version: AGENT_TEXT_SEARCH_SCHEMA_VERSION,
       fromSchema: {
         postgres: agentPostgresV37Sql,
         postgresVectorDecoderVersion: 2,
         postgresVectorSearchVersion: 2,
       },
       schema: {
+        postgres: agentPostgresV37Sql,
+        postgresVectorDecoderVersion: 2,
+        postgresVectorSearchVersion: 2,
+        postgresTextSearchVersion: 2,
+      },
+      sql: `${AGENT_TEXT_SEARCH_POSTGRES_SQL}
+        UPDATE schema_meta
+        SET schema_version = ${AGENT_TEXT_SEARCH_SCHEMA_VERSION},
+          app_version = '${VERSION.replaceAll("'", "''")}',
+          updated_at = CAST(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP) * 1000 AS bigint)
+        WHERE meta_key = 'primary';`,
+    },
+    {
+      version: AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
+      fromSchema: {
+        postgres: agentPostgresV37Sql,
+        postgresVectorDecoderVersion: 2,
+        postgresVectorSearchVersion: 2,
+        postgresTextSearchVersion: 2,
+      },
+      schema: {
         postgres: agentPostgresSql,
         postgresVectorDecoderVersion: 2,
         postgresVectorSearchVersion: 2,
+        postgresTextSearchVersion: 2,
       },
       sql: `${sessionRecipientAuthorityPostgresSql(agentPostgresSql)}
         UPDATE schema_meta

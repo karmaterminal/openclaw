@@ -38,6 +38,8 @@ export const SCHEMA_MIGRATION_BACKUP_TABLES: Record<
     // PostgreSQL-only exact-path index; SQLite advances metadata only.
     36: [],
     37: ["session_transcript_cold_archive_chunks"],
+    // PostgreSQL-only full-text token split; SQLite advances metadata only.
+    38: [],
     // Continuation (karmaterminal): the authority step only creates its table. The fleet's own
     // schema 26 also crosses upstream's undeclared step 26, so Doctor keeps its full image
     // (isAgentFleetSchema26Migration).

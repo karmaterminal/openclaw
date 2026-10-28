@@ -271,7 +271,7 @@ const tableNames: readonly (readonly [string, readonly string[]])[] = [
   ["state_leases", []],
 ];
 const fingerprints: Readonly<Record<string, CatalogReference>> = {
-  // agent, agent-version-38
+  // agent, agent-version-39
   f5b66200d71132e39770dba40e14cf37a083e66fa26b3abf1236d1d756a33e1e: [
     "agent",
     "e9c4f8dbe5d18046b38a15404db09c3b04a5edf9cb4a35bbfb4bfc53fde49cb8",
@@ -425,7 +425,7 @@ const fingerprints: Readonly<Record<string, CatalogReference>> = {
     ],
     [],
   ],
-  // agent-version-37
+  // agent-version-37, agent-version-38
   "9ffa671518cafee606f88dd17bfdfa9792d9deece5f6773e3cae4de2c10fc84b": [
     "agent-version-37",
     "08f828422ad38a4ad92a46abdd793fd45ce6c9e09e72d83177130079588ea41e",

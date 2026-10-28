@@ -63,21 +63,6 @@ export function hasSubagentRunEnded<T extends { execution: { endedAt?: number } 
   return typeof entry.execution.endedAt === "number" && Number.isFinite(entry.execution.endedAt);
 }
 
-function resolveStaleCutoffMs(
-  entry: Pick<SubagentRunRecord, "runTimeoutSeconds">,
-  defaultFloorMs = STALE_UNENDED_SUBAGENT_RUN_MS,
-): number {
-  // `defaultFloorMs` is the baseline cutoff applied when the run carries no
-  // explicit timeout. The orphan-reap confidence gate passes a tunable
-  // floor here; the per-run timeout-derived cutoff is always respected so a run
-  // with an explicit long timeout is never aged out before that timeout + grace.
-  const durationMs = resolveSubagentRunDurationMs(entry.runTimeoutSeconds);
-  if (durationMs !== undefined) {
-    return Math.max(defaultFloorMs, durationMs + EXPLICIT_TIMEOUT_STALE_GRACE_MS);
-  }
-  return defaultFloorMs;
-}
-
 export function isYieldedSubagentRun(entry: SubagentRunRecord): boolean {
   return (
     entry.pauseReason === "sessions_yield" &&
@@ -88,21 +73,19 @@ export function isYieldedSubagentRun(entry: SubagentRunRecord): boolean {
   );
 }
 
-export function isStaleUnendedSubagentRun(
+/**
+ * Last instant covered by registration grace, independent of live execution custody.
+ * `defaultFloorMs` applies when the run carries no explicit timeout; the orphan-reap
+ * confidence gate passes its tunable floor, and an explicit timeout plus grace is always
+ * respected so such a run is never aged out early.
+ */
+export function getSubagentRunStaleAt(
   entry: SubagentRunLivenessRecord,
-  now = Date.now(),
-): boolean {
+  defaultFloorMs = STALE_UNENDED_SUBAGENT_RUN_MS,
+): number {
   if (hasSubagentRunEnded(entry)) {
-    return false;
+    return Infinity;
   }
-  return isUnendedRunStalePastCutoff(entry, now, STALE_UNENDED_SUBAGENT_RUN_MS);
-}
-
-function isUnendedRunStalePastCutoff(
-  entry: SubagentRunLivenessRecord,
-  now: number,
-  defaultFloorMs: number,
-): boolean {
   // Creation bounds stale admission, but must not become a displayed execution start.
   const startedAt = getSubagentSessionStartedAt(entry) ?? entry.createdAt;
   if (
@@ -110,9 +93,21 @@ function isUnendedRunStalePastCutoff(
     !Number.isFinite(startedAt) ||
     startedAt < MIN_REALISTIC_RUN_TIMESTAMP_MS
   ) {
-    return false;
+    return Infinity;
   }
-  return now - startedAt > resolveStaleCutoffMs(entry, defaultFloorMs);
+  const durationMs = resolveSubagentRunDurationMs(entry.runTimeoutSeconds);
+  const cutoffMs =
+    durationMs === undefined
+      ? defaultFloorMs
+      : Math.max(defaultFloorMs, durationMs + EXPLICIT_TIMEOUT_STALE_GRACE_MS);
+  return startedAt + cutoffMs;
+}
+
+export function isStaleUnendedSubagentRun(
+  entry: SubagentRunLivenessRecord,
+  now = Date.now(),
+): boolean {
+  return now > getSubagentRunStaleAt(entry);
 }
 
 /**
@@ -136,7 +131,7 @@ function isUnendedRunStalePastCutoff(
  *   inside the grace — both quiesce, never reap.
  *
  * `staleCutoffMs` is the operator-tunable confidence-gate floor; the per-run
- * timeout-derived cutoff is always respected (see resolveStaleCutoffMs).
+ * timeout-derived cutoff is always respected (see getSubagentRunStaleAt).
  */
 export type SubagentRunLiveness = "alive" | "confident-terminal" | "uncertain";
 
@@ -152,10 +147,7 @@ export function classifySubagentRunLiveness(
   }
   const now = options.now ?? Date.now();
   const floorMs = options.staleCutoffMs ?? STALE_UNENDED_SUBAGENT_RUN_MS;
-  if (isUnendedRunStalePastCutoff(entry, now, floorMs)) {
-    return "confident-terminal";
-  }
-  return "alive";
+  return now > getSubagentRunStaleAt(entry, floorMs) ? "confident-terminal" : "alive";
 }
 
 /** Admission/display retention includes current owners and a bounded registration grace.
