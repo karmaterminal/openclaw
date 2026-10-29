@@ -399,6 +399,106 @@ it("runs the next turn of a finished gateway-agent child that elected continue_w
   }
 }, 180_000);
 
+// R-CW-TOKEN (bootstrap#1727 defect 1b): a light-context, delete-mode child ends its first
+// answer with a bare CONTINUE_WORK token instead of calling continue_work. Its own turn parks
+// that work. The fast parent takes the first answer, and its cleanup finishes before the wake;
+// the next turn's answer must still reach the parent, with the work run once.
+it("returns a bare CONTINUE_WORK child's next-turn answer to its parent, running the work once", async () => {
+  const id = randomUUID().slice(0, 8);
+  const parentPrompt = `Spawn the token worker for ${id}.`;
+  const childTask = `Token task ${id}: answer, then continue.`;
+  const hopOne = `TOKEN-HOP1 ${id}`;
+  const hopTwo = `TOKEN-HOP2-DONE ${id}`;
+  const parentSaw: string[] = [];
+  let hopTwoTurns = 0;
+  const childAccepted = createDeferred<SpawnReceipt>();
+  let sequence = 0;
+  const model = await startOpenAiResponsesModelServer({
+    modelId: MODEL_ID,
+    bindError: "Expected token wake model server address",
+    onRequest: async (request, response) => {
+      const body = await readRequestText(request);
+      const reply = (text: string) => {
+        const replyId = `token_wake_${++sequence}`;
+        writeOpenAiResponsesText(response, {
+          text,
+          messageId: replyId,
+          responseId: `${replyId}_response`,
+        });
+      };
+      if (body.includes(parentPrompt)) {
+        if (body.includes(hopTwo)) {
+          parentSaw.push("hop-2");
+          reply(`Parent saw hop 2 for ${id}.`);
+        } else if (body.includes(hopOne)) {
+          parentSaw.push("hop-1");
+          reply(`Parent saw hop 1 for ${id}.`);
+        } else if (!body.includes("function_call_output")) {
+          writeToolCall(response, "sessions_spawn", {
+            task: childTask,
+            context: "isolated",
+            cleanup: "delete",
+            lightContext: true,
+          });
+        } else {
+          const receipt = findSubagentSpawnReceipt(JSON.parse(body) as unknown);
+          if (receipt) {
+            childAccepted.resolve(receipt);
+          } else {
+            childAccepted.reject(
+              new Error(`sessions_spawn refused: ${readToolOutputs(body).join("\n")}`),
+            );
+          }
+          reply("Child accepted.");
+        }
+      } else if (!body.includes(childTask)) {
+        reply("Unexpected request.");
+      } else if (body.includes(WAKE_MARKER)) {
+        hopTwoTurns++;
+        reply(hopTwo);
+      } else {
+        reply(`${hopOne}\n\nCONTINUE_WORK:${WAKE_DELAY_SECONDS}`);
+      }
+    },
+  });
+  vi.stubEnv("OPENCLAW_ALLOW_SLOW_REPLY_TESTS", "1");
+  const state = await createOpenClawTestState({ label: "finished-child-token-wake" });
+  const gateway = await startGatewayWithClient({
+    cfg: continuationConfig(state.workspaceDir, `${model.baseUrl}/v1`),
+    configPath: state.configPath,
+    token: "finished-child-token-wake-token",
+  });
+  try {
+    await gateway.server.startupSettled;
+    await gateway.client.request(
+      "agent",
+      {
+        sessionKey: `agent:main:token-parent-${id}`,
+        message: parentPrompt,
+        idempotencyKey: `token-parent-${id}`,
+        deliver: false,
+      },
+      { expectFinal: true },
+    );
+    const child = await childAccepted.promise;
+    await waitFor(() => parentSaw.includes("hop-2"), 3 * WAKE_TURN_BOUND_MS);
+    // A second scheduling of the same work would wake the child again after its delay.
+    await sleep((WAKE_DELAY_SECONDS + 3) * 1000);
+    const workRows = await readWorkRows(child.childSessionKey);
+    console.log(
+      `[finished-child-token-wake] ${JSON.stringify({ parentSaw, hopTwoTurns, workRows })}`,
+    );
+    expect(parentSaw).toContain("hop-2");
+    expect(hopTwoTurns).toBe(1);
+    expect(workRows).toHaveLength(1);
+  } finally {
+    await disconnectGatewayClient(gateway.client);
+    await gateway.server.close({ reason: "finished-child token wake proof complete" });
+    await model.close();
+    await state.cleanup();
+  }
+}, 180_000);
+
 // The fix schedules post-turn continue_work outside the tool caller and operator tool
 // frames. An operator's own agent RPC turn keeps its request-scope custody (#1489).
 it("keeps a restricted operator's agent-RPC continue_work custody through its wake", async () => {
