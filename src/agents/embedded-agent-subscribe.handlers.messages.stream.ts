@@ -337,6 +337,8 @@ export function createStreamingReplyResolver(): StreamingReplyResolver {
   // An invalid media reference rewrites its notice in place as the line grows, so those replies
   // keep the canonical parse.
   let settledDirectiveNotice = false;
+  // Continuation: a prefix whose display dropped a continuation signal keeps the canonical parse.
+  let settledDirectiveStripped = false;
   return (params) => {
     let preparedRawText = params.next;
     if (params.rawDirectiveSource !== undefined) {
@@ -449,6 +451,7 @@ export function createStreamingReplyResolver(): StreamingReplyResolver {
       !settledDirectiveTail &&
       !settledDirectiveMarked &&
       !settledDirectiveNotice &&
+      !settledDirectiveStripped &&
       params.next.length === settledDirectiveSource.length + params.appendDelta.length &&
       params.next.endsWith(params.appendDelta) &&
       !params.appendDelta.includes("[[") &&
@@ -462,9 +465,13 @@ export function createStreamingReplyResolver(): StreamingReplyResolver {
     ) {
       // The visible text grew by exactly the reported delta and the new bytes cannot start or
       // complete a directive, so every directive the cleaned prefix already removed stays removed.
-      text = settledDirectiveText + params.appendDelta;
-      delta = params.appendDelta;
-      isAppend = true;
+      const appended = settledDirectiveText + params.appendDelta;
+      // Continuation: an append the display strip would change belongs to the canonical parse.
+      if (stripContinuationSignalFromDisplayText(appended) === appended) {
+        text = appended;
+        delta = params.appendDelta;
+        isAppend = true;
+      }
     }
 
     if (text === undefined) {
@@ -497,6 +504,7 @@ export function createStreamingReplyResolver(): StreamingReplyResolver {
       settledDirectiveMarked =
         settledDirectiveSource !== undefined && preparedRawText.includes("[[");
       settledDirectiveNotice = Boolean(parsed.mediaFailures?.length);
+      settledDirectiveStripped = text !== parsedText;
       if (
         params.evtType !== "text_end" &&
         params.appendDelta !== null &&
