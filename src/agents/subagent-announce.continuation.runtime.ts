@@ -197,7 +197,10 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
   targetRequesterOrigin?: DeliveryContext;
   task: string;
   findings: string;
-  /** Raw recorded answer items behind rendered findings; rendering drops continuation brackets. */
+  /**
+   * Raw recorded answer items behind rendered findings; rendering drops continuation brackets.
+   * Only a delegate is admitted from them: the child's own turn owns its work token.
+   */
   continuationParts?: string[];
   skipAnnounceDelivery: boolean;
   silentAnnounce?: boolean;
@@ -247,9 +250,15 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
   let findings = params.findings;
   const isChain = accounting.isContinuationChainDelegate;
   // Like the child's own turn, the last answer item that carries a bracket wins.
-  const continuationResult = (params.continuationParts ?? [findings])
+  const selected = (params.continuationParts ?? [findings])
     .map((part) => stripContinuationSignal(part))
-    .findLast((result) => result.signal) ?? { text: findings, signal: null };
+    .findLast((result) => result.signal);
+  // The child's own turn already parked a recorded work token and owns it; admitting it here
+  // again would re-arm a wake that may already have run. Only a recorded delegate is left.
+  const continuationResult =
+    selected && (params.continuationParts === undefined || selected.signal?.kind === "delegate")
+      ? selected
+      : { text: findings, signal: null };
   // Rendered findings already omit the bracket; only raw findings need it stripped.
   const findingsWithoutSignal =
     params.continuationParts === undefined ? continuationResult.text || "(no output)" : findings;
