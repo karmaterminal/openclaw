@@ -44,6 +44,7 @@ import {
 } from "../../test-utils/channel-plugins.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { normalizeSessionDeliveryState } from "../../utils/delivery-context.shared.js";
+import { enqueueSessionEventForHost } from "../reply/session-event-handoff.js";
 import {
   resetContinuationWakesForTest,
   settleContinuationWakesForTest,
@@ -83,13 +84,14 @@ type WakeTurnFailure = {
 /**
  * One delegate return wakes a continuation-enabled session whose turn admits, then fails with
  * `failure`. The Gateway persists the run's lifecycle events as its agent-event handler would.
- * An `answered` turn first answers its source through the message tool.
+ * An `answered` turn first answers its source through the message tool. An `exec` turn is the
+ * ordinary session event a background exec completion raises instead of a continuation wake.
  */
 async function failWakeTurn(
   label: string,
   failure: (sessionId: string) => Error,
   signal: AbortSignal,
-  options: { answered?: boolean } = {},
+  options: { answered?: boolean; exec?: boolean } = {},
 ): Promise<WakeTurnFailure> {
   let observed: WakeTurnFailure | undefined;
   await withOpenClawTestState({ label, env: { OPENCLAW_TEST_FAST: "0" } }, async (state) => {
@@ -160,18 +162,30 @@ async function failWakeTurn(
       throw failure(sessionId);
     });
     try {
-      const produced = await enqueueContinuationReturnDeliveries({
-        targetSessionKeys: [sessionKey],
-        text: "delegate alpha finished",
-        idempotencyKeyBase: "continuation-return:delegate alpha finished",
-        wakeRecipients: true,
-        childRunId: "child-run:alpha",
-        recipientAgentIds: new Map([[sessionKey, AGENT_ID]]),
-        ownerAgentId: AGENT_ID,
-      });
-      const row = expectDefined(produced.deliveryIds[0], "durable return row");
-
-      await withinTest(settleContinuationWakesForTest(), signal);
+      let row: string | undefined;
+      if (options.exec) {
+        await withinTest(
+          enqueueSessionEventForHost("Background exec completed", {
+            agentId: AGENT_ID,
+            sessionKey,
+            source: "exec",
+            sourceTurnId: `exec:${label}`,
+          }).settled,
+          signal,
+        );
+      } else {
+        const produced = await enqueueContinuationReturnDeliveries({
+          targetSessionKeys: [sessionKey],
+          text: "delegate alpha finished",
+          idempotencyKeyBase: "continuation-return:delegate alpha finished",
+          wakeRecipients: true,
+          childRunId: "child-run:alpha",
+          recipientAgentIds: new Map([[sessionKey, AGENT_ID]]),
+          ownerAgentId: AGENT_ID,
+        });
+        row = expectDefined(produced.deliveryIds[0], "durable return row");
+        await withinTest(settleContinuationWakesForTest(), signal);
+      }
       for (const event of lifecycle) {
         await persistGatewaySessionLifecycleEvent({ sessionKey, agentId: AGENT_ID, event });
       }
@@ -185,6 +199,7 @@ async function failWakeTurn(
         prompts,
         terminal: terminals[0]?.data,
         rowPending:
+          row !== undefined &&
           (await loadPendingSessionDelivery(row, captureOpenClawStateWorkerContext())) !== null,
         entry: await readSessionEntryInWorker({ agentId: AGENT_ID, sessionKey }),
       };
@@ -219,6 +234,23 @@ it.for([
     expect(turn.entry?.lastRunError).toBeUndefined();
   },
 );
+
+it("leaves the interrupted run for a non-continuation event turn that yields to a newer writer", async ({
+  signal,
+}) => {
+  const turn = await failWakeTurn(
+    "conflict-exec",
+    (id) => new SqliteTranscriptMutationConflictError(id),
+    signal,
+    { exec: true },
+  );
+
+  expect(turn.prompts).toHaveLength(1);
+  expect(turn.prompts[0]).toContain("Background exec completed");
+  // The same yield, but only a continuation wake is exempt: upstream marks the next turn.
+  expect(turn.terminal).toMatchObject({ aborted: true, stopReason: "superseded" });
+  expect(turn.entry).toMatchObject({ status: "killed", abortedLastRun: true });
+});
 
 it("settles a wake turn that fails for any other reason as a failure, out of the room", async ({
   signal,

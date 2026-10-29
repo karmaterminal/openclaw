@@ -416,6 +416,12 @@ describe("session lifecycle state", () => {
       "superseded by a newer session writer",
       { phase: "end", stopReason: "superseded", aborted: true },
       "killed",
+      true,
+    ),
+    terminalCase(
+      "superseded continuation wake",
+      { phase: "end", stopReason: "superseded", aborted: true, continuationWake: true },
+      "killed",
       false,
     ),
     terminalCase(
