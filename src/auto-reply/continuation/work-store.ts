@@ -735,6 +735,16 @@ export async function hasLiveContinuationCustody(sessionKey: string): Promise<bo
   });
 }
 
+/** Has this run already elected work for the session, in any status, including work that ran? */
+export async function hasContinuationWorkFromRun(
+  sessionKey: string,
+  originRunId: string,
+): Promise<boolean> {
+  return (await listOwnerWorkRecords(sessionKey)).some(
+    (record) => decodeWorkState(record)?.originRunId === originRunId,
+  );
+}
+
 function readOwnerLiveWorkFacts(sessionKey: string) {
   const answer = readContinuationLiveWork(resolveContinuationCustodyDatabasePath(), sessionKey, [
     "work",

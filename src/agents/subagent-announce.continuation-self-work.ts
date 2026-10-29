@@ -1,9 +1,12 @@
 // A sub-agent's `CONTINUE_WORK` token arms a same-session continue_work wake
 // for the child session itself, unless the child already holds live
-// continuation custody.
+// continuation custody or that run already elected its work.
 import { loadContinuationChainState } from "../auto-reply/continuation/state.js";
 import { scheduleContinuationWorkBatch } from "../auto-reply/continuation/work-dispatch.js";
-import { hasLiveContinuationCustody } from "../auto-reply/continuation/work-store.js";
+import {
+  hasContinuationWorkFromRun,
+  hasLiveContinuationCustody,
+} from "../auto-reply/continuation/work-store.js";
 import { resolveAgentIdFromSessionKey, resolveSessionStorePathCore } from "../config/sessions.js";
 import { updateSessionEntry } from "../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -19,7 +22,12 @@ export async function scheduleSubagentSelfContinuationWork(params: {
   traceparent?: string;
 }): Promise<void> {
   try {
-    if (await hasLiveContinuationCustody(params.childSessionKey)) {
+    // The child's own turn records its token under the same run id, and its wake may already
+    // have run by the time an announce (a retry or a restart replay) reads the recorded answer.
+    if (
+      (await hasLiveContinuationCustody(params.childSessionKey)) ||
+      (await hasContinuationWorkFromRun(params.childSessionKey, params.childRunId))
+    ) {
       return;
     }
     const config = resolveContinuationRuntimeConfig(params.cfg);
