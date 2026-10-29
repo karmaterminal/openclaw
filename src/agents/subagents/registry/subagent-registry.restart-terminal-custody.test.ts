@@ -8,6 +8,9 @@
 //    next activation settles it to an explicit interrupted outcome. It is never relaunched and
 //    carries no completion text.
 // 3. The root's generic resume input is not a substitute for that per-child receipt.
+// 4. The parent can inspect that row itself: its `subagents` tool and its next turn's runtime
+//    facts show the child ended, and a run snapshot names the restart interruption. This is an
+//    inspection path, not a completion return: nothing is delivered to the parent.
 // Preserve module setup before modules that consume it.
 // oxfmt-ignore
 import { useSubagentControlFixture } from "./subagent-control.test-support.js";
@@ -15,6 +18,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
 import * as sessionEventHandoff from "../../../auto-reply/reply/session-event-handoff.js";
+import { getRuntimeConfig } from "../../../config/config.js";
 import { loadExactSessionEntry } from "../../../config/sessions/session-accessor.js";
 import type { GatewayRequestContext } from "../../../gateway/server-methods/types.js";
 import { createContext } from "../../../gateway/server-plugin-in-process-dispatch.test-support.js";
@@ -29,6 +33,8 @@ import {
 } from "../../../infra/agent-events.js";
 import { claimAgentRunContext, releaseAgentRunContext } from "../../../infra/agent-run-registry.js";
 import { bindGatewayContextResolver } from "../../../plugins/runtime/gateway-request-scope.js";
+import { buildRuntimeFactsContext } from "../../runtime-facts-prompt.js";
+import { createSubagentsTool } from "../../tools/subagents-tool.js";
 import { resolveSubagentSessionAttachmentRootDir } from "../subagent-attachment-paths.js";
 import { PROVISIONAL_KILL_RECONCILIATION_MS } from "./subagent-registry-helpers.js";
 import { subagentRuns } from "./subagent-registry-memory.js";
@@ -257,6 +263,75 @@ it("2: an in-process restart settles the earlier lifecycle's delegate and keeps 
   expect(fixture.gateway).not.toHaveBeenCalled();
 });
 
+it("4: the parent inspects a crash-settled delegate as interrupted by the restart", async () => {
+  await addRunningChild("inspected-delegate");
+  // Another requester's delegate settles too, but never reaches this parent's view.
+  await addRunningChild("other-parent-delegate", {
+    requesterSessionKey: "agent:main:other",
+    requesterDisplayKey: "other",
+  });
+
+  await restartGateway();
+
+  // The parent's own tool: the list names the child as ended, never active or done...
+  const subagents = createSubagentsTool({ agentSessionKey: parent });
+  const list = (await subagents.execute("list", { action: "list" })).details as {
+    active: Array<{ runId: string }>;
+    recent: Array<{ runId: string }>;
+  };
+  expect(list.active).toEqual([]);
+  expect(list.recent).toEqual([
+    expect.objectContaining({
+      runId: "inspected-delegate",
+      status: "failed",
+      deliveryStatus: "not_required",
+      endedAt: expect.any(Number),
+    }),
+  ]);
+  // ...and a snapshot of that run shows why it ended.
+  const snapshot = await subagents.execute("wait", {
+    action: "wait",
+    runIds: ["inspected-delegate"],
+    timeoutSeconds: 0,
+  });
+  expect(snapshot.details).toMatchObject({
+    runs: [
+      {
+        runId: "inspected-delegate",
+        status: "terminal",
+        outcome: {
+          status: "error",
+          error: "subagent run interrupted: the Gateway restarted before it ended",
+        },
+        deliveryStatus: "not_required",
+        endedAt: expect.any(Number),
+      },
+    ],
+    attention: [],
+  });
+  expect(snapshot.details).not.toHaveProperty("unavailable");
+
+  // The parent's next turn carries the same ended row, and no result awaiting delivery.
+  const facts = (
+    await buildRuntimeFactsContext({
+      cfg: getRuntimeConfig(),
+      executionHost: false,
+      capabilityToolNames: new Set(["sessions_spawn", "subagents", "continue_delegate"]),
+      sessionKey: parent,
+      agentId: "main",
+    })
+  )
+    .map((fragment) => fragment.text)
+    .join("\n\n");
+  expect(facts).toContain("## Recently Completed Subagents");
+  expect(facts).toMatch(/run=inspected-delegate; status=failed; .*delivery=not_required;/);
+  expect(facts).not.toContain("## Active Subagents");
+  expect(facts).not.toContain("## Child results awaiting delivery");
+  expect(facts).not.toContain("other-parent-delegate");
+  expect(fixture.announce).not.toHaveBeenCalled();
+  expect(fixture.wake).not.toHaveBeenCalled();
+});
+
 it("3: the root's resume input does not stand in for a delegate's custody receipt", async () => {
   const parentStorePath = await writeSubagentSessionEntry({
     stateDir: fixture.stateDir,
@@ -305,6 +380,29 @@ it("3: the root's resume input does not stand in for a delegate's custody receip
   const durable = loadSubagentRegistryFromSqlite();
   expectGracefullyKilled(durable.get("resume-reached"));
   expectInterrupted(durable.get("resume-unreached"));
+  // On its resume turn the root reads each delegate's own outcome.
+  const snapshot = await createSubagentsTool({ agentSessionKey: parent }).execute("wait", {
+    action: "wait",
+    runIds: ["resume-reached", "resume-unreached"],
+    timeoutSeconds: 0,
+  });
+  expect(snapshot.details).toMatchObject({
+    runs: [
+      {
+        runId: "resume-reached",
+        status: "terminal",
+        outcome: { status: "error", error: "Gateway stopped" },
+      },
+      {
+        runId: "resume-unreached",
+        status: "terminal",
+        outcome: {
+          status: "error",
+          error: "subagent run interrupted: the Gateway restarted before it ended",
+        },
+      },
+    ],
+  });
   expect(fixture.gateway).not.toHaveBeenCalled();
   expect(fixture.announce).not.toHaveBeenCalled();
 });
