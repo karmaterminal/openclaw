@@ -172,13 +172,15 @@ describe("continuation spawn over the WebSocket fallback", () => {
     await expect(countPendingDescendantRuns(childSessionKey, () => {})).resolves.toBe(1);
 
     gatewayState.finalText.set(childSessionKey, "WAITING");
+    // A runner's terminal event carries its attempt's recorded start; upstream ignores any other.
+    const startedAt = (await getSubagentRunByChildSessionKey(childSessionKey))?.execution.startedAt;
     emitAgentEvent({
       runId,
       stream: "lifecycle",
       sessionKey: childSessionKey,
       data: {
         phase: "end",
-        startedAt: Date.now() - 100,
+        startedAt,
         endedAt: Date.now(),
         terminalReply: { disposition: "visible", text: "WAITING" },
       },

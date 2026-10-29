@@ -147,6 +147,11 @@ const originSpanId = "2222222222222222";
 const originTraceparent = `00-${originTraceId}-${originSpanId}-01`;
 let stateDir: string;
 
+/** A runner's terminal event carries its attempt's recorded start; upstream ignores any other. */
+function attemptStartedAt(runId: string): number {
+  return getSubagentRunByRunId(runId)?.execution.startedAt ?? Date.now();
+}
+
 function makeConfig(): OpenClawConfig {
   return {
     session: { mainKey: "main", scope: "per-sender" as const },
@@ -404,7 +409,7 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
 
     const hop1ChildSessionKey = hop1Spawn.childSessionKey as string;
     const hop1RunId = hop1Spawn.runId as string;
-    const hop1StartedAt = Date.now() - 1_000;
+    const hop1StartedAt = attemptStartedAt(hop1RunId);
     const hop1EndedAt = Date.now();
     gatewayState.waitResults.set(hop1RunId, {
       status: "ok",
@@ -522,7 +527,7 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
 
     const hop2SessionKey = hop2Run.childSessionKey;
     const hop2RunId = hop2Run.runId;
-    const hop2StartedAt = Date.now() - 500;
+    const hop2StartedAt = attemptStartedAt(hop2RunId);
     const hop2EndedAt = Date.now();
     gatewayState.waitResults.set(hop2RunId, {
       status: "ok",
@@ -611,7 +616,7 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
       ),
     ).toEqual([recoveredIntermediate]);
 
-    const recoveryStartedAt = Date.now() - 250;
+    const recoveryStartedAt = attemptStartedAt(recoveryRunId);
     const recoveryEndedAt = Date.now();
     gatewayState.waitResults.set(recoveryRunId, {
       status: "ok",
@@ -744,10 +749,11 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
     }
     const originChildSessionKey = originSpawn.childSessionKey;
     const originChildRunId = originSpawn.runId;
+    const originStartedAt = attemptStartedAt(originChildRunId);
     gatewayState.waitResults.set(originChildRunId, {
       status: "ok",
-      startedAt: 10,
-      endedAt: 20,
+      startedAt: originStartedAt,
+      endedAt: originStartedAt + 10,
     });
     const originFinalText = `Origin complete.\n[[CONTINUE_DELEGATE: ${delegateTask} +1s]]`;
     gatewayState.chatHistoryBySessionKey.set(originChildSessionKey, [
@@ -764,8 +770,8 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
         sessionKey: originChildSessionKey,
         data: {
           phase: "end",
-          startedAt: 10,
-          endedAt: 20,
+          startedAt: originStartedAt,
+          endedAt: originStartedAt + 10,
           terminalReply: { disposition: "visible", text: originFinalText },
         },
       });
@@ -853,10 +859,11 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
 
     const delegateChildSessionKey = delegateRun.childSessionKey;
     const delegateChildRunId = delegateRun.runId;
+    const delegateStartedAt = attemptStartedAt(delegateChildRunId);
     gatewayState.waitResults.set(delegateChildRunId, {
       status: "ok",
-      startedAt: 30,
-      endedAt: 40,
+      startedAt: delegateStartedAt,
+      endedAt: delegateStartedAt + 10,
     });
     gatewayState.chatHistoryBySessionKey.set(delegateChildSessionKey, [
       {
@@ -893,8 +900,8 @@ describe("continuation chain production composition proof (tree hop-1 + hop-2)",
         sessionKey: delegateChildSessionKey,
         data: {
           phase: "end",
-          startedAt: 30,
-          endedAt: 40,
+          startedAt: delegateStartedAt,
+          endedAt: delegateStartedAt + 10,
           terminalReply: { disposition: "visible", text: delegateSentinel },
         },
       });
