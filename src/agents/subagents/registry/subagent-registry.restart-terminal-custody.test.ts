@@ -11,6 +11,8 @@
 // Preserve module setup before modules that consume it.
 // oxfmt-ignore
 import { useSubagentControlFixture } from "./subagent-control.test-support.js";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { expect, it, vi } from "vitest";
 import * as sessionEventHandoff from "../../../auto-reply/reply/session-event-handoff.js";
 import { loadExactSessionEntry } from "../../../config/sessions/session-accessor.js";
@@ -27,6 +29,7 @@ import {
 } from "../../../infra/agent-events.js";
 import { claimAgentRunContext, releaseAgentRunContext } from "../../../infra/agent-run-registry.js";
 import { bindGatewayContextResolver } from "../../../plugins/runtime/gateway-request-scope.js";
+import { resolveSubagentSessionAttachmentRootDir } from "../subagent-attachment-paths.js";
 import { PROVISIONAL_KILL_RECONCILIATION_MS } from "./subagent-registry-helpers.js";
 import { subagentRuns } from "./subagent-registry-memory.js";
 import { loadSubagentRegistryFromSqlite } from "./subagent-registry-state.fixture.test-support.js";
@@ -182,13 +185,58 @@ it("2: a crash-restored delegate with no execution owner settles interrupted, ne
   // Not relaunched or waited on, and no completion is announced to the parent.
   expect(fixture.gateway).not.toHaveBeenCalled();
   expect(fixture.announce).not.toHaveBeenCalled();
+  expect(fixture.wake).not.toHaveBeenCalled();
   // The requester no longer counts a dead child as running work it must wait for.
   const unsettled = await listUnsettledRequesterChildren({ requesterSessionKey: parent });
   expect(unsettled.map((child) => child.runId)).not.toContain("crashed-delegate");
 });
 
+it("2: a crash-restored delegate whose kill never finished settles interrupted", async () => {
+  // The kill owner committed its intent, then the process died before termination.
+  await addRunningChild("crashed-killing", {
+    killIntent: {
+      requestedAt: Date.now() - 500,
+      reason: "killed by requester",
+      lifecycleGeneration: getAgentEventLifecycleGeneration(),
+    },
+  });
+
+  await restartGateway();
+  await testing.sweepOnceForTests();
+  await fixture.settle();
+
+  const settled = loadSubagentRegistryFromSqlite().get("crashed-killing");
+  expectInterrupted(settled);
+  expect(settled?.killIntent).toBeUndefined();
+  expect(fixture.gateway).not.toHaveBeenCalled();
+  expect(fixture.announce).not.toHaveBeenCalled();
+});
+
+it("2: an interrupted delegate's materialized attachments are released", async () => {
+  const attachmentId = "6f9c1a52-3b7d-4e8a-9c21-0d4e5f6a7b8c";
+  const childSessionKey = "agent:main:subagent:crashed-attachments";
+  const attachmentDir = path.join(
+    resolveSubagentSessionAttachmentRootDir({ agentId: "main", childSessionKey }),
+    attachmentId,
+  );
+  await fs.mkdir(attachmentDir, { recursive: true });
+  await fs.writeFile(path.join(attachmentDir, "input.txt"), "input", "utf8");
+  await addRunningChild("crashed-attachments", { attachmentId });
+
+  await restartGateway();
+
+  expectInterrupted(loadSubagentRegistryFromSqlite().get("crashed-attachments"));
+  await expect(fs.stat(attachmentDir)).rejects.toMatchObject({ code: "ENOENT" });
+});
+
 it("2: an in-process restart settles the earlier lifecycle's delegate and keeps the current one", async () => {
   await addRunningChild("earlier-lifecycle");
+  const killIntent = {
+    requestedAt: Date.now() - 500,
+    reason: "killed by requester",
+    lifecycleGeneration: getAgentEventLifecycleGeneration(),
+  };
+  await addRunningChild("earlier-lifecycle-killing", { killIntent });
   // An in-process restart keeps module state; only the lifecycle generation rotates.
   rotateAgentEventLifecycleGeneration();
   // A delegate this lifecycle admitted before activation keeps its execution owner.
@@ -201,6 +249,11 @@ it("2: an in-process restart settles the earlier lifecycle's delegate and keeps 
   expectInterrupted(durable.get("earlier-lifecycle"));
   expect(durable.get("current-lifecycle")?.execution.status).toBe("running");
   expect(durable.get("current-lifecycle")?.execution.endedAt).toBeUndefined();
+  // A retained row's pending kill still has its owner: the sweeper's durable kill reconcile.
+  expect(durable.get("earlier-lifecycle-killing")).toMatchObject({
+    killIntent,
+    execution: { status: "running" },
+  });
   expect(fixture.gateway).not.toHaveBeenCalled();
 });
 
