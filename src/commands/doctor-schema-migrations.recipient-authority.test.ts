@@ -14,6 +14,7 @@ import { ensureOpenClawAgentDatabaseSchema } from "../state/openclaw-agent-db-sc
 import { closeOpenClawAgentDatabasesAsync } from "../state/openclaw-agent-db.js";
 import { withoutSessionRecipientAuthoritySchema } from "../state/openclaw-agent-recipient-authority-schema.js";
 import { OPENCLAW_AGENT_SCHEMA_SQL } from "../state/openclaw-agent-schema.js";
+import { OPENCLAW_STATE_SCHEMA_VERSION } from "../state/openclaw-state-db-contract.js";
 import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import { resolveSchemaMigrationBackupTables } from "../state/schema-migration-backup-scope.js";
 import { assertSqliteMigrationScopePreserved } from "../state/sqlite-migration-scope.test-support.js";
@@ -91,7 +92,9 @@ it.each(SHAPES)(
   async ({ version, authority }) => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
       const stateDatabase = openOpenClawStateDatabase({ env: state.env });
-      expect(stateDatabase.db.prepare("PRAGMA user_version").get()?.user_version).toBe(35);
+      expect(stateDatabase.db.prepare("PRAGMA user_version").get()?.user_version).toBe(
+        OPENCLAW_STATE_SCHEMA_VERSION,
+      );
       const pathname = state.statePath("agents", "main", "agent", "openclaw-agent.sqlite");
       using database = stageAgentDatabase(pathname, version, authority);
       const original = readStore(database);
@@ -130,7 +133,9 @@ it.each(SHAPES)(
       });
       expect(database.prepare("PRAGMA integrity_check").all()).toEqual([{ integrity_check: "ok" }]);
       expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
-      expect(stateDatabase.db.prepare("PRAGMA user_version").get()?.user_version).toBe(35);
+      expect(stateDatabase.db.prepare("PRAGMA user_version").get()?.user_version).toBe(
+        OPENCLAW_STATE_SCHEMA_VERSION,
+      );
 
       // Re-running the schema owner on the migrated store changes nothing.
       await withAgentDatabaseMaintenanceLease({ env: state.env }, async () => {
