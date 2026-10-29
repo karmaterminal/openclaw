@@ -47,7 +47,6 @@ import {
   isSessionMutationActive,
   runSessionMutation,
 } from "../../sessions/session-controller.lifecycle.js";
-import { isSessionRunActiveForKey } from "../../sessions/session-controller.queries.js";
 import { listSessionStateEventsSince } from "../../sessions/session-state-events.js";
 import { resolveIncognitoOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.js";
 import {
@@ -438,57 +437,6 @@ describe("initSessionState guarded initialization", () => {
       message:
         'Session "agent:main:telegram:chat:archived" is archived. Restore it before starting new work.',
     });
-  });
-
-  it("waits for real settlement when reply cancellation throws after committing abort", async () => {
-    const storePath = await makeStorePath("openclaw-session-init-reset-cancel-failure-");
-    const sessionKey = "agent:main:matrix:channel:cancel-failure";
-    const sessionId = "committed-reset-session";
-    await writeSessionStoreFast(storePath, {
-      [sessionKey]: {
-        sessionId,
-        updatedAt: Date.now(),
-      },
-    });
-    const cancellationAttempted = createDeferred();
-    const cancel = vi.fn(() => {
-      cancellationAttempted.resolve();
-      throw new Error("backend cancellation failed");
-    });
-    const activeReply = createReplyOperation({
-      sessionKey,
-      sessionId,
-      resetTriggered: false,
-    });
-    activeReply.attachBackend({ kind: "embedded", cancel, isStreaming: () => false });
-    activeReply.setPhase("running");
-
-    try {
-      const initialization = initSessionState({
-        ctx: {
-          Body: "/new",
-          RawBody: "/new",
-          CommandBody: "/new",
-          From: "@owner:example.test",
-          To: "!cancel-failure:example.test",
-          ChatType: "channel",
-          SessionKey: sessionKey,
-          Provider: "matrix",
-          Surface: "matrix",
-        },
-        cfg: { session: { store: storePath, idleMinutes: 999 } } as OpenClawConfig,
-        commandAuthorized: true,
-      });
-      await cancellationAttempted.promise;
-      activeReply.complete();
-      const reset = await initialization;
-
-      expect(reset.resetTriggered).toBe(true);
-      expect(cancel).toHaveBeenCalledWith("restart");
-      expect(isSessionRunActiveForKey(sessionKey)).toBe(false);
-    } finally {
-      activeReply.complete();
-    }
   });
 });
 

@@ -61,6 +61,7 @@ import {
 } from "./subagent-registry.native-settlement.test-support.js";
 import { registerSupersededNativeTimingTest } from "./subagent-registry.native-termination.test-support.js";
 import { registerSubagentRegistrationPersistenceTests } from "./subagent-registry.persistence.test-support.js";
+import { registerRegistryRestoreRetryTest } from "./subagent-registry.restore-retry.test-support.js";
 import {
   makeCompletedCollectorRun,
   makeSuspendedDeliveryRun,
@@ -498,38 +499,7 @@ describe("subagent registry seam flow", () => {
     });
   });
 
-  it("reconciles a partial merge on the next explicit restore", async () => {
-    const runId = "run-restore-retry";
-    const restored = createSubagentRunRecord({
-      runId,
-      childSessionIdentity: {
-        sessionId: "sess-child",
-        lifecycleRevision: "revision-child",
-      },
-      pauseReason: "sessions_yield",
-      createdAt: Date.now(),
-    });
-    mocks.restoreSubagentRunsFromDisk
-      .mockImplementationOnce((async (params: { runs: Map<string, SubagentRunRecord> }) => {
-        params.runs.set(runId, restored);
-        throw new Error("transient sqlite read failure");
-      }) as never)
-      .mockResolvedValue(0);
-
-    await mod.initSubagentRegistry();
-    expect(mocks.restoreSubagentRunsFromDisk).toHaveBeenCalledOnce();
-    expect(mocks.onAgentEvent).not.toHaveBeenCalled();
-
-    await mod.initSubagentRegistry();
-
-    expect(mocks.restoreSubagentRunsFromDisk).toHaveBeenCalledTimes(2);
-    expect(mod.getSubagentRunByRunId(runId)?.runId).toBe(runId);
-    await activateRegistry();
-    expect(mocks.onAgentEvent).toHaveBeenCalledOnce();
-
-    await mod.initSubagentRegistry();
-    expect(mocks.restoreSubagentRunsFromDisk).toHaveBeenCalledTimes(2);
-  });
+  registerRegistryRestoreRetryTest({ getRegistry: () => mod, mocks, activateRegistry });
 
   it("does not double-run reentrant registry restore calls", async () => {
     let reentrantRestore: ReturnType<typeof mod.initSubagentRegistry> | undefined;
