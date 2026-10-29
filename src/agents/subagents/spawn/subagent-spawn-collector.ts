@@ -178,14 +178,8 @@ export function createCollectorLaunchCallbacks(params: {
     return aggregate;
   };
   let launchRegistered = false;
-  const launchIdempotencyKey = () => {
-    const row = subagentRuns.get(childRunId);
-    const queuedKey = row?.queuedLaunch?.request.idempotencyKey;
-    return (
-      row?.swarmLaunchIdempotencyKey ??
-      (typeof queuedKey === "string" && queuedKey ? queuedKey : childRunId)
-    );
-  };
+  const launchIdempotencyKey = () =>
+    subagentRuns.get(childRunId)?.swarmLaunchIdempotencyKey ?? childRunId;
   const startOnce = async () => {
     await runWithGatewayIndependentRootWorkContinuation(async () => {
       for (
@@ -206,7 +200,7 @@ export function createCollectorLaunchCallbacks(params: {
       );
       assertLaunchCurrent();
       // H1 §3.4: durable launch marker before dispatch. A failed write dispatches nothing.
-      // A dispatched launch is never relaunched by restore; its start transition disarms it.
+      // A dispatched launch is never relaunched; its start transition disarms it.
       if (
         !(await armSubagentLaunchDispatch({
           runId: childRunId,
@@ -466,8 +460,8 @@ export function createCollectorLaunchCallbacks(params: {
             }
             throw new Error("Collector source revocation cleanup is incomplete");
           }
-        } else if (reason === "shutdown" || canCleanupCreatedSession?.() === false) {
-          // Restart replays queuedLaunch without repeating its durable context preparation.
+        } else if (canCleanupCreatedSession?.() === false) {
+          // A replacement owns the session; cleanup must not roll it back.
           await preparation?.dispose();
         } else {
           await preparation?.rollback();

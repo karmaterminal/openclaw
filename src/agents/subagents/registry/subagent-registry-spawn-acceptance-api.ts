@@ -17,7 +17,7 @@ type SubagentRunManager = ReturnType<typeof createSubagentRunManager>;
 
 export function createSubagentSpawnAcceptanceApi(deps: {
   manager: Pick<SubagentRunManager, "confirmSubagentSpawnAcceptance" | "startQueuedSubagentRun">;
-  resume: (runId: string, source: "live" | "restore") => void;
+  resume: (runId: string) => void;
   scheduleSweep: (params?: { delayMs?: number }) => void;
 }) {
   /**
@@ -36,14 +36,14 @@ export function createSubagentSpawnAcceptanceApi(deps: {
       if (current && !isSubagentSpawnArmed(current)) {
         const deferred = takeDeferredArmedSubagentResume(current);
         if (deferred || typeof current.execution.endedAt === "number") {
-          deps.resume(current.runId, deferred ?? "live");
+          deps.resume(current.runId);
         }
       }
     }
     return outcome;
   }
 
-  /** A collector start write with an unknown outcome keeps its launch held until restart. */
+  /** A collector start write with an unknown outcome keeps its launch held for this process. */
   function markSubagentLaunchDispatchUncertain(runId: string): void {
     const current = subagentRuns.get(runId.trim());
     const owner =
@@ -98,9 +98,8 @@ export function createSubagentSpawnAcceptanceApi(deps: {
       isSameSubagentRunOwner(current, selected) &&
       !isSubagentSpawnArmed(current)
     ) {
-      const deferred = takeDeferredArmedSubagentResume(current);
-      if (deferred) {
-        deps.resume(current.runId, deferred);
+      if (takeDeferredArmedSubagentResume(current)) {
+        deps.resume(current.runId);
       }
     }
     return started;

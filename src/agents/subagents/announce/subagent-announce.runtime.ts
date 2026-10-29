@@ -1,7 +1,7 @@
 import { readSessionEntryReadOnlyInWorker } from "../../../config/sessions/session-entry-read-runtime.js";
 import type { SessionEntry } from "../../../config/sessions/types.js";
 import type { callGateway as GatewayCaller } from "../../../gateway/call.js";
-import { bindGatewayLifecycleRequest } from "../../../gateway/server-recovery-runtime-context.js";
+import { bindGatewayLifecycleRequest } from "../../../gateway/server-lifecycle-runtime-context.js";
 import { normalizeDiagnosticTraceparent } from "../../../infra/diagnostic-trace-context.js";
 import { isIncognitoSessionKey } from "../../../routing/session-key.js";
 import { resolveSubagentChildAgentId } from "../registry/subagent-child-owner-match.js";

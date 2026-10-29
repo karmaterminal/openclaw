@@ -150,12 +150,6 @@ describe("initSessionState guarded initialization", () => {
       [sessionKey]: {
         sessionId,
         updatedAt: Date.now(),
-        mainRestartRecovery: {
-          cycleId: "cycle-1",
-          revision: 4,
-          chargedAttempts: 3,
-          tombstone: { reason: "automatic recovery exhausted" },
-        },
       },
     });
     const cancellationAttempted = createDeferred();
@@ -192,8 +186,6 @@ describe("initSessionState guarded initialization", () => {
       const reset = await initialization;
 
       expect(reset.resetTriggered).toBe(true);
-      expect(reset.sessionEntry.mainRestartRecovery).toBeUndefined();
-      expect(loadSessionEntry({ storePath, sessionKey })?.mainRestartRecovery).toBeUndefined();
       expect(cancel).toHaveBeenCalledWith("restart");
       expect(isSessionRunActiveForKey(sessionKey)).toBe(false);
     } finally {

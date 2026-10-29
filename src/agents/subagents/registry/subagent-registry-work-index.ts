@@ -14,8 +14,7 @@ export function needsSubagentActivation(entry: SubagentRunRecord): boolean {
       entry.pauseReason ||
       entry.killIntent ||
       entry.killReconciliation ||
-      entry.collectorLaunchCleanupPending ||
-      entry.execution.restartRecovery,
+      entry.collectorLaunchCleanupPending,
     )
   );
 }
@@ -30,7 +29,7 @@ export function subagentSweepAt(entry: SubagentRunRecord): number {
     // custody, and only the sweeper decides those.
     isAcceptedSpawnCustodyRow(entry)
   ) {
-    // Unfinished rows also carry runtime-only recovery and completion custody.
+    // Unfinished rows may still own live completion or resource cleanup.
     return 0;
   }
   if (entry.archiveAtMs) {

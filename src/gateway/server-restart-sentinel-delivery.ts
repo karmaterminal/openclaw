@@ -1,15 +1,9 @@
-import type { RuntimeContextFragment } from "../agents/internal-runtime-context.js";
-import { resolveCorrelatedSubagentDelivery } from "../agents/subagents/completion/subagent-completion-delivery.js";
 import {
   CONTINUATION_RESET_HOLD_MAX_MS,
   findContinuationResetHold,
 } from "../agents/subagents/registry/subagent-continuation-reset-retention.js";
 import { requestContinuationWake } from "../auto-reply/continuation/continuation-wake.js";
-import { finalizeInboundContext } from "../auto-reply/reply/inbound-context.js";
 import { deliverQueuedPostCompactionDelegate } from "../auto-reply/reply/post-compaction-delegate-delivery.js";
-import { dispatchReplyWithBufferedBlockDispatcherCore } from "../auto-reply/reply/provider-dispatcher.js";
-import { recordInboundSession } from "../channels/session.js";
-import { dispatchAssembledChannelTurn } from "../channels/turn/lifecycle.js";
 import type { CliDeps } from "../cli/deps.types.js";
 import { getRuntimeConfig } from "../config/io.js";
 import {
@@ -17,14 +11,10 @@ import {
   withCurrentSessionRecipientAuthority,
 } from "../config/sessions/session-recipient-authority-current.js";
 import type { SessionRecipientAuthority } from "../config/sessions/session-recipient-authority-types.js";
-import { toErrorObject } from "../infra/errors.js";
 import {
   type ContinuationReturnWake,
-  markSessionDeliveryAttemptStarted,
-  markSessionDeliverySettlement,
   SessionDeliveryDeadLetteredError,
   SessionDeliveryDeferredError,
-  SessionDeliverySafeRetryError,
   type QueuedSessionDelivery,
 } from "../infra/session-delivery-queue-storage.js";
 import { hasQueuedSystemEventDelivery } from "../infra/system-event-managed-delivery-queue.js";
@@ -34,22 +24,10 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
 import { isSubagentSessionKey } from "../sessions/session-key-utils.js";
 import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
-import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel.js";
-import { deliverQueuedGeneratedMediaCompletion } from "./server-restart-sentinel-agent-delivery.js";
-import {
-  isRestartContinuationBusyPayload,
-  resolveQueuedRestartContinuationMessageId,
-  RESTART_CONTINUATION_BUSY_RETRY_ERROR,
-} from "./server-restart-sentinel-continuation-intent.js";
-import { deliverRestartSentinelEvent } from "./server-restart-sentinel-session-event.js";
 import { findCanonicalStoreMatch } from "./session-utils-store-selection.js";
 import { resolveGatewaySessionStoreTargetInWorker } from "./session-utils-store-worker.js";
 
 const log = createSubsystemLogger("gateway/restart-sentinel");
-
-type ResolvedQueuedSessionDelivery = QueuedSessionDelivery & {
-  runtimeContextFragments?: RuntimeContextFragment[];
-};
 
 /**
  * - `queued`: the event is in the queue (newly admitted, or its durable row
@@ -153,40 +131,13 @@ function enqueueRestartSentinelWake(params: {
   return "queued";
 }
 
-function resolveQueuedSessionDeliveryContext(entry: QueuedSessionDelivery):
-  | {
-      channel?: string;
-      to?: string;
-      accountId?: string;
-      threadId?: string | number;
-    }
-  | undefined {
-  if (entry.kind === "agentTurn" && entry.route) {
-    return {
-      channel: entry.route.channel,
-      to: entry.route.to,
-      ...(entry.route.accountId ? { accountId: entry.route.accountId } : {}),
-      ...(entry.route.threadId ? { threadId: entry.route.threadId } : {}),
-    };
-  }
-  return entry.deliveryContext;
-}
-
+/**
+ * Delivers continuation-owned rows (isContinuationSessionDelivery). Upstream's queue delivers
+ * only produced media; any other legacy row is inert here too.
+ */
 export async function deliverQueuedSessionDeliveryCore(params: {
   deps: CliDeps;
   entry: QueuedSessionDelivery;
-  queueContext: OpenClawStateWorkerContext;
-  resolveGatewayContext?: import("./server-methods/types.js").GatewayContextResolver;
-}) {
-  return await deliverResolvedQueuedSessionDelivery({
-    ...params,
-    entry: resolveCorrelatedSubagentDelivery(params.entry),
-  });
-}
-
-async function deliverResolvedQueuedSessionDelivery(params: {
-  deps: CliDeps;
-  entry: ResolvedQueuedSessionDelivery;
   queueContext: OpenClawStateWorkerContext;
   resolveGatewayContext?: import("./server-methods/types.js").GatewayContextResolver;
 }) {
@@ -199,11 +150,18 @@ async function deliverResolvedQueuedSessionDelivery(params: {
     });
     return;
   }
-  const isContinuationReturn =
-    params.entry.kind === "systemEvent" &&
-    params.entry.idempotencyKey?.startsWith("continuation-return:");
-  const recipientAgentId =
-    params.entry.kind === "systemEvent" ? params.entry.agentId?.trim() : undefined;
+  if (params.entry.kind !== "systemEvent") {
+    return;
+  }
+  const isContinuationReturn = params.entry.idempotencyKey?.startsWith("continuation-return:");
+  // A continuation return settles only on prompt adoption, whether or not it
+  // carries recipient authority; rows written before that rule replay the same way.
+  const awaitsTurnAdoption = params.entry.awaitPromptAdoption === true || isContinuationReturn;
+  if (!awaitsTurnAdoption) {
+    // A plain legacy restart notice carries no continuation custody (#185730: inert).
+    return;
+  }
+  const recipientAgentId = params.entry.agentId?.trim();
   if (isContinuationReturn && !recipientAgentId) {
     throw new SessionDeliveryDeadLetteredError(
       "continuation return recipient owner is unavailable",
@@ -240,258 +198,101 @@ async function deliverResolvedQueuedSessionDelivery(params: {
       "continuation return recipient owner is no longer authoritative",
     );
   }
-  const queuedDeliveryContext = resolveQueuedSessionDeliveryContext(params.entry);
-
-  if (params.entry.kind === "systemEvent") {
-    // Continuation: a reset replacing this head retained the source run. A pending mark holds the
-    // row until resolution releases (schedules) it or, for an orphaned run, moves it to failed
-    // before the mark leaves pending. An orphaned mark still fences any row written after that, so
-    // none reaches a later head. Checked before recipient authority, which is vacuous for a row
-    // that captured none. Both terminal outcomes move the row to failed with
-    // the drain's dead-letter warning; neither acks it as delivered.
-    const resetHold = findContinuationResetHold(params.entry.continuationSourceRunId, canonicalKey);
-    if (resetHold?.state === "orphaned") {
-      throw new SessionDeliveryDeadLetteredError(
-        `continuation return discarded: session reset ${resetHold.resetId} orphaned its source run`,
-      );
-    }
-    if (resetHold) {
-      // The 60 s pending sweep re-checks held rows, so expiry needs no reset or boot to fire. The
-      // mark and its run are left alone: an old handover is not a reason to stop a valid child.
-      const heldMs = Date.now() - Math.max(resetHold.markedAt, params.entry.enqueuedAt);
-      if (heldMs >= CONTINUATION_RESET_HOLD_MAX_MS) {
-        throw new SessionDeliveryDeadLetteredError(
-          `continuation return expired after ${Math.floor(heldMs / 86_400_000)} days held by unresolved session reset ${resetHold.resetId}`,
-        );
-      }
-      throw new SessionDeliveryDeferredError("continuation return is held by a pending reset", {
-        heldByOwner: true,
-      });
-    }
-    const recipientAuthority = params.entry.recipientAuthority;
-    // The row's owning state dir, as the session read above; recovery may run under another env.
-    const authorityScope = {
-      agentId,
-      sessionKey: canonicalKey,
-      storePath,
-      env: params.queueContext.environment,
-    };
-    if (
-      recipientAuthority &&
-      !(await isSessionRecipientAuthorityCurrentInWorker(authorityScope, recipientAuthority))
-    ) {
-      log.warn("session event delivery skipped: recipient authority changed", {
-        sessionKey: canonicalKey,
-        queueId: params.entry.id,
-      });
-      return;
-    }
-    // A continuation return settles only on prompt adoption, whether or not it
-    // carries recipient authority; rows written before that rule replay the same way.
-    const awaitsTurnAdoption = params.entry.awaitPromptAdoption === true || isContinuationReturn;
-    if (awaitsTurnAdoption && !entry && isSubagentSessionKey(canonicalKey)) {
-      // A missing subagent session cannot adopt the row: the wake's handoff refuses an absent
-      // origin, so the row would replay on every restart without ever settling.
-      throw new SessionDeliveryDeadLetteredError(
-        "adoption-scoped delivery targets a subagent session that no longer exists",
-      );
-    }
-    if (!awaitsTurnAdoption && !recipientAuthority && !isContinuationReturn) {
-      // A plain restart notice carries no continuation custody: run it through
-      // ordinary session execution and settle the row on that turn (#167113).
-      await deliverRestartSentinelEvent(
-        params.entry,
-        canonicalKey,
-        params.entry.agentId ?? agentId,
-        params.queueContext,
-      );
-      return;
-    }
-    // Continuation-owned rows keep adoption-scoped custody: the queued event
-    // carries the row's ack id, recipient authority and return wake, and the
-    // row settles only when a prompt adopts it.
-    const wake = {
-      entryId: params.entry.id,
-      message: params.entry.text,
-      sessionKey: canonicalKey,
-      agentId: params.entry.agentId ?? agentId,
-      deliveryContext: queuedDeliveryContext,
-      traceparent: params.entry.traceparent,
-      sessionDeliveryAckId: params.entry.id,
-      sessionDeliveryAckStateDir: stateDir,
-      recipientAuthority,
-      awaitsTurnAdoption,
-      ...(isContinuationReturn && params.entry.returnWake !== undefined
-        ? { returnWake: params.entry.returnWake }
-        : {}),
-    };
-    // The replay enqueues inside the authority decision, under the writer admission that read
-    // the epoch; prompt adoption fences the queued event again.
-    const replayed: RestartSentinelWakeOutcome = recipientAuthority
-      ? await withCurrentSessionRecipientAuthority(
-          [{ scope: authorityScope, authority: recipientAuthority }],
-          ([current]) => (current ? enqueueRestartSentinelWake(wake) : "stale-authority"),
-        )
-      : enqueueRestartSentinelWake(wake);
-    if (replayed === "refused") {
-      deferRefusedRestartSentinelWake({
-        sessionKey: canonicalKey,
-        queueId: params.entry.id,
-        continuationReturn: isContinuationReturn,
-      });
-    }
-    if (replayed === "stale-authority") {
-      log.warn("session event delivery wake skipped: recipient authority changed", {
-        sessionKey: canonicalKey,
-        queueId: params.entry.id,
-      });
-      return;
-    }
-    if (awaitsTurnAdoption) {
-      // The in-memory queue is not durable, so completing the row here would
-      // drop the notice if the process
-      // died before the prompt consumed it. The prompt-drain path acks the row
-      // via the event's sessionDeliveryAckId once it is actually adopted.
-      throw new SessionDeliveryDeferredError("system event is awaiting durable prompt adoption", {
-        awaitingAdoptionInMemory: true,
-      });
-    }
-    return;
-  }
-
-  if (
-    params.entry.expectedSessionId &&
-    (!entry?.sessionId || entry.sessionId !== params.entry.expectedSessionId)
-  ) {
-    log.warn("restart continuation skipped: session changed", {
-      sessionKey: canonicalKey,
-      queueId: params.entry.id,
-      expectedSessionId: params.entry.expectedSessionId,
-      actualSessionId: entry?.sessionId ?? null,
-    });
-    await deliverRestartSentinelEvent(params.entry, canonicalKey, agentId, params.queueContext);
-    return;
-  }
-
-  if (!params.entry.route) {
-    await deliverRestartSentinelEvent(params.entry, canonicalKey, agentId, params.queueContext);
-    return;
-  }
-
-  if (
-    await deliverQueuedGeneratedMediaCompletion({
-      entry: params.entry,
-      deps: params.deps,
-      runtimeContextFragments: params.entry.runtimeContextFragments,
-      canonicalKey,
-      agentId,
-      storePath,
-      sessionEntry: entry,
-      queueContext: params.queueContext,
-      ...(params.resolveGatewayContext
-        ? { resolveGatewayContext: params.resolveGatewayContext }
-        : {}),
-    })
-  ) {
-    return;
-  }
-  if (params.entry.deliveryStartedAt !== undefined) {
-    await markSessionDeliverySettlement(params.entry, "moved-to-failed", params.queueContext);
+  // Continuation: a reset replacing this head retained the source run. A pending mark holds the
+  // row until resolution releases (schedules) it or, for an orphaned run, moves it to failed
+  // before the mark leaves pending. An orphaned mark still fences any row written after that, so
+  // none reaches a later head. Checked before recipient authority, which is vacuous for a row
+  // that captured none. Both terminal outcomes move the row to failed with
+  // the drain's dead-letter warning; neither acks it as delivered.
+  const resetHold = findContinuationResetHold(params.entry.continuationSourceRunId, canonicalKey);
+  if (resetHold?.state === "orphaned") {
     throw new SessionDeliveryDeadLetteredError(
-      "queued agent turn dead-lettered after an interrupted unproven attempt",
+      `continuation return discarded: session reset ${resetHold.resetId} orphaned its source run`,
     );
   }
-
-  const route = params.entry.route;
-  const messageId = resolveQueuedRestartContinuationMessageId(params.entry);
-  const userMessage = params.entry.message.trim();
-  let dispatchError: unknown;
-  const ctxPayload = finalizeInboundContext(
-    {
-      // The per-message timestamp prefix is applied at the single LLM boundary
-      // (normalizeMessagesForLlmBoundary) from each message's own timestamp, so
-      // the current turn and historical turns carry identical bytes on the wire.
-      // See: https://github.com/openclaw/openclaw/issues/3658
-      Body: userMessage,
-      BodyForAgent: userMessage,
-      BodyForCommands: "",
-      RawBody: userMessage,
-      CommandBody: "",
-      SessionKey: canonicalKey,
-      AccountId: route.accountId,
-      MessageSid: messageId,
-      Timestamp: Date.now(),
-      InputProvenance: {
-        kind: "internal_system",
-        sourceChannel: route.channel,
-        sourceTool: "restart-sentinel",
-      },
-      Provider: INTERNAL_MESSAGE_CHANNEL,
-      Surface: INTERNAL_MESSAGE_CHANNEL,
-      ChatType: route.chatType,
-      CommandAuthorized: true,
-      GatewayClientScopes: ["operator.admin"],
-      GatewayClientCaps: [],
-      ReplyToId: route.replyToId,
-      OriginatingChannel: route.channel,
-      OriginatingTo: route.to,
-      ExplicitDeliverRoute: false,
-      MessageThreadId: route.threadId,
-    },
-    {
-      forceBodyForCommands: true,
-      forceChatType: true,
-    },
-  );
-  await dispatchAssembledChannelTurn({
-    cfg,
-    channel: route.channel,
-    accountId: route.accountId,
-    agentId,
-    routeSessionKey: canonicalKey,
-    storePath,
-    ctxPayload,
-    recordInboundSession,
-    dispatchReplyWithBufferedBlockDispatcher: dispatchReplyWithBufferedBlockDispatcherCore,
-    replyOptions: {
-      sourceReplyDeliveryMode: "message_tool_only",
-    },
-    // Preflight remains retryable. Ownership starts only after the agent runner
-    // has durably adopted the turn and before it can execute tools or reply.
-    turnAdoptionLifecycle: {
-      admission: "cancel-only",
-      onAdopted: async () => {
-        await markSessionDeliveryAttemptStarted(params.entry, params.queueContext);
-        params.queueContext.admission.assertCurrent();
-      },
-    },
-    delivery: {
-      preparePayload: (payload) => {
-        if (isRestartContinuationBusyPayload(payload)) {
-          throw new SessionDeliverySafeRetryError(RESTART_CONTINUATION_BUSY_RETRY_ERROR);
-        }
-        return payload;
-      },
-      durable: false,
-      // Restart continuations are internal lifecycle turns. Visible follow-up
-      // must go through the message tool; automatic final delivery stays off.
-      deliver: async () => ({ visibleReplySent: false }),
-      onError: (err, info) => {
-        dispatchError ??= err;
-        log.warn(`restart continuation dispatch failed during ${info.kind}: ${String(err)}`, {
-          sessionKey: canonicalKey,
-        });
-      },
-    },
-    record: {
-      onRecordError: (err) => {
-        log.warn(`restart continuation failed to record inbound session metadata: ${String(err)}`, {
-          sessionKey: canonicalKey,
-        });
-      },
-    },
-  });
-  if (dispatchError) {
-    throw toErrorObject(dispatchError, "Non-Error thrown");
+  if (resetHold) {
+    // The 60 s pending sweep re-checks held rows, so expiry needs no reset or boot to fire. The
+    // mark and its run are left alone: an old handover is not a reason to stop a valid child.
+    const heldMs = Date.now() - Math.max(resetHold.markedAt, params.entry.enqueuedAt);
+    if (heldMs >= CONTINUATION_RESET_HOLD_MAX_MS) {
+      throw new SessionDeliveryDeadLetteredError(
+        `continuation return expired after ${Math.floor(heldMs / 86_400_000)} days held by unresolved session reset ${resetHold.resetId}`,
+      );
+    }
+    throw new SessionDeliveryDeferredError("continuation return is held by a pending reset", {
+      heldByOwner: true,
+    });
   }
+  const recipientAuthority = params.entry.recipientAuthority;
+  // The row's owning state dir, as the session read above; recovery may run under another env.
+  const authorityScope = {
+    agentId,
+    sessionKey: canonicalKey,
+    storePath,
+    env: params.queueContext.environment,
+  };
+  if (
+    recipientAuthority &&
+    !(await isSessionRecipientAuthorityCurrentInWorker(authorityScope, recipientAuthority))
+  ) {
+    log.warn("session event delivery skipped: recipient authority changed", {
+      sessionKey: canonicalKey,
+      queueId: params.entry.id,
+    });
+    return;
+  }
+  if (!entry && isSubagentSessionKey(canonicalKey)) {
+    // A missing subagent session cannot adopt the row: the wake's handoff refuses an absent
+    // origin, so the row would replay on every restart without ever settling.
+    throw new SessionDeliveryDeadLetteredError(
+      "adoption-scoped delivery targets a subagent session that no longer exists",
+    );
+  }
+  // Continuation-owned rows keep adoption-scoped custody: the queued event
+  // carries the row's ack id, recipient authority and return wake, and the
+  // row settles only when a prompt adopts it.
+  const wake = {
+    entryId: params.entry.id,
+    message: params.entry.text,
+    sessionKey: canonicalKey,
+    agentId: params.entry.agentId ?? agentId,
+    deliveryContext: params.entry.deliveryContext,
+    traceparent: params.entry.traceparent,
+    sessionDeliveryAckId: params.entry.id,
+    sessionDeliveryAckStateDir: stateDir,
+    recipientAuthority,
+    awaitsTurnAdoption,
+    ...(isContinuationReturn && params.entry.returnWake !== undefined
+      ? { returnWake: params.entry.returnWake }
+      : {}),
+  };
+  // The replay enqueues inside the authority decision, under the writer admission that read
+  // the epoch; prompt adoption fences the queued event again.
+  const replayed: RestartSentinelWakeOutcome = recipientAuthority
+    ? await withCurrentSessionRecipientAuthority(
+        [{ scope: authorityScope, authority: recipientAuthority }],
+        ([current]) => (current ? enqueueRestartSentinelWake(wake) : "stale-authority"),
+      )
+    : enqueueRestartSentinelWake(wake);
+  if (replayed === "refused") {
+    deferRefusedRestartSentinelWake({
+      sessionKey: canonicalKey,
+      queueId: params.entry.id,
+      continuationReturn: isContinuationReturn,
+    });
+  }
+  if (replayed === "stale-authority") {
+    log.warn("session event delivery wake skipped: recipient authority changed", {
+      sessionKey: canonicalKey,
+      queueId: params.entry.id,
+    });
+    return;
+  }
+  // The in-memory queue is not durable, so completing the row here would
+  // drop the notice if the process
+  // died before the prompt consumed it. The prompt-drain path acks the row
+  // via the event's sessionDeliveryAckId once it is actually adopted.
+  throw new SessionDeliveryDeferredError("system event is awaiting durable prompt adoption", {
+    awaitingAdoptionInMemory: true,
+  });
 }

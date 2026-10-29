@@ -30,7 +30,7 @@ import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worke
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import {
   deliverQueuedSessionDelivery,
-  recoverPendingRestartContinuationDeliveries,
+  recoverPendingProducedSessionDeliveries,
   settleQueuedSessionDelivery,
 } from "./server-restart-sentinel.js";
 
@@ -90,7 +90,7 @@ async function replayAfterGatewayRestart() {
   // A gateway restart drops the in-memory system-event queue and the adoption
   // claims; boot recovery then replays every pending row.
   resetSystemEventsForTest();
-  await recoverPendingRestartContinuationDeliveries({
+  await recoverPendingProducedSessionDeliveries({
     deps: {},
     queueContext: captureOpenClawStateWorkerContext(),
     log: silentLog,

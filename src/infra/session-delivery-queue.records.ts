@@ -30,6 +30,25 @@ export type QueuedSessionDelivery =
       SessionDeliveryStorageFields & { agentId?: string })
   | (Exclude<CoreQueuedSessionDelivery, { kind: "systemEvent" }> & SessionDeliveryStorageFields);
 
+/** Old queued inference remains readable but cannot launch work after restart. */
+export function isProducedSessionDelivery(entry: QueuedSessionDelivery): boolean {
+  return entry.kind === "agentTurn" && (entry.expectedMediaUrls?.length ?? 0) > 0;
+}
+
+/**
+ * Continuation-owned rows keep their durable delivery: post-compaction delegates, and system
+ * events that settle only on prompt adoption (continuation returns written before that rule are
+ * keyed `continuation-return:`). Every other legacy row stays inert like old queued inference.
+ */
+export function isContinuationSessionDelivery(entry: QueuedSessionDelivery): boolean {
+  return (
+    entry.kind === "postCompactionDelegate" ||
+    (entry.kind === "systemEvent" &&
+      (entry.awaitPromptAdoption === true ||
+        entry.idempotencyKey?.startsWith("continuation-return:") === true))
+  );
+}
+
 export function prepareClaimedSessionDelivery(
   params: QueuedSessionDeliveryPayload,
   initialAttemptLeaseMs: number,

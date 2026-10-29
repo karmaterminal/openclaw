@@ -1,9 +1,4 @@
 import path from "node:path";
-import { formatGeneratedMediaDeliveredForPrompt } from "../agents/internal-events.js";
-import type { RuntimeContextFragment } from "../agents/internal-runtime-context.js";
-import { reserveSubagentCompletionControllerSource } from "../agents/subagents/announce/subagent-announce-controller-source.js";
-import { subagentRuns } from "../agents/subagents/registry/subagent-registry-memory.js";
-import { isContinuationHeartbeatEquivalent } from "../auto-reply/reply/run-provenance.js";
 import {
   durableMessageBatchMayHaveReachedRecipient,
   sendDurableMessageBatchCore,
@@ -23,18 +18,15 @@ import {
   type DeliveryQueueStateContext,
 } from "../infra/delivery-queue-sqlite.js";
 import type { DeliveryQueueCompletionRetention } from "../infra/delivery-queue-sqlite.types.js";
-import { normalizeDiagnosticTraceparent } from "../infra/diagnostic-trace-context.js";
 import { outboundDeliveryQueueName } from "../infra/outbound/delivery-queue-namespaces.js";
 import { buildOutboundSessionContext } from "../infra/outbound/session-context.js";
 import {
-  advanceSessionDeliveryAgentRun,
   deferSessionDelivery,
   markSessionDeliveryAttemptStarted,
   markSessionDeliverySettlement,
   mergeSessionDeliveryPreparedMediaBlocks,
 } from "../infra/session-delivery-queue-storage.js";
 import {
-  SessionDeliveryAttemptStartError,
   SessionDeliveryDeadLetteredError,
   SessionDeliveryDeferredError,
   SessionDeliverySafeRetryError,
@@ -43,12 +35,7 @@ import {
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getMediaDir } from "../media/store.js";
 import { isSessionControllerWorkActive } from "../sessions/session-controller.lifecycle.js";
-import {
-  retireSessionControllerInput,
-  type SessionControllerInput,
-} from "../sessions/session-controller.mailbox.js";
 import { readAssistantDisplayContent } from "../shared/assistant-display-content.js";
-import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel.js";
 import {
@@ -56,13 +43,12 @@ import {
   createManagedOutgoingMediaBlocks,
 } from "./managed-image-attachments.js";
 import type { GatewayContextResolver } from "./server-methods/types.js";
-import { dispatchGatewayLifecycleMethod as dispatchGatewayMethodInProcess } from "./server-recovery-runtime-context.js";
 import { loadGatewaySessionEntryReadOnlyInWorker } from "./session-utils-store-worker.js";
 
 const log = createSubsystemLogger("gateway/restart-sentinel");
 const AGENT_DELIVERY_OWNERSHIP_RETRY_MS = 1_000;
 // Outbound receipts dedupe a host media send across crashes between the send
-// and the session row's transition to its completion turn.
+// and durable queue settlement.
 const GENERATED_MEDIA_DELIVERY_COMPLETION_RETENTION = {
   idPrefix: "generated-media-delivery:v1:",
   maxAgeMs: 24 * 60 * 60_000,
@@ -199,28 +185,18 @@ async function persistQueuedGeneratedMedia(params: {
 
 /**
  * Delivers a durable generated-media completion: the host sends the media to the
- * original route, then wakes the owning session with one ordinary completion turn.
+ * original route or transcript. It never starts another model turn.
  */
-export async function deliverQueuedGeneratedMediaCompletion(input: {
+export async function deliverQueuedGeneratedMediaCompletion(params: {
   canonicalKey: string;
   agentId: string;
   storePath: string;
   entry: QueuedSessionDelivery;
   deps: CliDeps;
-  runtimeContextFragments?: RuntimeContextFragment[];
   sessionEntry?: SessionEntry;
-  queueContext?: OpenClawStateWorkerContext;
-  stateDir?: string;
+  queueContext: OpenClawStateWorkerContext;
   resolveGatewayContext?: GatewayContextResolver;
 }): Promise<boolean> {
-  const resolvedQueueContext =
-    input.queueContext ??
-    (input.stateDir === undefined
-      ? captureOpenClawStateWorkerContext()
-      : captureOpenClawStateWorkerContext({
-          env: { ...process.env, OPENCLAW_STATE_DIR: input.stateDir },
-        }));
-  const params = { ...input, queueContext: resolvedQueueContext };
   if (params.entry.kind !== "agentTurn") {
     return false;
   }
@@ -238,23 +214,7 @@ export async function deliverQueuedGeneratedMediaCompletion(input: {
     return false;
   }
 
-  // Only produced media records attachments. With them already sent, losing
-  // the follow-up turn is not a media delivery failure, so the row settles
-  // instead of reporting undelivered media for blocked retention.
   const mediaUrls = entry.expectedMediaUrls ?? [];
-  const mediaDelivered =
-    mediaUrls.length === 0 && Object.keys(entry.expectedMediaAttachments ?? {}).length > 0;
-  const abandonCompletion = async (reason: string): Promise<true> => {
-    if (!mediaDelivered) {
-      return await deadLetterSessionDelivery(entry, reason, params.queueContext);
-    }
-    log.warn("generated media was delivered; its completion turn was skipped", {
-      queueId: entry.id,
-      reason,
-    });
-    return true;
-  };
-
   params.queueContext.admission.assertCurrent();
   const resolveConfig = () =>
     params.resolveGatewayContext?.()?.getRuntimeConfig() ?? getRuntimeConfig();
@@ -318,17 +278,15 @@ export async function deliverQueuedGeneratedMediaCompletion(input: {
     sessionEntry = binding ? await readRequester() : params.sessionEntry;
   } catch (error) {
     if (error instanceof SessionDeliveryDeadLetteredError) {
-      return await abandonCompletion(error.message);
+      return await deadLetterSessionDelivery(entry, error.message, params.queueContext);
     }
     throw error;
   }
-  // A started attempt may already have produced effects: an interrupted
-  // completion turn, or an agent turn persisted by an older release. A started
-  // external media send instead settles from its outbound receipt below.
-  const externalMediaStage = mediaUrls.length > 0 && route.channel !== INTERNAL_MESSAGE_CHANNEL;
-  if (entry.deliveryStartedAt !== undefined && !externalMediaStage) {
-    return await abandonCompletion(
-      "queued generated-media completion dead-lettered after an interrupted unproven attempt",
+  if (entry.expectedSessionId && entry.expectedSessionId !== sessionEntry?.sessionId) {
+    return await deadLetterSessionDelivery(
+      entry,
+      "queued generated-media delivery lost its owning session",
+      params.queueContext,
     );
   }
   const assertRequesterIdle = () => {
@@ -346,7 +304,7 @@ export async function deliverQueuedGeneratedMediaCompletion(input: {
   };
   try {
     // The originating turn can still own terminal persistence after its model
-    // has stopped; the media and its completion turn follow it.
+    // has stopped; the produced media follows its transcript.
     assertRequesterIdle();
   } catch (error) {
     await deferSessionDelivery(entry.id, AGENT_DELIVERY_OWNERSHIP_RETRY_MS, params.queueContext);
@@ -482,123 +440,7 @@ export async function deliverQueuedGeneratedMediaCompletion(input: {
       };
       await sendQueuedGeneratedMedia();
     }
-    await advanceSessionDeliveryAgentRun(
-      entry.id,
-      {
-        expectedMediaUrls: [],
-        message: `${formatGeneratedMediaDeliveredForPrompt(mediaUrls)}\n\n${entry.message}`,
-      },
-      params.queueContext,
-    );
-    // The completion turn runs from the advanced row on the next drain, so its
-    // fence and settlement never write this attempt's stale entry.
-    await deferSessionDelivery(entry.id, AGENT_DELIVERY_OWNERSHIP_RETRY_MS, params.queueContext);
-    throw new SessionDeliveryDeferredError(
-      "queued generated media was delivered; its completion turn follows",
-    );
+    return true;
   }
-
-  // The completion turn is an ordinary requester turn: normal tools, normal
-  // reply policy. The host already owns the media, so the model may react to it.
-  const queuedRunId = resolveQueuedAgentRunId(entry);
-  const continuationTrigger = isContinuationHeartbeatEquivalent(entry.continuationTrigger)
-    ? entry.continuationTrigger
-    : undefined;
-  const traceparent =
-    entry.traceparentProvenance === "internal"
-      ? normalizeDiagnosticTraceparent(entry.traceparent)
-      : undefined;
-  const cronLifecycleRevision = sessionEntry?.cronRunContinuation?.lifecycleRevision?.trim();
-  const cronSessionId = cronLifecycleRevision ? sessionEntry?.sessionId?.trim() : undefined;
-  const completionOwner =
-    entry.owner?.kind === "subagent_completion" ? subagentRuns.get(entry.owner.runId) : undefined;
-  let controllerInput: SessionControllerInput | undefined;
-  let accepted = false;
-  try {
-    assertRequesterAdmissionCurrent();
-    controllerInput = completionOwner
-      ? await reserveSubagentCompletionControllerSource(completionOwner, queuedRunId)
-      : undefined;
-    assertRequesterAdmissionCurrent();
-    if (completionOwner && !controllerInput) {
-      await deferSessionDelivery(entry.id, AGENT_DELIVERY_OWNERSHIP_RETRY_MS, params.queueContext);
-      throw new SessionDeliveryDeferredError(
-        "queued generated-media completion is waiting for its requester source",
-      );
-    }
-    // Fence after source custody, before gateway admission. Recovery clears it only
-    // for an explicit pre-acceptance safe retry; an accepted turn may have effects.
-    await markSessionDeliveryAttemptStarted(entry, {
-      ...params.queueContext,
-      admission: {
-        ...params.queueContext.admission,
-        assertCurrent: () => {
-          params.queueContext.admission.assertCurrent();
-          assertRequesterIdle();
-        },
-      },
-    });
-    assertRequesterAdmissionCurrent();
-    await dispatchGatewayMethodInProcess(
-      {
-        sessionKey: params.canonicalKey,
-        ...(binding
-          ? {
-              agentId: binding.agentId,
-              expectedExistingSessionId: binding.sessionId,
-              expectedExistingSessionLifecycleRevision: binding.lifecycleRevision,
-            }
-          : {}),
-        message: entry.message,
-        deliver: route.channel !== INTERNAL_MESSAGE_CHANNEL,
-        bestEffortDeliver: false,
-        channel: route.channel,
-        accountId: route.accountId,
-        to: route.to,
-        threadId: route.threadId,
-        ...(cronSessionId ? { sessionId: cronSessionId } : {}),
-        inputProvenance: entry.inputProvenance,
-        sourceReplyDeliveryMode: entry.sourceReplyDeliveryMode,
-        ...(continuationTrigger ? { continuationTrigger } : {}),
-        ...(traceparent ? { traceparent } : {}),
-        idempotencyKey: queuedRunId,
-      },
-      {
-        controllerInput,
-        ...(cronSessionId ? { allowSyntheticCronRunContinuation: true } : {}),
-        expectFinal: true,
-        ...(binding ? { assertAdmissionCurrent: assertRequesterAdmissionCurrent } : {}),
-        forceSyntheticClient: true,
-        runtimeContextFragments: params.runtimeContextFragments,
-        ...(params.resolveGatewayContext
-          ? { resolveGatewayContext: params.resolveGatewayContext }
-          : {}),
-        onAccepted: () => {
-          accepted = true;
-        },
-      },
-    );
-  } catch (error) {
-    if (
-      error instanceof SessionDeliveryAttemptStartError ||
-      (completionOwner && !controllerInput && error instanceof SessionDeliveryDeferredError)
-    ) {
-      throw error;
-    }
-    if (error instanceof SessionDeliveryDeadLetteredError) {
-      return await abandonCompletion(error.message);
-    }
-    if (!accepted) {
-      throw new SessionDeliverySafeRetryError(
-        "queued generated-media completion turn failed before gateway acceptance",
-        { cause: error },
-      );
-    }
-    throw error;
-  } finally {
-    if (controllerInput && !controllerInput.custody.rpcAdopted) {
-      retireSessionControllerInput(controllerInput);
-    }
-  }
-  return true;
+  return false;
 }

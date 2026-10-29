@@ -17,10 +17,10 @@ import { executePreparedReplyAgentRun } from "./agent-runner-execute.js";
 import {
   createFollowupRun,
   createMinimalRunAgentTurnParams,
-  createMockReplyOperation,
   setupAgentRunnerExecutionTestState,
 } from "./agent-runner-execution.test-support.js";
-import { createReplyRestartRecoveryClaimController } from "./restart-recovery-claim.js";
+import { createReplyActorFixture } from "./reply-actor.test-support.js";
+import { createReplyInputAdmission } from "./reply-input-admission.js";
 import { createMockTypingController } from "./test-helpers.js";
 
 const fixture = useSubagentControlFixture();
@@ -39,19 +39,6 @@ it("settles a reply visibly when the reactivation cohort changes before replacem
   const recorder = createUserTurnTranscriptRecorder({
     input: { text: "Continue the completed task", idempotencyKey: "reply-followup:user" },
     target: { ...target, sessionEntry: entry },
-  });
-  const admission = createReplyRestartRecoveryClaimController({
-    ...target,
-    acquireSessionActor: async () => undefined,
-    admissionRunId: "reply-followup",
-    lifecycleGeneration: undefined,
-    getEntry: () => entry,
-    getSessionId: () => target.sessionId,
-    setEntry: (next) => {
-      entry = next;
-    },
-    isRestartAbort: () => false,
-    resolveDeliveryContext: () => undefined,
   });
   await registerSubagentRun({
     runId: "completed-task",
@@ -101,16 +88,28 @@ it("settles a reply visibly when the reactivation cohort changes before replacem
     }
     return mutate(ids, plan, options);
   });
-  const { replyOperation, failMock } = createMockReplyOperation({
-    key: sessionKey,
-    sessionId: target.sessionId,
+  await using actor = createReplyActorFixture({
+    ...target,
+    getSessionId: () => target.sessionId,
   });
+  const { operation: replyOperation } = await actor.bind();
+  const failMock = vi.spyOn(replyOperation, "fail");
   const followupRun = createFollowupRun({
     config: getRuntimeConfig(),
     sessionKey,
     sessionId: target.sessionId,
   });
   followupRun.userTurnTranscriptRecorder = recorder;
+  const admission = createReplyInputAdmission({
+    followupRun,
+    replyOperation,
+    sessionKey,
+    storePath: target.storePath,
+    sourceTurnId: "reply-followup",
+    setEntry: (next) => {
+      entry = next;
+    },
+  });
   const setActiveSessionEntry = (next: InternalSessionEntry | undefined) => {
     if (next) {
       entry = next;
@@ -151,7 +150,6 @@ it("settles a reply visibly when the reactivation cohort changes before replacem
     typingMode: "never",
     getActiveSessionEntry: () => entry,
     setActiveSessionEntry,
-    isRestartRecoveryArmed: admission.isArmed,
     onCompactionNoticePayload: () => {},
     resolveVisibleReplyDelivery: async () => false,
     returnWithQueuedFollowupDrain: (value) => value,

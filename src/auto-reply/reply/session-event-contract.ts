@@ -112,8 +112,6 @@ export type SessionEventOptions = {
   scheduledAutomation?: ScheduledSessionAutomation;
   /** Failed promotion retains an existing passive occurrence until ordinary adoption begins. */
   preserveOccurrenceOnRejection?: true;
-  /** Internal: policy-change re-admission depth, bounded to stop publication storms. */
-  readmissionAttempt?: number;
   /** An explicitly silent source records its result without transport delivery. */
   deliver?: boolean;
   /** Producer-owned terminal policy; only explicit silent continuation wakes may opt out. */

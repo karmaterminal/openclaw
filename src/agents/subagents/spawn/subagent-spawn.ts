@@ -399,7 +399,7 @@ export async function spawnSubagentDirect(
       swarmSchedulerGroupKey,
       swarmMaxConcurrent: swarmConfig.maxConcurrent,
     });
-    const { childLaunch, queuedLaunch, progressOrigin, spawnedMetadata } = launchContext;
+    const { childLaunch, progressOrigin, spawnedMetadata } = launchContext;
     applySubagentContinuationLaunchFields(childLaunch.request, params);
     const recordRequesterParticipation = await recordSubagentSessionSetup({
       cfg,
@@ -575,7 +575,6 @@ export async function spawnSubagentDirect(
             : undefined,
           outputSchema: params.outputSchema,
           groupId: swarmGroupId,
-          queuedLaunch,
           queued: params.collect === true,
           ...(gatewayContextResolver ? { gatewayContextResolver } : {}),
           attachmentId,

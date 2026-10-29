@@ -1,11 +1,9 @@
-// Covers retry metadata, routing, attempt advancement, and completion receipts.
+// Covers retry metadata, routing, and completion receipts.
 import { describe, expect, it } from "vitest";
 import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import { withTestDir } from "../test-helpers/temp-dir.js";
 import {
-  advanceSessionDeliveryAgentRun,
   completeSessionDelivery,
-  deferSessionDelivery,
   failSessionDelivery,
   loadPendingSessionDelivery,
   loadPendingSessionDeliveries,
@@ -95,35 +93,6 @@ describe("session-delivery queue storage", () => {
     });
   });
 
-  it("records which agent run attempt consumed retry budget", async () => {
-    await withTestDir({ prefix: "openclaw-session-delivery-" }, async (tempDir) => {
-      const queueContext = captureSessionDeliveryQueueContext(tempDir);
-      const id = await enqueueSessionDelivery(
-        {
-          kind: "agentTurn",
-          sessionKey: "agent:main:main",
-          message: "generated image ready",
-          messageId: "image:task-charge:agent-loop",
-        },
-        queueContext,
-      );
-
-      await failSessionDelivery(id, "delivery failed", queueContext);
-      expect(await loadPendingSessionDelivery(id, queueContext)).toMatchObject({
-        retryCount: 1,
-        lastChargedAgentRunAttempt: 0,
-      });
-
-      await advanceSessionDeliveryAgentRun(id, undefined, queueContext);
-      await failSessionDelivery(id, "fresh delivery failed", queueContext);
-      expect(await loadPendingSessionDelivery(id, queueContext)).toMatchObject({
-        retryCount: 2,
-        agentRunAttempt: 1,
-        lastChargedAgentRunAttempt: 1,
-      });
-    });
-  });
-
   it("persists agent-loop routing and provenance for restart replay", async () => {
     await withTestDir({ prefix: "openclaw-session-delivery-" }, async (tempDir) => {
       const queueContext = captureSessionDeliveryQueueContext(tempDir);
@@ -159,45 +128,6 @@ describe("session-delivery queue storage", () => {
           expectedMediaUrls: ["/tmp/proof.png"],
         }),
       ]);
-    });
-  });
-
-  it("advances only the agent run attempt and can focus its retry media", async () => {
-    await withTestDir({ prefix: "openclaw-session-delivery-" }, async (tempDir) => {
-      const queueContext = captureSessionDeliveryQueueContext(tempDir);
-      const id = await enqueueSessionDelivery(
-        {
-          kind: "agentTurn",
-          sessionKey: "agent:main:main",
-          message: "all generated media",
-          messageId: "image:task-retry:agent-loop",
-          expectedMediaUrls: ["/tmp/one.png", "/tmp/two.png"],
-        },
-        queueContext,
-      );
-
-      await failSessionDelivery(id, "ambiguous timeout", queueContext);
-      await deferSessionDelivery(id, 1_000, queueContext);
-      let [entry] = await loadPendingSessionDeliveries(queueContext);
-      expect(entry).toMatchObject({ retryCount: 1 });
-      expect(entry?.agentRunAttempt).toBeUndefined();
-      expect(entry?.availableAt).toBeGreaterThan(Date.now());
-
-      await advanceSessionDeliveryAgentRun(
-        id,
-        {
-          message: "only missing media",
-          expectedMediaUrls: ["/tmp/two.png"],
-        },
-        queueContext,
-      );
-      [entry] = await loadPendingSessionDeliveries(queueContext);
-      expect(entry).toMatchObject({
-        agentRunAttempt: 1,
-        retryCount: 1,
-        message: "only missing media",
-        expectedMediaUrls: ["/tmp/two.png"],
-      });
     });
   });
 

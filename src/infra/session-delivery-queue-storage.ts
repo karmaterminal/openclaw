@@ -45,7 +45,6 @@ import {
   type QueuedSessionDelivery,
   type QueuedSessionDeliveryPayload,
 } from "./session-delivery-queue.records.js";
-import type { SessionDeliveryAgentRunUpdate } from "./session-delivery-queue.worker-contract.js";
 import type { SessionDeliveryWorkerOperations } from "./session-delivery-queue.worker.js";
 import { createSqliteWorkerWriteAdmission } from "./sqlite-worker-store.js";
 
@@ -501,18 +500,6 @@ export async function deferSessionDelivery(
   return executeSessionDelivery(context, {
     type: "sessionDelivery.defer",
     input: { id, delayMs },
-  });
-}
-
-/** Advance only after a completed agent turn proves a fresh run is safe. */
-export async function advanceSessionDeliveryAgentRun(
-  id: string,
-  updates: SessionDeliveryAgentRunUpdate | undefined,
-  context: OpenClawStateWorkerContext,
-): Promise<void> {
-  return executeSessionDelivery(context, {
-    type: "sessionDelivery.advanceAgentRun",
-    input: { id, updates },
   });
 }
 

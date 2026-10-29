@@ -139,10 +139,9 @@ it("settles the run's own delivery claim when reset cancellation fails after the
     ),
   ).rejects.toThrow("could not cancel continuation record pending-work-marker");
 
-  // The reset committed before cleanup failed; failure cleanup still owns the claim it wrote.
+  // The reset committed before cleanup failed.
   const committed = loadSessionEntry(target);
   expect(committed?.lifecycleRevision).not.toBe("before-reset");
-  expect(committed?.restartRecoveryDeliveryRunId).toBeUndefined();
   expect(state.runAgentAttemptMock).not.toHaveBeenCalled();
 });
 

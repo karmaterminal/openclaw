@@ -1,7 +1,6 @@
 // Sweeper archival for completed collector groups (split from the sweeper for its line
 // budget): a group archives only as a whole, after every member's session, attachments
 // and context-engine cleanup succeed, and stops for this pass once any member changes.
-import { shouldSuppressSubagentRecoverySessionEffects } from "./subagent-recovery-state.js";
 import { safeRemoveAttachmentsDir } from "./subagent-registry-helpers.js";
 import { getRecordedSubagentChildAuthority } from "./subagent-registry-memory.js";
 import { mutateSubagentRuns } from "./subagent-registry-persistence.js";
@@ -17,6 +16,10 @@ import type {
   SubagentRunRecord,
 } from "./subagent-registry.types.js";
 import { getSubagentRunRuntimeKey } from "./subagent-run-generation.js";
+import {
+  shouldSuppressSubagentSessionCleanup,
+  shouldSuppressSubagentSessionEffects,
+} from "./subagent-session-effects-policy.js";
 
 export type CollectorArchiveCandidate = {
   requesterSessionKey: string;
@@ -58,7 +61,7 @@ export async function sweepCollectorArchiveGroups(
           getRecordedSubagentChildAuthority(candidate).status === "mismatch" ||
           !isCollectorArchiveReady(candidate, now) ||
           !cleanupIdentities.has(getSubagentRunRuntimeKey(candidate)) ||
-          (!shouldSuppressSubagentRecoverySessionEffects(candidate) &&
+          (!shouldSuppressSubagentSessionCleanup(candidate) &&
             !cleanupIdentities.get(getSubagentRunRuntimeKey(candidate))) ||
           !isCleanupCurrent(candidate, candidate),
       )
@@ -89,7 +92,7 @@ export async function sweepCollectorArchiveGroups(
       if (!isGroupCurrent() || !isCleanupCurrent(current, candidate)) {
         continue collectorGroups;
       }
-      if (!shouldSuppressSubagentRecoverySessionEffects(current)) {
+      if (!shouldSuppressSubagentSessionCleanup(current)) {
         const sessionIdentity = cleanupIdentities.get(getSubagentRunRuntimeKey(candidate));
         try {
           const changed =
@@ -132,7 +135,7 @@ export async function sweepCollectorArchiveGroups(
       }
       if (
         current.cleanup !== "delete" &&
-        !shouldSuppressSubagentRecoverySessionEffects(current) &&
+        !shouldSuppressSubagentSessionEffects(current) &&
         typeof current.contextEngineCleanupCompletedAt !== "number"
       ) {
         try {

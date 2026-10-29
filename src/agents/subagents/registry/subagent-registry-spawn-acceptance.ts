@@ -1,13 +1,11 @@
 // Armed registration (H1, absorb 14fe10d0): an accepted child's registry row carries a
 // durable acceptance intent (`spawnAcceptance` for native spawns, `launchDispatch`
 // for a dispatched collector launch) until its final acceptance owner disarms it.
-// While armed, the row is fenced from generic resume/restore and its delivery is
-// gated. The in-process launch owner holds the arm; an armed row that nobody holds
-// (after a restart, or after its owner let go) is failed closed by the sweeper.
+// While armed, the row is fenced from generic resume and its delivery is gated. The
+// in-process launch owner holds the arm; an armed row that nobody holds (after a
+// restart, or after its owner let go) is failed closed by the sweeper.
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 import { getSubagentRunRuntimeKey } from "./subagent-run-generation.js";
-
-type ArmedResumeSource = "live" | "restore";
 
 // Holds are keyed by the host execution incarnation, which survives FIFO postimage
 // replacement but not a process restart, so every restored arm starts unheld.
@@ -15,26 +13,12 @@ const held = new WeakSet<object>();
 // A disarm whose commit outcome is unknown keeps the row held for the life of the
 // process: neither the accept branch nor the rollback branch may be acted on.
 const uncertainDisarm = new WeakSet<object>();
-const deferredResumes = new WeakMap<object, ArmedResumeSource>();
+const deferredResumes = new WeakSet<object>();
 
 type ArmedRow = Pick<SubagentRunRecord, "spawnAcceptance" | "launchDispatch">;
 
 export function isSubagentSpawnArmed(entry: ArmedRow | undefined): boolean {
   return Boolean(entry?.spawnAcceptance || entry?.launchDispatch);
-}
-
-/**
- * Whether restart restore leaves a row to spawn custody. An armed row is never resumed or
- * relaunched (F1, H1), and a queued collector in rollback custody already failed after the
- * Gateway accepted its child: with no owner left after restart, the sweeper fails both closed.
- * Restore checks this before `retainRestoredCompletionReservation`, which owns restart recovery
- * and accepted cancellation, so custody rows keep their requester reservation for the sweeper.
- */
-export function isRestoredSubagentRunOwnedElsewhere(entry: SubagentRunRecord): boolean {
-  return Boolean(
-    isSubagentSpawnArmed(entry) ||
-    (entry.collect && entry.execution.status === "queued" && entry.acceptedSpawnRollback),
-  );
 }
 
 /** An armed row or an accepted spawn's rollback custody: work only the sweeper decides. */
@@ -72,31 +56,19 @@ export function isSubagentSpawnDisarmUncertain(entry: SubagentRunRecord): boolea
 }
 
 /**
- * Records the first deferred resume source; confirmation replays it exactly once. An
- * unheld armed row has no acceptance owner left to confirm it, so the sweeper is woken
- * to fail it closed.
+ * Records a deferred resume; confirmation replays it exactly once. An unheld armed row
+ * has no acceptance owner left to confirm it, so the sweeper is woken to fail it closed.
  */
-export function deferArmedSubagentResume(
-  entry: SubagentRunRecord,
-  source: ArmedResumeSource,
-  wakeSweeper: () => void,
-): void {
-  const key = getSubagentRunRuntimeKey(entry);
-  if (!deferredResumes.has(key)) {
-    deferredResumes.set(key, source);
-  }
+export function deferArmedSubagentResume(entry: SubagentRunRecord, wakeSweeper: () => void): void {
+  deferredResumes.add(getSubagentRunRuntimeKey(entry));
   if (!isSubagentSpawnAcceptanceHeld(entry)) {
     wakeSweeper();
   }
 }
 
-export function takeDeferredArmedSubagentResume(
-  entry: SubagentRunRecord,
-): ArmedResumeSource | undefined {
-  const key = getSubagentRunRuntimeKey(entry);
-  const source = deferredResumes.get(key);
-  deferredResumes.delete(key);
-  return source;
+/** Takes the resume deferred while the row was armed, if any. */
+export function takeDeferredArmedSubagentResume(entry: SubagentRunRecord): boolean {
+  return deferredResumes.delete(getSubagentRunRuntimeKey(entry));
 }
 
 /** Custody shape the sweeper adopts for an unheld armed row. */

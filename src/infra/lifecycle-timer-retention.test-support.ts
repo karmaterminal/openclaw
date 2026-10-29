@@ -44,8 +44,6 @@ function sweeperFixture() {
     releaseAcceptedSubagentSpawnRollback: unexpected,
     rollbackSubagentRunRegistration: unexpected,
     settleFailedQueuedSubagentLaunch: unexpected,
-    getGatewayRecoveryRuntime: unexpected,
-    finalizeInterruptedSubagentRun: unexpected,
     startSubagentAnnounceCleanupFlow: unexpected,
     completeCleanupBookkeeping: unexpected,
     resumeRequesterSettleWake: unexpected,

@@ -13,7 +13,7 @@ import { resolveSessionStorePathCore } from "../../config/sessions.js";
 import { replaceSessionEntry } from "../../config/sessions/session-accessor.js";
 import {
   deliverQueuedSessionDelivery,
-  recoverPendingRestartContinuationDeliveries,
+  recoverPendingProducedSessionDeliveries,
 } from "../../gateway/server-restart-sentinel.js";
 import {
   scheduleSessionDelivery,
@@ -371,7 +371,7 @@ describe("pending rows nothing armed: periodic sweep without duplicate adoption"
     await preparePrompt();
     drainSystemEventEntries(SESSION_KEY);
     resetObservers();
-    await recoverPendingRestartContinuationDeliveries({
+    await recoverPendingProducedSessionDeliveries({
       deps: {} as never,
       queueContext: captureContinuationQueueContext(stateDir),
       log: runtimeLog,

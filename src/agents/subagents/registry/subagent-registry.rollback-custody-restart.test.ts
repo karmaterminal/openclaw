@@ -92,20 +92,13 @@ async function seedQueuedCollector(): Promise<SubagentRunRecord> {
     execution: { status: "queued" },
     completion: { required: false, resultText: null },
     delivery: { status: "not_required" },
-    // Restart can replay this descriptor, so a rolled-back launch must never reach it.
-    queuedLaunch: {
-      request: { sessionKey: childSessionKey, idempotencyKey: runId },
-      timeoutMs: 1_000,
-      schedulerGroupKey: JSON.stringify(["agent:main:main", ""]),
-      maxConcurrent: 1,
-    },
   };
   // Upstream's test add is a real registry write, so the row is already durable with
   // the fixture's canonical identity (requesterStorePath). Re-saving the raw input
   // would install a foreign row whose identity differs, which the registry would
   // treat as another execution on its next version refresh.
   await addSubagentRunForTests(entry);
-  expect(loadSubagentRegistryFromSqlite().get(runId)).toMatchObject({ runId, queuedLaunch: {} });
+  expect(loadSubagentRegistryFromSqlite().get(runId)).toMatchObject({ runId });
   return subagentRuns.get(runId)!;
 }
 
@@ -180,7 +173,7 @@ async function restartFrom(image: Map<string, SubagentRunRecord>) {
     recoveryRuntime: { dispatchAgent, prepareRestartRecovery: () => undefined },
     resolveGatewayContext: () => gatewayContext as never,
   };
-  await activateSubagentRegistry(gatewayContext.resolveGatewayContext).settled;
+  await activateSubagentRegistry(gatewayContext.resolveGatewayContext);
   return dispatchAgent;
 }
 

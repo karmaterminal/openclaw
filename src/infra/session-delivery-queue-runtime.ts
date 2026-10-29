@@ -14,6 +14,7 @@ import {
   loadPendingSessionDelivery,
 } from "./session-delivery-queue-storage.js";
 import {
+  isProducedSessionDelivery,
   SessionDeliveryDeferredError,
   type QueuedSessionDelivery,
   type SessionDeliveryCapacityDeferral,
@@ -164,7 +165,7 @@ function armSessionDelivery(
 ): void {
   // The active drain owns rearming after its authoritative reload. Coalesce
   // duplicate schedules so they cannot poll the same due row in a timer loop.
-  if (activeRuntime.runningEntries.has(entry.id)) {
+  if (!isProducedSessionDelivery(entry) || activeRuntime.runningEntries.has(entry.id)) {
     return;
   }
   armSessionDeliveryId(

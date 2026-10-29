@@ -21,7 +21,6 @@ export function createFailedQueuedRun(
       outcome: { status: "error", error, endedAt: finishedAt },
       ...(!ownedSession ? { suppressSessionEffects: true } : {}),
     },
-    queuedLaunch: undefined,
     collectorLaunchCleanupPending: true,
     completion: { required: false, resultText: error, capturedAt: finishedAt },
   };
@@ -63,7 +62,6 @@ export type RegisterSubagentRunParams = {
   swarmLaunchRequestFingerprint?: string;
   groupId?: string;
   outputSchema?: Record<string, unknown>;
-  queuedLaunch?: SubagentRunRecord["queuedLaunch"];
   queued?: boolean;
   // Continuation-lane fields. createSubagentRegistrationRecord below already reads
   // all of these; they travelled with the function when upstream relocated
@@ -148,7 +146,6 @@ export function createSubagentRegistrationRecord(
     swarmLaunchPending: registerParams.collect === true,
     groupId: registerParams.groupId,
     outputSchema: registerParams.outputSchema,
-    queuedLaunch: registerParams.queuedLaunch,
     generation,
     createdAt: now,
     execution: {

@@ -1,4 +1,4 @@
-// Continuation (karmaterminal): one gateway lifetime of the restart-recovery new-process proof.
+// Continuation (karmaterminal): one gateway lifetime of the continuation-row new-process proof.
 // The parent starts a fresh Node process per lifetime; durable state lives only in the
 // SQLite state dir named by this process's OPENCLAW_STATE_DIR.
 import { writeSync } from "node:fs";
@@ -8,20 +8,13 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 
-type SeedRow =
-  | { kind: "wake"; revision: number }
-  | { kind: "turn"; revision: number; expectedSessionId?: string }
-  // Fork-only: an adoption-scoped event bound to its recipient session's authority.
-  | { kind: "authority"; revision: number; sessionKey: string; revoke: boolean };
+// An adoption-scoped event bound to its recipient session's authority.
+type SeedRow = { kind: "authority"; revision: number; sessionKey: string; revoke: boolean };
 type Args = {
   sessionId?: string;
   rows?: SeedRow[];
-  /** Replace the session incarnation after the rows are durable. */
-  resetTo?: string;
-  passes?: number;
   /** Recover through a context captured for this dir while process.env names another. */
   captureStateDir?: string;
-  crashOnAdoption?: boolean;
   peekSessionKeys?: string[];
 };
 type ProofEdges = {
@@ -112,13 +105,10 @@ const { captureOpenClawStateWorkerContext } =
   await import("../state/openclaw-state-worker-context.js");
 const queue = await import("../infra/session-delivery-queue-storage.js");
 const sessions = await import("../config/sessions/session-accessor.js");
-const { buildQueuedRestartContinuation } =
-  await import("./server-restart-sentinel-continuation-intent.js");
 const { closeOpenClawStateDatabaseAsync } = await import("../state/openclaw-state-db.js");
 
 setRuntimeConfigSnapshot({});
 const mainKey = "agent:main:main";
-const route = { channel: "discord", to: "channel:proof", chatType: "channel" as const };
 const ownerA = { type: "human" as const, id: "owner-a", source: "unknown" as const };
 const logs: string[] = [];
 const log = {
@@ -179,36 +169,13 @@ async function seed() {
   for (const row of args.rows ?? []) {
     // Recovery replays in enqueue order; distinct timestamps keep that order deterministic.
     await sleep(5);
-    if (row.kind === "authority") {
-      ids.push(await enqueueAuthorityRow(row));
-      continue;
-    }
-    const payload = buildQueuedRestartContinuation({
-      sessionKey: mainKey,
-      revision: row.revision,
-      ...(row.kind === "wake"
-        ? { continuation: { kind: "systemEvent" as const, text: `restart wake ${row.revision}` } }
-        : {
-            continuation: { kind: "agentTurn" as const, message: `continue ${row.revision}` },
-            route,
-            expectedSessionId: row.expectedSessionId,
-          }),
-    });
-    ids.push(await queue.enqueueSessionDelivery(payload, captureOpenClawStateWorkerContext()));
-  }
-  if (args.resetTo) {
-    // The owning session is replaced after its rows are durable and before any restart.
-    await sessions.replaceSessionEntry(
-      { sessionKey: mainKey },
-      { sessionId: args.resetTo, updatedAt: Date.now() },
-    );
+    ids.push(await enqueueAuthorityRow(row));
   }
   return { ids, pending: await pending() };
 }
 
 async function recover() {
-  const { recoverPendingRestartContinuationDeliveries } =
-    await import("./server-restart-sentinel.js");
+  const { recoverPendingProducedSessionDeliveries } = await import("./server-restart-sentinel.js");
   // The runtime captures its queue owner once at start (server-runtime-services.ts).
   const queueContext = captureOpenClawStateWorkerContext(
     args.captureStateDir
@@ -216,16 +183,7 @@ async function recover() {
       : {},
   );
   const before = await pending(queueContext);
-  if (args.crashOnAdoption) {
-    edges.onAdopted = () => {
-      // The attempt marker committed; the process dies before the queue settles the row.
-      report({ crashed: true, before, events: edges.events, dispatches: edges.dispatches, logs });
-      process.kill(process.pid, "SIGKILL");
-    };
-  }
-  for (let pass = 0; pass < (args.passes ?? 1); pass += 1) {
-    await recoverPendingRestartContinuationDeliveries({ deps: {}, queueContext, log });
-  }
+  await recoverPendingProducedSessionDeliveries({ deps: {}, queueContext, log });
   const queued: Record<string, unknown[]> = {};
   if (args.peekSessionKeys) {
     const { peekSystemEventEntries } = await import("../infra/system-events.js");

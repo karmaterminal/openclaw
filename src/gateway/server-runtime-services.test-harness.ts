@@ -35,7 +35,7 @@ const runtimeServiceMocks = vi.hoisted(() => {
     })),
     countPendingDeliveryQueueEntries: vi.fn(async () => 0),
     drainPendingDeliveries: vi.fn<DrainPendingDeliveries>(async () => undefined),
-    recoverPendingRestartContinuationDeliveries: vi.fn(async () => undefined),
+    recoverPendingProducedSessionDeliveries: vi.fn(async () => undefined),
     recoverPendingContinuationDelegates: vi.fn(async () => ({
       sessions: 0,
       dispatched: 0,
@@ -96,10 +96,11 @@ vi.mock("../infra/session-delivery-queue-runtime.js", () => ({
   schedulePendingSessionDeliveries: runtimeServiceMocks.schedulePendingSessionDeliveries,
 }));
 
-vi.mock("./server-restart-sentinel.js", () => ({
+vi.mock("./server-restart-sentinel.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./server-restart-sentinel.js")>()),
   deliverQueuedSessionDelivery: runtimeServiceMocks.deliverQueuedSessionDelivery,
-  recoverPendingRestartContinuationDeliveries:
-    runtimeServiceMocks.recoverPendingRestartContinuationDeliveries,
+  recoverPendingProducedSessionDeliveries:
+    runtimeServiceMocks.recoverPendingProducedSessionDeliveries,
   settleQueuedSessionDelivery: runtimeServiceMocks.settleQueuedSessionDelivery,
 }));
 
@@ -221,7 +222,7 @@ export function resetRuntimeServiceMocks() {
   runtimeServiceMocks.countPendingDeliveryQueueEntries.mockReset().mockResolvedValue(0);
   runtimeServiceMocks.drainPendingDeliveries.mockReset();
   runtimeServiceMocks.drainPendingDeliveries.mockResolvedValue(undefined);
-  runtimeServiceMocks.recoverPendingRestartContinuationDeliveries.mockClear();
+  runtimeServiceMocks.recoverPendingProducedSessionDeliveries.mockClear();
   runtimeServiceMocks.deliverQueuedSessionDelivery.mockClear();
   runtimeServiceMocks.settleQueuedSessionDelivery.mockClear();
   runtimeServiceMocks.deliverOutboundPayloads.mockClear();

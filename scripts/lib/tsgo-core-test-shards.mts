@@ -144,9 +144,9 @@ export const TSGO_CORE_TEST_SHARDS = [
     config: "test/tsconfig/tsconfig.core.test.messaging-auto-reply.json",
   },
   {
-    name: "claws",
+    name: "templates",
     group: "src",
-    config: "test/tsconfig/tsconfig.core.test.claws.json",
+    config: "test/tsconfig/tsconfig.core.test.templates.json",
   },
   {
     name: "ui-e2e-chat",

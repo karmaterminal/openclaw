@@ -88,7 +88,6 @@ it("cleanup wakes the registered source runner only after its operation clears",
     ).toBe(true);
     await cleanupReplyAgentRun({
       blockReplyPipeline: null,
-      clearRestartRecoveryDeliveryClaim: async () => {},
       // Continuation: no post-compaction delegates to re-persist for this turn.
       postCompactionDelegatesToPreserve: [],
       providedReplyOperation: operation,

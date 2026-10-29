@@ -99,8 +99,6 @@ const sweeper = createSubagentRegistrySweeper({
   releaseAcceptedSubagentSpawnRollback: unexpected,
   rollbackSubagentRunRegistration: unexpected,
   settleFailedQueuedSubagentLaunch: unexpected,
-  getGatewayRecoveryRuntime: () => undefined,
-  finalizeInterruptedSubagentRun: unexpected,
   startSubagentAnnounceCleanupFlow: unexpected,
   completeCleanupBookkeeping: unexpected,
   resumeRequesterSettleWake: unexpected,

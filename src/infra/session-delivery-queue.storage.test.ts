@@ -5,7 +5,6 @@ import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-
 import { observeMainThreadSql } from "../test-utils/main-thread-sql-spies.test-support.js";
 import { requireNodeSqlite } from "./node-sqlite.js";
 import {
-  advanceSessionDeliveryAgentRun as advanceRun,
   completeSessionDelivery as complete,
   deferSessionDelivery as defer,
   enqueueClaimedSessionDelivery as enqueueClaimed,
@@ -530,7 +529,7 @@ describe("session-delivery queue storage", () => {
     });
   });
 
-  it("advances only the agent run attempt and can focus its retry media", async () => {
+  it("preserves prepared media through delivery retries", async () => {
     // Keep the one-time SQLite capability check outside the queue observation window.
     requireNodeSqlite();
     const sqlCalls = observeMainThreadSql();
@@ -547,7 +546,7 @@ describe("session-delivery queue storage", () => {
 
         await fail(id, "ambiguous timeout", queueContext);
         await defer(id, 1_000, queueContext);
-        let [entry] = await listPending(queueContext);
+        const [entry] = await listPending(queueContext);
         expect(entry).toMatchObject({ retryCount: 1 });
         expect(entry?.agentRunAttempt).toBeUndefined();
         expect(entry?.availableAt).toBeGreaterThan(Date.now());
@@ -558,20 +557,10 @@ describe("session-delivery queue storage", () => {
         ).resolves.toEqual(imageBlocks("artifact-one"));
         await mergePrepared(id, "/tmp/two.png", imageBlocks("artifact-two"), queueContext);
 
-        await advanceRun(
-          id,
-          {
-            message: "only missing media",
-            expectedMediaUrls: ["/tmp/two.png"],
-          },
-          queueContext,
-        );
-        [entry] = await listPending(queueContext);
-        expect(entry).toMatchObject({
-          agentRunAttempt: 1,
+        expect(await loadPending(id, queueContext)).toMatchObject({
           retryCount: 1,
-          message: "only missing media",
-          expectedMediaUrls: ["/tmp/two.png"],
+          message: "all generated media",
+          expectedMediaUrls: ["/tmp/one.png", "/tmp/two.png"],
           expectedMediaAttachments: mediaAttachments,
           preparedMediaBlocks: {
             "/tmp/one.png": imageBlocks("artifact-one"),
@@ -581,8 +570,6 @@ describe("session-delivery queue storage", () => {
         await fail(id, "fresh delivery failed", queueContext);
         expect(await loadPending(id, queueContext)).toMatchObject({
           retryCount: 2,
-          agentRunAttempt: 1,
-          lastChargedAgentRunAttempt: 1,
         });
       });
       sqlCalls.expectIdle();

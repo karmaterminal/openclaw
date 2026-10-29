@@ -25,7 +25,7 @@ import {
 import { readSessionEntryInWorker } from "../../config/sessions/session-entry-read-writable.js";
 import { captureSessionRecipientAuthority } from "../../config/sessions/session-sharing-store.async.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import { recoverPendingRestartContinuationDeliveries } from "../../gateway/server-restart-sentinel.js";
+import { recoverPendingProducedSessionDeliveries } from "../../gateway/server-restart-sentinel.js";
 import {
   resetContinuationTracer,
   setContinuationTracer,
@@ -405,7 +405,7 @@ it("replays a pending return after restart and wakes as its producer would", asy
     resetSystemEventsForTest();
     expect(await rowPending(row)).toBe(true);
 
-    await recoverPendingRestartContinuationDeliveries({
+    await recoverPendingProducedSessionDeliveries({
       deps: {},
       queueContext: captureOpenClawStateWorkerContext(),
     });

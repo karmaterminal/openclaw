@@ -27,8 +27,6 @@ type InProcessDispatchMock = (
   params: Record<string, unknown>,
   options?: Record<string, unknown>,
 ) => Promise<Record<string, unknown>>;
-type AdvanceSessionDeliveryAgentRunMock =
-  typeof import("../infra/session-delivery-queue-storage.js").advanceSessionDeliveryAgentRun;
 type DeferSessionDeliveryMock =
   typeof import("../infra/session-delivery-queue-storage.js").deferSessionDelivery;
 type FailSessionDeliveryMock =
@@ -153,7 +151,6 @@ const mocks = vi.hoisted(() => {
     enqueueSystemEvent: vi.fn((..._args: unknown[]) => true),
     requestContinuationWake: vi.fn(),
     enqueueSessionDelivery: vi.fn(),
-    advanceSessionDeliveryAgentRun: vi.fn<AdvanceSessionDeliveryAgentRunMock>(async () => {}),
     deferSessionDelivery: vi.fn<DeferSessionDeliveryMock>(async () => {}),
     failSessionDelivery: vi.fn<FailSessionDeliveryMock>(async () => {}),
     mergeSessionDeliveryPreparedMediaBlocks: vi.fn<MergeSessionDeliveryPreparedMediaBlocksMock>(
@@ -265,7 +262,6 @@ vi.mock("../infra/session-delivery-queue-storage.js", async (importOriginal) => 
   mocks.loadPendingSessionDelivery.mockImplementation(actual.loadPendingSessionDelivery);
   return {
     ...actual,
-    advanceSessionDeliveryAgentRun: mocks.advanceSessionDeliveryAgentRun,
     deferSessionDelivery: mocks.deferSessionDelivery,
     failSessionDelivery: mocks.failSessionDelivery,
     mergeSessionDeliveryPreparedMediaBlocks: mocks.mergeSessionDeliveryPreparedMediaBlocks,
@@ -414,9 +410,9 @@ vi.mock("../channels/turn/lifecycle.js", () => ({
   },
 }));
 
-vi.mock("./server-recovery-runtime-context.js", async () => ({
-  ...(await vi.importActual<typeof import("./server-recovery-runtime-context.js")>(
-    "./server-recovery-runtime-context.js",
+vi.mock("./server-lifecycle-runtime-context.js", async () => ({
+  ...(await vi.importActual<typeof import("./server-lifecycle-runtime-context.js")>(
+    "./server-lifecycle-runtime-context.js",
   )),
   dispatchGatewayLifecycleMethod: mocks.dispatchGatewayMethodInProcess,
 }));

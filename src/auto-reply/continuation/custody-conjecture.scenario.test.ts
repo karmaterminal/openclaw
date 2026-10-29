@@ -287,7 +287,7 @@ async function bootGateway() {
      * continuation recovery (+1400 ms) in `server-runtime-services.ts` order.
      */
     async runStartupRecovery(): Promise<void> {
-      await sentinel.recoverPendingRestartContinuationDeliveries({
+      await sentinel.recoverPendingProducedSessionDeliveries({
         deps: {} as never,
         queueContext: workerContext.captureOpenClawStateWorkerContext(),
         log: { info: () => {}, warn: () => {}, error: () => {} },

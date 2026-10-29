@@ -1,5 +1,4 @@
 import { onTestFinished, vi } from "vitest";
-import type { GatewayRecoveryRuntime } from "../../../gateway/server-instance-runtime.types.js";
 import type { SqliteWorkerCommand } from "../../../infra/sqlite-worker-contract.js";
 import type { OpenClawStateWorkerOperations } from "../../../state/openclaw-state-worker-contract.js";
 import * as stateWorker from "../../../state/openclaw-state-worker-store.js";
@@ -48,7 +47,6 @@ export function createArchivedSubagentSweeperRun(
 }
 
 export function createSubagentSweeperHarness(
-  runtime: { current?: GatewayRecoveryRuntime },
   entry = createSubagentSweeperRun(),
   runs = new Map<string, SubagentRunRecord>(),
 ) {
@@ -76,6 +74,7 @@ export function createSubagentSweeperHarness(
       });
     });
   const callbacks = {
+    sweepPendingLifecycle: vi.fn(),
     completeCleanupBookkeeping: vi.fn<SweeperOptions["completeCleanupBookkeeping"]>(
       async ({ runId, entry: expectedEntry, isCurrent = () => true, finalizeDelivery }) => {
         if (!isCurrent()) {
@@ -95,9 +94,6 @@ export function createSubagentSweeperHarness(
           { runs },
         );
       },
-    ),
-    finalizeInterruptedSubagentRun: vi.fn<SweeperOptions["finalizeInterruptedSubagentRun"]>(
-      async () => 0,
     ),
     completeSubagentRunWithRecovery: vi.fn(),
     discardTerminalDelivery: vi.fn<SweeperOptions["discardTerminalDelivery"]>(),
@@ -127,12 +123,10 @@ export function createSubagentSweeperHarness(
     resumedRuns: new Set(),
     clearPendingLifecycleError: vi.fn(),
     clearPendingLifecycleTimeout: vi.fn(),
-    sweepPendingLifecycle: vi.fn(),
     recordAcceptedSubagentSpawnRollback: vi.fn(async () => ({ status: "persisted" as const })),
     releaseAcceptedSubagentSpawnRollback: vi.fn(async () => true),
     rollbackSubagentRunRegistration: vi.fn(async () => true),
     settleFailedQueuedSubagentLaunch: vi.fn(async () => true),
-    getGatewayRecoveryRuntime: () => runtime.current,
     resumePendingRequesterSettlements: () => false,
     isCleanupOwnerCurrent: (selected) =>
       isSameSubagentRunOwner(runs.get(selected.runId), selected) || !runs.has(selected.runId),

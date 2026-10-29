@@ -1,6 +1,6 @@
 // H1 §3.4 (absorb 14fe10d0): a collector launch writes a durable `launchDispatch`
 // marker before dispatch, and its start transition clears it. A dispatched launch is
-// never relaunched after restart; a never-dispatched one keeps upstream's replay.
+// never relaunched after restart.
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -115,14 +115,6 @@ async function seedQueuedCollector(): Promise<SubagentRunRecord> {
     execution: { status: "queued" },
     completion: { required: false, resultText: null },
     delivery: { status: "not_required" },
-    queuedLaunch: {
-      request: { sessionKey: childSessionKey, idempotencyKey: runId },
-      // #157806: restart replay requires the saved requester recovery source.
-      requesterRecovery: {},
-      timeoutMs: 1_000,
-      schedulerGroupKey: JSON.stringify(["agent:main:main", ""]),
-      maxConcurrent: 1,
-    },
   });
   return subagentRuns.get(runId)!;
 }
@@ -179,7 +171,7 @@ async function restartFrom(image: Map<string, SubagentRunRecord>) {
     recoveryRuntime: { dispatchAgent, prepareRestartRecovery: () => undefined },
     resolveGatewayContext: () => gatewayContext as never,
   };
-  await activateSubagentRegistry(gatewayContext.resolveGatewayContext).settled;
+  await activateSubagentRegistry(gatewayContext.resolveGatewayContext);
   for (let i = 0; i < 10; i += 1) {
     await new Promise<void>((resolve) => {
       setImmediate(resolve);
@@ -199,7 +191,6 @@ it("T11: a dispatched launch whose start, custody and abort all fail is never re
   // The process dies before the launch owner settles: the row is still queued.
   const crashImage = durable();
   expect(crashImage.get(runId)?.execution.status).toBe("queued");
-  expect(crashImage.get(runId)?.queuedLaunch).toBeDefined();
 
   liftFaults();
   abortSucceeds = true;
@@ -213,16 +204,6 @@ it("T11: a dispatched launch whose start, custody and abort all fail is never re
   expect(successfulAborts).toEqual([runId]);
   expect(durable().get(runId)).toMatchObject({ collectorCompletion: { status: "failed" } });
   expect(durable().get(runId)?.launchDispatch).toBeUndefined();
-});
-
-it("T12 (guard): a never-dispatched queued collector keeps upstream's restart replay", async () => {
-  await seedQueuedCollector();
-  // Crash before launchChildRun: no dispatch marker was ever written.
-  expect(durable().get(runId)?.launchDispatch).toBeUndefined();
-  const dispatchAgent = await restartFrom(durable());
-  await testing.sweepOnceForTests();
-  expect(dispatchAgent).toHaveBeenCalled();
-  expect(abortCalls).toEqual([]);
 });
 
 it.each(["landed", "not-landed"] as const)(
@@ -332,6 +313,6 @@ it.each(["started", "rolled-back"] as const)(
       });
     }
     // Exactly once: nothing is left for a later disarm to replay.
-    expect(takeDeferredArmedSubagentResume(deferredWhileArmed!)).toBeUndefined();
+    expect(takeDeferredArmedSubagentResume(deferredWhileArmed!)).toBe(false);
   },
 );

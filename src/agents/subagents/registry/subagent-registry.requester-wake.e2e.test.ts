@@ -470,9 +470,9 @@ describe("requester settle wake product flow", () => {
       await registry.initSubagentRegistry();
       const activate = async () => {
         // Standalone registration can be wholly unbound, but cannot mix ambient
-        // routing with a captured owner. Restored rows have a separate activation gate.
+        // routing with a captured owner. Each live run retains its admitting owner.
         if (binding !== "mixed-unbound") {
-          await registry.activateSubagentRegistry(() => context).settled;
+          await registry.activateSubagentRegistry(() => context);
         }
       };
       await activate();
@@ -675,7 +675,7 @@ describe("requester settle wake product flow", () => {
       vi.setSystemTime(100_000);
       const context = createGatewayContext();
       await registry.initSubagentRegistry();
-      await registry.activateSubagentRegistry(() => context).settled;
+      await registry.activateSubagentRegistry(() => context);
       const alpha = visibleChild("serial-alpha");
       const beta = visibleChild("serial-beta");
       const yieldTurn = async (requesterTurnRunId: string, accepted: (typeof alpha)[]) => {
@@ -917,7 +917,7 @@ describe("requester settle wake product flow", () => {
       );
       const context = createGatewayContext();
       await registry.initSubagentRegistry();
-      await registry.activateSubagentRegistry(() => context).settled;
+      await registry.activateSubagentRegistry(() => context);
       const sessionEntry = await prepareChildSession(child.childSessionKey, "sess-cron-child");
       await registry.registerSubagentRun(
         createSubagentRunParams({
@@ -946,7 +946,7 @@ describe("requester settle wake product flow", () => {
       if (restart) {
         await registry.resetSubagentRegistryForTests({ persist: false });
         await registry.initSubagentRegistry();
-        await registry.activateSubagentRegistry(() => context).settled;
+        await registry.activateSubagentRegistry(() => context);
         await flushOwnedWork();
       }
 
@@ -968,7 +968,7 @@ describe("requester settle wake product flow", () => {
     vi.setSystemTime(100_000);
     const context = createGatewayContext();
     await registry.initSubagentRegistry();
-    await registry.activateSubagentRegistry(() => context).settled;
+    await registry.activateSubagentRegistry(() => context);
     const wave = ["wave-a", "wave-b"].map(visibleChild);
     const cohort = visibleChild("cohort");
     for (const child of wave) {

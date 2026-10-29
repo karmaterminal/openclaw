@@ -22,7 +22,7 @@ import {
 } from "../../config/sessions/session-accessor.js";
 import {
   deliverQueuedSessionDelivery,
-  recoverPendingRestartContinuationDeliveries,
+  recoverPendingProducedSessionDeliveries,
 } from "../../gateway/server-restart-sentinel.js";
 import {
   schedulePendingSessionDeliveries,
@@ -886,7 +886,7 @@ describe("capacity-deferred returns: observability, backoff, restart, producer w
     resetObservers();
     startRuntime();
     const queueContext = captureContinuationQueueContext(stateDir);
-    await recoverPendingRestartContinuationDeliveries({
+    await recoverPendingProducedSessionDeliveries({
       deps: {} as never,
       queueContext,
       log: runtimeLog,
@@ -926,7 +926,7 @@ describe("capacity-deferred returns: observability, backoff, restart, producer w
     resetSystemEventsForTest();
     resetObservers();
     startRuntime();
-    await recoverPendingRestartContinuationDeliveries({
+    await recoverPendingProducedSessionDeliveries({
       deps: {} as never,
       queueContext: captureContinuationQueueContext(stateDir),
       log: runtimeLog,
@@ -1118,7 +1118,7 @@ describe("capacity-deferred returns: observability, backoff, restart, producer w
 
     // Gateway startup: install the runtime, recover, then scan every pending row.
     startRuntime();
-    await recoverPendingRestartContinuationDeliveries({
+    await recoverPendingProducedSessionDeliveries({
       deps: {} as never,
       queueContext: captureContinuationQueueContext(stateDir),
       log: runtimeLog,

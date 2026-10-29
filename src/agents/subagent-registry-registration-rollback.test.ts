@@ -477,7 +477,6 @@ describe("subagent registration rollback", () => {
       suppressCompletionDelivery: true,
       execution: { suppressSessionEffects: true },
     });
-    expect(retained?.execution.restartRecovery).toBeUndefined();
     expect(loadSubagentRegistryFromSqlite().get(registration.runId)).toMatchObject({
       acceptedSpawnRollback: { gatewayRunId: registration.runId },
       suppressCompletionDelivery: true,

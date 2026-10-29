@@ -33,7 +33,7 @@ export function planQueuedSubagentRunStart(
     typeof current.execution.startedAt === "number" &&
     current.swarmLaunchPending === true;
   const terminalBeforeAcceptance =
-    current.collectorCompletion !== undefined && current.queuedLaunch !== undefined;
+    current.collectorCompletion !== undefined && current.swarmLaunchPending === true;
   if (
     current.killIntent ||
     current.killReconciliation ||
@@ -62,7 +62,6 @@ export function planQueuedSubagentRunStart(
       status: "running",
       acceptedAt: Date.now(),
       lifecycleGeneration: acceptedLifecycleGeneration,
-      restartRecovery: undefined,
       suppressSessionEffects: undefined,
       startedAt,
     };
@@ -70,7 +69,6 @@ export function planQueuedSubagentRunStart(
       typeof startedAt === "number" ? (entry.sessionStartedAt ?? startedAt) : undefined;
   }
   entry.swarmLaunchPending = false;
-  entry.queuedLaunch = undefined;
   // The start transition proves the dispatched launch started: disarm in the same write.
   delete entry.launchDispatch;
   bindSubagentRunRuntimeKey(entry, getSubagentRunRuntimeKey(current));
