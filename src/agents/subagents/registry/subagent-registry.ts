@@ -40,6 +40,7 @@ import {
   countPendingDescendantRuns,
   getLatestLiveSubagentRunByChildSessionKey,
 } from "./subagent-registry-read.js";
+import { settleOwnerlessContinuationChildren } from "./subagent-registry-restart-custody.js";
 import { createSubagentRegistryRestorer } from "./subagent-registry-restore.js";
 import type { RegisterSubagentRunParams } from "./subagent-registry-run-launch-record.js";
 import type { SubagentRegistrationOwnership } from "./subagent-registry-run-launch.js";
@@ -592,10 +593,11 @@ export function activateSubagentRegistry(
 ): Promise<void> {
   // Reuse the instance's own fenced closure so late-restored siblings share one
   // authority across repeated activation; the raw holder can outlive that instance.
-  return runSubagentRegistryActivation(() => {
+  return runSubagentRegistryActivation(async () => {
     activeGatewayContextResolver = resolveGatewayContext()?.resolveGatewayContext;
     bindGatewayContextResolver(subagentRuns, activeGatewayContextResolver);
-    return subagentRestorer.activate();
+    await subagentRestorer.activate();
+    await settleOwnerlessContinuationChildren(startSubagentAnnounceCleanupFlow);
   });
 }
 export { whenSubagentRegistryActivated } from "./subagent-registry-activation.js";
