@@ -74,7 +74,7 @@ export async function runContinuationCustodyBoot(params: {
   // 1. Phase A: hydrate the projection from one committed read, unless a
   //    custody mutation already ran it.
   await admit(() => whenContinuationCustodyReady());
-  // 2. Upstream restart recovery owns interrupted children first.
+  // 2. Registry activation settles delegates an earlier lifecycle left running first.
   await params.whenSubagentRegistryActivated();
   // 3. Phase B: custody recovery. It never re-hydrates: phase A's projection
   //    has been kept current by every commit since, and a late re-read would
