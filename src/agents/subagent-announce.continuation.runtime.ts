@@ -197,6 +197,8 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
   targetRequesterOrigin?: DeliveryContext;
   task: string;
   findings: string;
+  /** Raw recorded answer behind rendered findings; rendering drops continuation brackets. */
+  continuationText?: string;
   skipAnnounceDelivery: boolean;
   silentAnnounce?: boolean;
   wakeOnReturn?: boolean;
@@ -244,8 +246,11 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
 
   let findings = params.findings;
   const isChain = accounting.isContinuationChainDelegate;
-  const deferInitialDrain =
-    isChain && stripContinuationSignal(findings).signal?.kind === "delegate";
+  const continuationResult = stripContinuationSignal(params.continuationText ?? findings);
+  // Rendered findings already omit the bracket; only raw findings need it stripped.
+  const findingsWithoutSignal =
+    params.continuationText === undefined ? continuationResult.text || "(no output)" : findings;
+  const deferInitialDrain = isChain && continuationResult.signal?.kind === "delegate";
   if (!deferInitialDrain) {
     await drainChildContinuationQueue({
       cfg: params.cfg,
@@ -284,9 +289,8 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
   let bracketReserved = false;
   let bracketDrainArmed = false;
   let originDelegateFlowStatus: OriginDelegateFlowStatus | undefined;
-  const continuationResult = stripContinuationSignal(findings);
   if (continuationResult.signal?.kind === "work") {
-    findings = continuationResult.text || "(no output)";
+    findings = findingsWithoutSignal;
     const traceparent = resolveContinuationTraceparent(params.traceparent);
     await scheduleSubagentSelfContinuationWork({
       cfg: params.cfg,
@@ -298,7 +302,7 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
       ...(traceparent ? { traceparent } : {}),
     });
   } else if (continuationResult.signal?.kind === "delegate") {
-    findings = continuationResult.text || "(no output)";
+    findings = findingsWithoutSignal;
     const signal = continuationResult.signal;
     const internalTraceparent =
       formatCurrentSpanContinuationTraceparent() ??

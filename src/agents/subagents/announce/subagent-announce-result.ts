@@ -1,5 +1,6 @@
 import { asOptionalObjectRecord, isRecord } from "@openclaw/normalization-core/record-coerce";
 import { isIncognitoSessionKey } from "../../../routing/session-key.js";
+import { resolveRawAssistantAnswerText } from "../../../shared/assistant-answer-text.js";
 import { readTerminalSourceReplyDeliveryMirror } from "../../../shared/chat-message-content.js";
 import { truncateUtf16WithEllipsis } from "../../../shared/text-truncate.js";
 import {
@@ -30,7 +31,15 @@ type SubagentAnnounceResultDeps = Pick<
   findSessionTranscriptArchiveEventReadOnly: typeof import("../../../config/sessions/session-history.js").findSessionTranscriptArchiveEventReadOnly;
 };
 
-export type PreparedAnnounceResult = { text: string | undefined; isCurrent: () => boolean };
+export type PreparedAnnounceResult = {
+  text: string | undefined;
+  isCurrent: () => boolean;
+  /**
+   * Continuation (karmaterminal): the recorded raw answer behind a rendered `text`. Rendering
+   * drops continuation brackets, which the announce continuation owner still parses.
+   */
+  continuationText?: string;
+};
 
 type SubagentFinalAnswerDeps = Omit<SubagentAnnounceResultDeps, "readSubagentRun">;
 
@@ -70,7 +79,7 @@ export async function readSubagentRunAnnounceResultUsing(
   if (!resolveSubagentChildAgentId(child)) {
     return { text: capturedResult, isCurrent };
   }
-  const answer = await readSubagentRunFinalAnswerUsing(child, deps, () => {
+  const { answer, continuationText } = await readSubagentRunFinalMessageUsing(child, deps, () => {
     if (!isCurrent()) {
       throw new SubagentAnnouncePreparationConflictError(
         "The completed child run's transcript identity changed during announcement.",
@@ -83,7 +92,7 @@ export async function readSubagentRunAnnounceResultUsing(
       isCurrent,
     };
   }
-  return { text: answer, isCurrent };
+  return { text: answer, isCurrent, ...(continuationText ? { continuationText } : {}) };
 }
 
 /**
@@ -95,10 +104,18 @@ export async function readSubagentRunFinalAnswerUsing(
   deps: SubagentFinalAnswerDeps,
   assertCurrent?: () => void,
 ): Promise<string | undefined> {
+  return (await readSubagentRunFinalMessageUsing(child, deps, assertCurrent)).answer;
+}
+
+async function readSubagentRunFinalMessageUsing(
+  child: SubagentRunRecord,
+  deps: SubagentFinalAnswerDeps,
+  assertCurrent?: () => void,
+): Promise<{ answer?: string; continuationText?: string }> {
   const runId = child.runId;
   const childAgentId = resolveSubagentChildAgentId(child);
   if (!childAgentId) {
-    return undefined;
+    return {};
   }
   const target = child.execution.transcriptTarget;
   const agentId = target?.agentId ?? childAgentId;
@@ -126,21 +143,21 @@ export async function readSubagentRunFinalAnswerUsing(
     const message = isRecord(event) ? asOptionalObjectRecord(event.message) : undefined;
     // Explicit delivery records already own their display text, including literal NO_REPLY.
     // Parent review keeps media references as data rather than extracting channel attachments.
-    const answer =
-      message?.display === true || readTerminalSourceReplyDeliveryMirror(message)
-        ? extractStoredAssistantText(message)
-        : stripInlineDirectiveTagsForDelivery(
-            parseInlineDirectives(
-              prepareTerminalAssistantReply(
-                message && {
-                  content: typeof message.text === "string" ? message.text : message.content,
-                  stopReason: message.stopReason,
-                  phase: message.phase,
-                },
-              ).text,
-            ).text,
-          ).text;
-    return answer || undefined;
+    if (message?.display === true || readTerminalSourceReplyDeliveryMirror(message)) {
+      return { answer: extractStoredAssistantText(message) || undefined };
+    }
+    const assistant = message && {
+      content: typeof message.text === "string" ? message.text : message.content,
+      stopReason: message.stopReason,
+      phase: message.phase,
+    };
+    const answer = stripInlineDirectiveTagsForDelivery(
+      parseInlineDirectives(prepareTerminalAssistantReply(assistant).text).text,
+    ).text;
+    return {
+      answer: answer || undefined,
+      continuationText: resolveRawAssistantAnswerText(assistant) || undefined,
+    };
   });
 }
 

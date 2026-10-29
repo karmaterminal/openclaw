@@ -187,6 +187,16 @@ describe("exact-run announcement results", () => {
     },
   );
 
+  it("keeps continuation brackets out of the rendered answer but carries the raw answer", async () => {
+    const raw = "Research complete.\n\n[[CONTINUE_DELEGATE: verify the findings +10s]]";
+    const child = completedChild("Research complete.");
+    installTranscript([assistant(child.runId, raw)]);
+    await expect(readResult(child)).resolves.toMatchObject({
+      text: "Research complete.",
+      continuationText: raw,
+    });
+  });
+
   it("recovers the complete multipart native answer beyond the terminal snapshot", async () => {
     const first = "long answer ".repeat(500).trim();
     const text = `${first}\nrequired-final-part`;
