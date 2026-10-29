@@ -443,6 +443,7 @@ export async function executePreparedReplyRun(
     }),
     personalBootstrapEligible,
     operatorAuthority: opts?.operatorAuthority,
+    sessionPrincipalTurn: opts?.sessionPrincipalTurn,
     transcriptPrompt: transcriptCommandBody,
     ...(userTurnTranscriptRecorder ? { userTurnTranscriptRecorder } : {}),
     currentInboundEventKind: inboundEventKind,

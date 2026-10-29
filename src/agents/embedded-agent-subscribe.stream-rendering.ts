@@ -364,7 +364,7 @@ export function createStreamRendering({
     ) {
       return;
     }
-    const blockReplyText = options?.final === false ? text : text.trimEnd();
+    const blockReplyText = options?.final === true ? text.trimEnd() : text;
     const hasPendingAudioDirective = state.pendingAssistantReplyDirectives?.audioAsVoice === true;
     if (!blockReplyText.trim() && !options?.finalReply && !hasPendingAudioDirective) {
       return;
@@ -533,7 +533,7 @@ export function createStreamRendering({
     };
     addReplyPayloadMediaFailures(payload, mediaFailures);
     const emittedBlockSourceRange =
-      chunk === text.trimEnd() &&
+      chunk === blockReplyText &&
       cleanedText === chunk &&
       !sourceAlreadyEmitted &&
       !options?.reconciledSourceBreak
@@ -542,7 +542,7 @@ export function createStreamRendering({
     emitBlockReply(payload, {
       assistantMessageIndex,
       blockSourceText:
-        chunk === text.trimEnd() &&
+        chunk === blockReplyText &&
         cleanedText === chunk &&
         (options?.sourceStart === undefined || emittedBlockSourceRange !== undefined)
           ? blockSourceText

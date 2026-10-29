@@ -384,7 +384,11 @@ export class SubagentLaunchManager extends SubagentRecoveryManager {
                 ),
               });
               if (authority && !registerParams.collect) {
-                subagentRuns.bindCompletionAuthority(entry, authority);
+                subagentRuns.bindCompletionAuthority(
+                  entry,
+                  authority,
+                  options.requesterRunInstance,
+                );
                 custodyTransferred = true;
               }
             } finally {
