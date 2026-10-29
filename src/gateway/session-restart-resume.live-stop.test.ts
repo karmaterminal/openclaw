@@ -14,7 +14,6 @@ import { stopSession } from "../sessions/session-controller.stop.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { createContext } from "./server-plugin-in-process-dispatch.test-support.js";
 import {
-  GATEWAY_RESTART_RESUME_TEXT,
   persistRunningSessionsForRestart,
   resumeMarkedSessions,
 } from "./session-restart-resume.js";
@@ -76,7 +75,10 @@ it.each([
         log: { warn },
       });
 
-      const resumes = enqueue.mock.calls.filter(([text]) => text === GATEWAY_RESTART_RESUME_TEXT);
+      // The resume text is private to its owner (#187632); its restart-sourced event names it.
+      const resumes = enqueue.mock.calls.filter(
+        ([, options]) => options.source === "restart" && options.sessionKey === target.sessionKey,
+      );
       expect(resumes).toHaveLength(stop ? 0 : 1);
       // The marker is consumed; nothing tombstones or archives the session.
       const entry = loadExactSessionEntry(target)?.entry;
