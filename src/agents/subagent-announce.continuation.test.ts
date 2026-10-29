@@ -97,6 +97,7 @@ import { runSubagentAnnounceFlow } from "./subagents/announce/subagent-announce.
 import { publishAnnounceRunFixture } from "./subagents/announce/subagent-announce.test-support.js";
 import { subagentRuns } from "./subagents/registry/subagent-registry-memory.js";
 import * as subagentSpawn from "./subagents/spawn/subagent-spawn.js";
+import { makeAgentAssistantMessage } from "./test-helpers/agent-message-fixtures.js";
 
 /**
  * Seed session data through the SQLite-backed session-store facade.
@@ -301,15 +302,18 @@ describe("subagent announce continuation chaining", () => {
       sessionKey: childSessionKey,
       storePath,
     });
-    await transcript.appendMessageAsync({
-      role: "assistant",
-      content: [
-        { type: "text", text: "Research complete.\n\n[[CONTINUE_DELEGATE: verify the findings]]" },
-      ],
-      stopReason: "stop",
-      timestamp: Date.now(),
+    const finalAnswer = {
+      ...makeAgentAssistantMessage({
+        content: [
+          {
+            type: "text",
+            text: "Research complete.\n\n[[CONTINUE_DELEGATE: verify the findings]]",
+          },
+        ],
+      }),
       __openclaw: { runId: childRunId },
-    } as Parameters<SessionManager["appendMessageAsync"]>[0]);
+    };
+    await transcript.appendMessageAsync(finalAnswer);
     const terminalReply = { disposition: "visible", text: "Research complete." } as const;
     publishAnnounceRunFixture({
       runId: childRunId,
