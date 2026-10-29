@@ -18,7 +18,10 @@ import {
   withEnvAsync,
 } from "../test-utils/env.js";
 import { cleanupSessionStateForTest } from "../test-utils/session-state-cleanup.js";
-import { saveSubagentRegistryToSqlite } from "./subagents/registry/subagent-registry-state.fixture.test-support.js";
+import {
+  loadSubagentRegistryFromSqlite,
+  saveSubagentRegistryToSqlite,
+} from "./subagents/registry/subagent-registry-state.fixture.test-support.js";
 import { activateSubagentPersistenceRegistry } from "./subagents/registry/subagent-registry.persistence-fixture.test-support.js";
 import {
   canonicalSubagentRunFixtures,
@@ -129,6 +132,12 @@ describe("subagent registry persistence", () => {
     await Promise.resolve();
   };
 
+  const waitForRegistryWork = async (predicate: () => boolean) => {
+    await vi.waitFor(() => expect(predicate()).toBe(true), { interval: 1, timeout: 5_000 });
+  };
+
+  const readPersistedRuns = () => loadSubagentRegistryFromSqlite();
+
   const restartRegistry = async () => {
     await resetSubagentRegistryForTests({ persist: false });
     await initSubagentRegistry();
@@ -203,6 +212,93 @@ describe("subagent registry persistence", () => {
         suppressAnnounceReason: "killed",
       }),
     ]);
+  });
+
+  // Continuation (karmaterminal, bootstrap#1727): a delegate hands custody to its row
+  // (RFC §5.4.4), so the row the previous Gateway left running is settled, never relaunched.
+  it("settles a continuation delegate an earlier Gateway left running as interrupted", async () => {
+    const now = Date.now();
+    const runId = "run-stale-unended-restore";
+    await writePersistedRegistry({
+      version: 2,
+      runs: {
+        [runId]: {
+          runId,
+          childSessionKey: "agent:main:subagent:stale-unended-restore",
+          requesterSessionKey: "agent:main:main",
+          requesterDisplayKey: "main",
+          task: "stale unended restored work",
+          cleanup: "keep",
+          createdAt: now - 3 * 60 * 60 * 1_000,
+          startedAt: now - 3 * 60 * 60 * 1_000,
+          expectsCompletionMessage: false,
+          drainsContinuationDelegateQueue: true,
+        },
+      },
+    });
+
+    await restartRegistry();
+    await waitForRegistryWork(
+      () => readPersistedRuns().get(runId)?.cleanupCompletedAt !== undefined,
+    );
+    await settleSubagentRegistryPersistenceWork();
+
+    expect(callGateway).not.toHaveBeenCalled();
+    expect(announceSpy).not.toHaveBeenCalled();
+    expect(readPersistedRuns().get(runId)?.execution).toMatchObject({
+      status: "terminal",
+      outcome: { status: "error", error: expect.stringContaining("interrupted") },
+    });
+  });
+
+  it("settles an interrupted delegate without traversing legacy attachment paths", async () => {
+    tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-subagent-"));
+    setTestEnvValue("OPENCLAW_STATE_DIR", tempStateDir);
+    const attachmentsRootDir = path.join(tempStateDir, "attachments");
+    const attachmentsDir = path.join(attachmentsRootDir, "ghost");
+    await fs.mkdir(attachmentsDir, { recursive: true });
+    await fs.writeFile(path.join(attachmentsDir, "artifact.txt"), "artifact", "utf8");
+    const now = Date.now();
+    const runId = "run-orphan-attachments";
+    saveSubagentRegistryToSqlite(
+      canonicalSubagentRunFixtures(
+        new Map([
+          [
+            runId,
+            {
+              runId,
+              childSessionKey: "agent:main:subagent:ghost-attachments",
+              requesterSessionKey: "agent:main:main",
+              requesterDisplayKey: "main",
+              task: "orphan attachments",
+              cleanup: "keep",
+              createdAt: now - 2,
+              startedAt: now - 1,
+              expectsCompletionMessage: false,
+              drainsContinuationDelegateQueue: true,
+              attachmentsRootDir,
+              attachmentsDir,
+            },
+          ],
+        ]),
+      ),
+    );
+
+    await restartRegistry();
+    await waitForRegistryWork(
+      () => readPersistedRuns().get(runId)?.cleanupCompletedAt !== undefined,
+    );
+    await settleSubagentRegistryPersistenceWork();
+
+    // The interrupted record stays inspectable; a delegate's row is keep-mode history.
+    expect(readPersistedRuns().get(runId)?.execution).toMatchObject({
+      status: "terminal",
+      outcome: { status: "error", error: expect.stringContaining("interrupted") },
+    });
+    // Legacy attachment paths are untrusted and retired without traversal (upstream #146600).
+    await expect(fs.readFile(path.join(attachmentsDir, "artifact.txt"), "utf8")).resolves.toBe(
+      "artifact",
+    );
   });
 
   it("prefers active runs and can resolve them from persisted registry snapshots", async () => {
