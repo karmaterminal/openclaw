@@ -23,7 +23,6 @@ import { loadExactSessionEntry } from "../../../config/sessions/session-accessor
 import type { GatewayRequestContext } from "../../../gateway/server-methods/types.js";
 import { createContext } from "../../../gateway/server-plugin-in-process-dispatch.test-support.js";
 import {
-  GATEWAY_RESTART_RESUME_TEXT,
   persistRunningSessionsForRestart,
   resumeMarkedSessions,
 } from "../../../gateway/session-restart-resume.js";
@@ -371,9 +370,9 @@ it("3: the root's resume input does not stand in for a delegate's custody receip
   });
   await fixture.settle();
 
-  // The root got its one generic resume input...
-  expect(enqueue.mock.calls.filter(([text]) => text === GATEWAY_RESTART_RESUME_TEXT)).toEqual([
-    [GATEWAY_RESTART_RESUME_TEXT, expect.objectContaining({ sessionKey: parent })],
+  // The root got its one generic resume input (its text is private to the resume owner)...
+  expect(enqueue.mock.calls.filter(([, options]) => options.source === "restart")).toEqual([
+    [expect.any(String), expect.objectContaining({ sessionKey: parent, source: "restart" })],
   ]);
   expect(warn).not.toHaveBeenCalled();
   // ...and every accepted delegate still has its own terminal custody receipt.
