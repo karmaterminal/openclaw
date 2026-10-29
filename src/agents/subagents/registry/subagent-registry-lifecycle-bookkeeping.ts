@@ -1,3 +1,4 @@
+import { hasLiveContinuationCustody } from "../../../auto-reply/continuation/work-store.js";
 import { runWithGatewayDetachedWorkContinuation } from "../../../process/gateway-work-admission.js";
 import { defaultRuntime } from "../../../runtime.js";
 import { isCronRunSessionKey } from "../../../sessions/session-key-utils.js";
@@ -128,6 +129,12 @@ export async function completeCleanupBookkeeping(
     return;
   }
   const isDeleteCleanup = cleanupParams.cleanup === "delete";
+  // Continuation (karmaterminal): live continuation custody owns same-session re-entry, and the
+  // session cleanup guard keeps a delete-mode child for it. Keep the row as well, so the work's
+  // wake turn can reactivate the completed child and announce its answer. A run that leaves no
+  // live custody retires at settle as before; a kept row falls to the delete-mode TTL sweep.
+  const continuationRetainsRow =
+    isDeleteCleanup && (await hasLiveContinuationCustody(entry.childSessionKey));
   let retireAfterSettle = false;
   let retireImmediately = false;
   const assertPublishedOwner = () => {
@@ -156,6 +163,7 @@ export async function completeCleanupBookkeeping(
       retireAfterSettle =
         !draft.collect &&
         ((isDeleteCleanup &&
+          !continuationRetainsRow &&
           (!isCronRunSessionKey(draft.requesterSessionKey) ||
             (draft.delivery?.status === "discarded" &&
               draft.delivery.discardReason === "expired"))) ||
