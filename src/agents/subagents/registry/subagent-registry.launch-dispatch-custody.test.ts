@@ -244,23 +244,15 @@ it.each(["landed", "not-landed"] as const)(
     await testing.sweepOnceForTests();
     expect(dispatchAgent).not.toHaveBeenCalled();
     if (twin === "landed") {
-      // The start landed: an accepted running collector, never aborted.
+      // The start landed: an accepted running collector, never aborted or relaunched.
       expect(abortCalls).toEqual([]);
-      // Restored as an ordinary accepted (running) collector: the generic resume path
-      // owns it (here: its child session is absent, so it settles as orphaned), not
-      // the failed-launch settlement and not a relaunch. Since upstream #178791 that
-      // recovery is tracked sweeper work activation no longer awaits, so wait for its
-      // durable settlement (as upstream's restart-integration test does) before asserting.
-      await vi.waitFor(() => expect(durable().get(gatewayRunId)?.execution.outcome).toBeDefined(), {
-        timeout: 5_000,
-      });
-      const resumed = durable().get(gatewayRunId);
-      expect(resumed?.launchDispatch).toBeUndefined();
-      expect(resumed?.execution.outcome).toMatchObject({
-        status: "error",
-        error: expect.stringContaining("orphaned"),
-      });
-      expect(resumed?.collectorLaunchCleanupPending).toBeUndefined();
+      // Upstream #185730 restores rows as history and reconstructs no child execution, so
+      // the crash-restored running collector is neither settled as orphaned nor failed.
+      const restored = durable().get(gatewayRunId);
+      expect(restored?.launchDispatch).toBeUndefined();
+      expect(restored?.execution.status).toBe("running");
+      expect(restored?.execution.outcome).toBeUndefined();
+      expect(restored?.collectorLaunchCleanupPending).toBeUndefined();
     } else {
       // Not landed: the dispatched marker fails closed instead of relaunching.
       expect(successfulAborts).toEqual([runId]);
@@ -294,14 +286,11 @@ it.each(["started", "rolled-back"] as const)(
     expect(deferredWhileArmed?.execution.outcome).toBeUndefined();
     if (outcome === "started") {
       expect(result).toBeUndefined();
-      // The start transition disarmed the launch and replayed the deferred resume.
-      await vi.waitFor(() =>
-        expect(subagentRuns.get(gatewayRunId)?.execution.outcome).toMatchObject({
-          status: "error",
-          error: expect.stringContaining("orphaned"),
-        }),
-      );
+      // The start transition disarmed the launch and replayed the deferred resume. Upstream
+      // #185730 settles no orphan on resume, so the started child stays with its live owner.
       expect(subagentRuns.get(gatewayRunId)?.launchDispatch).toBeUndefined();
+      expect(subagentRuns.get(gatewayRunId)?.execution.status).toBe("running");
+      expect(subagentRuns.get(gatewayRunId)?.execution.outcome).toBeUndefined();
     } else {
       expect(result).toBeInstanceOf(Error);
       // Rolled back: the launch is settled as failed, never orphan-completed.

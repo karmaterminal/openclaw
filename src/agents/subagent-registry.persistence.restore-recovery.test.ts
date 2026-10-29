@@ -28,7 +28,6 @@ import {
   settleSubagentRegistryPersistenceWork,
   writeSubagentSessionEntry,
 } from "./subagents/registry/subagent-registry.persistence.test-support.js";
-import type { SubagentRunFixture } from "./subagents/registry/subagent-registry.persistence.test-support.js";
 import {
   activateSubagentRegistry,
   getLatestSubagentRunByChildSessionKey,
@@ -129,42 +128,9 @@ describe("subagent registry persistence", () => {
     }
   };
 
-  const createPersistedEndedRun = (params: {
-    runId: string;
-    childSessionKey: string;
-    task: string;
-    cleanup: "keep" | "delete";
-  }) => {
-    const now = Date.now();
-    return {
-      version: 2,
-      runs: {
-        [params.runId]: {
-          runId: params.runId,
-          childSessionKey: params.childSessionKey,
-          requesterSessionKey: "agent:main:main",
-          requesterDisplayKey: "main",
-          task: params.task,
-          cleanup: params.cleanup,
-          createdAt: now - 2,
-          startedAt: now - 1,
-          endedAt: now,
-          expectsCompletionMessage: false,
-        },
-      },
-    };
-  };
-
   const flushQueuedRegistryWork = async () => {
     await Promise.resolve();
     await Promise.resolve();
-  };
-
-  const waitForRegistryWork = async (predicate: () => boolean | Promise<boolean>) => {
-    await vi.waitFor(async () => expect(await predicate()).toBe(true), {
-      interval: 1,
-      timeout: 5_000,
-    });
   };
 
   const readPersistedRuns = () => loadSubagentRegistryFromSqlite();
@@ -243,76 +209,6 @@ describe("subagent registry persistence", () => {
         suppressAnnounceReason: "killed",
       }),
     ]);
-  });
-
-  it("settles stale unended restored runs that are not restart-recoverable", async () => {
-    const now = Date.now();
-    const runId = "run-stale-unended-restore";
-    const childSessionKey = "agent:main:subagent:stale-unended-restore";
-    await writePersistedRegistry({
-      version: 2,
-      runs: {
-        [runId]: {
-          runId,
-          childSessionKey,
-          requesterSessionKey: "agent:main:main",
-          requesterDisplayKey: "main",
-          task: "stale unended restored work",
-          cleanup: "keep",
-          createdAt: now - 3 * 60 * 60 * 1_000,
-          startedAt: now - 3 * 60 * 60 * 1_000,
-          expectsCompletionMessage: false,
-        },
-      },
-    });
-
-    await restartRegistry();
-    await waitForRegistryWork(
-      () => readPersistedRuns().get(runId)?.cleanupCompletedAt !== undefined,
-    );
-    await settleSubagentRegistryPersistenceWork();
-
-    expect(callGateway).not.toHaveBeenCalled();
-    expect(readPersistedRuns().get(runId)?.execution).toMatchObject({
-      status: "terminal",
-      outcome: { status: "error", error: "subagent run orphaned: stale-unended-run" },
-    });
-  });
-
-  it("settles orphaned restored runs without traversing legacy attachment paths", async () => {
-    tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-subagent-"));
-    setTestEnvValue("OPENCLAW_STATE_DIR", tempStateDir);
-    const attachmentsRootDir = path.join(tempStateDir, "attachments");
-    const attachmentsDir = path.join(attachmentsRootDir, "ghost");
-    await fs.mkdir(attachmentsDir, { recursive: true });
-    await fs.writeFile(path.join(attachmentsDir, "artifact.txt"), "artifact", "utf8");
-
-    const persisted = createPersistedEndedRun({
-      runId: "run-orphan-attachments",
-      childSessionKey: "agent:main:subagent:ghost-attachments",
-      task: "orphan attachments",
-      cleanup: "delete",
-    });
-    Object.assign(persisted.runs["run-orphan-attachments"] as Record<string, unknown>, {
-      attachmentsRootDir,
-      attachmentsDir,
-    });
-
-    saveSubagentRegistryToSqlite(
-      canonicalSubagentRunFixtures(
-        new Map(Object.entries(persisted.runs as Record<string, SubagentRunFixture>)),
-      ),
-    );
-
-    await restartRegistry();
-    await settleSubagentRegistryPersistenceWork();
-    await waitForRegistryWork(async () => !readPersistedRuns().has("run-orphan-attachments"));
-
-    expect(readPersistedRuns().has("run-orphan-attachments")).toBe(false);
-    // Legacy attachment paths are untrusted and retired without traversal (upstream #146600).
-    await expect(fs.readFile(path.join(attachmentsDir, "artifact.txt"), "utf8")).resolves.toBe(
-      "artifact",
-    );
   });
 
   it("prefers active runs and can resolve them from persisted registry snapshots", async () => {

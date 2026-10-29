@@ -24,6 +24,7 @@ import type {
   RegisterSubagentRunParams,
   SubagentRegistrationIdentity,
 } from "./subagent-registry-run-launch.js";
+import { takeDeferredArmedSubagentResume } from "./subagent-registry-spawn-acceptance.js";
 import {
   loadSubagentRegistryFromSqlite,
   saveSubagentRegistryToSqlite,
@@ -444,13 +445,11 @@ describe("armed registration: accepted-spawn custody (H1)", () => {
       await quiesce();
       if (confirm) {
         expect(result.ok).toBe(true);
-        // The deferred resume replays exactly one orphan completion.
-        await vi.waitFor(() =>
-          expect(liveRow()?.execution.outcome).toMatchObject({
-            status: "error",
-            error: expect.stringContaining("orphaned"),
-          }),
-        );
+        // Confirmation replays the deferred resume exactly once. Upstream #185730 settles no
+        // orphan on resume, so the confirmed child stays with its live owner.
+        expect(takeDeferredArmedSubagentResume(liveRow()!)).toBe(false);
+        expect(liveRow()?.execution.status).toBe("running");
+        expect(liveRow()?.execution.outcome).toBeUndefined();
       } else {
         expect(result.ok).toBe(false);
         expect(liveRow()).toBeUndefined();
