@@ -73,21 +73,14 @@ vi.mock("../plugins/hook-runner-global.js", () => ({
   }),
 }));
 
-import { resolveContinuationRuntimeConfig } from "../auto-reply/continuation/config.js";
 import {
   listCustodyRecordsForTest,
   useContinuationCustodyTestState,
 } from "../auto-reply/continuation/custody/custody.test-support.js";
 import { resetDelegateDispatchHedgesForTests } from "../auto-reply/continuation/delegate-dispatch-hedge.js";
 import { findContinuationDelegateFlowByOriginRun } from "../auto-reply/continuation/delegate-store.js";
-import {
-  hasLiveContinuationTimerRefs,
-  loadContinuationChainState,
-} from "../auto-reply/continuation/state.js";
-import {
-  resetContinuationWorkDispatchForTests,
-  scheduleContinuationWork,
-} from "../auto-reply/continuation/work-dispatch.js";
+import { hasLiveContinuationTimerRefs } from "../auto-reply/continuation/state.js";
+import { resetContinuationWorkDispatchForTests } from "../auto-reply/continuation/work-dispatch.js";
 import {
   consumePendingWork,
   markPendingWorkDelivered,
@@ -109,6 +102,7 @@ import type { SessionEntry } from "../config/sessions/types.js";
 import { resolveSystemEventQueueKey } from "../infra/system-event-ownership.js";
 import { drainSystemEventEntries, peekSystemEventEntries } from "../infra/system-events.js";
 import { defaultRuntime } from "../runtime.js";
+import { scheduleSpawnInitContinueWorkWake } from "./command/attempt-execution.continue-work.js";
 import { SessionManager } from "./sessions/session-manager.js";
 import { runSubagentAnnounceFlow } from "./subagents/announce/subagent-announce.js";
 import { publishAnnounceRunFixture } from "./subagents/announce/subagent-announce.test-support.js";
@@ -385,35 +379,52 @@ describe("subagent announce continuation chaining", () => {
     },
   );
 
+  async function liveWorkRecords(childSessionKey: string) {
+    return await listCustodyRecordsForTest({
+      ownerSessionKey: childSessionKey,
+      kinds: ["work"],
+      statuses: ["queued", "running"],
+    });
+  }
+
   it("leaves a registered child's recorded CONTINUE_WORK to the wake its own turn ran", async () => {
-    // R-CW-TOKEN: the child's own turn parks the CONTINUE_WORK it recorded. An announce that reads
-    // the recorded answer after that wake already ran has no live work to dedupe against.
+    // R-CW-TOKEN: the child's own turn records its CONTINUE_WORK under its run id. An announce
+    // that reads the recorded answer after that wake already ran has no live work to dedupe.
     const childSessionKey = "agent:main:subagent:recorded-work";
     await announceRecordedChildAnswer(
       childSessionKey,
       ["Research complete.\n\nCONTINUE_WORK:5"],
       async (childRunId) => {
-        const ownTurn = await scheduleContinuationWork({
+        const storePath = resolveSessionStorePathCore(undefined, { agentId: "main" });
+        await scheduleSpawnInitContinueWorkWake({
           sessionKey: childSessionKey,
-          chainState: loadContinuationChainState(undefined),
-          request: { delaySeconds: 0, reason: "own turn CONTINUE_WORK" },
-          config: resolveContinuationRuntimeConfig(makeBaseConfig()),
-          parentRunId: childRunId,
+          sessionEntry: undefined,
+          storePath,
+          requests: [{ reason: "", delaySeconds: 5 }],
+          cfg: makeBaseConfig(),
+          runResult: { payloads: [], meta: { durationMs: 1 } },
+          originRunId: childRunId,
+          originTurnId: `${childSessionKey}-session`,
         });
-        expect(ownTurn.scheduled).toBe(true);
+        // Run the wake once it is due; only the clock moves, so its own timer stays unfired.
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(Date.now() + 6_000);
         const [wake] = await consumePendingWork(childSessionKey);
         const delivered = await markPendingWorkDelivered(expectDefined(wake, "own-turn wake"));
         expect(delivered.applied && (await markPendingWorkTurnGranted(delivered.work))).toBe(true);
+        vi.useRealTimers();
       },
     );
 
-    expect(
-      await listCustodyRecordsForTest({
-        ownerSessionKey: childSessionKey,
-        kinds: ["work"],
-        statuses: ["queued", "running"],
-      }),
-    ).toEqual([]);
+    expect(await liveWorkRecords(childSessionKey)).toEqual([]);
+  });
+
+  it("arms a registered child's recorded CONTINUE_WORK when its own turn did not", async () => {
+    // A CLI-backed child's own turn never parses continuation signals; the announce owns its token.
+    const childSessionKey = "agent:main:subagent:recorded-work-unarmed";
+    await announceRecordedChildAnswer(childSessionKey, ["Research complete.\n\nCONTINUE_WORK:5"]);
+
+    expect(await liveWorkRecords(childSessionKey)).toHaveLength(1);
   });
 
   it("rejects the ownerless multi-agent completion base before delegate admission", async () => {
