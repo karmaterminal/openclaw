@@ -15,12 +15,9 @@ import {
   upsertSessionEntryCore,
 } from "../config/sessions/session-accessor.js";
 import { addSessionMember, removeSessionMember } from "../config/sessions/session-sharing-store.js";
-import type { RestartSentinelPayload } from "../infra/restart-sentinel.js";
 import { resolveSystemEventQueueKey } from "../infra/system-event-ownership.js";
 import { openOpenClawAgentDatabase } from "../state/openclaw-agent-db.js";
 import { closeOpenClawStateDatabaseAsync } from "../state/openclaw-state-db.js";
-import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
-import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
 import {
   createGatewaySchedulerClock,
   createTestGatewayScheduler,
@@ -33,12 +30,10 @@ import { configureRestartSessionEventMocks } from "./server-restart-sentinel.tes
 import * as restartUpdateRun from "./server-restart-update-run.js";
 
 const { mocks } = await import("./server-restart-sentinel.mocks.test-harness.js");
-type LoadedSessionEntry = ReturnType<typeof mocks.loadSessionEntry>;
 
 vi.resetModules();
 
-const { deliverQueuedSessionDelivery, scheduleRestartSentinelWake } =
-  await import("./server-restart-sentinel.js");
+const { deliverQueuedSessionDelivery } = await import("./server-restart-sentinel.js");
 const { resetGatewayWorkAdmission } = await import("../process/gateway-work-admission.js");
 const actualRestartUpdateRun = await vi.importActual<
   typeof import("./server-restart-update-run.js")
@@ -48,65 +43,11 @@ const { isSessionRecipientAuthorityCurrentInWorker: isActualSessionRecipientAuth
     "../config/sessions/session-recipient-authority-current.js",
   );
 
-function mockRestartContinuation(
-  continuation: NonNullable<RestartSentinelPayload["continuation"]>,
-  threadId?: string,
-  revision?: number,
-) {
-  mocks.readRestartSentinel.mockResolvedValue({
-    ...(revision === undefined ? {} : { version: 1, revision }),
-    payload: {
-      sessionKey: "agent:main:main",
-      deliveryContext: {
-        channel: "whatsapp",
-        to: "+15550002",
-        accountId: "acct-2",
-      },
-      ...(threadId === undefined ? {} : { threadId }),
-      ts: 123,
-      continuation,
-    },
-  } as Awaited<ReturnType<typeof mocks.readRestartSentinel>>);
-}
-
-async function getEnqueuedSessionDeliveryId(callIndex: number): Promise<string> {
-  const result = mocks.enqueueSessionDelivery.mock.results[callIndex];
-  if (!result || result.type !== "return") {
-    throw new Error(`missing enqueueSessionDelivery result at index ${callIndex}`);
-  }
-  const id = await result.value;
-  if (typeof id !== "string") {
-    throw new Error(`invalid enqueueSessionDelivery result at index ${callIndex}`);
-  }
-  return id;
-}
-
-function sessionFixture(
-  canonicalKey: string,
-  entry: LoadedSessionEntry["entry"],
-  overrides: Partial<LoadedSessionEntry> = {},
-): LoadedSessionEntry {
-  return {
-    cfg: {},
-    entry,
-    store: {},
-    storePath: "/tmp/sessions.json",
-    canonicalKey,
-    storeKeys: [canonicalKey],
-    legacyKey: undefined,
-    ...overrides,
-  };
-}
-
 let clock: ReturnType<typeof createGatewaySchedulerClock>;
 let scheduler: ReturnType<typeof createTestGatewayScheduler>;
 let testState: OpenClawTestState;
 
-function wakeRestartSentinel() {
-  return scheduleRestartSentinelWake({ scheduler, signal: scheduler.signal, deps: {} });
-}
-
-describe("scheduleRestartSentinelWake", () => {
+describe("restart recovery of queued continuation deliveries", () => {
   afterEach(async () => {
     clearRuntimeConfigSnapshot();
     await scheduler.stop();
@@ -284,45 +225,6 @@ describe("scheduleRestartSentinelWake", () => {
     expect(mocks.loadSessionEntry).not.toHaveBeenCalled();
   });
 
-  it("rejects an adopted turn when its captured queue admission retires", async () => {
-    let current = true;
-    const captured = captureOpenClawStateWorkerContext();
-    const capturedQueueContext = {
-      ...captured,
-      admission: {
-        ...captured.admission,
-        assertCurrent: () => {
-          if (!current) {
-            throw new Error("captured queue admission retired");
-          }
-        },
-      },
-    } satisfies OpenClawStateWorkerContext;
-    mocks.markSessionDeliveryAttemptStarted.mockImplementationOnce(async () => {
-      current = false;
-    });
-    mocks.recordInboundSessionAndDispatchReply.mockImplementationOnce(async (params) => {
-      await params.turnAdoptionLifecycle?.onAdopted();
-    });
-
-    await expect(
-      deliverQueuedSessionDelivery({
-        deps: {} as never,
-        queueContext: capturedQueueContext,
-        entry: {
-          id: "session-delivery-retired-admission",
-          kind: "agentTurn",
-          sessionKey: "agent:main:main",
-          message: "continue",
-          messageId: "restart-sentinel:retired-admission",
-          enqueuedAt: 1,
-          retryCount: 0,
-          route: { channel: "discord", to: "channel:123", chatType: "channel" },
-        },
-      }),
-    ).rejects.toThrow("captured queue admission retired");
-  });
-
   it("replays a bound logical recipient after a session id rollover", async () => {
     const recipientAuthority = await captureSessionRecipientAuthority({
       agentId: "main",
@@ -485,23 +387,29 @@ describe("scheduleRestartSentinelWake", () => {
         kind: "systemEvent",
         sessionKey: "agent:main:main",
         text: "continue after restart",
+        // Real continuation returns are written awaiting prompt adoption (targeting.ts);
+        // upstream #185730 leaves plain legacy system-event rows inert.
+        awaitPromptAdoption: true,
         enqueuedAt: 1,
         retryCount: 0,
       }) as const;
 
-    await deliverQueuedSessionDelivery({
-      deps: {} as never,
-      entry: createEntry("session-delivery-a"),
-      stateDir: "/tmp/restart-delivery-state",
-    });
-    await deliverQueuedSessionDelivery({
-      deps: {} as never,
-      entry: createEntry("session-delivery-b"),
-      stateDir: "/tmp/restart-delivery-state",
-    });
+    // Each row is queued as a system event, then deferred until its prompt adopts it.
+    for (const id of ["session-delivery-a", "session-delivery-b"]) {
+      await expect(
+        deliverQueuedSessionDelivery({
+          deps: {} as never,
+          entry: createEntry(id),
+          stateDir: "/tmp/restart-delivery-state",
+        }),
+      ).rejects.toMatchObject({
+        name: "SessionDeliveryDeferredError",
+        awaitingAdoptionInMemory: true,
+      });
+    }
 
-    // Each durable row keeps its own occurrence identity in the session event.
-    expect(mocks.enqueueSessionEvent).toHaveBeenNthCalledWith(
+    // Each durable row keeps its own occurrence identity in the queued event.
+    expect(mocks.enqueueSystemEvent).toHaveBeenNthCalledWith(
       1,
       "continue after restart",
       expect.objectContaining({
@@ -509,7 +417,7 @@ describe("scheduleRestartSentinelWake", () => {
         contextKey: "task:restart-sentinel:session-delivery-a",
       }),
     );
-    expect(mocks.enqueueSessionEvent).toHaveBeenNthCalledWith(
+    expect(mocks.enqueueSystemEvent).toHaveBeenNthCalledWith(
       2,
       "continue after restart",
       expect.objectContaining({
@@ -586,177 +494,6 @@ describe("scheduleRestartSentinelWake", () => {
       }),
     ).rejects.toThrow(/recipient owner (is unavailable|mismatches)/);
     expect(mocks.enqueueSystemEvent).not.toHaveBeenCalled();
-    expect(mocks.requestContinuationWake).not.toHaveBeenCalled();
-  });
-
-  it("does not dispatch a queued agentTurn continuation after the session key changes", async () => {
-    const activeEntry: LoadedSessionEntry = {
-      cfg: { commands: { ownerAllowFrom: ["+15550002"] } },
-      entry: {
-        sessionId: "old-session-id",
-        updatedAt: Date.now(),
-      },
-      store: {},
-      storePath: "/tmp/sessions.json",
-      canonicalKey: "agent:main:main",
-      storeKeys: ["agent:main:main"],
-      legacyKey: undefined,
-    };
-    const replacementEntry: LoadedSessionEntry = {
-      cfg: { commands: { ownerAllowFrom: ["+15550002"] } },
-      entry: {
-        sessionId: "new-session-id",
-        updatedAt: Date.now(),
-        status: "done",
-        endedAt: Date.now() - 1_000,
-      },
-      store: {},
-      storePath: "/tmp/sessions.json",
-      canonicalKey: "agent:main:main",
-      storeKeys: ["agent:main:main"],
-      legacyKey: undefined,
-    };
-    mockRestartContinuation(
-      {
-        kind: "agentTurn",
-        message: "continue after restart",
-      },
-      "thread-42",
-    );
-    mocks.loadSessionEntry.mockReturnValueOnce(activeEntry).mockReturnValue(replacementEntry);
-
-    await wakeRestartSentinel();
-
-    expect(mocks.enqueueSessionDelivery).toHaveBeenCalledTimes(1);
-    expect(mocks.recordInboundSessionAndDispatchReply).not.toHaveBeenCalled();
-    // A plain restart continuation runs as an ordinary session event (#167113).
-    expect(mocks.enqueueSessionEvent).toHaveBeenCalledWith(
-      "continue after restart",
-      expect.objectContaining({
-        sessionKey: "agent:main:main",
-        source: "restart",
-        contextKey: `task:restart-sentinel:${await getEnqueuedSessionDeliveryId(0)}`,
-        deliveryContext: {
-          channel: "whatsapp",
-          to: "+15550002",
-          accountId: "acct-2",
-          threadId: "thread-42",
-        },
-      }),
-    );
-    expect(mocks.enqueueSystemEvent).not.toHaveBeenCalled();
-    expect(mocks.logWarn).toHaveBeenCalledWith("restart continuation skipped: session changed", {
-      sessionKey: "agent:main:main",
-      queueId: expect.any(String),
-      expectedSessionId: "old-session-id",
-      actualSessionId: "new-session-id",
-    });
-  });
-
-  it("prefers top-level sentinel threadId for wake routing context", async () => {
-    // Legacy or malformed sentinel JSON can still carry a nested threadId.
-    mocks.readRestartSentinel.mockResolvedValue({
-      payload: {
-        sessionKey: "agent:main:main",
-        deliveryContext: {
-          channel: "whatsapp",
-          to: "+15550002",
-          accountId: "acct-2",
-          threadId: "stale-thread",
-        } as never,
-        threadId: "fresh-thread",
-      },
-    } as unknown as Awaited<ReturnType<typeof mocks.readRestartSentinel>>);
-
-    await wakeRestartSentinel();
-
-    expect(mocks.enqueueSessionEvent).toHaveBeenCalledWith(
-      "restart message",
-      expect.objectContaining({
-        sessionKey: "agent:main:main",
-        contextKey: `task:restart-sentinel:${await getEnqueuedSessionDeliveryId(0)}`,
-        deliveryContext: {
-          channel: "whatsapp",
-          to: "+15550002",
-          accountId: "acct-2",
-          threadId: "fresh-thread",
-        },
-      }),
-    );
-  });
-
-  it("still delivers systemEvent continuations for completed run entries", async () => {
-    mockRestartContinuation(
-      {
-        kind: "systemEvent",
-        text: "continue after restart",
-      },
-      "thread-42",
-    );
-    mocks.loadSessionEntry.mockReturnValue(
-      sessionFixture(
-        "agent:main:main",
-        {
-          sessionId: "agent:main:main",
-          updatedAt: Date.now(),
-          status: "done",
-          endedAt: Date.now() - 1_000,
-        },
-        { cfg: { commands: { ownerAllowFrom: ["+15550002"] } } },
-      ),
-    );
-
-    await wakeRestartSentinel();
-
-    expect(mocks.enqueueSessionEvent).toHaveBeenNthCalledWith(
-      2,
-      "continue after restart",
-      expect.objectContaining({
-        sessionKey: "agent:main:main",
-        contextKey: `task:restart-sentinel:${await getEnqueuedSessionDeliveryId(1)}`,
-        deliveryContext: {
-          channel: "whatsapp",
-          to: "+15550002",
-          accountId: "acct-2",
-          threadId: "thread-42",
-        },
-      }),
-    );
-    expect(mocks.recordInboundSessionAndDispatchReply).not.toHaveBeenCalled();
-    expect(mocks.logWarn).not.toHaveBeenCalledWith(
-      "restart continuation skipped: session changed",
-      expect.anything(),
-    );
-  });
-
-  it("hands both the restart notice and a systemEvent continuation to session execution", async () => {
-    mockRestartContinuation(
-      {
-        kind: "systemEvent",
-        text: "continue after restart",
-      },
-      "thread-42",
-    );
-
-    await wakeRestartSentinel();
-
-    expect(mocks.enqueueSessionEvent).toHaveBeenCalledTimes(2);
-    expect(mocks.enqueueSessionEvent).toHaveBeenNthCalledWith(
-      2,
-      "continue after restart",
-      expect.objectContaining({
-        agentId: "main",
-        sessionKey: "agent:main:main",
-        contextKey: `task:restart-sentinel:${await getEnqueuedSessionDeliveryId(1)}`,
-        deliveryContext: {
-          channel: "whatsapp",
-          to: "+15550002",
-          accountId: "acct-2",
-          threadId: "thread-42",
-        },
-      }),
-    );
-    // Plain notices take no continuation wake (#167113).
     expect(mocks.requestContinuationWake).not.toHaveBeenCalled();
   });
 });
