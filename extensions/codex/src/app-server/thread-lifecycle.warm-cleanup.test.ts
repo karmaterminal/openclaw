@@ -53,10 +53,14 @@ setupRunAttemptTestHooks({ isolateNativeSkillHome: true });
 
 describe("Codex warm subscription cleanup", () => {
   it("releases a warm claim when lease settlement fails after preparation", async () => {
-    const params = createParams(
-      path.join(tempDir, "warm-lease-loss.jsonl"),
-      path.join(tempDir, "workspace"),
-    );
+    const params = {
+      ...createRunAttemptParams(
+        path.join(tempDir, "warm-lease-loss.jsonl"),
+        path.join(tempDir, "workspace"),
+      ),
+      disableTools: false,
+      config: undefined,
+    };
     const threadId = "warm-lease-loss-thread";
     const fixture = await createLeasedCodexLifecycleHarness({
       agentDir: path.join(tempDir, "agent"),
