@@ -92,7 +92,10 @@ import type { SessionEntry } from "../config/sessions/types.js";
 import { resolveSystemEventQueueKey } from "../infra/system-event-ownership.js";
 import { drainSystemEventEntries, peekSystemEventEntries } from "../infra/system-events.js";
 import { defaultRuntime } from "../runtime.js";
+import { SessionManager } from "./sessions/session-manager.js";
 import { runSubagentAnnounceFlow } from "./subagents/announce/subagent-announce.js";
+import { publishAnnounceRunFixture } from "./subagents/announce/subagent-announce.test-support.js";
+import { subagentRuns } from "./subagents/registry/subagent-registry-memory.js";
 import * as subagentSpawn from "./subagents/spawn/subagent-spawn.js";
 
 /**
@@ -189,6 +192,7 @@ describe("subagent announce continuation chaining", () => {
     vi.useRealTimers();
     resetDelegateDispatchHedgesForTests();
     spawnSpy.mockRestore();
+    subagentRuns.clear();
     clearRuntimeConfigSnapshot();
   });
 
@@ -277,6 +281,67 @@ describe("subagent announce continuation chaining", () => {
     expect(mocked.spawnSubagentDirectMock.mock.calls[0]?.[0]).toMatchObject({
       task: expect.stringContaining("[continuation:chain-hop:1]"),
     });
+  });
+
+  it("dispatches the bracket delegate from a registered child's recorded final answer", async () => {
+    // Production shape (#1499): the announce reads the child's answer from its registry run and
+    // transcript, not from roundOneReply. The terminal reply evidence is the visible text; only
+    // the raw transcript message still carries the bracket.
+    const childSessionKey = "agent:main:subagent:recorded-bracket";
+    const childRunId = `${childSessionKey}-run`;
+    const sessionId = `${childSessionKey}-session`;
+    const storePath = resolveSessionStorePathCore(undefined, { agentId: "main" });
+    await replaceSessionEntry(
+      { agentId: "main", sessionKey: childSessionKey, storePath },
+      { sessionId, updatedAt: Date.now() },
+    );
+    const transcript = await SessionManager.openAsync({
+      agentId: "main",
+      sessionId,
+      sessionKey: childSessionKey,
+      storePath,
+    });
+    await transcript.appendMessageAsync({
+      role: "assistant",
+      content: [
+        { type: "text", text: "Research complete.\n\n[[CONTINUE_DELEGATE: verify the findings]]" },
+      ],
+      stopReason: "stop",
+      timestamp: Date.now(),
+      __openclaw: { runId: childRunId },
+    } as Parameters<SessionManager["appendMessageAsync"]>[0]);
+    const terminalReply = { disposition: "visible", text: "Research complete." } as const;
+    publishAnnounceRunFixture({
+      runId: childRunId,
+      childSessionKey,
+      requesterSessionKey: "agent:main:main",
+      requesterDisplayKey: "main",
+      task: "research the topic",
+      cleanup: "keep",
+      createdAt: 10,
+      execution: { endedAt: 20, outcome: { status: "ok" } },
+      completion: { required: false, terminalReply },
+    });
+
+    await runSubagentAnnounceFlow({
+      childSessionKey,
+      childRunId,
+      requesterSessionKey: "agent:main:main",
+      requesterOrigin: { channel: "discord", to: "channel:123" },
+      task: "research the topic",
+      terminalReply,
+      timeoutMs: 10,
+      cleanup: "keep",
+      startedAt: 10,
+      endedAt: 20,
+      outcome: { status: "ok" },
+      silentAnnounce: true,
+    });
+
+    expect(mocked.spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    const spawned = mocked.spawnSubagentDirectMock.mock.calls[0]?.[0] as { task?: string };
+    expect(spawned.task).toContain("[continuation:chain-hop:1]");
+    expect(spawned.task).toContain("verify the findings");
   });
 
   it("rejects the ownerless multi-agent completion base before delegate admission", async () => {
