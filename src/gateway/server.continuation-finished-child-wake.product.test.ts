@@ -488,7 +488,7 @@ it("returns a bare CONTINUE_WORK child's next-turn answer to its parent, running
     console.log(
       `[finished-child-token-wake] ${JSON.stringify({ parentSaw, hopTwoTurns, workRows })}`,
     );
-    expect(parentSaw).toContain("hop-2");
+    expect(parentSaw).toEqual(["hop-1", "hop-2"]);
     expect(hopTwoTurns).toBe(1);
     expect(workRows).toHaveLength(1);
   } finally {

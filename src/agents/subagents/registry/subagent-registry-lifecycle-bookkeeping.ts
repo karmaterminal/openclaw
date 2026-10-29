@@ -132,7 +132,8 @@ export async function completeCleanupBookkeeping(
   // Continuation (karmaterminal): live continuation custody owns same-session re-entry, and the
   // session cleanup guard keeps a delete-mode child for it. Keep the row as well, so the work's
   // wake turn can reactivate the completed child and announce its answer. A run that leaves no
-  // live custody retires at settle as before; a kept row falls to the delete-mode TTL sweep.
+  // live custody retires at settle as before; a kept row falls to the archive sweep, which also
+  // waits while continuation work is live.
   const continuationRetainsRow =
     isDeleteCleanup && (await hasLiveContinuationCustody(entry.childSessionKey));
   let retireAfterSettle = false;
