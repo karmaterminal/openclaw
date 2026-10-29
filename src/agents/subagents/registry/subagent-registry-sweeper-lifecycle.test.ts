@@ -58,7 +58,8 @@ it.each([
       callGateway.mockImplementationOnce(() => cleanup.promise);
       sweeper.start();
       await vi.advanceTimersByTimeAsync(60_000);
-      expect(callGateway).toHaveBeenCalledOnce();
+      // Continuation: the cleanup guard reads durable custody before the delete is sent.
+      await vi.waitFor(() => expect(callGateway).toHaveBeenCalledOnce());
       expect(getActiveGatewayRootWorkCount()).toBe(1);
 
       let retired = false;
