@@ -7,7 +7,6 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { createDeferred } from "../../../test/helpers/promise.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import type { InternalSessionEntry as SessionEntry } from "../../config/sessions.js";
-import { loadSessionEntry } from "../../config/sessions/session-accessor.js";
 import { testing as sessionBindingTesting } from "../../infra/outbound/session-binding-service.js";
 import { resetSystemEventsForTest } from "../../infra/system-events.js";
 import { createReplyOperation } from "../../sessions/session-controller.js";

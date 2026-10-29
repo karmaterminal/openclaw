@@ -18,10 +18,7 @@ import {
   withEnvAsync,
 } from "../test-utils/env.js";
 import { cleanupSessionStateForTest } from "../test-utils/session-state-cleanup.js";
-import {
-  loadSubagentRegistryFromSqlite,
-  saveSubagentRegistryToSqlite,
-} from "./subagents/registry/subagent-registry-state.fixture.test-support.js";
+import { saveSubagentRegistryToSqlite } from "./subagents/registry/subagent-registry-state.fixture.test-support.js";
 import { activateSubagentPersistenceRegistry } from "./subagents/registry/subagent-registry.persistence-fixture.test-support.js";
 import {
   canonicalSubagentRunFixtures,
@@ -48,8 +45,7 @@ vi.mock("./subagents/announce/subagent-announce.js", () => ({
 }));
 
 // No persistence redirect: upstream (14fe10d01c) deleted persistSubagentRunsToDisk,
-// and every registry write now goes through mutateSubagentRuns to the real SQLite
-// worker, which is the store readPersistedRuns() inspects.
+// and every registry write now goes through mutateSubagentRuns to the real SQLite worker.
 
 function expectFields(value: unknown, expected: Record<string, unknown>): void {
   if (!value || typeof value !== "object") {
@@ -132,8 +128,6 @@ describe("subagent registry persistence", () => {
     await Promise.resolve();
     await Promise.resolve();
   };
-
-  const readPersistedRuns = () => loadSubagentRegistryFromSqlite();
 
   const restartRegistry = async () => {
     await resetSubagentRegistryForTests({ persist: false });

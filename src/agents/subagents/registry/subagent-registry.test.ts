@@ -25,7 +25,6 @@ import {
   configureMockSubagentRegistryPersistence,
   createSessionEntry,
   createSubagentRunParams,
-  createSubagentRunRecord,
   mockGatewayMethods,
   waitForFast,
 } from "../../subagent-test-fixtures.test-helpers.js";

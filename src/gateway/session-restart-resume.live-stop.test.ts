@@ -46,7 +46,11 @@ it.each([
         id: "resume-event",
         accepted: Promise.resolve({ ok: true as const }),
         cancel: () => true,
-        settled: Promise.resolve({ status: "completed" as const, delivered: true }),
+        settled: Promise.resolve({
+          status: "completed" as const,
+          executionStarted: true,
+          delivered: true,
+        }),
       }));
     try {
       expect(getSessionControllerOperation(target.sessionKey)).toBe(operation);
