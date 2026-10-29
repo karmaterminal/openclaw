@@ -102,7 +102,7 @@ describe("session-delivery queue recovery", () => {
     sleepMock.mockResolvedValue(undefined);
   });
 
-  it("replays continuation trigger and trusted trace exactly once after restart", async () => {
+  it("recovers a produced-media row with its continuation trigger and trusted trace exactly once", async () => {
     await withSessionDeliveryQueue(async (tempDir, queueContext) => {
       await enqueueSessionDelivery(
         {
@@ -112,6 +112,8 @@ describe("session-delivery queue recovery", () => {
           messageId: "generated-media-restart",
           // The live writer is the produced-media handoff (subagent-announce-delivery.ts);
           // upstream #185730 recovers agentTurn rows only when they carry produced media.
+          // Its replay sends the media from the host and starts no model turn, so this proves
+          // the row's fields survive recovery, not that a continuation turn runs.
           expectedMediaUrls: ["/tmp/synthetic-image.png"],
           continuationTrigger: "delegate-return",
           traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
