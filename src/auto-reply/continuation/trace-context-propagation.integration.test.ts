@@ -271,6 +271,8 @@ describe("continuation trace-context propagation integration", () => {
           sessionKey: "agent:main:root",
           text: "[continuation:enrichment-return] replayed after restart",
           traceparent: carriedTraceparent,
+          // Continuation returns settle only on prompt adoption, as targeting.ts writes them.
+          awaitPromptAdoption: true,
         },
         captureContinuationQueueContext(tempDir),
       );

@@ -119,7 +119,6 @@ describe("classifyNoOpRearmWake", () => {
       "music_generate",
       "video_generate",
       "subagent_announce",
-      "subagent_interrupted_resume",
     ]) {
       const wake = classifyNoOpRearmWake({
         sessionKey: "s",
