@@ -97,6 +97,7 @@ export async function runCliFallbackCandidate(
     runId: params.runId,
     sessionKey: turn.sessionKey,
     startedAt: cliLifecycleStartedAt,
+    isContinuationWake: turn.isContinuationWake,
     getLifecycleGeneration: () => params.lifecycleGeneration,
     resolveTerminationFields: (error) =>
       resolveReplyOperationTerminationFields(error, params.runAbortSignal, turn.replyOperation),

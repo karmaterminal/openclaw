@@ -66,6 +66,8 @@ export function createAgentLifecycleTerminalBackstop(params: {
   runId: string;
   sessionKey?: string;
   startedAt?: number;
+  /** Continuation (karmaterminal): stamped on the terminal for the session lifecycle owner. */
+  isContinuationWake?: boolean;
   getLifecycleGeneration: () => string;
   onTerminalEvent?: (event: Parameters<typeof emitAgentEvent>[0]) => void;
   resolveTerminationFields: (error?: unknown) => {
@@ -123,6 +125,7 @@ export function createAgentLifecycleTerminalBackstop(params: {
       phase: restartAbort ? "end" : terminalPhase,
       endedAt: Date.now(),
       startedAt,
+      ...(params.isContinuationWake ? { continuationWake: true } : {}),
     };
     if (restartAbort) {
       data.aborted = true;

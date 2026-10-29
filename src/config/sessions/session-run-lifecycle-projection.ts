@@ -64,6 +64,7 @@ export type LifecycleEventLike = { ts: number; sessionId?: string } & {
     providerStarted?: unknown;
     yielded?: unknown;
     status?: unknown;
+    continuationWake?: unknown;
   };
 };
 
@@ -220,8 +221,11 @@ export function deriveSessionLifecycleSnapshot(params: {
     endedAt !== undefined
       ? { lastActivityAt: Math.max(existing?.lastActivityAt ?? 0, endedAt) }
       : {}),
-    // A superseded run handed the session to a newer writer; the next turn is not interrupted.
-    abortedLastRun: status === "killed" && terminal?.reason !== "superseded",
+    // Continuation (karmaterminal): a superseded continuation wake handed the session to a newer
+    // writer, so the next turn is not interrupted. Every other superseded run stays aborted.
+    abortedLastRun:
+      status === "killed" &&
+      !(terminal?.reason === "superseded" && params.event.data?.continuationWake === true),
   };
 }
 

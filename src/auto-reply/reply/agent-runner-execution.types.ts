@@ -152,6 +152,8 @@ export type AgentTurnParams = ReplyAgentTurnContext & {
   recoveryMemoryFlushAttempted?: boolean;
   /** The admitted queued delivery owner settles every terminal outcome. */
   completionSource?: "reply-dispatch";
+  /** Continuation (karmaterminal): get-reply-run's wake marker; queued follow-ups carry none. */
+  isContinuationWake?: boolean;
   replyThreading?: TemplateContext["ReplyThreading"];
   resolveVisibleReplyDelivery?: () => Promise<boolean>;
   typingSignals: TypingSignaler;

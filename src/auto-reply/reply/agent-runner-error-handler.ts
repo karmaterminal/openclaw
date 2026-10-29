@@ -80,6 +80,7 @@ export async function handleAgentExecutionError(params: {
         runId: params.runId,
         sessionKey: turn.sessionKey,
         startedAt: params.state.turnStartedAtMs,
+        isContinuationWake: turn.isContinuationWake,
         getLifecycleGeneration: () => params.state.lifecycleGeneration,
         resolveTerminationFields: (error) =>
           resolveReplyOperationTerminationFields(
