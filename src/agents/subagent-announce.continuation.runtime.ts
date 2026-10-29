@@ -197,8 +197,8 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
   targetRequesterOrigin?: DeliveryContext;
   task: string;
   findings: string;
-  /** Raw recorded answer behind rendered findings; rendering drops continuation brackets. */
-  continuationText?: string;
+  /** Raw recorded answer items behind rendered findings; rendering drops continuation brackets. */
+  continuationParts?: string[];
   skipAnnounceDelivery: boolean;
   silentAnnounce?: boolean;
   wakeOnReturn?: boolean;
@@ -246,10 +246,13 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
 
   let findings = params.findings;
   const isChain = accounting.isContinuationChainDelegate;
-  const continuationResult = stripContinuationSignal(params.continuationText ?? findings);
+  // Like the child's own turn, the last answer item that carries a bracket wins.
+  const continuationResult = (params.continuationParts ?? [findings])
+    .map((part) => stripContinuationSignal(part))
+    .findLast((result) => result.signal) ?? { text: findings, signal: null };
   // Rendered findings already omit the bracket; only raw findings need it stripped.
   const findingsWithoutSignal =
-    params.continuationText === undefined ? continuationResult.text || "(no output)" : findings;
+    params.continuationParts === undefined ? continuationResult.text || "(no output)" : findings;
   const deferInitialDrain = isChain && continuationResult.signal?.kind === "delegate";
   if (!deferInitialDrain) {
     await drainChildContinuationQueue({

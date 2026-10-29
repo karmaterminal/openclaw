@@ -1,6 +1,6 @@
 import { asOptionalObjectRecord, isRecord } from "@openclaw/normalization-core/record-coerce";
 import { isIncognitoSessionKey } from "../../../routing/session-key.js";
-import { resolveRawAssistantAnswerText } from "../../../shared/assistant-answer-text.js";
+import { resolveRawAssistantAnswerParts } from "../../../shared/assistant-answer-text.js";
 import { readTerminalSourceReplyDeliveryMirror } from "../../../shared/chat-message-content.js";
 import { truncateUtf16WithEllipsis } from "../../../shared/text-truncate.js";
 import {
@@ -35,10 +35,10 @@ export type PreparedAnnounceResult = {
   text: string | undefined;
   isCurrent: () => boolean;
   /**
-   * Continuation (karmaterminal): the recorded raw answer behind a rendered `text`. Rendering
-   * drops continuation brackets, which the announce continuation owner still parses.
+   * Continuation (karmaterminal): the recorded raw answer items behind a rendered `text`.
+   * Rendering drops continuation brackets, which the announce continuation owner still parses.
    */
-  continuationText?: string;
+  continuationParts?: string[];
 };
 
 type SubagentFinalAnswerDeps = Omit<SubagentAnnounceResultDeps, "readSubagentRun">;
@@ -79,7 +79,7 @@ export async function readSubagentRunAnnounceResultUsing(
   if (!resolveSubagentChildAgentId(child)) {
     return { text: capturedResult, isCurrent };
   }
-  const { answer, continuationText } = await readSubagentRunFinalMessageUsing(child, deps, () => {
+  const { answer, continuationParts } = await readSubagentRunFinalMessageUsing(child, deps, () => {
     if (!isCurrent()) {
       throw new SubagentAnnouncePreparationConflictError(
         "The completed child run's transcript identity changed during announcement.",
@@ -92,7 +92,7 @@ export async function readSubagentRunAnnounceResultUsing(
       isCurrent,
     };
   }
-  return { text: answer, isCurrent, ...(continuationText ? { continuationText } : {}) };
+  return { text: answer, isCurrent, ...(continuationParts?.length ? { continuationParts } : {}) };
 }
 
 /**
@@ -111,7 +111,7 @@ async function readSubagentRunFinalMessageUsing(
   child: SubagentRunRecord,
   deps: SubagentFinalAnswerDeps,
   assertCurrent?: () => void,
-): Promise<{ answer?: string; continuationText?: string }> {
+): Promise<{ answer?: string; continuationParts?: string[] }> {
   const runId = child.runId;
   const childAgentId = resolveSubagentChildAgentId(child);
   if (!childAgentId) {
@@ -156,7 +156,7 @@ async function readSubagentRunFinalMessageUsing(
     ).text;
     return {
       answer: answer || undefined,
-      continuationText: resolveRawAssistantAnswerText(assistant) || undefined,
+      continuationParts: resolveRawAssistantAnswerParts(assistant),
     };
   });
 }

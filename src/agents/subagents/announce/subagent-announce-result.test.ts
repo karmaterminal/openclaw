@@ -187,13 +187,18 @@ describe("exact-run announcement results", () => {
     },
   );
 
-  it("keeps continuation brackets out of the rendered answer but carries the raw answer", async () => {
-    const raw = "Research complete.\n\n[[CONTINUE_DELEGATE: verify the findings +10s]]";
+  it("keeps continuation brackets out of the rendered answer but carries the raw items", async () => {
+    const items = [
+      "Research complete. [[CONTINUE_DELEGATE: verify the findings +10s]]",
+      "Sources: notes.md",
+    ];
     const child = completedChild("Research complete.");
-    installTranscript([assistant(child.runId, raw)]);
+    const event = assistant(child.runId, "");
+    const content = items.map((text) => ({ type: "text", text }));
+    installTranscript([{ ...event, message: { ...event.message, content } }]);
     await expect(readResult(child)).resolves.toMatchObject({
-      text: "Research complete.",
-      continuationText: raw,
+      text: "Research complete.\nSources: notes.md",
+      continuationParts: items,
     });
   });
 
