@@ -1,38 +1,19 @@
-// Continuation return metadata across restart (split from
-// subagent-registry.persistence.test.ts under its line cap): the recorded return
-// fields survive the registry row and reach the replayed announce. Mocks, fixture and
-// restart wiring are that suite's.
+// Continuation return metadata (split from subagent-registry.persistence.test.ts under its
+// line cap): the recorded return fields persist on the registry row and reach the announce.
+// Mocks and fixture are that suite's.
 import { describe, expect, it, vi } from "vitest";
 import "./subagent-registry.mocks.shared.js";
 import "./subagent-registry.persistence.mocks.test-support.js";
 // Preserve module setup before modules that consume it.
 // oxfmt-ignore
-import { activateSubagentPersistenceRegistry, announceSpy, useSubagentPersistenceFixture } from "./subagent-registry.persistence-fixture.test-support.js";
+import { announceSpy, useSubagentPersistenceFixture } from "./subagent-registry.persistence-fixture.test-support.js";
 import { callGateway } from "../../../gateway/call.js";
-import {
-  loadSubagentRegistryFromSqlite,
-  saveSubagentRegistryToSqlite,
-} from "./subagent-registry-state.fixture.test-support.js";
-import {
-  prepareSubagentRequesterFixture,
-  writeSubagentSessionEntry,
-} from "./subagent-registry.persistence.test-support.js";
-import {
-  activateSubagentRegistry,
-  initSubagentRegistry,
-  registerSubagentRun,
-  resetSubagentRegistryForTests,
-} from "./subagent-registry.test-helpers.js";
+import { loadSubagentRegistryFromSqlite } from "./subagent-registry-state.fixture.test-support.js";
+import { writeSubagentSessionEntry } from "./subagent-registry.persistence.test-support.js";
+import { registerSubagentRun } from "./subagent-registry.test-helpers.js";
 
 describe("subagent registry persistence: continuation return", () => {
   const fixture = useSubagentPersistenceFixture();
-
-  const restartRegistry = async () => {
-    await resetSubagentRegistryForTests({ persist: false });
-    await initSubagentRegistry();
-    // Upstream (36e277d761) removed chatAbortControllers from the Gateway context.
-    await activateSubagentPersistenceRegistry({ activateSubagentRegistry }, callGateway);
-  };
 
   it("persists completion-time all-recipient authority selection on the authoritative run", async () => {
     await fixture.allocateStateDir();
@@ -102,23 +83,17 @@ describe("subagent registry persistence: continuation return", () => {
     ).toEqual(selectedBinding);
   });
 
-  it("persists continuation return metadata and replays it after restart", async () => {
+  it("persists continuation return metadata and carries it to the announce", async () => {
     await fixture.allocateStateDir();
     let releaseInitialWait:
       | ((value: { status: "ok"; startedAt: number; endedAt: number }) => void)
       | undefined;
-    vi.mocked(callGateway)
-      .mockImplementationOnce(
-        async () =>
-          await new Promise((resolve) => {
-            releaseInitialWait = resolve as typeof releaseInitialWait;
-          }),
-      )
-      .mockResolvedValueOnce({
-        status: "ok",
-        startedAt: 111,
-        endedAt: 222,
-      });
+    vi.mocked(callGateway).mockImplementationOnce(
+      async () =>
+        await new Promise((resolve) => {
+          releaseInitialWait = resolve as typeof releaseInitialWait;
+        }),
+    );
     await registerSubagentRun({
       runId: "run-silent",
       childSessionKey: "agent:main:subagent:silent-test",
@@ -186,40 +161,14 @@ describe("subagent registry persistence: continuation return", () => {
       },
       traceparent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
     });
-    // Upstream (37d210e4aa) replays a restored completion only under its original
-    // operator source; seed that source on the persisted row as upstream's restart
-    // fixtures do, so the replay owns announce authority.
-    const persisted = loadSubagentRegistryFromSqlite().get("run-silent");
-    if (!persisted) {
-      throw new Error("expected the persisted run-silent row");
-    }
-    const recoverable = structuredClone(persisted);
-    await prepareSubagentRequesterFixture(recoverable, { stateDir: fixture.stateDir });
-    saveSubagentRegistryToSqlite(new Map([[recoverable.runId, recoverable]]));
-    const restarted = restartRegistry();
+    // Upstream #185730 restores rows as history and replays no completion after restart; a
+    // graceful shutdown kills live children and resumes their root instead. The persisted
+    // metadata still reaches the announce when the child completes in this process.
     releaseInitialWait?.({
       status: "ok",
       startedAt: 111,
       endedAt: 222,
     });
-    await restarted;
-    // Wait on the DURABLE OUTCOME, not on the spy. Under the retired injection seam
-    // the announce dependency was reached with no intervening async hop, so polling
-    // the spy doubled as the trigger. The lazy module boundary adds hops, which made
-    // that poll a timing artefact rather than a behaviour check -- measured: at the
-    // 2s mark baseline and port are byte-identical (execution terminal, metadata
-    // intact, delivery pending, spy 0); given enough turns BOTH reach delivered.
-    // So gate on replay driving delivery terminal, then keep the original
-    // enriched-params assertion, which still holds once announce is reached.
-    await vi.waitFor(
-      () => {
-        const replayed = loadSubagentRegistryFromSqlite().get("run-silent") as
-          | { delivery?: { status?: string } }
-          | undefined;
-        expect(replayed?.delivery?.status).toBe("delivered");
-      },
-      { interval: 25, timeout: 20_000 },
-    );
     await vi.waitFor(() => {
       expect(announceSpy).toHaveBeenCalledWith(
         expect.objectContaining({
