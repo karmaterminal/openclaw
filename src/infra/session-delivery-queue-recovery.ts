@@ -18,6 +18,7 @@ import {
   moveSessionDeliveryToFailed,
 } from "./session-delivery-queue-storage.js";
 import {
+  isContinuationSessionDelivery,
   isProducedSessionDelivery,
   SessionDeliveryAcknowledgementFinalizeError,
   SessionDeliveryAttemptStartError,
@@ -275,7 +276,7 @@ export async function drainPendingSessionDelivery(
 ): Promise<QueuedSessionDelivery | null> {
   const claim = await recoveryCoordinator.withClaim(opts.id, async () => {
     const entry = await loadPendingSessionDelivery(opts.id, opts.queueContext);
-    if (!entry || !isProducedSessionDelivery(entry)) {
+    if (!entry || (!isProducedSessionDelivery(entry) && !isContinuationSessionDelivery(entry))) {
       return null;
     }
     const result = await processDrainedSessionDelivery(entry, opts, opts.bypassBackoff);
@@ -307,7 +308,7 @@ export async function recoverPendingSessionDeliveries(opts: {
   releaseSystemEventDeliveryAdoptionClaims(opts.queueContext.environment.OPENCLAW_STATE_DIR);
   const pending = (await loadPendingSessionDeliveries(opts.queueContext)).filter(
     (entry) =>
-      isProducedSessionDelivery(entry) &&
+      (isProducedSessionDelivery(entry) || isContinuationSessionDelivery(entry)) &&
       (opts.maxEnqueuedAt == null || entry.enqueuedAt <= opts.maxEnqueuedAt),
   );
   if (pending.length === 0) {

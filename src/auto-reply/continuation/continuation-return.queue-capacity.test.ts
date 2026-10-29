@@ -599,7 +599,7 @@ describe("continuation returns at system-event queue capacity (cap=20)", () => {
     });
   });
 
-  it("Q-T4p: an ordinary restart-sentinel row at the cap follows upstream's charged retry (#167113)", async () => {
+  it("Q-T4p: an ordinary restart-sentinel row at the cap stays inert like upstream's legacy rows (#185730)", async () => {
     const stateDir = custody.stateDir();
     await seedRecipientSession(stateDir);
     const deliveryId = await enqueueSessionDelivery(
@@ -618,15 +618,13 @@ describe("continuation returns at system-event queue capacity (cap=20)", () => {
     await schedulePendingSessionDeliveries();
     await runClock(0);
 
-    // A plain notice carries no continuation custody, so the fork's uncharged
-    // capacity deferral does not apply: upstream runs it as an ordinary session
-    // event, whose full queue is an ordinary, charged delivery failure. Its
-    // eventual execution is upstream's session-event contract, not modeled here.
-    expect(attemptsFor(deliveryId)).toEqual(["SystemEventQueueFullError"]);
+    // A plain notice carries no continuation custody. Upstream's queue delivers only
+    // produced media, so the row is readable but never attempted or charged.
+    expect(attemptsFor(deliveryId)).toEqual([]);
     expect(peekSystemEvents(SESSION_KEY)).not.toContain("SENTINEL-NOTICE-T4");
     const [row] = await pendingRows(stateDir);
     expect(row?.id).toBe(deliveryId);
-    expect(row?.retryCount).toBe(1);
+    expect(row?.retryCount).toBe(0);
     expect(row?.kind === "systemEvent" ? row.awaitPromptAdoption : undefined).not.toBe(true);
     expect(wakesFor(SESSION_KEY)).toEqual([]);
   });

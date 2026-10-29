@@ -117,7 +117,8 @@ type QueuedSessionDeliveryGenericPayload =
   | ({
       kind: "agentTurn";
       sessionKey: string;
-      message: string;
+      /** Legacy inference text is readable but never executed by the delivery queue. */
+      message?: string;
       messageId: string;
       expectedSessionId?: string;
       requesterBinding?: SessionDeliveryRequesterBinding;
@@ -180,8 +181,8 @@ type QueuedSessionDeliveryPayloadWithRetry = QueuedSessionDeliveryPayload &
 export type QueuedSessionDelivery = QueuedSessionDeliveryPayloadWithRetry & {
   id: string;
   enqueuedAt: number;
+  /** Legacy attempt suffix preserves transcript idempotency for produced media. */
   agentRunAttempt?: number;
-  lastChargedAgentRunAttempt?: number;
   retryCount: number;
   lastAttemptAt?: number;
   lastError?: string;
@@ -299,6 +300,7 @@ const QueuedGenericCommonSchema = {
   enqueuedAt: z.number(),
   retryCount: z.number().int().nonnegative(),
   agentRunAttempt: z.number().int().nonnegative().optional(),
+  // Retired upstream (#185730); rows written before it stay readable.
   lastChargedAgentRunAttempt: z.number().int().nonnegative().optional(),
   lastAttemptAt: z.number().optional(),
   lastError: z.string().optional(),
@@ -357,7 +359,7 @@ const QueuedAgentTurnSchema = z
     ...QueuedGenericCommonSchema,
     kind: z.literal("agentTurn"),
     sessionKey: z.string(),
-    message: z.string(),
+    message: z.string().optional(),
     messageId: z.string(),
     expectedSessionId: z.string().optional(),
     requesterBinding: QueuedRequesterBindingSchema.optional(),
