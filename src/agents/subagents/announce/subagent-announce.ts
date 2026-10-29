@@ -441,6 +441,9 @@ async function runSubagentAnnounceFlowBound(
       targetRequesterOrigin,
       task: params.task ?? "",
       findings,
+      ...(ownResult?.continuationParts && childResultText === ownResult.text
+        ? { continuationParts: ownResult.continuationParts }
+        : {}),
       skipAnnounceDelivery,
       silentAnnounce: params.silentAnnounce,
       wakeOnReturn: params.wakeOnReturn,
