@@ -569,6 +569,42 @@ describe("pending rows nothing armed: periodic sweep without duplicate adoption"
     expect(acksFor(laterId)).toBe(1);
   });
 
+  it("Q4-F2: inert legacy rows the queue never delivers do not use a sweep's arm budget", async () => {
+    const stateDir = custody.stateDir();
+    await seedRecipientSession(stateDir);
+    // Plain system-event rows written before upstream #185730 stay pending and inert.
+    const queueContext = captureContinuationQueueContext(stateDir);
+    for (let index = 0; index < 256; index += 1) {
+      await enqueueSessionDelivery(
+        { kind: "systemEvent", sessionKey: SESSION_KEY, text: `legacy-notice-${index}` },
+        queueContext,
+      );
+    }
+    resetObservers();
+    runtimeLog.info.mockClear();
+    const laterId = await enqueueSessionDelivery(
+      {
+        kind: "systemEvent",
+        sessionKey: SESSION_KEY,
+        agentId: "main",
+        text: "RETURN-q4-f2",
+        idempotencyKey: `continuation-return:q4-f2:${SESSION_KEY}`,
+        awaitPromptAdoption: true,
+        returnWake: { reason: "delegate-return", parentRunId: "run-q4-f2" },
+      },
+      queueContext,
+    );
+    expect((await pendingRows(stateDir)).at(-1)?.id).toBe(laterId);
+
+    // random() = 0 puts the first sweep at 45s: the return is armed by that sweep.
+    await stepClock(45_000 + 2_000);
+    expect(attemptsFor(laterId).length).toBeGreaterThan(0);
+    expect(peekSystemEvents(SESSION_KEY)).toEqual(["RETURN-q4-f2"]);
+    expect(runtimeLog.info).toHaveBeenCalledWith(
+      "session delivery: periodic sweep armed 1 pending entry that no runtime had scheduled",
+    );
+  });
+
   it("Q4-L1: an adopting turn still in progress past the 10-minute lease keeps its claim: no replay, one appearance, one ack", async () => {
     const stateDir = custody.stateDir();
     await seedRecipientSession(stateDir);

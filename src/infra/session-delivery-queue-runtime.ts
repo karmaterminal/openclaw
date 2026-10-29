@@ -159,24 +159,26 @@ function armPendingSweep(activeRuntime: ActiveSessionDeliveryRuntime): void {
   });
 }
 
+/** Returns whether the row was scheduled; inert legacy rows and running rows are not. */
 function armSessionDelivery(
   entry: QueuedSessionDelivery,
   activeRuntime: ActiveSessionDeliveryRuntime,
   minimumDelayMs = 0,
-): void {
+): boolean {
   // The active drain owns rearming after its authoritative reload. Coalesce
   // duplicate schedules so they cannot poll the same due row in a timer loop.
   if (
     (!isProducedSessionDelivery(entry) && !isContinuationSessionDelivery(entry)) ||
     activeRuntime.runningEntries.has(entry.id)
   ) {
-    return;
+    return false;
   }
   armSessionDeliveryId(
     entry.id,
     Math.max(minimumDelayMs, resolveRetryDelayMs(entry, activeRuntime.scheduler.now())),
     activeRuntime,
   );
+  return true;
 }
 
 function describeCapacityDeferral(id: string, state: CapacityDeferralState): string {
@@ -467,7 +469,9 @@ export async function schedulePendingSessionDeliveries(options?: {
       if (armed >= PENDING_SWEEP_MAX_ARMED) {
         break;
       }
-      armSessionDelivery(entry, activeRuntime);
+      if (!armSessionDelivery(entry, activeRuntime)) {
+        continue;
+      }
       armed += 1;
       if (armed >= PENDING_SWEEP_MAX_ARMED) {
         activeRuntime.sweepCursor = { enqueuedAt: entry.enqueuedAt, id: entry.id };
