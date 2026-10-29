@@ -220,7 +220,8 @@ export function deriveSessionLifecycleSnapshot(params: {
     endedAt !== undefined
       ? { lastActivityAt: Math.max(existing?.lastActivityAt ?? 0, endedAt) }
       : {}),
-    abortedLastRun: status === "killed",
+    // A superseded run handed the session to a newer writer; the next turn is not interrupted.
+    abortedLastRun: status === "killed" && terminal?.reason !== "superseded",
   };
 }
 

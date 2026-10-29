@@ -413,6 +413,12 @@ describe("session lifecycle state", () => {
     terminalCase("aborted", { phase: "end", stopReason: "aborted" }, "killed", true),
     terminalCase("signal-only cancellation", { phase: "end", aborted: true }, "killed", true),
     terminalCase(
+      "superseded by a newer session writer",
+      { phase: "end", stopReason: "superseded", aborted: true },
+      "killed",
+      false,
+    ),
+    terminalCase(
       "provider timeout",
       {
         phase: "error",
