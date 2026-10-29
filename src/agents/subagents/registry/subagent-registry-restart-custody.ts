@@ -20,7 +20,7 @@ import { hasSubagentRunEnded } from "./subagent-run-liveness.js";
 
 const log = createSubsystemLogger("agents/subagent-registry");
 
-export const SUBAGENT_RESTART_INTERRUPTED_ERROR =
+const SUBAGENT_RESTART_INTERRUPTED_ERROR =
   "subagent run interrupted: the Gateway restarted before it ended";
 
 /**
