@@ -23,6 +23,7 @@ plugins.
 | Method                                                                               | Contract it owns                                                                                                                                           |
 | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `api.session.state.registerSessionExtension(...)`                                    | Plugin-owned, JSON-compatible session state projected through Gateway sessions                                                                             |
+| `api.session.state.resolveLocalSessionRoute(sessionKey)`                             | Read-only exact session-store presence and conservative host-locality proof; grants no routing or wake authority                                           |
 | `api.session.workflow.enqueueNextTurnInjection(...)`                                 | Durable exactly-once context injected into the next agent turn for one session                                                                             |
 | `api.registerTrustedToolPolicy(...)`                                                 | Manifest-gated trusted pre-plugin tool policy that can block or rewrite tool params                                                                        |
 | `api.registerToolMetadata(...)`                                                      | Tool catalog display metadata without changing the tool implementation                                                                                     |
@@ -35,6 +36,11 @@ plugins.
 | `api.session.workflow.sendSessionAttachment(...)`                                    | Bundled-only host-mediated file attachment delivery to the active direct-outbound session route                                                            |
 | `api.session.workflow.scheduleSessionTurn(...)` / `unscheduleSessionTurnsByTag(...)` | Bundled-only Cron-backed scheduled session turns plus tag-based cleanup                                                                                    |
 | `api.session.controls.registerSessionAction(...)`                                    | Typed session actions clients can dispatch through the Gateway                                                                                             |
+
+`api.session.state.resolveLocalSessionRoute(sessionKey)` returns `{ sessionKey, exists, onHost }`.
+It checks an exact persisted session key. A missing or unreadable entry cannot prove
+locality; shared main and channel sessions do not receive a positive host-locality
+claim from their key shape. This inspection does not authorize a send or wake.
 
 Runtime lifecycle registrations can also supply `dispose()` for resources captured
 by that registration. Explicitly owned, uncached plugin inspections invoke it on
@@ -240,6 +246,7 @@ api.session.controls.registerControlUiDescriptor({
 Use the grouped namespaces for new plugin code:
 
 - `api.session.state.registerSessionExtension(...)`
+- `api.session.state.resolveLocalSessionRoute(sessionKey)`
 - `api.session.workflow.enqueueNextTurnInjection(...)`
 - `api.session.workflow.steerActiveRun(...)`
 - `api.session.workflow.registerSessionSchedulerJob(...)`

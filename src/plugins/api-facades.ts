@@ -1,4 +1,5 @@
 import { bindPluginCliProgram } from "./cli-callback-binding.js";
+import { resolvePluginLocalSessionRoute } from "./local-session-route.js";
 import { pluginInstanceState, type PluginInstanceHandle } from "./plugin-instance-scope.js";
 import type { OpenClawPluginCliRegistrar } from "./plugin-registration.types.js";
 import type { OpenClawPluginApi } from "./types.js";
@@ -7,7 +8,10 @@ type PluginApiFacadeFields = Pick<
   OpenClawPluginApi,
   "agent" | "lifecycle" | "runContext" | "session"
 >;
-type PluginApiFacadeSource = OpenClawPluginApi["session"]["state"] &
+type PluginApiFacadeSource = Pick<
+  OpenClawPluginApi["session"]["state"],
+  "registerSessionExtension"
+> &
   OpenClawPluginApi["session"]["workflow"] &
   OpenClawPluginApi["session"]["controls"] &
   OpenClawPluginApi["agent"]["events"] &
@@ -55,7 +59,11 @@ export function attachPluginApiFacades(api: OpenClawPluginApiWithoutFacades): Op
   return {
     ...retained,
     session: {
-      state: { registerSessionExtension: api.registerSessionExtension },
+      state: {
+        registerSessionExtension: api.registerSessionExtension,
+        resolveLocalSessionRoute: (sessionKey) =>
+          resolvePluginLocalSessionRoute({ cfg: api.config, sessionKey }),
+      },
       workflow: {
         enqueueNextTurnInjection: api.enqueueNextTurnInjection,
         steerActiveRun,
