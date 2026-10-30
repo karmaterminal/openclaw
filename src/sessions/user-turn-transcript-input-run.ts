@@ -1,8 +1,13 @@
-// Continuation (karmaterminal): names the run that consumed an event input carrying delegate
-// returns (#1504). The input is staged before that run exists, and accepted input commits its
-// staged bytes verbatim, so the run is stamped on the committed row afterwards: a correlation-
-// only rewrite that keeps the transcript generation. A crash between commit and stamp leaves the
-// row unstamped; the returns themselves are unaffected.
+// Continuation (karmaterminal): records which run consumed an event input carrying delegate
+// returns (#1504). "Consumed" means durably adopted into that run's model input: the run handed
+// the committed row to the provider. It does not mean the model attended to or acted on it.
+//
+// The input is staged before its run exists, and accepted input commits its staged bytes
+// verbatim, so the run is stamped on the committed row once its first request reaches the
+// provider: a correlation-only rewrite that keeps the transcript generation. A row without the
+// stamp reads as unknown, never as consumed: its run was aborted or blocked before dispatch, or
+// the process died first. A replay's run stamps only its own row, so recovering a return never
+// moves an earlier run's stamp. Delivering and acknowledging the returns never wait on the stamp.
 import { publishTranscriptUpdate } from "../config/sessions/session-accessor.sqlite-events.js";
 import { rewritePreparedTranscriptMessageAtAnchor } from "../config/sessions/session-message-rewrite.js";
 import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
@@ -12,23 +17,23 @@ import type { UserTurnTranscriptRecorder } from "./user-turn-transcript.types.js
 
 const inputRunIds = new WeakMap<UserTurnTranscriptRecorder, string>();
 
-/** The executing run binds itself before it commits; a later preparation's run replaces it. */
+/** The executing run binds itself before it may dispatch; a later preparation's run replaces it. */
 export function bindUserTurnInputRunId(recorder: UserTurnTranscriptRecorder, runId: string): void {
   inputRunIds.set(recorder, runId);
 }
 
 /**
- * Schedules the stamp after the admission write, outside its async context: the commit that
- * awaits the admission write never waits on this second write, while dispatch does.
+ * Schedules the stamp when the bound run's request reaches the provider: after the admission
+ * write and outside the request's async context. The turn's later persistence waits settle it.
  */
 export function scheduleUserTurnInputRunIdStamp(
   recorder: UserTurnTranscriptRecorder,
-  admissionWrite: Promise<void>,
+  admissionWrite: Promise<void> | undefined,
   onError: (error: unknown) => void,
 ): Promise<void> | undefined {
   const runId = inputRunIds.get(recorder);
   return runId
-    ? admissionWrite
+    ? Promise.resolve(admissionWrite)
         .then(
           () => runInDetachedAsyncContext(() => stampUserTurnInputRunId(recorder, runId)),
           () => undefined,
@@ -46,7 +51,7 @@ async function stampUserTurnInputRunId(
   if (!owner || !admission || !owner.message()?.["__openclaw"]?.inputDeliveries) {
     return;
   }
-  // The first committing run consumed the input; a later replay of the same row keeps it.
+  // The first run to dispatch the row consumed it; a later run handed the same row keeps that.
   const rewritten = await rewritePreparedTranscriptMessageAtAnchor(admission, (message) =>
     isUserMessage(message) && message["__openclaw"]?.inputRunId === undefined
       ? { ...message, __openclaw: { ...message["__openclaw"], inputRunId: runId } }

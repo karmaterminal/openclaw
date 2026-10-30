@@ -295,11 +295,6 @@ export function createUserTurnTranscriptRecorder(
     admissionWrite = detached ? runInDetachedAsyncContext(run) : run();
     // The turn owner awaits this write; an early rejection must not be unobserved.
     admissionWrite.catch(() => undefined);
-    inputRunStamp = scheduleUserTurnInputRunIdStamp(
-      recorder,
-      admissionWrite,
-      handlePersistenceError,
-    );
     return admissionWrite;
   };
 
@@ -659,6 +654,12 @@ export function createUserTurnTranscriptRecorder(
     },
     markSentToProvider: () => {
       sentToProvider = true;
+      // Continuation (karmaterminal): the run whose request reaches the provider consumed the input.
+      inputRunStamp ??= scheduleUserTurnInputRunIdStamp(
+        recorder,
+        admissionWrite,
+        handlePersistenceError,
+      );
     },
     markRuntimePersistencePending: (pending) => {
       runtimePersistencePromise = pending;
