@@ -1,0 +1,2 @@
+# karmaterminal/openclaw#1497 (continuation lifeboat spans): fossils for released post-compaction delegate dispatch/fire spans, their release join, at-most-once fire across ownership failure and restart, and the compaction.released count.
+289
