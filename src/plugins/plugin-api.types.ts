@@ -111,11 +111,11 @@ type OpenClawPluginSessionStateApi = {
   /** Register plugin-owned session state projected into Gateway session rows. */
   registerSessionExtension: (extension: PluginSessionExtensionRegistration) => void;
   /** Read an exact host session target; this grants neither routing nor wake authority. */
-  resolveLocalSessionRoute: (sessionKey: string) => {
+  resolveLocalSessionRoute: (sessionKey: string) => Promise<{
     sessionKey: string;
     exists: boolean;
     onHost: boolean;
-  };
+  }>;
 };
 
 export type PluginActiveRunSteerParams = {
