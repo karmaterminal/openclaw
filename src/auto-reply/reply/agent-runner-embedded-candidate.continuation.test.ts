@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
     compacted: true,
     result: {},
   })),
+  computeRequestCompactionContextUsage: vi.fn<
+    typeof import("./agent-runner-post-compaction-release.js").computeRequestCompactionContextUsage
+  >(() => 0.75),
   releaseQueuedCompactionTolerant: vi.fn(async () => undefined),
   runEmbeddedAgent: vi.fn(),
 }));
@@ -72,14 +75,27 @@ vi.mock("./agent-runner-event-handler.js", () => ({
 
 // mock-isolation: Compaction release is recorded without the session store or delegate queue.
 vi.mock("./agent-runner-post-compaction-release.js", () => ({
-  computeRequestCompactionContextUsage: () => 0.75,
+  computeRequestCompactionContextUsage: mocks.computeRequestCompactionContextUsage,
   releaseQueuedCompactionTolerant: mocks.releaseQueuedCompactionTolerant,
 }));
 
 import { createTestPreparedRunAdmission } from "../../agents/admitted-run-context.test-support.js";
+import { createOpenClawContinuationTools } from "../../agents/openclaw-tools.continuation.js";
+import type { SessionEntry } from "../../config/sessions.js";
 import { runEmbeddedFallbackCandidate } from "./agent-runner-embedded-candidate.js";
 
-function createTurn(config: AgentTurnParams["followupRun"]["run"]["config"]): AgentTurnParams {
+const FRESH_USAGE_ENTRY: SessionEntry = {
+  sessionId: "session-fallback",
+  updatedAt: 1,
+  totalTokens: 75,
+  totalTokensFresh: true,
+  contextTokens: 100,
+};
+
+function createTurn(
+  config: AgentTurnParams["followupRun"]["run"]["config"],
+  activeSessionEntry: SessionEntry = FRESH_USAGE_ENTRY,
+): AgentTurnParams {
   return {
     commandBody: "continue the fallback task",
     followupRun: {
@@ -123,13 +139,7 @@ function createTurn(config: AgentTurnParams["followupRun"]["run"]["config"]): Ag
     pendingToolTasks: new Set(),
     isHeartbeat: false,
     sessionKey: "agent:main:fallback",
-    getActiveSessionEntry: () => ({
-      sessionId: "session-fallback",
-      updatedAt: 1,
-      totalTokens: 75,
-      totalTokensFresh: true,
-      contextTokens: 100,
-    }),
+    getActiveSessionEntry: () => activeSessionEntry,
     activeSessionStore: {},
     storePath: "sessions.json",
     resolvedVerboseLevel: "off",
@@ -139,6 +149,7 @@ function createTurn(config: AgentTurnParams["followupRun"]["run"]["config"]): Ag
 function runCandidate(
   config: AgentTurnParams["followupRun"]["run"]["config"],
   onCompactionCount = vi.fn(),
+  activeSessionEntry?: SessionEntry,
 ) {
   return runEmbeddedFallbackCandidate({
     preparedRunAdmission: createTestPreparedRunAdmission("run-test"),
@@ -147,7 +158,7 @@ function runCandidate(
       sessionId: "session-fallback",
       sessionKey: "agent:main:fallback",
     }),
-    turn: createTurn(config),
+    turn: createTurn(config, activeSessionEntry),
     directBlockDeliveries: [],
     effectiveRun: createTurn(config).followupRun.run,
     candidateRun: createTurn(config).followupRun.run,
@@ -274,6 +285,44 @@ describe("runEmbeddedFallbackCandidate continuation callbacks", () => {
     expect(result.rawContinuationText).toBe(
       "done\n[[CONTINUE_DELEGATE: inspect wrapped fallback]]",
     );
+  });
+
+  // bootstrap#1727 (R-CD-3): a fresh session's first chat turn has no fresh token
+  // totals yet. The rejection must say usage is unmeasured, not inventory-only.
+  it("rejects a first-turn request_compaction as unmeasured, not as an inventory-only path", async () => {
+    const config = {
+      agents: { defaults: { continuation: { enabled: true } } },
+    };
+    const actual = await vi.importActual<
+      typeof import("./agent-runner-post-compaction-release.js")
+    >("./agent-runner-post-compaction-release.js");
+    mocks.computeRequestCompactionContextUsage.mockImplementationOnce(
+      actual.computeRequestCompactionContextUsage,
+    );
+    mocks.compactEmbeddedAgentSession.mockClear();
+    let toolResult: { content?: unknown; details?: unknown } | undefined;
+    mocks.runEmbeddedAgent.mockImplementationOnce(async (options: RunEmbeddedAgentParams) => {
+      const tool = createOpenClawContinuationTools({
+        config,
+        agentSessionKey: "agent:main:fallback",
+        sessionId: "session-fallback",
+        runId: "run-fallback",
+        requestCompactionOpts: options.requestCompactionOpts,
+      }).find((candidate) => candidate.name === "request_compaction");
+      toolResult = await tool?.execute("call-first-turn", { reason: "first-turn pressure check" });
+      return { payloads: [{ text: "done" }], meta: { durationMs: 1 } };
+    });
+
+    await runCandidate(config, vi.fn(), { sessionId: "session-fallback", updatedAt: 1 });
+
+    expect(toolResult?.details).toMatchObject({
+      status: "rejected",
+      guard: "context_unmeasured",
+      cause: "no_fresh_usage",
+      reason: expect.stringContaining("not been measured"),
+    });
+    expect(JSON.stringify(toolResult?.content)).not.toContain("inventory-only");
+    expect(mocks.compactEmbeddedAgentSession).not.toHaveBeenCalled();
   });
 
   it("releases once and reports a degraded committed summary to the request tool", async () => {
