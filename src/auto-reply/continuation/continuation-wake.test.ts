@@ -198,11 +198,17 @@ function silentTerminal(): EmbeddedAgentRunResult {
   return { payloads: [], meta: { durationMs: 1, terminalReply: { disposition: "silent" } } };
 }
 
+/** Admits the turn as the runner does: its input's writes settle before the model is called. */
+async function admitWokenTurn(params: RunEmbeddedAgentParams) {
+  await admitModelTurn(params);
+  await params.userTurnTranscriptRecorder?.waitForRuntimePersistence();
+}
+
 /** The model answers every turn with `reply`, or ends it silently for `NO_REPLY`. */
 function answerTurns(prompts: string[], reply: string) {
   runEmbeddedAgentMock.mockImplementation(async (params: RunEmbeddedAgentParams) => {
     prompts.push(params.prompt);
-    await admitModelTurn(params);
+    await admitWokenTurn(params);
     return reply === "NO_REPLY"
       ? silentTerminal()
       : {
@@ -435,7 +441,7 @@ it("waits behind a busy session and acknowledges only once its turn is adopted",
     const releaseFirst = createDeferred();
     runEmbeddedAgentMock.mockImplementation(async (params: RunEmbeddedAgentParams) => {
       prompts.push(params.prompt);
-      await admitModelTurn(params);
+      await admitWokenTurn(params);
       if (prompts.length === 1) {
         firstStarted.resolve();
         await releaseFirst.promise;

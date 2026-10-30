@@ -41,6 +41,7 @@ import {
   onInternalSessionTranscriptUpdate,
   type InternalSessionTranscriptUpdate,
 } from "../sessions/transcript-events.js";
+import { bindUserTurnInputRunId } from "../sessions/user-turn-transcript-input-run.js";
 import { createUserTurnTranscriptRecorder } from "../sessions/user-turn-transcript.js";
 import {
   closeOpenClawAgentDatabasesAsync,
@@ -440,6 +441,53 @@ describe("guardSessionManager transcript updates", () => {
       }
     },
   );
+
+  // openclaw#1504: a woken event's staged input is committed by this runtime writer, and the
+  // run that committed it is stamped before the turn may reach the model.
+  it("stamps the consuming run on a staged event input the runtime writer commits", async () => {
+    const { root, target, sessionEntry } = await openPersistedSessionManager();
+    const inputDeliveries = [{ deliveryId: "delivery-1", sourceRunId: "delegate-run" }];
+    const source = createUserTurnTranscriptRecorder({
+      input: {
+        text: "Delegate finished",
+        timestamp: 1,
+        idempotencyKey: "occurrence-1",
+        provenance: { kind: "internal_system", sourceTool: "continuation", runId: "delegate-run" },
+        inputDeliveries,
+      },
+      target: { ...target, sessionEntry },
+    });
+    try {
+      expect(await source.stageApproved!({ runId: "occurrence-1", assertCurrent: () => {} })).toBe(
+        true,
+      );
+      bindUserTurnInputRunId(source, "consuming-run");
+      const approved = await source.resolveMessage();
+      assert(approved, "Expected the staged event input");
+      const guarded = guardSessionManager(await SessionManager.openAsync(target, root), {
+        ...target,
+        preparedUserTurnMessage: approved,
+        preparedUserTurnTranscriptRecorder: source,
+      });
+
+      const entryId = await persistAgentSessionMessage(
+        guarded,
+        { ...approved, content: "Rendered event prompt" },
+        { invalidateSerializedPrefixCache: false },
+      );
+      await source.waitForRuntimePersistence();
+
+      assert(entryId);
+      const stamped = { inputDeliveries, inputRunId: "consuming-run" };
+      expect(SessionManager.open(target, root).getEntry(entryId)).toMatchObject({
+        message: { content: "Delegate finished", __openclaw: stamped },
+      });
+      expect(source.getPersistedMessage?.()).toMatchObject({ __openclaw: stamped });
+      expect(await listSessionPendingInputs(target)).toEqual({ items: [], total: 0 });
+    } finally {
+      source.finishPendingInput?.("interrupted");
+    }
+  });
 
   it("preserves text with one fresh SQLite admission across replay despite logging patterns", async () => {
     const config = { logging: { redactPatterns: [String.raw`private-note=([^\s]+)`] } };

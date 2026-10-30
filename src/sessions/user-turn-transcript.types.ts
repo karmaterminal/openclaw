@@ -275,8 +275,6 @@ export type UserTurnTranscriptRecorder = {
   replaceTextBeforePersistence?: (text: string) => void;
   /** Confirms exact-run steering provenance after transcript commitment is proven. */
   confirmSteerTargetRunIdForPersistence?: (targetRunId: string) => Promise<void>;
-  /** Continuation (karmaterminal): names the run that commits this input; staging predates it. */
-  bindInputRunId?: (runId: string) => void;
   getPersistedMessage?: () => PersistedUserTurnMessage | undefined;
   /** Freeze model-facing text on the canonical user record before its first provider dispatch. */
   captureModelPromptProjection?: (

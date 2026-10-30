@@ -267,6 +267,22 @@ it("preserves the generation when initially recording identical model prompt tex
   });
 });
 
+// openclaw#1504: first naming the run that consumed an input is correlation, not new input.
+it("preserves the generation when first stamping the run that consumed an input", async () => {
+  await withRewriteFixture(({ snapshot, rewrite }) => {
+    const before = snapshot();
+    const stamped = { ...rewriteEvents[1].message, __openclaw: { inputRunId: "consuming-run" } };
+    rewrite(rewriteMessage(1, stamped));
+    const captured = snapshot();
+    expect(captured.generation).toBe(before.generation);
+    expect(captured.raw[1]?.event_json).toBe(
+      JSON.stringify({ ...rewriteEvents[1], message: stamped }),
+    );
+    rewrite(rewriteMessage(1, { ...stamped, __openclaw: { inputRunId: "other-run" } }));
+    expect(snapshot().generation).not.toBe(captured.generation);
+  });
+});
+
 it.each([
   { name: "content", message: { content: "changed" } },
   { name: "provenance", message: { provenance: { kind: "internal_system" } } },

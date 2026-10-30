@@ -4,6 +4,7 @@ import { formatErrorMessage } from "../../infra/errors.js";
 import { withExecRequestTurn } from "../../infra/exec-request-context.js";
 import { recordMessageToolRunOutcome } from "../../infra/message-tool-run-outcome-store.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { bindUserTurnInputRunId } from "../../sessions/user-turn-transcript-input-run.js";
 import type { VisibleWorkSession } from "../get-reply-options.types.js";
 import { prepareReplyTurnRunSource } from "./agent-runner-admission.js";
 import { resolveAgentTurnExecutionStatus } from "./agent-runner-execution-status.js";
@@ -121,7 +122,9 @@ export async function runAgentTurnWithOutcome(
   try {
     if (eventExecution) {
       // Continuation (karmaterminal): the event's input staged before this run; its commit names it.
-      params.followupRun.userTurnTranscriptRecorder?.bindInputRunId?.(runId);
+      if (params.followupRun.userTurnTranscriptRecorder) {
+        bindUserTurnInputRunId(params.followupRun.userTurnTranscriptRecorder, runId);
+      }
       eventExecution.assertCurrent?.();
       await eventExecution.beforeStart?.();
       params.replyOperation?.abortSignal.throwIfAborted();
