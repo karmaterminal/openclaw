@@ -295,6 +295,25 @@ function buildPostCompactionDelegateIdempotencyKey(params: {
   ].join(":");
 }
 
+/**
+ * The compaction count of the release that queued a post-compaction entry, read
+ * back from the idempotency key `buildPostCompactionDelegateIdempotencyKey` gave
+ * it. Older builds persist the same key, so the release join adds no payload
+ * field that their strict reader would dead-letter after a rollback. Undefined
+ * when the release had no count or the key has another shape.
+ */
+export function readPostCompactionDelegateReleaseCount(entry: {
+  idempotencyKey?: string;
+}): number | undefined {
+  // The session key can contain ":", so read the count from the end:
+  // `...:<compactionCount>:<firstArmedAt>:<sequence>:<taskHash>`.
+  const parts = entry.idempotencyKey?.split(":") ?? [];
+  const count = parts.at(-4);
+  return parts[0] === "post-compaction-delegate" && parts.length >= 6 && /^\d+$/.test(count ?? "")
+    ? Number(count)
+    : undefined;
+}
+
 export function buildPostCompactionDelegateDeliveryPayload(params: {
   sessionKey: string;
   sourceSessionId?: string;
@@ -343,7 +362,6 @@ export function buildPostCompactionDelegateDeliveryPayload(params: {
     ...(params.delegate.expectedRevision !== undefined
       ? { sourceExpectedRevision: params.delegate.expectedRevision }
       : {}),
-    ...(params.compactionCount !== undefined ? { compactionCount: params.compactionCount } : {}),
     ...(params.childRunId ? { childRunId: params.childRunId } : {}),
     ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
     idempotencyKey:

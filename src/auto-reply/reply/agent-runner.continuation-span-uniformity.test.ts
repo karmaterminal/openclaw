@@ -584,7 +584,7 @@ describe("runReplyAgent :: released post-compaction delegate spans (#1497)", () 
     const typed = await dispatchToolDelegateMode({ mode: "silent-wake", currentChainCount: 1 });
     const { tracer, spans } = createRecordingTracer();
     setContinuationTracer(tracer);
-    const sessionKey = "continuation-span-uniformity-lifeboat";
+    const sessionKey = "agent:main:continuation-span-uniformity-lifeboat";
     const task = "carry the audit plan across compaction";
     await stageLifeboat(sessionKey, task);
 

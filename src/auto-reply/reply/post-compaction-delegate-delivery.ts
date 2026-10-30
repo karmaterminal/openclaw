@@ -17,6 +17,7 @@ import {
 import { generateChainId } from "../../infra/secure-random.js";
 import {
   markSessionDeliveryAttemptStarted,
+  readPostCompactionDelegateReleaseCount,
   SessionDeliveryDeadLetteredError,
   SessionDeliveryDeferredError,
   SessionDeliverySafeRetryError,
@@ -521,7 +522,7 @@ export async function deliverQueuedPostCompactionDelegate(
       delegateMode: "post-compaction",
       delayMs: 0,
       fireDeferredMs: deps.now() - (params.entry.firstArmedAt ?? params.entry.createdAt),
-      compactionId: params.entry.compactionCount,
+      compactionId: readPostCompactionDelegateReleaseCount(params.entry),
       reason: params.entry.task,
       traceparent: spawnTraceparent,
       log: (message) => deps.log(message),

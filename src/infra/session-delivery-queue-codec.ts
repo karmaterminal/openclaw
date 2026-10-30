@@ -160,11 +160,6 @@ type QueuedPostCompactionDelegatePayload = {
   sourceFlowId?: string;
   sourceExpectedRevision?: number;
   /**
-   * Compaction count of the release that queued this entry. The drain stamps it
-   * on the delegate's fire span as `compaction.id`, the release span's join key.
-   */
-  compactionCount?: number;
-  /**
    * Precomputed launch key of the entry's first spawn attempt (RFC §5.4.4).
    * Later attempts derive from the same record ID; an entry without one was
    * enqueued by a build that recorded no attempt and is never spawned.
@@ -440,7 +435,6 @@ const QueuedPostCompactionDelegateSchema = z
     attachAs: QueuedInlineAttachmentMountSchema.optional(),
     sourceFlowId: z.string().optional(),
     sourceExpectedRevision: z.number().int().optional(),
-    compactionCount: z.number().int().nonnegative().optional(),
     childRunId: z
       .string()
       .refine((value) => parseContinuationChildRunId(value) !== undefined)
