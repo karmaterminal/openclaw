@@ -35,8 +35,7 @@ const VOLITIONAL_COMPACTION_COUNT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 export type RequestCompactionUnmeasuredCause = "no_fresh_usage" | "unknown_context_window";
 
 const UNMEASURED_REASONS: Record<RequestCompactionUnmeasuredCause | "inventory_only", string> = {
-  no_fresh_usage:
-    "Context usage has not been measured yet: this session has no fresh token totals from a completed model turn (as on its first turn). Retry request_compaction on a later turn, after usage has been recorded.",
+  no_fresh_usage: `Context usage has not been measured: this session has no fresh token totals from a completed model turn (as on its first turn, or when the provider reported no usage). request_compaction can check the ${Math.round(MIN_CONTEXT_THRESHOLD * 100)}% threshold only after a completed turn records them.`,
   unknown_context_window: `Context usage cannot be measured: the context window of this session's model is unknown, so usage cannot be compared with the ${Math.round(MIN_CONTEXT_THRESHOLD * 100)}% threshold.`,
   inventory_only:
     "Context usage is unknown for this session; request_compaction is unavailable on inventory-only paths.",
@@ -112,8 +111,9 @@ export type RequestCompactionToolOpts = {
    */
   getContextUsage: () => number | RequestCompactionUnmeasuredCause | null;
   /**
-   * Who supplies getContextUsage. Only a live runner's missing usage is
-   * reported as unmeasured; any other origin is an inventory-only path.
+   * Who supplies getContextUsage. Decides how a bare null is reported: from a
+   * live runner, usage is not measured yet; from any other origin, this is an
+   * inventory-only path.
    */
   contextUsageOrigin?: "live_runner" | "inventory_stub";
   /**
@@ -251,11 +251,10 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
       // ----- Guard 1: Context threshold -----
       const contextUsage = opts.getContextUsage();
       if (typeof contextUsage !== "number") {
-        // A live runner that names no cause has still not measured usage this session.
+        // A named cause always wins; a bare null is only inventory-only off a live runner.
         const cause =
-          opts.contextUsageOrigin === "live_runner"
-            ? (contextUsage ?? "no_fresh_usage")
-            : "inventory_only";
+          contextUsage ??
+          (opts.contextUsageOrigin === "live_runner" ? "no_fresh_usage" : "inventory_only");
         log.debug(`[request_compaction:context-unmeasured] session=${sessionKey} cause=${cause}`);
         return jsonResult({
           status: "rejected",

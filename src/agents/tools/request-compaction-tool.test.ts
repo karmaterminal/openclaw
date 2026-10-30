@@ -191,16 +191,18 @@ describe("request_compaction tool", () => {
     reason: RegExp;
   }> = [
     {
-      name: "a live runner whose model context window is unknown",
-      opts: { contextUsageOrigin: "live_runner", getContextUsage: () => "unknown_context_window" },
+      // A named cause wins whatever the origin says.
+      name: "an unknown context window, with no origin given",
+      opts: { getContextUsage: () => "unknown_context_window" },
       cause: "unknown_context_window",
       reason: /^Context usage cannot be measured: the context window .* is unknown/,
     },
     {
+      // A live runner is never called inventory-only, even with a bare null.
       name: "a live runner that names no cause",
       opts: { contextUsageOrigin: "live_runner", getContextUsage: () => null },
       cause: "no_fresh_usage",
-      reason: /^Context usage has not been measured yet/,
+      reason: /^Context usage has not been measured: /,
     },
   ];
 

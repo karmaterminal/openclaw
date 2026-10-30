@@ -299,7 +299,7 @@ describe("runEmbeddedFallbackCandidate continuation callbacks", () => {
     mocks.computeRequestCompactionContextUsage.mockImplementationOnce(
       actual.computeRequestCompactionContextUsage,
     );
-    mocks.compactEmbeddedAgentSession.mockClear();
+    const triggerCompaction = vi.fn();
     let toolResult: { content?: unknown; details?: unknown } | undefined;
     mocks.runEmbeddedAgent.mockImplementationOnce(async (options: RunEmbeddedAgentParams) => {
       const tool = createOpenClawContinuationTools({
@@ -307,7 +307,10 @@ describe("runEmbeddedFallbackCandidate continuation callbacks", () => {
         agentSessionKey: "agent:main:fallback",
         sessionId: "session-fallback",
         runId: "run-fallback",
-        requestCompactionOpts: options.requestCompactionOpts,
+        requestCompactionOpts: options.requestCompactionOpts && {
+          ...options.requestCompactionOpts,
+          triggerCompaction,
+        },
       }).find((candidate) => candidate.name === "request_compaction");
       toolResult = await tool?.execute("call-first-turn", { reason: "first-turn pressure check" });
       return { payloads: [{ text: "done" }], meta: { durationMs: 1 } };
@@ -322,7 +325,7 @@ describe("runEmbeddedFallbackCandidate continuation callbacks", () => {
       reason: expect.stringContaining("not been measured"),
     });
     expect(JSON.stringify(toolResult?.content)).not.toContain("inventory-only");
-    expect(mocks.compactEmbeddedAgentSession).not.toHaveBeenCalled();
+    expect(triggerCompaction).not.toHaveBeenCalled();
   });
 
   it("releases once and reports a degraded committed summary to the request tool", async () => {

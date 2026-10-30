@@ -233,20 +233,26 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
   // rejection must say usage is unmeasured, not that this is an inventory-only path.
   // This also drives the runner's real getContextUsage closure through the tool.
   it("rejects a first-turn request_compaction as unmeasured, not as an inventory-only path", async () => {
-    compactEmbeddedAgentSessionMock.mockReset();
-    await runEmbeddedAttempt(makeContinuationEnabledConfig());
-    const callArgs = runEmbeddedAgentMock.mock.calls[0]?.[0] as
-      | Pick<RunEmbeddedAgentParams, "requestCompactionOpts">
-      | undefined;
-    const tool = createOpenClawContinuationTools({
-      config: makeContinuationEnabledConfig(),
-      agentSessionKey: sessionKey,
-      sessionId: sessionEntry.sessionId,
-      runId: "run-917-trap",
-      requestCompactionOpts: callArgs?.requestCompactionOpts,
-    }).find((candidate) => candidate.name === "request_compaction");
+    const triggerCompaction = vi.fn();
+    let result: { content?: unknown; details?: unknown } | undefined;
+    runEmbeddedAgentMock.mockImplementationOnce(
+      async ({ requestCompactionOpts }: Pick<RunEmbeddedAgentParams, "requestCompactionOpts">) => {
+        const tool = createOpenClawContinuationTools({
+          config: makeContinuationEnabledConfig(),
+          agentSessionKey: sessionKey,
+          sessionId: sessionEntry.sessionId,
+          runId: "run-917-trap",
+          requestCompactionOpts: requestCompactionOpts && {
+            ...requestCompactionOpts,
+            triggerCompaction,
+          },
+        }).find((candidate) => candidate.name === "request_compaction");
+        result = await tool?.execute("call-first-turn", { reason: "first-turn pressure check" });
+        return makeEmbeddedResult();
+      },
+    );
 
-    const result = await tool?.execute("call-first-turn", { reason: "first-turn pressure check" });
+    await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
     expect(result?.details).toMatchObject({
       status: "rejected",
@@ -255,7 +261,7 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
       reason: expect.stringContaining("not been measured"),
     });
     expect(JSON.stringify(result?.content)).not.toContain("inventory-only");
-    expect(compactEmbeddedAgentSessionMock).not.toHaveBeenCalled();
+    expect(triggerCompaction).not.toHaveBeenCalled();
   });
 
   // A successful turn-1 volitional compaction must run the same
