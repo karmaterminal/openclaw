@@ -182,19 +182,14 @@ describe("request_compaction tool", () => {
   });
 
   // bootstrap#1727: unmeasured usage is its own guard, never a threshold verdict,
-  // and only an inventory path is called inventory-only.
+  // and only an inventory path is called inventory-only. The live no_fresh_usage
+  // case is proven through both live runners' fossils.
   const unmeasuredCases: Array<{
     name: string;
     opts: Pick<RequestCompactionToolOpts, "contextUsageOrigin" | "getContextUsage">;
     cause: string;
     reason: RegExp;
   }> = [
-    {
-      name: "a live runner with no fresh token totals",
-      opts: { contextUsageOrigin: "live_runner", getContextUsage: () => "no_fresh_usage" },
-      cause: "no_fresh_usage",
-      reason: /^Context usage has not been measured yet: .*completed model turn/,
-    },
     {
       name: "a live runner whose model context window is unknown",
       opts: { contextUsageOrigin: "live_runner", getContextUsage: () => "unknown_context_window" },
