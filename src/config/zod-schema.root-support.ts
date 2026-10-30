@@ -140,6 +140,15 @@ export const PluginEntrySchema = z.strictObject({
     .strictObject({
       /** Controls prompt mutation via before_prompt_build. */
       allowPromptInjection: z.boolean().optional(),
+      /** Maximum next-turn entries this plugin may consume in one drain. */
+      nextTurnInjectionDrainMaxEntries: z.number().int().positive().max(32).optional(),
+      /** Maximum UTF-8 payload bytes this plugin may consume in one drain. */
+      nextTurnInjectionDrainMaxBytes: z
+        .number()
+        .int()
+        .positive()
+        .max(64 * 1024)
+        .optional(),
       /**
        * Controls access to raw conversation content from conversation hooks including
        * before_agent_run, before_model_resolve, before_agent_reply, llm_input, llm_output,

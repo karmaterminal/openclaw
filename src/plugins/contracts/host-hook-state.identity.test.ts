@@ -135,7 +135,7 @@ describe("next-turn injection identity", () => {
     await writeEntry(scope, entry);
     const result = await drain({ cfg, ...scope });
     expect(result.prependContext).toContain("EXTERNAL_UNTRUSTED_CONTENT");
-    expect(result.prependContext!.indexOf("Plugin external data (owner-fixture):")).toBeGreaterThan(
+    expect(result.prependContext!.indexOf("Plugin external data (owner-fixture):")).toBeLessThan(
       result.prependContext!.indexOf("<<<EXTERNAL_UNTRUSTED_CONTENT"),
     );
     expect(result.prependContext).toContain("Plugin external data (owner-fixture):");
@@ -153,7 +153,12 @@ describe("next-turn injection identity", () => {
   });
 
   it("bounds a drain across plugin owners and settles metadata-only idempotent records", async () => {
-    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const cfg: OpenClawConfig = {
+      agents: { entries: { main: {} } },
+      plugins: {
+        entries: { "owner-fixture": { hooks: { nextTurnInjectionDrainMaxEntries: 12 } } },
+      },
+    };
     const scope = sessionScope(cfg, "main", "agent:main:bounded-drain");
     const pluginIds = ["owner-fixture", "second-fixture"] as const;
     await writeEntry(scope, {
@@ -184,7 +189,7 @@ describe("next-turn injection identity", () => {
     expect(Buffer.byteLength(first.prependContext ?? "", "utf8")).toBeLessThanOrEqual(
       64 * 1024 + 64,
     );
-    expect(readEntry(scope)?.pluginNextTurnInjections?.["second-fixture"]).toHaveLength(8);
+    expect(readEntry(scope)?.pluginNextTurnInjections?.["owner-fixture"]).toHaveLength(8);
     expect((await drain({ cfg, ...scope })).queuedInjections).toHaveLength(8);
     expect(
       readEntry(scope)?.pluginNextTurnInjectionOutcomes?.["owner-fixture"]?.["owner-fixture-0"]

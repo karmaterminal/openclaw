@@ -356,10 +356,13 @@ export function buildPluginAgentTurnPrepareContext(params: {
       return;
     }
     const text = entry.provenance
-      ? wrapExternalContent(`Plugin external data (${entry.pluginId}):\n${entry.text.trim()}`, {
-          source: "unknown",
-          subject: entry.provenance.source,
-        })
+      ? `Plugin external data (${entry.pluginId.replace(/[^a-zA-Z0-9_.-]/g, "_")}):\n${wrapExternalContent(
+          entry.text.trim(),
+          {
+            source: "unknown",
+            subject: entry.provenance.source,
+          },
+        )}`
       : entry.text.trim();
     if (text) {
       (entry.placement === "prepend_context" ? prepend : append).push(text);

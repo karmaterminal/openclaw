@@ -26,8 +26,8 @@ const log = createSubsystemLogger("plugins/host-hook-state");
 const MAX_PLUGIN_NEXT_TURN_INJECTION_TEXT_LENGTH = 32 * 1024;
 const MAX_PLUGIN_NEXT_TURN_INJECTION_IDEMPOTENCY_KEY_LENGTH = 512;
 const MAX_PLUGIN_NEXT_TURN_INJECTIONS_PER_SESSION = 32;
-const MAX_DRAINED_NEXT_TURN_INJECTIONS = 32;
-const MAX_DRAINED_NEXT_TURN_INJECTION_BYTES = 64 * 1024;
+const DEFAULT_DRAINED_NEXT_TURN_INJECTIONS_PER_PLUGIN = 32;
+const DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN = 64 * 1024;
 const MAX_OUTCOMES_PER_PLUGIN_SESSION = 256;
 const MAX_OUTCOME_RETENTION_MS = 86_400_000;
 
@@ -199,7 +199,9 @@ export async function enqueuePluginNextTurnInjection(params: {
   if (
     !text ||
     text.length > MAX_PLUGIN_NEXT_TURN_INJECTION_TEXT_LENGTH ||
-    Buffer.byteLength(text, "utf8") > MAX_DRAINED_NEXT_TURN_INJECTION_BYTES ||
+    Buffer.byteLength(text, "utf8") >
+      (params.cfg.plugins?.entries?.[params.pluginId]?.hooks?.nextTurnInjectionDrainMaxBytes ??
+        DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN) ||
     (params.injection.metadata !== undefined && !isPluginJsonValue(params.injection.metadata)) ||
     (params.injection.idempotencyKey !== undefined &&
       (typeof params.injection.idempotencyKey !== "string" ||
@@ -373,7 +375,6 @@ async function drainPluginNextTurnInjections(
         .map((plugin) => plugin.id),
     );
     const drained: PluginNextTurnInjectionRecord[] = [];
-    let drainedBytes = 0;
     const retained: NonNullable<SessionEntry["pluginNextTurnInjections"]> = {};
     for (const [pluginId, entries] of Object.entries(entry.pluginNextTurnInjections)) {
       // Guard against malformed/hand-edited persisted state — a non-array value
@@ -384,6 +385,15 @@ async function drainPluginNextTurnInjections(
       const allowed =
         activePluginIds.has(pluginId) &&
         resolvePromptInjectionAllowed(params.cfg.plugins?.entries?.[pluginId]?.hooks);
+      const drainLimits = params.cfg.plugins?.entries?.[pluginId]?.hooks;
+      const maxEntries =
+        drainLimits?.nextTurnInjectionDrainMaxEntries ??
+        DEFAULT_DRAINED_NEXT_TURN_INJECTIONS_PER_PLUGIN;
+      const maxBytes =
+        drainLimits?.nextTurnInjectionDrainMaxBytes ??
+        DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN;
+      let drainedEntriesForPlugin = 0;
+      let drainedBytesForPlugin = 0;
       for (const candidate of entries) {
         if (!isPluginNextTurnInjectionRecord(candidate)) {
           continue;
@@ -400,19 +410,17 @@ async function drainPluginNextTurnInjections(
           (retained[pluginId] ??= []).push(candidate);
         } else {
           const bytes = Buffer.byteLength(candidate.text, "utf8");
-          if (bytes > MAX_DRAINED_NEXT_TURN_INJECTION_BYTES) {
+          if (bytes > DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN) {
             settle(entry, pluginId, candidate, "discarded", now);
             continue;
           }
-          if (
-            drained.length >= MAX_DRAINED_NEXT_TURN_INJECTIONS ||
-            drainedBytes + bytes > MAX_DRAINED_NEXT_TURN_INJECTION_BYTES
-          ) {
+          if (drainedEntriesForPlugin >= maxEntries || drainedBytesForPlugin + bytes > maxBytes) {
             (retained[pluginId] ??= []).push(candidate);
             continue;
           }
           drained.push(candidate);
-          drainedBytes += bytes;
+          drainedEntriesForPlugin += 1;
+          drainedBytesForPlugin += bytes;
           settle(entry, pluginId, candidate, "consumed", now);
         }
       }
