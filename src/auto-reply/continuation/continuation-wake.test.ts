@@ -652,7 +652,7 @@ it("attributes each coalesced return to its own delegate run and the one run tha
     const rows = await readStoredUserRows(sessionKey);
     expect(rows).toHaveLength(1);
     // The wake's provenance names only the last delegate; each delivery must name its own.
-    expect(rows[0]?.__openclaw).toMatchObject({
+    expect(rows[0]?.["__openclaw"]).toMatchObject({
       inputDeliveries: [
         { deliveryId: first, sourceRunId: "child-run:delegate one finished" },
         { deliveryId: second, sourceRunId: "child-run:delegate two finished" },
@@ -721,7 +721,7 @@ it("stamps the run that executed a return deferred behind a busy turn", async ({
     const rows = await readStoredUserRows(sessionKey);
     // An event turn that consumed no delegate return carries no consumption stamp.
     const busyInput = rows.find((input) => input.provenance?.sourceTool === "task");
-    expect(busyInput?.__openclaw).not.toHaveProperty("inputRunId");
+    expect(busyInput?.["__openclaw"]).not.toHaveProperty("inputRunId");
     expect(rows.find((input) => input.provenance?.sourceTool === "continuation")).toMatchObject({
       __openclaw: {
         inputDeliveries: [{ deliveryId: row, sourceRunId: "child-run:delegate behind busy turn" }],
@@ -761,8 +761,8 @@ it("never stamps a user-authored turn that adopts a queued return as a delegate 
     expect(await rowPending(row)).toBe(false);
     const rows = await readStoredUserRows(sessionKey);
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.__openclaw).toMatchObject({ sessionDeliveryAckIds: [row] });
-    expect(rows[0]?.__openclaw).not.toHaveProperty("inputRunId");
-    expect(rows[0]?.__openclaw).not.toHaveProperty("inputDeliveries");
+    expect(rows[0]?.["__openclaw"]).toMatchObject({ sessionDeliveryAckIds: [row] });
+    expect(rows[0]?.["__openclaw"]).not.toHaveProperty("inputRunId");
+    expect(rows[0]?.["__openclaw"]).not.toHaveProperty("inputDeliveries");
   });
 });
