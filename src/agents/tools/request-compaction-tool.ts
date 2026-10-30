@@ -31,17 +31,6 @@ const RATE_LIMIT_MS = 5 * 60 * 1000; // 5 minutes
 /** Volitional compaction counts are status-only diagnostics, not durable state. */
 const VOLITIONAL_COMPACTION_COUNT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-/** Why a live runner has no measured context usage to compare with the threshold. */
-export type RequestCompactionUnmeasuredCause = "no_fresh_usage" | "unknown_context_window";
-
-const UNMEASURED_REASONS: Record<RequestCompactionUnmeasuredCause | "inventory_only", string> = {
-  no_fresh_usage:
-    "Context usage has not been measured yet: this session has no fresh token totals from a completed model turn (as on its first turn). Retry request_compaction on a later turn, after usage has been recorded.",
-  unknown_context_window: `Context usage cannot be measured: the context window of this session's model is unknown, so usage cannot be compared with the ${Math.round(MIN_CONTEXT_THRESHOLD * 100)}% threshold.`,
-  inventory_only:
-    "Context usage is unknown for this session; request_compaction is unavailable on inventory-only paths.",
-};
-
 /**
  * Per-session state for guards.
  *
@@ -105,17 +94,11 @@ export type RequestCompactionToolOpts = {
   /** Stable run identifier for this agent invocation. */
   runId?: string;
   /**
-   * Returns the current context usage as a fraction (0-1). A live runner that
-   * cannot measure it returns the cause instead; the inventory-only stub used
-   * by catalog/dispatch builds returns null.
+   * Returns the current context usage as a fraction (0-1), or null when unknown
+   * (e.g. inventory-only path used by /status surface reflection).
    * Injected so the tool does not reach into session internals.
    */
-  getContextUsage: () => number | RequestCompactionUnmeasuredCause | null;
-  /**
-   * Who supplies getContextUsage. Only a live runner's missing usage is
-   * reported as unmeasured; any other origin is an inventory-only path.
-   */
-  contextUsageOrigin?: "live_runner" | "inventory_stub";
+  getContextUsage: () => number | null;
   /**
    * Async function that triggers compaction. Injected so the tool does not
    * import the heavy compaction module directly. The caller provides a
@@ -195,7 +178,7 @@ function notifyCompactionDegraded(params: {
  *
  * Guards (all checked before compaction is enqueued):
  *   - **Dedup:** a compaction request is not already pending for this session.
- *   - **Context threshold:** context usage must be measured and >= 70%.
+ *   - **Context threshold:** context usage must be >= 70%.
  *   - **Rate limit:** at most one compaction per 5 minutes per session.
  *
  * (The earlier "generation guard" was removed 2026-04-15 by RFC: compaction
@@ -250,18 +233,12 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
 
       // ----- Guard 1: Context threshold -----
       const contextUsage = opts.getContextUsage();
-      if (typeof contextUsage !== "number") {
-        // A live runner that names no cause has still not measured usage this session.
-        const cause =
-          opts.contextUsageOrigin === "live_runner"
-            ? (contextUsage ?? "no_fresh_usage")
-            : "inventory_only";
-        log.debug(`[request_compaction:context-unmeasured] session=${sessionKey} cause=${cause}`);
+      if (contextUsage === null) {
+        log.debug(`[request_compaction:context-unknown] session=${sessionKey}`);
         return jsonResult({
           status: "rejected",
-          guard: "context_unmeasured",
-          cause,
-          reason: UNMEASURED_REASONS[cause],
+          guard: "context_threshold",
+          reason: `Context usage is unknown for this session; request_compaction is unavailable on inventory-only paths.`,
         });
       }
       if (contextUsage < MIN_CONTEXT_THRESHOLD) {
