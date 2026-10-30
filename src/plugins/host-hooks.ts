@@ -27,6 +27,7 @@ export type {
   PluginNextTurnInjectionRecord,
   PluginNextTurnInjectionState,
   PluginNextTurnInjectionStateResult,
+  PluginNextTurnInjectionSettlement,
 } from "./host-hook-turn-types.js";
 
 /** Reason passed to plugin cleanup callbacks when host-owned state changes. */

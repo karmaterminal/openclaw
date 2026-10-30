@@ -55,6 +55,77 @@ describe("next-turn injection identity", () => {
     await state.cleanup();
   });
 
+  it("refuses Codex and Copilot sessions without changing their queues", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    for (const harness of ["codex", "copilot"]) {
+      const scope = sessionScope(cfg, "main", `agent:main:harness:${harness}:thread`);
+      await writeEntry(scope, {
+        sessionId: `${harness}-thread`,
+        updatedAt: 1,
+        agentHarnessId: harness,
+      });
+      await expect(
+        enqueuePluginNextTurnInjection({
+          cfg,
+          pluginId: "owner-fixture",
+          injection: {
+            sessionKey: scope.sessionKey,
+            agentId: scope.agentId,
+            text: "unreachable",
+            idempotencyKey: "blocked",
+          },
+        }),
+      ).resolves.toMatchObject({ enqueued: false, reason: "harness_does_not_drain" });
+      expect(readEntry(scope)?.pluginNextTurnInjections).toBeUndefined();
+    }
+  });
+
+  it("notifies only after durable settlement and leaves query authoritative", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:notice");
+    await writeEntry(scope, { sessionId: "notice", updatedAt: 1 });
+    const registry = createEmptyPluginRegistry();
+    registry.plugins.push(createPluginRecord({ id: "owner-fixture", status: "loaded" }));
+    const notices: Array<{ idempotencyKey: string; state: string; settledAt: number }> = [];
+    registry.nextTurnInjectionSettlementHandlers.push({
+      pluginId: "owner-fixture",
+      source: "fixture",
+      handler: async (event) => {
+        const result = await getPluginNextTurnInjectionState({
+          cfg,
+          pluginId: "owner-fixture",
+          sessionKey: event.sessionKey,
+          agentId: "main",
+          idempotencyKey: event.idempotencyKey,
+        });
+        expect(result.state).toBe(event.state);
+        notices.push(event);
+      },
+    });
+    setActivePluginRegistry(registry);
+    await enqueuePluginNextTurnInjection({
+      cfg,
+      pluginId: "owner-fixture",
+      injection: {
+        sessionKey: scope.sessionKey,
+        agentId: "main",
+        text: "notice",
+        idempotencyKey: "one",
+      },
+    });
+    expect(notices).toHaveLength(0);
+    await drain({ cfg, sessionKey: scope.sessionKey, agentId: "main" });
+    expect(notices).toMatchObject([{ idempotencyKey: "one", state: "consumed" }]);
+    await withdrawPluginNextTurnInjection({
+      cfg,
+      pluginId: "owner-fixture",
+      sessionKey: scope.sessionKey,
+      agentId: "main",
+      idempotencyKey: "one",
+    });
+    expect(notices).toHaveLength(1);
+  });
+
   it("settles conditional supersede and withdraw durably", async () => {
     const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
     const scope = sessionScope(cfg, "main", "agent:main:oc0");

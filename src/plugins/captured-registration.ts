@@ -106,6 +106,11 @@ export function createCapturedPluginRegistration(params?: {
     storageProviders: new Array<StorageProvider>(),
     migrationProviders: new Array<MigrationProviderPlugin>(),
     sessionExtensions: new Array<PluginSessionExtensionRegistration>(),
+    nextTurnInjectionSettlementHandlers: new Array<
+      (
+        event: import("./host-hook-turn-types.js").PluginNextTurnInjectionSettlement,
+      ) => void | Promise<void>
+    >(),
     trustedToolPolicies: new Array<PluginTrustedToolPolicyRegistration>(),
     toolMetadata: new Array<PluginToolMetadataRegistration>(),
     controlUiDescriptors: new Array<PluginControlUiDescriptor>(),
@@ -236,6 +241,7 @@ export function createCapturedPluginRegistration(params?: {
         registerStorageProvider: captureInto(captured.storageProviders),
         registerMigrationProvider: captureInto(captured.migrationProviders),
         registerSessionExtension: captureInto(captured.sessionExtensions),
+        onNextTurnInjectionSettled: captureInto(captured.nextTurnInjectionSettlementHandlers),
         registerTrustedToolPolicy(policy: PluginTrustedToolPolicyRegistration) {
           const matcher = normalizePluginToolMatcher(policy.matcher);
           captured.trustedToolPolicies.push({ ...policy, ...(matcher ? { matcher } : {}) });

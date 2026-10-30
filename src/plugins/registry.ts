@@ -350,6 +350,7 @@ export function createPluginRegistry(registryOptions: PluginRegistryParams) {
                   injection,
                 });
               },
+              onNextTurnInjectionSettled: (handler) => bound.onNextTurnInjectionSettled(handler),
               getNextTurnInjectionState: async (input) => {
                 const { getPluginNextTurnInjectionState } = await loadHookState();
                 return getPluginNextTurnInjectionState({

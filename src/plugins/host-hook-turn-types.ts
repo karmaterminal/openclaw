@@ -49,7 +49,8 @@ export type PluginNextTurnInjectionEnqueueResult = {
     | "duplicate"
     | "capacity"
     | "missing_session"
-    | "supersede_conflict";
+    | "supersede_conflict"
+    | "harness_does_not_drain";
   state?: PluginNextTurnInjectionState;
 };
 
@@ -65,6 +66,14 @@ export type PluginNextTurnInjectionStateResult = {
   idempotencyKey: string;
   state: PluginNextTurnInjectionState;
   settledAt?: number;
+};
+
+/** Metadata-only post-commit notice. Query remains authoritative. */
+export type PluginNextTurnInjectionSettlement = {
+  sessionKey: string;
+  idempotencyKey: string;
+  state: "consumed" | "withdrawn" | "expired" | "discarded";
+  settledAt: number;
 };
 
 /** Event passed to plugins before an agent turn is prepared. */

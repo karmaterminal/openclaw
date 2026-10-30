@@ -64,6 +64,7 @@ export const pluginApiDefaultHandlers = {
   steerActiveRun: async () => ({ steered: false, reason: "not wired" }),
   getNextTurnInjectionState: async (input) => ({ ...input, state: "unknown" }),
   withdrawNextTurnInjection: async (input) => ({ ...input, state: "unknown" }),
+  onNextTurnInjectionSettled: () => {},
   registerTrustedToolPolicy: () => {},
   registerToolMetadata: () => {},
   registerControlUiDescriptor: () => {},

@@ -7,7 +7,11 @@ import { updateResolvedSessionEntry } from "../config/sessions/session-accessor.
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { resolvePromptInjectionAllowed } from "./hook-policy-decisions.js";
-import type { PluginNextTurnInjectionStateResult } from "./host-hook-turn-types.js";
+import type {
+  PluginNextTurnInjectionSettlement,
+  PluginNextTurnInjectionState,
+  PluginNextTurnInjectionStateResult,
+} from "./host-hook-turn-types.js";
 import {
   buildPluginAgentTurnPrepareContext,
   isPluginJsonValue,
@@ -30,6 +34,27 @@ const DEFAULT_DRAINED_NEXT_TURN_INJECTIONS_PER_PLUGIN = 32;
 const DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN = 64 * 1024;
 const MAX_OUTCOMES_PER_PLUGIN_SESSION = 256;
 const MAX_OUTCOME_RETENTION_MS = 86_400_000;
+type SettlementNotice = { pluginId: string; event: PluginNextTurnInjectionSettlement };
+
+async function notifySettlements(notices: SettlementNotice[], sessionKey: string) {
+  const registry = getPluginRegistryForContext();
+  for (const { pluginId, event } of notices) {
+    event.sessionKey = sessionKey;
+    if (!registry?.plugins.some((plugin) => plugin.id === pluginId && plugin.status === "loaded")) {
+      continue;
+    }
+    for (const registration of registry.nextTurnInjectionSettlementHandlers ?? []) {
+      if (registration.pluginId !== pluginId) {
+        continue;
+      }
+      try {
+        await registration.handler(event);
+      } catch (error) {
+        log.warn(`next-turn settlement notification failed for ${pluginId}: ${String(error)}`);
+      }
+    }
+  }
+}
 
 type MutableSessionEntry = SessionEntry & Record<string, unknown>;
 
@@ -87,11 +112,19 @@ function settle(
   record: PluginNextTurnInjectionRecord,
   state: "consumed" | "withdrawn" | "expired" | "discarded",
   now: number,
+  notices?: SettlementNotice[],
 ) {
   if (!record.idempotencyKey) {
     return;
   }
   const byPlugin = (entry.pluginNextTurnInjectionOutcomes ??= {});
+  if (byPlugin[pluginId]?.[record.idempotencyKey]) {
+    return;
+  }
+  notices?.push({
+    pluginId,
+    event: { sessionKey: "", idempotencyKey: record.idempotencyKey, state, settledAt: now },
+  });
   (byPlugin[pluginId] ??= {})[record.idempotencyKey] = {
     state,
     settledAt: now,
@@ -152,6 +185,7 @@ export async function withdrawPluginNextTurnInjection(params: {
   idempotencyKey: string;
 }): Promise<PluginNextTurnInjectionStateResult> {
   const now = Date.now();
+  const notices: SettlementNotice[] = [];
   const updated = await updateResolvedSessionEntry(
     { cfg: params.cfg, sessionKey: params.sessionKey, agentId: params.agentId },
     (entry) => {
@@ -165,6 +199,7 @@ export async function withdrawPluginNextTurnInjection(params: {
           pending,
           isExpired(pending, now) ? "expired" : "withdrawn",
           now,
+          notices,
         );
         entry.pluginNextTurnInjections![params.pluginId] = entries.filter(
           (item) => item !== pending,
@@ -173,9 +208,13 @@ export async function withdrawPluginNextTurnInjection(params: {
       }
       const outcome =
         entry.pluginNextTurnInjectionOutcomes?.[params.pluginId]?.[params.idempotencyKey];
-      return { state: outcome?.state ?? "unknown", settledAt: outcome?.settledAt };
+      return {
+        state: (outcome?.state ?? "unknown") as PluginNextTurnInjectionState,
+        settledAt: outcome?.settledAt,
+      };
     },
   );
+  await notifySettlements(notices, updated.canonicalKey);
   return {
     sessionKey: params.sessionKey,
     idempotencyKey: params.idempotencyKey,
@@ -272,7 +311,15 @@ export async function enqueuePluginNextTurnInjection(params: {
     metadata: injection.metadata,
   };
   const scope = { cfg: params.cfg, sessionKey, agentId: params.injection.agentId };
+  const notices: SettlementNotice[] = [];
   const updated = await updateResolvedSessionEntry(scope, (entry) => {
+    if (
+      entry.agentHarnessId === "codex" ||
+      entry.agentHarnessId === "copilot" ||
+      /(?:^|:)harness:(?:codex|copilot)(?::|$)/.test(sessionKey)
+    ) {
+      return { enqueued: false, id: "", reason: "harness_does_not_drain" as const };
+    }
     const injections = { ...entry.pluginNextTurnInjections };
     pruneOutcomes(entry, params.pluginId, now);
     // Guard against malformed/hand-edited persisted state — a non-array value
@@ -286,7 +333,7 @@ export async function enqueuePluginNextTurnInjection(params: {
         if (!isExpired(candidate, now)) {
           return true;
         }
-        settle(entry, params.pluginId, candidate, "expired", now);
+        settle(entry, params.pluginId, candidate, "expired", now, notices);
         return false;
       },
     );
@@ -299,7 +346,7 @@ export async function enqueuePluginNextTurnInjection(params: {
     const predecessor = record.supersedeKey
       ? existing.find((item) => item.supersedeKey === record.supersedeKey)
       : undefined;
-    const expectedState = injection.expectedSupersededKey
+    const expectedState: PluginNextTurnInjectionState | undefined = injection.expectedSupersededKey
       ? existing.some((item) => item.idempotencyKey === injection.expectedSupersededKey)
         ? "pending"
         : (entry.pluginNextTurnInjectionOutcomes?.[params.pluginId]?.[
@@ -317,7 +364,7 @@ export async function enqueuePluginNextTurnInjection(params: {
       existing.length - (predecessor ? 1 : 0) >= MAX_PLUGIN_NEXT_TURN_INJECTIONS_PER_SESSION;
     const enqueued = !duplicate && !settled && !conflict && !capacity;
     if (enqueued && predecessor) {
-      settle(entry, params.pluginId, predecessor, "withdrawn", now);
+      settle(entry, params.pluginId, predecessor, "withdrawn", now, notices);
     }
     injections[params.pluginId] = enqueued
       ? [...existing.filter((item) => item !== predecessor), record]
@@ -345,6 +392,7 @@ export async function enqueuePluginNextTurnInjection(params: {
   if (!updated.found) {
     return { enqueued: false, id: "", sessionKey, reason: "missing_session" };
   }
+  await notifySettlements(notices, updated.canonicalKey);
   return { ...updated.result, sessionKey: updated.canonicalKey };
 }
 
@@ -365,6 +413,7 @@ async function drainPluginNextTurnInjections(
     return [];
   }
   const now = Date.now();
+  const notices: SettlementNotice[] = [];
   const updated = await updateResolvedSessionEntry(scope, (entry) => {
     if (!entry?.pluginNextTurnInjections) {
       return [];
@@ -399,19 +448,19 @@ async function drainPluginNextTurnInjections(
           continue;
         }
         if (isExpired(candidate, now)) {
-          settle(entry, pluginId, candidate, "expired", now);
+          settle(entry, pluginId, candidate, "expired", now, notices);
         } else if (!allowed) {
           if (candidate.expiresAt !== undefined) {
             (retained[pluginId] ??= []).push(candidate);
           } else {
-            settle(entry, pluginId, candidate, "discarded", now);
+            settle(entry, pluginId, candidate, "discarded", now, notices);
           }
         } else if (candidate.notBefore !== undefined && now < candidate.notBefore) {
           (retained[pluginId] ??= []).push(candidate);
         } else {
           const bytes = Buffer.byteLength(candidate.text, "utf8");
           if (bytes > DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN) {
-            settle(entry, pluginId, candidate, "discarded", now);
+            settle(entry, pluginId, candidate, "discarded", now, notices);
             continue;
           }
           if (drainedEntriesForPlugin >= maxEntries || drainedBytesForPlugin + bytes > maxBytes) {
@@ -421,7 +470,7 @@ async function drainPluginNextTurnInjections(
           drained.push(candidate);
           drainedEntriesForPlugin += 1;
           drainedBytesForPlugin += bytes;
-          settle(entry, pluginId, candidate, "consumed", now);
+          settle(entry, pluginId, candidate, "consumed", now, notices);
         }
       }
     }
@@ -438,6 +487,7 @@ async function drainPluginNextTurnInjections(
     }
     return drained;
   });
+  await notifySettlements(notices, updated.canonicalKey);
   return updated.found ? updated.result : [];
 }
 

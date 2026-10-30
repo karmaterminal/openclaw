@@ -46,6 +46,7 @@ export const pluginArrays = [
   "subagentProfiles",
   "interactiveHandlers",
   "sessionExtensions",
+  "nextTurnInjectionSettlementHandlers",
   "trustedToolPolicies",
   "toolMetadata",
   "controlUiDescriptors",

@@ -399,6 +399,13 @@ export type PluginRegistry = {
     pluginName?: string;
     pluginRoot?: string;
   })[];
+  nextTurnInjectionSettlementHandlers: Array<
+    PluginRegistrationOwner & {
+      handler: (
+        event: import("./host-hook-turn-types.js").PluginNextTurnInjectionSettlement,
+      ) => void | Promise<void>;
+    }
+  >;
   sessionExtensions: Array<
     PluginRegistrationOwner & { extension: PluginSessionExtensionRegistration }
   >;

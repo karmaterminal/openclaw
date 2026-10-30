@@ -135,6 +135,12 @@ type OpenClawPluginSessionWorkflowApi = {
     agentId?: string;
     idempotencyKey: string;
   }) => Promise<PluginNextTurnInjectionStateResult>;
+  /** Register a metadata-only settlement notice handler. Notifications may be missed; query for truth. */
+  onNextTurnInjectionSettled: (
+    handler: (
+      event: import("./host-hook-turn-types.js").PluginNextTurnInjectionSettlement,
+    ) => void | Promise<void>,
+  ) => void;
   withdrawNextTurnInjection: (params: {
     sessionKey: string;
     agentId?: string;
@@ -422,6 +428,7 @@ export type OpenClawPluginApi = {
   enqueueNextTurnInjection: OpenClawPluginSessionWorkflowApi["enqueueNextTurnInjection"];
   getNextTurnInjectionState: OpenClawPluginSessionWorkflowApi["getNextTurnInjectionState"];
   withdrawNextTurnInjection: OpenClawPluginSessionWorkflowApi["withdrawNextTurnInjection"];
+  onNextTurnInjectionSettled: OpenClawPluginSessionWorkflowApi["onNextTurnInjectionSettled"];
   /**
    * Register a trusted pre-tool policy. Installed plugins must declare the
    * policy id in `contracts.trustedToolPolicies`.
