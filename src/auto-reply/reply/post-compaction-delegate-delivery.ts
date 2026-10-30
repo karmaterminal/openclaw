@@ -10,6 +10,10 @@ import {
   resolveSessionEntryFromStore,
 } from "../../config/sessions/session-accessor.js";
 import type { SessionEntry, SessionPostCompactionDelegate } from "../../config/sessions/types.js";
+import {
+  emitContinuationDelegateFireSpan,
+  startContinuationDelegateSpan,
+} from "../../infra/continuation-tracer.js";
 import { generateChainId } from "../../infra/secure-random.js";
 import {
   markSessionDeliveryAttemptStarted,
@@ -264,7 +268,11 @@ async function failSourceBackedPostCompactionDelivery(
  * - an entry whose attempt started (`deliveryStartedAt`) with no such row is an
  *   unresolved claim: one interrupted notice, never a second spawn;
  * - attempt ownership is persisted before the spawn, and only a spawn that
- *   provably never dispatched releases it for a retry.
+ *   provably never dispatched releases it for a retry;
+ * - the delegate's `continuation.delegate.fire` span is emitted only once
+ *   attempt ownership is durable, so it follows the same rule: no restart or
+ *   replay fires it twice, and a released ownership retry is a new attempt with
+ *   its own dispatch and fire spans.
  */
 export async function deliverQueuedPostCompactionDelegate(
   params: {
@@ -468,6 +476,21 @@ export async function deliverQueuedPostCompactionDelegate(
     },
     ownerSessionKey: params.entry.sessionKey,
   });
+  // The same dispatch/fire span pair a typed delegate gets (delegate-dispatch.ts):
+  // the dispatch continues the staging turn's trace, and the fire joins the
+  // release that queued this entry through `compaction.id`.
+  const chainStepRemaining = maxCompactionChainLength - nextCompactionChainCount;
+  const dispatchSpan = startContinuationDelegateSpan({
+    chainId: compactionChainId,
+    chainStepRemaining,
+    delayMs: 0,
+    delivery: "compaction",
+    delegateMode: "post-compaction",
+    reason: params.entry.task,
+    traceparent: entryTraceparent,
+    log: deps.log,
+  });
+  const spawnTraceparent = dispatchSpan.traceparent?.() ?? entryTraceparent;
   let rollbackAcceptedSpawn: (() => Promise<void>) | undefined;
   let releaseAcceptedSpawnHold: (() => void) | undefined;
   try {
@@ -492,6 +515,17 @@ export async function deliverQueuedPostCompactionDelegate(
       params.entry,
       params.queueContext ?? captureContinuationQueueContext(),
     );
+    emitContinuationDelegateFireSpan({
+      chainId: compactionChainId,
+      chainStepRemainingAtDispatch: chainStepRemaining,
+      delegateMode: "post-compaction",
+      delayMs: 0,
+      fireDeferredMs: deps.now() - (params.entry.firstArmedAt ?? params.entry.createdAt),
+      compactionId: params.entry.compactionCount,
+      reason: params.entry.task,
+      traceparent: spawnTraceparent,
+      log: deps.log,
+    });
     let spawnResult: Awaited<ReturnType<PostCompactionDelegateSpawn>>;
     try {
       spawnResult = await deps.spawnSubagentDirect(
@@ -526,7 +560,7 @@ export async function deliverQueuedPostCompactionDelegate(
           ...(params.entry.attachAs?.mountPath
             ? { attachMountPath: params.entry.attachAs.mountPath }
             : {}),
-          ...(entryTraceparent ? { traceparent: entryTraceparent } : {}),
+          ...(spawnTraceparent ? { traceparent: spawnTraceparent } : {}),
         },
         {
           agentSessionKey: params.entry.sessionKey,
@@ -566,6 +600,7 @@ export async function deliverQueuedPostCompactionDelegate(
         params.entry.sourceFlowId &&
         params.entry.sourceExpectedRevision !== undefined
       ) {
+        dispatchSpan.setStatus("ERROR", spawnResult.error ?? "delegate spawn forbidden");
         await failSourceBackedPostCompactionDelivery(
           deps,
           params.entry,
@@ -643,6 +678,13 @@ export async function deliverQueuedPostCompactionDelegate(
       );
     }
     rollbackAcceptedSpawn = undefined;
+    dispatchSpan.setStatus("OK");
+  } catch (error) {
+    // Apart from a forbidden spawn, every unaccepted outcome above leaves by
+    // throwing (dead letter, retry, interrupted notice); record it here once.
+    dispatchSpan.recordException(error);
+    dispatchSpan.setStatus("ERROR", error instanceof Error ? error.message : String(error));
+    throw error;
   } finally {
     try {
       await rollbackAcceptedSpawn?.();
@@ -650,6 +692,7 @@ export async function deliverQueuedPostCompactionDelegate(
       // An unconfirmed arm is let go here; the registry sweeper fails it closed.
       releaseAcceptedSpawnHold?.();
       activeDispatch.release();
+      dispatchSpan.end();
     }
   }
 }

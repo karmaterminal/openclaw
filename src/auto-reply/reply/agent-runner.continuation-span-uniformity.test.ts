@@ -192,7 +192,7 @@ vi.mock("../../agents/subagents/registry/subagent-registry.js", () => ({
   prepareSubagentRunsByRunIds: async () => ({
     consume: <T>(read: (runs: ReadonlyMap<string, never>) => T) => ({
       ready: true as const,
-      value: read(new Map()),
+      value: read(new Map<string, never>()),
     }),
   }),
 }));
@@ -512,7 +512,6 @@ describe("runReplyAgent :: delegate dispatch span uniformity", () => {
     expect(silent.attributes["chain.step.remaining"]).toBe(4);
     expect(silentWake.attributes["chain.step.remaining"]).toBe(3);
   });
-
 });
 
 describe("runReplyAgent :: released post-compaction delegate spans (#1497)", () => {

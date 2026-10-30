@@ -343,6 +343,7 @@ export function buildPostCompactionDelegateDeliveryPayload(params: {
     ...(params.delegate.expectedRevision !== undefined
       ? { sourceExpectedRevision: params.delegate.expectedRevision }
       : {}),
+    ...(params.compactionCount !== undefined ? { compactionCount: params.compactionCount } : {}),
     ...(params.childRunId ? { childRunId: params.childRunId } : {}),
     ...(params.deliveryContext ? { deliveryContext: params.deliveryContext } : {}),
     idempotencyKey:
