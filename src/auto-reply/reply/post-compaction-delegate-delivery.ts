@@ -488,7 +488,7 @@ export async function deliverQueuedPostCompactionDelegate(
     delegateMode: "post-compaction",
     reason: params.entry.task,
     traceparent: entryTraceparent,
-    log: deps.log,
+    log: (message) => deps.log(message),
   });
   const spawnTraceparent = dispatchSpan.traceparent?.() ?? entryTraceparent;
   let rollbackAcceptedSpawn: (() => Promise<void>) | undefined;
@@ -524,7 +524,7 @@ export async function deliverQueuedPostCompactionDelegate(
       compactionId: params.entry.compactionCount,
       reason: params.entry.task,
       traceparent: spawnTraceparent,
-      log: deps.log,
+      log: (message) => deps.log(message),
     });
     let spawnResult: Awaited<ReturnType<PostCompactionDelegateSpawn>>;
     try {
