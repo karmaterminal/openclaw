@@ -71,6 +71,24 @@ describe("plugin host cleanup session stores", () => {
     ],
   });
 
+  it.each(["reset", "disable"] as const)(
+    "clears only the selected plugin's settled injection outcomes on %s",
+    async (reason) => {
+      const { clean, read, write } = store();
+      const key = "agent:main:main";
+      const outcome = { state: "consumed" as const, settledAt: updatedAt, retainUntil: 10_000 };
+      await write(key, "main", {
+        pluginNextTurnInjectionOutcomes: {
+          cleanup: { old: outcome },
+          other: { keep: outcome },
+        },
+      });
+
+      await clean({ pluginId: "cleanup", reason, sessionKey: key });
+      expect(read(key)?.pluginNextTurnInjectionOutcomes).toEqual({ other: { keep: outcome } });
+    },
+  );
+
   const harnessRegistration = (pluginId: string, id: string): Harness => ({
     pluginId,
     source: "test",

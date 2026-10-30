@@ -99,6 +99,7 @@ export function clearPluginOwnedSessionState(
     "pluginExtensions",
     "pluginExtensionSlotKeys",
     "pluginNextTurnInjections",
+    "pluginNextTurnInjectionOutcomes",
   ] as const) {
     const state = entry[field];
     if (!pluginId) {
@@ -158,9 +159,12 @@ export function hasPluginHostCleanupTarget(
   return (
     hasPromotedSessionEntrySlot(entry, params.pluginId, params.sessionEntrySlotKeys) ||
     (params.mode === "plugin-owned-state" &&
-      [entry.pluginExtensions, entry.pluginExtensionSlotKeys, entry.pluginNextTurnInjections].some(
-        (state) => Boolean(params.pluginId ? state?.[params.pluginId] : state),
-      ))
+      [
+        entry.pluginExtensions,
+        entry.pluginExtensionSlotKeys,
+        entry.pluginNextTurnInjections,
+        entry.pluginNextTurnInjectionOutcomes,
+      ].some((state) => Boolean(params.pluginId ? state?.[params.pluginId] : state)))
   );
 }
 
