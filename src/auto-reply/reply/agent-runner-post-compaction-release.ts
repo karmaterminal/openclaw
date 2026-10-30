@@ -1,6 +1,5 @@
 import { resolveContextTokensForModel } from "../../agents/context.js";
 import type { EmbeddedAgentCompactResult } from "../../agents/embedded-agent-runner/types.js";
-import type { RequestCompactionUnmeasuredCause } from "../../agents/tools/request-compaction-tool.js";
 import {
   resolveFreshSessionTotalTokens,
   type SessionEntry,
@@ -152,10 +151,10 @@ export function computeRequestCompactionContextUsage(params: {
   cfg: OpenClawConfig | undefined;
   provider: string;
   model: string;
-}): number | RequestCompactionUnmeasuredCause {
+}): number | null {
   const freshTotalTokens = resolveFreshSessionTotalTokens(params.entry);
   if (freshTotalTokens === undefined) {
-    return "no_fresh_usage";
+    return null;
   }
   const contextWindow =
     params.entry?.contextTokens ??
@@ -167,5 +166,5 @@ export function computeRequestCompactionContextUsage(params: {
     });
   return typeof contextWindow === "number" && contextWindow > 0
     ? freshTotalTokens / contextWindow
-    : "unknown_context_window";
+    : null;
 }
