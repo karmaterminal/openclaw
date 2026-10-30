@@ -181,10 +181,10 @@ export type ContinuationSpanAttrs = {
   readonly "fanout.recipient.outcomes"?: readonly string[];
   /**
    * Only set on `continuation.compaction.released` spans.
-   * Aggregate count of staged post-compaction delegates released for
-   * dispatch by a single auto-compaction event. Snapshotted from
-   * `sessionEntry.pendingPostCompactionDelegates.length` at the moment
-   * `dispatchPostCompactionDelegates` is invoked.
+   * Aggregate count of staged post-compaction delegates a single compaction
+   * released for delivery: the `queuedDelegates` that
+   * `dispatchPostCompactionDelegates` returns, whether a delegate was staged
+   * in continuation custody or in the session entry.
    *
    * Integer ≥ 0. May be 0 when auto-compaction occurred but no delegates
    * were staged (the dispatch still runs to consume staged-but-unflushed
@@ -991,8 +991,7 @@ export function emitContinuationFanoutSpan(args: {
  * Emit a `continuation.compaction.released` span at the agent-runner
  * post-compaction-delegate dispatch seam. Fired
  * once per `autoCompactionCount > 0` branch, after
- * `dispatchPostCompactionDelegates` returns, with the released-count
- * snapshotted before the dispatch call.
+ * `dispatchPostCompactionDelegates` returns, with the count it queued.
  *
  * Mirrors `emitContinuationQueueDrainSpan` shape. Integer hygiene
  * (`Math.max(0, Math.floor(...))`) keeps the invariant local even though

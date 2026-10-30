@@ -157,8 +157,7 @@ export async function finalizeReplyAgentRun(
         // event, so we don't call it again here. That await also carries upstream's
         // sequencing fix (context injection is no longer fire-and-forget).
         if (sessionKey) {
-          const releasedCount = activeSessionEntry?.pendingPostCompactionDelegates?.length ?? 0;
-          await dispatchPostCompactionDelegates({
+          const { queuedDelegates } = await dispatchPostCompactionDelegates({
             cfg,
             compactionCount: count,
             continuationSignalKind: effectiveContinuationSignal?.kind,
@@ -171,7 +170,7 @@ export async function finalizeReplyAgentRun(
             storePath,
           });
           emitContinuationCompactionReleasedSpan({
-            releasedCount,
+            releasedCount: queuedDelegates,
             compactionId: count,
             traceparent: execution.compactionTraceparent,
             log: (message) => defaultRuntime.log(message),
