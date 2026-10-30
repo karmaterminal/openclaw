@@ -120,6 +120,8 @@ export async function runAgentTurnWithOutcome(
   let terminalRecorded = false;
   try {
     if (eventExecution) {
+      // Continuation (karmaterminal): the event's input staged before this run; its commit names it.
+      params.followupRun.userTurnTranscriptRecorder?.bindInputRunId?.(runId);
       eventExecution.assertCurrent?.();
       await eventExecution.beforeStart?.();
       params.replyOperation?.abortSignal.throwIfAborted();

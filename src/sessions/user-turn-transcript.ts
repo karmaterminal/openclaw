@@ -34,6 +34,7 @@ import {
   capturePersistedModelPromptProjection,
   confirmPersistedSteerTargetRunId,
   preparePersistedModelPromptProjection,
+  stampPersistedInputRunId,
 } from "./user-turn-transcript-updates.js";
 import { createSessionDeliveryAckReplacement } from "./user-turn-transcript.delivery-acks.js";
 import {
@@ -118,6 +119,7 @@ export function createUserTurnTranscriptRecorder(
   let admissionWrite: Promise<void> | undefined;
   let replacementText: string | undefined;
   let confirmedSteerTargetRunId: string | undefined;
+  let inputRunId: string | undefined;
   let pendingInput: Awaited<ReturnType<typeof stageUserTurnPendingInput>>;
   const processing = createUserTurnProcessingCompletion(
     () => pendingInput,
@@ -288,7 +290,10 @@ export function createUserTurnTranscriptRecorder(
       "logicalTurnId" in receipt ? receipt : { ...receipt, logicalTurnId, role: "user" };
     admissionReceipt = admission;
     admittedMessage = persistedMessage;
-    const run = async () => admissionHandler?.(admission);
+    const run = async () => {
+      await admissionHandler?.(admission);
+      await stampPersistedInputRunId(recorder, inputRunId).catch(handlePersistenceError);
+    };
     // Runtime writes must queue behind the transcript writer instead of reentering it.
     admissionWrite = detached ? runInDetachedAsyncContext(run) : run();
     // The turn owner awaits this write; an early rejection must not be unobserved.
@@ -638,6 +643,9 @@ export function createUserTurnTranscriptRecorder(
       } catch (error) {
         handlePersistenceError(error);
       }
+    },
+    bindInputRunId: (runId) => {
+      inputRunId = runId;
     },
     getPersistedMessage: () =>
       admittedMessage ?? runtimePersistedMessage ?? persistedResult?.message,

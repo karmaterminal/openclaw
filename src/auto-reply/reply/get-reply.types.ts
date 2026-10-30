@@ -17,6 +17,7 @@ import type { DashboardMessageReadAdmission } from "../../gateway/message-action
 import type { ExtractedFileImage } from "../../media-understanding/extracted-file-images.js";
 import type { PluginCommandReplyOptions } from "../../plugins/plugin-command-dispatch-contract.js";
 import type { ReplyOperation } from "../../sessions/session-controller.contracts.js";
+import type { UserTurnInput } from "../../sessions/user-turn-transcript.types.js";
 import type { AgentDatabaseRequestExecutionSource } from "../../state/openclaw-agent-execution-admission-contract.js";
 import type { PreparedTtsPreferences } from "../../tts/tts-preferences.js";
 import { getCommandOwnerAuthority } from "../command-owner-authority.js";
@@ -74,6 +75,8 @@ type InternalReplySessionOptions = {
   scheduledAutomation?: ScheduledSessionAutomation;
   /** Producer callbacks follow this occurrence through queueing and delivery. */
   internalEventExecution?: SessionEventExecution;
+  /** Continuation (karmaterminal): the returns a wake hands this event turn, with their runs. */
+  continuationInputDeliveries?: UserTurnInput["inputDeliveries"];
   /** Host-only fallback eligibility; false preserves a caller without a profile grant. */
   sessionPrincipalTurn?: boolean;
   /** Source-owned cancellation retained when dispatch borrows an active lane for queued followups. */

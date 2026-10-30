@@ -102,6 +102,9 @@ export function buildPersistedUserTurnMetadata(
     ...(input.sessionDeliveryAckIds?.length
       ? { sessionDeliveryAckIds: [...new Set(input.sessionDeliveryAckIds)] }
       : {}),
+    ...(input.inputDeliveries?.length
+      ? { inputDeliveries: input.inputDeliveries.map((delivery) => ({ ...delivery })) }
+      : {}),
     ...(normalizedMedia.length > 0 ? { media: normalizedMedia } : {}),
     ...(input.mediaImageLayout
       ? {
@@ -217,6 +220,15 @@ export function restorePreparedUserTurnOperationalMetaForRuntime<
   if (steerTargetRunId) {
     runtimeMeta.steerTargetRunId = steerTargetRunId;
   }
+  // Continuation (karmaterminal): only the host names the returns an input consumed, and by whom.
+  delete runtimeMeta.inputDeliveries;
+  if (preparedMeta?.inputDeliveries) {
+    runtimeMeta.inputDeliveries = preparedMeta.inputDeliveries;
+  }
+  delete runtimeMeta.inputRunId;
+  if (preparedMeta?.inputRunId) {
+    runtimeMeta.inputRunId = preparedMeta.inputRunId;
+  }
   if (typeof senderIsOwner === "boolean") {
     runtimeMeta.senderIsOwner = senderIsOwner;
   }
@@ -309,6 +321,8 @@ export function preparePersistedUserTurnMessageForTranscriptWrite(
     ? [...originalSessionDeliveryAckIds]
     : undefined;
   const steerTargetRunId = normalizePersistedSteerTargetRunId(originalMeta?.steerTargetRunId);
+  const inputDeliveries = structuredClone(originalMeta?.inputDeliveries);
+  const inputRunId = originalMeta?.inputRunId;
   const lateMedia = originalMeta?.lateMedia === true;
   const originalMedia = originalMeta?.media;
   const media = Array.isArray(originalMedia) ? structuredClone(originalMedia) : undefined;
@@ -364,6 +378,15 @@ export function preparePersistedUserTurnMessageForTranscriptWrite(
   delete protectedMeta.steerTargetRunId;
   if (steerTargetRunId) {
     protectedMeta.steerTargetRunId = steerTargetRunId;
+  }
+  // Continuation (karmaterminal): a hook can neither forge nor drop a consumption record.
+  delete protectedMeta.inputDeliveries;
+  if (inputDeliveries) {
+    protectedMeta.inputDeliveries = inputDeliveries;
+  }
+  delete protectedMeta.inputRunId;
+  if (inputRunId) {
+    protectedMeta.inputRunId = inputRunId;
   }
   const protectedMessage: PersistedUserTurnMessage = {
     ...nextUserMessage,

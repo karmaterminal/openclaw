@@ -25,7 +25,10 @@ import type {
 } from "../../infra/outbound/source-delivery-plan.types.js";
 import type { SystemEvent } from "../../infra/system-events.js";
 import type { ReplyOperationObservation } from "../../sessions/reply-operation-state.js";
-import type { UserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.types.js";
+import type {
+  UserTurnInput,
+  UserTurnTranscriptRecorder,
+} from "../../sessions/user-turn-transcript.types.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
 import type { GetReplyOptions } from "../get-reply-options.types.js";
 import type { NormalizeReplySkipReason } from "./normalize-reply-skip-reason.js";
@@ -120,7 +123,11 @@ export type SessionEventOptions = {
    * Continuation (karmaterminal): wake lineage the turn's reply options carry, so a delegate
    * return keeps its chain budget (see continuation/continuation-wake.ts).
    */
-  continuation?: Readonly<Pick<GetReplyOptions, "continuationTrigger" | "parentRunId">>;
+  continuation?: Readonly<
+    Pick<GetReplyOptions, "continuationTrigger" | "parentRunId"> & {
+      continuationInputDeliveries?: UserTurnInput["inputDeliveries"];
+    }
+  >;
   /** Host producer remains live through admission, execution and delivery. */
   assertCurrent?: () => void;
 };

@@ -62,6 +62,8 @@ type PendingWake = {
   continuationTrigger?: ContinuationTrigger;
   parentRunId?: string;
   deliveryIds: Set<string>;
+  /** Each row's producing run: a coalesced wake's parentRunId names only the last (#1504). */
+  sourceRunIds: Map<string, string>;
   timer: ReturnType<typeof setTimeout>;
 };
 
@@ -91,6 +93,7 @@ export function requestContinuationWake(request: ContinuationWakeRequest): void 
     for (const id of request.deliveryIds) {
       existing.deliveryIds.add(id);
     }
+    recordSourceRunIds(existing, request);
     existing.continuationTrigger ??= trigger;
     existing.parentRunId = request.parentRunId ?? existing.parentRunId;
     return;
@@ -102,10 +105,20 @@ export function requestContinuationWake(request: ContinuationWakeRequest): void 
     ...(trigger ? { continuationTrigger: trigger } : {}),
     ...(request.parentRunId ? { parentRunId: request.parentRunId } : {}),
     deliveryIds: new Set(request.deliveryIds),
+    sourceRunIds: new Map(),
     timer: setTimeout(() => runPendingWake(key), CONTINUATION_WAKE_COALESCE_MS),
   };
+  recordSourceRunIds(wake, request);
   wake.timer.unref?.();
   pendingWakes.set(key, wake);
+}
+
+function recordSourceRunIds(wake: PendingWake, request: ContinuationWakeRequest): void {
+  for (const id of request.deliveryIds) {
+    if (request.parentRunId) {
+      wake.sourceRunIds.set(id, request.parentRunId);
+    }
+  }
 }
 
 function runPendingWake(key: string): void {
@@ -199,6 +212,11 @@ async function handOffContinuationWake(wake: PendingWake): Promise<void> {
                 ? { continuationTrigger: wake.continuationTrigger }
                 : {}),
               ...(wake.parentRunId ? { parentRunId: wake.parentRunId } : {}),
+              // The turn's input row names every row it consumes and the run that produced it.
+              continuationInputDeliveries: occurrences.flatMap(({ sessionDeliveryAckId: id }) => {
+                const sourceRunId = id ? wake.sourceRunIds.get(id) : undefined;
+                return id ? [{ deliveryId: id, ...(sourceRunId ? { sourceRunId } : {}) }] : [];
+              }),
             },
             onAdopted: async () => {
               adopted = true;
