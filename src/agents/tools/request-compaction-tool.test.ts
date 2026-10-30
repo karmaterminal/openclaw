@@ -181,9 +181,9 @@ describe("request_compaction tool", () => {
     expect(mockTriggerCompaction).toHaveBeenCalledOnce();
   });
 
-  // bootstrap#1727: unmeasured usage is its own guard, never a threshold verdict,
-  // and only an inventory path is called inventory-only. The live no_fresh_usage
-  // case is proven through both live runners' fossils.
+  // bootstrap#1727: unmeasured usage is its own guard, never a threshold verdict.
+  // The live no_fresh_usage case is proven through both live runners' fossils, and
+  // the inventory stub through openclaw-tools.continuation-misconfig-warn.
   const unmeasuredCases: Array<{
     name: string;
     opts: Pick<RequestCompactionToolOpts, "contextUsageOrigin" | "getContextUsage">;
@@ -201,12 +201,6 @@ describe("request_compaction tool", () => {
       opts: { contextUsageOrigin: "live_runner", getContextUsage: () => null },
       cause: "no_fresh_usage",
       reason: /^Context usage has not been measured yet/,
-    },
-    {
-      name: "the inventory-only stub",
-      opts: { contextUsageOrigin: "inventory_stub", getContextUsage: () => null },
-      cause: "inventory_only",
-      reason: /inventory-only paths\.$/,
     },
   ];
 
