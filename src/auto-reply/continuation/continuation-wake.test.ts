@@ -298,6 +298,20 @@ it("hands a delegate return to one adopted turn that keeps the chain budget", as
       continuationChainCount: 2,
       continuationChainId: "chain-before-wake",
     });
+    // openclaw#1504: the input row names the return, its delegate's run, and the consuming run.
+    expect(await readStoredUserRows(sessionKey)).toMatchObject([
+      {
+        provenance: {
+          kind: "internal_system",
+          sourceTool: "continuation",
+          runId: "child-run:delegate alpha finished",
+        },
+        __openclaw: {
+          inputDeliveries: [{ deliveryId: row, sourceRunId: "child-run:delegate alpha finished" }],
+          inputRunId: expectDefined(consumingRunIds()[0], "consuming run"),
+        },
+      },
+    ]);
   });
 });
 
@@ -375,6 +389,16 @@ it("coalesces several pending returns into one turn without merging their rows",
     expect(prompts[0]).toContain("delegate two finished");
     expect(await rowPending(first)).toBe(false);
     expect(await rowPending(second)).toBe(false);
+    // openclaw#1504: the wake's provenance names only the last delegate; each row names its own.
+    const rows = await readStoredUserRows(sessionKey);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.["__openclaw"]).toMatchObject({
+      inputDeliveries: [
+        { deliveryId: first, sourceRunId: "child-run:delegate one finished" },
+        { deliveryId: second, sourceRunId: "child-run:delegate two finished" },
+      ],
+      inputRunId: expectDefined(consumingRunIds()[0], "consuming run"),
+    });
   });
 });
 
@@ -449,6 +473,19 @@ it("waits behind a busy session and acknowledges only once its turn is adopted",
     expect(prompts).toHaveLength(2);
     expect(prompts[1]).toContain("delegate behind busy turn");
     expect(await rowPending(row)).toBe(false);
+    // openclaw#1504: the run that executed the deferred return is stamped, not the busy run;
+    // an event turn that consumed no return carries no stamp.
+    const [busyRunId, wakeRunId] = consumingRunIds();
+    expect(wakeRunId).not.toBe(busyRunId);
+    const rows = await readStoredUserRows(sessionKey);
+    const busyInput = rows.find((input) => input.provenance?.sourceTool === "task");
+    expect(busyInput?.["__openclaw"]).not.toHaveProperty("inputRunId");
+    expect(rows.find((input) => input.provenance?.sourceTool === "continuation")).toMatchObject({
+      __openclaw: {
+        inputDeliveries: [{ deliveryId: row, sourceRunId: "child-run:delegate behind busy turn" }],
+        inputRunId: expectDefined(wakeRunId, "deferred consuming run"),
+      },
+    });
   });
 });
 
@@ -473,6 +510,15 @@ it("replays a pending return after restart and wakes as its producer would", asy
     expect(await readSessionEntryInWorker({ agentId: AGENT_ID, sessionKey })).toMatchObject({
       continuationChainCount: 2,
     });
+    // openclaw#1504: the replay keeps the row's delegate run; the post-recovery run is stamped.
+    expect(await readStoredUserRows(sessionKey)).toMatchObject([
+      {
+        __openclaw: {
+          inputDeliveries: [{ deliveryId: row, sourceRunId: "child-run:delegate before restart" }],
+          inputRunId: expectDefined(consumingRunIds()[0], "consuming run"),
+        },
+      },
+    ]);
   });
 });
 
@@ -628,127 +674,7 @@ it("emits the queue drain for the returns it hands off, parented by their tracep
   });
 });
 
-// openclaw#1504: a woken turn's committed input row names each delegate return it consumed, with
-// the delegate's run, and the run that consumed them, readable through sessions.get.
-it("stamps the consuming run and the delegate's run on a delegate return's input row", async ({
-  signal,
-}) => {
-  await withWakeFixture("consuming-run", async ({ sessionKey, prompts }) => {
-    answerTurns(prompts, "Delegate result reviewed.");
-    const row = await produceReturn(sessionKey, "delegate alpha finished");
-
-    await withinTest(settleContinuationWakesForTest(), signal);
-
-    const [runId] = consumingRunIds();
-    expect(await readStoredUserRows(sessionKey)).toMatchObject([
-      {
-        provenance: {
-          kind: "internal_system",
-          sourceTool: "continuation",
-          runId: "child-run:delegate alpha finished",
-        },
-        __openclaw: {
-          inputDeliveries: [{ deliveryId: row, sourceRunId: "child-run:delegate alpha finished" }],
-          inputRunId: expectDefined(runId, "consuming run"),
-        },
-      },
-    ]);
-  });
-});
-
-it("attributes each coalesced return to its own delegate run and the one run that consumed both", async ({
-  signal,
-}) => {
-  await withWakeFixture("consuming-run-coalesced", async ({ sessionKey, prompts }) => {
-    answerTurns(prompts, "Both results reviewed.");
-    const first = await produceReturn(sessionKey, "delegate one finished");
-    const second = await produceReturn(sessionKey, "delegate two finished");
-
-    await withinTest(settleContinuationWakesForTest(), signal);
-
-    expect(consumingRunIds()).toHaveLength(1);
-    const rows = await readStoredUserRows(sessionKey);
-    expect(rows).toHaveLength(1);
-    // The wake's provenance names only the last delegate; each delivery must name its own.
-    expect(rows[0]?.["__openclaw"]).toMatchObject({
-      inputDeliveries: [
-        { deliveryId: first, sourceRunId: "child-run:delegate one finished" },
-        { deliveryId: second, sourceRunId: "child-run:delegate two finished" },
-      ],
-      inputRunId: consumingRunIds()[0],
-    });
-  });
-});
-
-it("stamps a return replayed after restart with the run that consumed it after recovery", async ({
-  signal,
-}) => {
-  await withWakeFixture("consuming-run-restart", async ({ sessionKey, prompts }) => {
-    answerTurns(prompts, "Recovered result reviewed.");
-    const row = await produceReturn(sessionKey, "delegate before restart");
-    resetContinuationWakesForTest();
-    resetSystemEventsForTest();
-
-    await recoverPendingProducedSessionDeliveries({
-      deps: {},
-      queueContext: captureOpenClawStateWorkerContext(),
-    });
-    await withinTest(settleContinuationWakesForTest(), signal);
-
-    expect(consumingRunIds()).toHaveLength(1);
-    expect(await readStoredUserRows(sessionKey)).toMatchObject([
-      {
-        __openclaw: {
-          inputDeliveries: [{ deliveryId: row, sourceRunId: "child-run:delegate before restart" }],
-          inputRunId: consumingRunIds()[0],
-        },
-      },
-    ]);
-  });
-});
-
-it("stamps the run that executed a return deferred behind a busy turn", async ({ signal }) => {
-  await withWakeFixture("consuming-run-busy", async ({ sessionKey, prompts }) => {
-    const firstStarted = createDeferred();
-    const releaseFirst = createDeferred();
-    runEmbeddedAgentMock.mockImplementation(async (params: RunEmbeddedAgentParams) => {
-      prompts.push(params.prompt);
-      await admitModelTurn(params);
-      if (prompts.length === 1) {
-        firstStarted.resolve();
-        await releaseFirst.promise;
-      }
-      return silentTerminal();
-    });
-    const busy = enqueueSessionEventForHost("unrelated work in progress", {
-      agentId: AGENT_ID,
-      sessionKey,
-      source: "task",
-      deliver: false,
-    });
-    await withinTest(firstStarted.promise, signal);
-    const row = await produceReturn(sessionKey, "delegate behind busy turn");
-    const wakes = settleContinuationWakesForTest();
-    releaseFirst.resolve();
-    await withinTest(busy.settled, signal);
-    await withinTest(wakes, signal);
-
-    const [busyRunId, wakeRunId] = consumingRunIds();
-    expect(wakeRunId).toBeDefined();
-    expect(wakeRunId).not.toBe(busyRunId);
-    const rows = await readStoredUserRows(sessionKey);
-    // An event turn that consumed no delegate return carries no consumption stamp.
-    const busyInput = rows.find((input) => input.provenance?.sourceTool === "task");
-    expect(busyInput?.["__openclaw"]).not.toHaveProperty("inputRunId");
-    expect(rows.find((input) => input.provenance?.sourceTool === "continuation")).toMatchObject({
-      __openclaw: {
-        inputDeliveries: [{ deliveryId: row, sourceRunId: "child-run:delegate behind busy turn" }],
-        inputRunId: wakeRunId,
-      },
-    });
-  });
-});
-
+// openclaw#1504: a user-authored row is never a delegate consumption, and the stamp is best-effort.
 it("never stamps a user-authored turn that adopts a queued return as a delegate consumption", async ({
   signal,
 }) => {

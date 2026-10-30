@@ -61,9 +61,8 @@ type PendingWake = {
   silent: boolean;
   continuationTrigger?: ContinuationTrigger;
   parentRunId?: string;
-  deliveryIds: Set<string>;
-  /** Each row's producing run: a coalesced wake's parentRunId names only the last (#1504). */
-  sourceRunIds: Map<string, string>;
+  /** Each row with its producing run; a coalesced wake's parentRunId names only the last (#1504). */
+  deliveries: Map<string, string | undefined>;
   timer: ReturnType<typeof setTimeout>;
 };
 
@@ -91,9 +90,8 @@ export function requestContinuationWake(request: ContinuationWakeRequest): void 
   const existing = pendingWakes.get(key);
   if (existing) {
     for (const id of request.deliveryIds) {
-      existing.deliveryIds.add(id);
+      existing.deliveries.set(id, request.parentRunId ?? existing.deliveries.get(id));
     }
-    recordSourceRunIds(existing, request);
     existing.continuationTrigger ??= trigger;
     existing.parentRunId = request.parentRunId ?? existing.parentRunId;
     return;
@@ -104,21 +102,11 @@ export function requestContinuationWake(request: ContinuationWakeRequest): void 
     silent,
     ...(trigger ? { continuationTrigger: trigger } : {}),
     ...(request.parentRunId ? { parentRunId: request.parentRunId } : {}),
-    deliveryIds: new Set(request.deliveryIds),
-    sourceRunIds: new Map(),
+    deliveries: new Map(request.deliveryIds.map((id) => [id, request.parentRunId])),
     timer: setTimeout(() => runPendingWake(key), CONTINUATION_WAKE_COALESCE_MS),
   };
-  recordSourceRunIds(wake, request);
   wake.timer.unref?.();
   pendingWakes.set(key, wake);
-}
-
-function recordSourceRunIds(wake: PendingWake, request: ContinuationWakeRequest): void {
-  for (const id of request.deliveryIds) {
-    if (request.parentRunId) {
-      wake.sourceRunIds.set(id, request.parentRunId);
-    }
-  }
 }
 
 function runPendingWake(key: string): void {
@@ -129,7 +117,7 @@ function runPendingWake(key: string): void {
   pendingWakes.delete(key);
   const run = handOffContinuationWake(wake).catch((error: unknown) => {
     log.warn(
-      `[continuation:wake-failed] session=${wake.sessionKey} rows=${[...wake.deliveryIds].join(",")} error=${error instanceof Error ? error.message : String(error)}`,
+      `[continuation:wake-failed] session=${wake.sessionKey} rows=${[...wake.deliveries.keys()].join(",")} error=${error instanceof Error ? error.message : String(error)}`,
     );
   });
   inFlightWakes.add(run);
@@ -141,7 +129,7 @@ async function handOffContinuationWake(wake: PendingWake): Promise<void> {
   const pending = peekDeliverableSystemEventEntries(queueKey).filter(
     (event) =>
       event.sessionDeliveryAckId !== undefined &&
-      wake.deliveryIds.has(event.sessionDeliveryAckId) &&
+      wake.deliveries.has(event.sessionDeliveryAckId) &&
       !isSystemEventTurnOwned(queueKey, event),
   );
   if (pending.length === 0) {
@@ -214,7 +202,7 @@ async function handOffContinuationWake(wake: PendingWake): Promise<void> {
               ...(wake.parentRunId ? { parentRunId: wake.parentRunId } : {}),
               // The turn's input row names every row it consumes and the run that produced it.
               continuationInputDeliveries: occurrences.flatMap(({ sessionDeliveryAckId: id }) => {
-                const sourceRunId = id ? wake.sourceRunIds.get(id) : undefined;
+                const sourceRunId = id ? wake.deliveries.get(id) : undefined;
                 return id ? [{ deliveryId: id, ...(sourceRunId ? { sourceRunId } : {}) }] : [];
               }),
             },
