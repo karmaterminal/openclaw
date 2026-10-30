@@ -1,7 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { setImmediate as yieldToEventLoop } from "node:timers/promises";
+import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import type { StreamFn } from "openclaw/plugin-sdk/agent-core";
 import { SessionManager } from "openclaw/plugin-sdk/agent-sessions";
+import { createAssistantMessageEventStream } from "openclaw/plugin-sdk/llm";
 import { upsertSessionEntry } from "openclaw/plugin-sdk/session-store-runtime";
 import { closeOpenClawAgentDatabasesForTest } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
@@ -49,6 +52,13 @@ import {
 } from "../state/openclaw-agent-db.js";
 import { createAssistantErrorTranscript } from "./assistant-error-transcript.js";
 import { normalizeAssistantReplayContent } from "./embedded-agent-runner/replay-history.js";
+import { submitEmbeddedAttemptPrompt } from "./embedded-agent-runner/run/attempt-prompt-submit.js";
+import {
+  createBaseInput,
+  createSession,
+  sessionId as promptStateSessionId,
+} from "./embedded-agent-runner/run/attempt-prompt-submit.test-support.js";
+import { clearEmbeddedSessionPromptStates } from "./embedded-agent-runner/session-prompt-state.js";
 import { createSubscribedSessionHarness } from "./embedded-agent-subscribe.e2e-harness.js";
 import { runAgentHarnessBeforeMessageWriteHook } from "./harness/hook-helpers.js";
 import { guardSessionManager } from "./session-tool-result-guard-wrapper.js";
@@ -104,6 +114,11 @@ function installWriteHook(
     handler,
   });
   initializeGlobalHookRunner(registry);
+}
+/** The consumption record's run, read by key from a stored or recorded input row (#1504). */
+function readInputRunId(message: unknown) {
+  const metadata = isRecord(message) ? message["__openclaw"] : undefined;
+  return isRecord(metadata) ? metadata.inputRunId : undefined;
 }
 const listeners: Array<() => void> = [];
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
@@ -442,9 +457,12 @@ describe("guardSessionManager transcript updates", () => {
     },
   );
 
-  // openclaw#1504: a woken event's staged input is committed by this runtime writer, and the
-  // run that committed it is stamped before the turn may reach the model.
-  it("stamps the consuming run on a staged event input the runtime writer commits", async () => {
+  // openclaw#1504: a woken event's staged input is committed by this runtime writer; only a run
+  // that then hands it to the provider is stamped as its consumer.
+  it.each([
+    { outcome: "stamped once its request reaches the provider", inputRunId: "consuming-run" },
+    { outcome: "never stamped when aborted before provider dispatch", inputRunId: undefined },
+  ])("commits a staged event input: $outcome", async (testCase) => {
     const { root, target, sessionEntry } = await openPersistedSessionManager();
     const inputDeliveries = [{ deliveryId: "delivery-1", sourceRunId: "delegate-run" }];
     const source = createUserTurnTranscriptRecorder({
@@ -475,17 +493,46 @@ describe("guardSessionManager transcript updates", () => {
         { ...approved, content: "Rendered event prompt" },
         { invalidateSerializedPrefixCache: false },
       );
+      // The real provider boundary: a request aborted after the commit never reaches the model.
+      const { activeSession } = createSession();
+      const providerStream = vi.fn<StreamFn>(() => createAssistantMessageEventStream());
+      activeSession.agent.streamFn = providerStream;
+      const request = new AbortController();
+      const input = createBaseInput();
+      const submitted = submitEmbeddedAttemptPrompt({
+        ...input,
+        attempt: { ...input.attempt, userTurnTranscriptRecorder: source },
+        activeSession,
+        promptActiveSession: async (_prompt, options) => {
+          options?.preflightResult?.(true);
+          if (!testCase.inputRunId) {
+            request.abort();
+          }
+          await activeSession.agent.streamFn(model, { messages: [] }, { signal: request.signal });
+        },
+      });
+      if (testCase.inputRunId) {
+        await submitted;
+      } else {
+        await expect(submitted).rejects.toMatchObject({ name: "AbortError" });
+      }
       await source.waitForRuntimePersistence();
 
       assert(entryId);
-      const stamped = { inputDeliveries, inputRunId: "consuming-run" };
-      expect(SessionManager.open(target, root).getEntry(entryId)).toMatchObject({
-        message: { content: "Delegate finished", __openclaw: stamped },
+      expect(providerStream).toHaveBeenCalledTimes(testCase.inputRunId ? 1 : 0);
+      const stored = SessionManager.open(target, root).getEntry(entryId);
+      assert(stored?.type === "message", "Expected the committed event input");
+      expect(stored.message).toMatchObject({
+        content: "Delegate finished",
+        __openclaw: { inputDeliveries },
       });
-      expect(source.getPersistedMessage?.()).toMatchObject({ __openclaw: stamped });
+      for (const message of [stored.message, source.getPersistedMessage?.()]) {
+        expect(readInputRunId(message)).toBe(testCase.inputRunId);
+      }
       expect(await listSessionPendingInputs(target)).toEqual({ items: [], total: 0 });
     } finally {
       source.finishPendingInput?.("interrupted");
+      clearEmbeddedSessionPromptStates([promptStateSessionId]);
     }
   });
 
