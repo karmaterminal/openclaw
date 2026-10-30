@@ -59,6 +59,7 @@ import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { normalizeSessionDeliveryState } from "../../utils/delivery-context.shared.js";
 import { getReplyFromConfig } from "../reply/get-reply.js";
 import { enqueueSessionEventForHost } from "../reply/session-event-handoff.js";
+import type { MsgContext } from "../templating.js";
 import {
   requestContinuationWake,
   resetContinuationWakesForTest,
@@ -249,6 +250,23 @@ type StoredUserRow = {
   provenance?: { kind?: string; sourceTool?: string; runId?: string };
   __openclaw?: Record<string, unknown>;
 };
+
+/** An operator's direct message on the session's route. */
+function operatorMessage(sessionKey: string): MsgContext {
+  return {
+    Body: "what did the delegate find?",
+    SessionKey: sessionKey,
+    Provider: "telegram",
+    Surface: "telegram",
+    OriginatingChannel: "telegram",
+    OriginatingTo: ROUTE.to,
+    AccountId: ROUTE.accountId,
+    ChatType: "direct",
+    From: "telegram:operator",
+    SenderId: "operator",
+    CommandAuthorized: true,
+  };
+}
 
 /** The session's user rows as sessions.get returns them: its unprojected stored-transcript read. */
 async function readStoredUserRows(sessionKey: string): Promise<StoredUserRow[]> {
@@ -710,22 +728,7 @@ it("never stamps a user-authored turn that adopts a queued return as a delegate 
       wakeRecipients: false,
     });
 
-    await withinTest(
-      getReplyFromConfig({
-        Body: "what did the delegate find?",
-        SessionKey: sessionKey,
-        Provider: "telegram",
-        Surface: "telegram",
-        OriginatingChannel: "telegram",
-        OriginatingTo: ROUTE.to,
-        AccountId: ROUTE.accountId,
-        ChatType: "direct",
-        From: "telegram:operator",
-        SenderId: "operator",
-        CommandAuthorized: true,
-      }),
-      signal,
-    );
+    await withinTest(getReplyFromConfig(operatorMessage(sessionKey)), signal);
 
     // The operator's turn adopted the return: it carries the receipt, but no consumption stamp.
     expect(await rowPending(row)).toBe(false);
@@ -876,22 +879,7 @@ it("reports a return adopted without a durable receipt as unknown, though its mo
     await recorder.persistApproved();
 
     await withinTest(
-      getReplyFromConfig(
-        {
-          Body: "what did the delegate find?",
-          SessionKey: sessionKey,
-          Provider: "telegram",
-          Surface: "telegram",
-          OriginatingChannel: "telegram",
-          OriginatingTo: ROUTE.to,
-          AccountId: ROUTE.accountId,
-          ChatType: "direct",
-          From: "telegram:operator",
-          SenderId: "operator",
-          CommandAuthorized: true,
-        },
-        { userTurnTranscriptRecorder: recorder },
-      ),
+      getReplyFromConfig(operatorMessage(sessionKey), { userTurnTranscriptRecorder: recorder }),
       signal,
     );
 
