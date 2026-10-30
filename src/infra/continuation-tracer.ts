@@ -144,6 +144,11 @@ export type ContinuationSpanAttrs = {
    * timer fired late under load; near-zero is on-schedule. Pinned in JSDoc
    * so every consumer doesn't rediscover the formula.
    *
+   * A `delegate.delivery="compaction"` fire arms no timer: its value is the
+   * hold from staging (`firstArmedAt`) until a compaction released it and the
+   * queue drain fired it, with `delay.ms=0`. It is not drift, so drift
+   * consumers select `delegate.delivery="timer"`.
+   *
    * Integer ms (`Math.floor` at emit-time) so the attr round-trips
    * cleanly through OTLP without rounding ambiguity.
    */
