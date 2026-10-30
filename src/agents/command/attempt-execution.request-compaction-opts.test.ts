@@ -229,25 +229,9 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
     expect(callArgs?.requestCompactionOpts).toBeUndefined();
   });
 
-  // The request_compaction factory requires a synchronous number-or-null
-  // context-usage callback. A stub-shaped closure could still register the
-  // tool but produce incorrect rejection behavior at call time.
-  it("requestCompactionOpts.getContextUsage returns sync number-or-null", async () => {
-    await runEmbeddedAttempt(makeContinuationEnabledConfig());
-
-    const callArgs = runEmbeddedAgentMock.mock.calls[0]?.[0] as
-      | { requestCompactionOpts?: { getContextUsage: () => number | null } }
-      | undefined;
-    expect(callArgs?.requestCompactionOpts).toBeDefined();
-
-    // Should be invocable without throwing and return number | null
-    // (synchronous, matching computeRequestCompactionContextUsage).
-    const result = callArgs?.requestCompactionOpts?.getContextUsage();
-    expect(result === null || typeof result === "number").toBe(true);
-  });
-
   // bootstrap#1727: a live runner's first turn has no fresh token totals yet. The
   // rejection must say usage is unmeasured, not that this is an inventory-only path.
+  // This also drives the runner's real getContextUsage closure through the tool.
   it("rejects a first-turn request_compaction as unmeasured, not as an inventory-only path", async () => {
     compactEmbeddedAgentSessionMock.mockReset();
     await runEmbeddedAttempt(makeContinuationEnabledConfig());

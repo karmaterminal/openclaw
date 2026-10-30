@@ -217,7 +217,8 @@ export type OpenClawToolsOptions = {
   /** Closures for request_compaction when continuation is enabled. */
   requestCompactionOpts?: {
     sessionId?: string;
-    getContextUsage: () => number | null;
+    getContextUsage: RequestCompactionToolOpts["getContextUsage"];
+    contextUsageOrigin?: RequestCompactionToolOpts["contextUsageOrigin"];
     triggerCompaction: RequestCompactionToolOpts["triggerCompaction"];
   };
   /** Prepared exec/process isolation key for this run. */

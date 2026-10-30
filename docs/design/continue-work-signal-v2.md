@@ -799,6 +799,8 @@ The tool applies two guards:
 | Context floor | below 70% rejected                         | prevents wasteful compaction                                                      |
 | Rate limit    | success-only cooldown, max 1 per 5 minutes | prevents compaction loops while allowing retry after failed background compaction |
 
+The floor needs measured usage. A below-floor request is rejected with `guard: "context_threshold"` and the measured `contextUsage` and `threshold`. When usage has not been measured, the rejection is `guard: "context_unmeasured"` with a `cause`: `no_fresh_usage` on a live runner whose session has no fresh token totals from a completed turn yet (as on its first turn), `unknown_context_window` when the model's context window is unknown, or `inventory_only` on catalog and dispatch builds that have no runner.
+
 Operational flow:
 
 ```text

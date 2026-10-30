@@ -131,7 +131,8 @@ export type OpenClawCodingToolsOptions = {
   /** Continuation: request_compaction tool opts (injected from execution context). */
   requestCompactionOpts?: {
     sessionId?: string;
-    getContextUsage: () => number | null;
+    getContextUsage: RequestCompactionToolOpts["getContextUsage"];
+    contextUsageOrigin?: RequestCompactionToolOpts["contextUsageOrigin"];
     triggerCompaction: RequestCompactionToolOpts["triggerCompaction"];
   };
   /** Live observer called after wrapped tool outcomes are recorded. */

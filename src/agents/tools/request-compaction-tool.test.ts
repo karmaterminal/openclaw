@@ -181,6 +181,55 @@ describe("request_compaction tool", () => {
     expect(mockTriggerCompaction).toHaveBeenCalledOnce();
   });
 
+  // bootstrap#1727: unmeasured usage is its own guard, never a threshold verdict,
+  // and only an inventory path is called inventory-only.
+  const unmeasuredCases: Array<{
+    name: string;
+    opts: Pick<RequestCompactionToolOpts, "contextUsageOrigin" | "getContextUsage">;
+    cause: string;
+    reason: RegExp;
+  }> = [
+    {
+      name: "a live runner with no fresh token totals",
+      opts: { contextUsageOrigin: "live_runner", getContextUsage: () => "no_fresh_usage" },
+      cause: "no_fresh_usage",
+      reason: /^Context usage has not been measured yet: .*completed model turn/,
+    },
+    {
+      name: "a live runner whose model context window is unknown",
+      opts: { contextUsageOrigin: "live_runner", getContextUsage: () => "unknown_context_window" },
+      cause: "unknown_context_window",
+      reason: /^Context usage cannot be measured: the context window .* is unknown/,
+    },
+    {
+      name: "a live runner that names no cause",
+      opts: { contextUsageOrigin: "live_runner", getContextUsage: () => null },
+      cause: "no_fresh_usage",
+      reason: /^Context usage has not been measured yet/,
+    },
+    {
+      name: "the inventory-only stub",
+      opts: { contextUsageOrigin: "inventory_stub", getContextUsage: () => null },
+      cause: "inventory_only",
+      reason: /inventory-only paths\.$/,
+    },
+  ];
+
+  it.each(unmeasuredCases)(
+    "rejects unmeasured usage from $name",
+    async ({ opts, cause, reason }) => {
+      const result = await executeTool(makeTool(opts));
+
+      expect(result).toEqual({
+        status: "rejected",
+        guard: "context_unmeasured",
+        cause,
+        reason: expect.stringMatching(reason),
+      });
+      expect(mockTriggerCompaction).not.toHaveBeenCalled();
+    },
+  );
+
   // -------------------------------------------------------------------------
   // Guard: rate limit
   // -------------------------------------------------------------------------

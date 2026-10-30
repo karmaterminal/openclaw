@@ -24,6 +24,7 @@ export function buildInventoryContinuationToolOpts(cfg: OpenClawConfig | undefin
   requestCompactionOpts?: {
     sessionId: string;
     ownerAgentId?: string;
+    contextUsageOrigin: "inventory_stub";
     getContextUsage: () => number | null;
     triggerCompaction: () => Promise<{ ok: boolean; compacted: boolean; reason: string }>;
   };
@@ -41,6 +42,7 @@ export function buildInventoryContinuationToolOpts(cfg: OpenClawConfig | undefin
     },
     requestCompactionOpts: {
       sessionId: "<inventory-only>",
+      contextUsageOrigin: "inventory_stub",
       getContextUsage: () => null,
       triggerCompaction: async () => ({
         ok: false,
