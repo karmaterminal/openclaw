@@ -26,6 +26,8 @@ const log = createSubsystemLogger("plugins/host-hook-state");
 const MAX_PLUGIN_NEXT_TURN_INJECTION_TEXT_LENGTH = 32 * 1024;
 const MAX_PLUGIN_NEXT_TURN_INJECTION_IDEMPOTENCY_KEY_LENGTH = 512;
 const MAX_PLUGIN_NEXT_TURN_INJECTIONS_PER_SESSION = 32;
+const MAX_DRAINED_NEXT_TURN_INJECTIONS = 32;
+const MAX_DRAINED_NEXT_TURN_INJECTION_BYTES = 64 * 1024;
 const MAX_OUTCOMES_PER_PLUGIN_SESSION = 256;
 const MAX_OUTCOME_RETENTION_MS = 86_400_000;
 
@@ -86,15 +88,9 @@ function settle(
   state: "consumed" | "withdrawn" | "expired" | "discarded",
   now: number,
 ) {
-  if (
-    !record.idempotencyKey ||
-    (record.expiresAt === undefined &&
-      record.notBefore === undefined &&
-      record.supersedeKey === undefined &&
-      record.outcomeRetainUntil === undefined &&
-      record.provenance === undefined)
-  )
+  if (!record.idempotencyKey) {
     return;
+  }
   const byPlugin = (entry.pluginNextTurnInjectionOutcomes ??= {});
   (byPlugin[pluginId] ??= {})[record.idempotencyKey] = {
     state,
@@ -105,9 +101,14 @@ function settle(
 
 function pruneOutcomes(entry: MutableSessionEntry, pluginId: string, now: number) {
   const outcomes = entry.pluginNextTurnInjectionOutcomes?.[pluginId];
-  if (!outcomes) return;
-  for (const [key, outcome] of Object.entries(outcomes))
-    if (outcome.retainUntil <= now) delete outcomes[key];
+  if (!outcomes) {
+    return;
+  }
+  for (const [key, outcome] of Object.entries(outcomes)) {
+    if (outcome.retainUntil <= now) {
+      delete outcomes[key];
+    }
+  }
 }
 
 export async function getPluginNextTurnInjectionState(params: {
@@ -198,6 +199,7 @@ export async function enqueuePluginNextTurnInjection(params: {
   if (
     !text ||
     text.length > MAX_PLUGIN_NEXT_TURN_INJECTION_TEXT_LENGTH ||
+    Buffer.byteLength(text, "utf8") > MAX_DRAINED_NEXT_TURN_INJECTION_BYTES ||
     (params.injection.metadata !== undefined && !isPluginJsonValue(params.injection.metadata)) ||
     (params.injection.idempotencyKey !== undefined &&
       (typeof params.injection.idempotencyKey !== "string" ||
@@ -276,8 +278,12 @@ export async function enqueuePluginNextTurnInjection(params: {
     const rawExisting = injections[params.pluginId];
     const existing = (Array.isArray(rawExisting) ? rawExisting : []).filter(
       (candidate): candidate is PluginNextTurnInjectionRecord => {
-        if (!isPluginNextTurnInjectionRecord(candidate)) return false;
-        if (!isExpired(candidate, now)) return true;
+        if (!isPluginNextTurnInjectionRecord(candidate)) {
+          return false;
+        }
+        if (!isExpired(candidate, now)) {
+          return true;
+        }
         settle(entry, params.pluginId, candidate, "expired", now);
         return false;
       },
@@ -303,12 +309,14 @@ export async function enqueuePluginNextTurnInjection(params: {
       (predecessor?.idempotencyKey !== injection.expectedSupersededKey ||
         expectedState !== "pending");
     const capacity =
-      (enhanced &&
+      (record.idempotencyKey !== undefined &&
         Object.keys(entry.pluginNextTurnInjectionOutcomes?.[params.pluginId] ?? {}).length >=
           MAX_OUTCOMES_PER_PLUGIN_SESSION) ||
       existing.length - (predecessor ? 1 : 0) >= MAX_PLUGIN_NEXT_TURN_INJECTIONS_PER_SESSION;
     const enqueued = !duplicate && !settled && !conflict && !capacity;
-    if (enqueued && predecessor) settle(entry, params.pluginId, predecessor, "withdrawn", now);
+    if (enqueued && predecessor) {
+      settle(entry, params.pluginId, predecessor, "withdrawn", now);
+    }
     injections[params.pluginId] = enqueued
       ? [...existing.filter((item) => item !== predecessor), record]
       : existing;
@@ -365,6 +373,7 @@ async function drainPluginNextTurnInjections(
         .map((plugin) => plugin.id),
     );
     const drained: PluginNextTurnInjectionRecord[] = [];
+    let drainedBytes = 0;
     const retained: NonNullable<SessionEntry["pluginNextTurnInjections"]> = {};
     for (const [pluginId, entries] of Object.entries(entry.pluginNextTurnInjections)) {
       // Guard against malformed/hand-edited persisted state — a non-array value
@@ -376,16 +385,34 @@ async function drainPluginNextTurnInjections(
         activePluginIds.has(pluginId) &&
         resolvePromptInjectionAllowed(params.cfg.plugins?.entries?.[pluginId]?.hooks);
       for (const candidate of entries) {
-        if (!isPluginNextTurnInjectionRecord(candidate)) continue;
+        if (!isPluginNextTurnInjectionRecord(candidate)) {
+          continue;
+        }
         if (isExpired(candidate, now)) {
           settle(entry, pluginId, candidate, "expired", now);
         } else if (!allowed) {
-          if (candidate.expiresAt !== undefined) (retained[pluginId] ??= []).push(candidate);
-          else settle(entry, pluginId, candidate, "discarded", now);
+          if (candidate.expiresAt !== undefined) {
+            (retained[pluginId] ??= []).push(candidate);
+          } else {
+            settle(entry, pluginId, candidate, "discarded", now);
+          }
         } else if (candidate.notBefore !== undefined && now < candidate.notBefore) {
           (retained[pluginId] ??= []).push(candidate);
         } else {
+          const bytes = Buffer.byteLength(candidate.text, "utf8");
+          if (bytes > MAX_DRAINED_NEXT_TURN_INJECTION_BYTES) {
+            settle(entry, pluginId, candidate, "discarded", now);
+            continue;
+          }
+          if (
+            drained.length >= MAX_DRAINED_NEXT_TURN_INJECTIONS ||
+            drainedBytes + bytes > MAX_DRAINED_NEXT_TURN_INJECTION_BYTES
+          ) {
+            (retained[pluginId] ??= []).push(candidate);
+            continue;
+          }
           drained.push(candidate);
+          drainedBytes += bytes;
           settle(entry, pluginId, candidate, "consumed", now);
         }
       }
@@ -393,8 +420,11 @@ async function drainPluginNextTurnInjections(
     drained.sort((left, right) => left.createdAt - right.createdAt);
     // A drain is the consume boundary for this session queue. Inactive plugin
     // records are stale owner state and are discarded with expired records.
-    if (Object.keys(retained).length) entry.pluginNextTurnInjections = retained;
-    else delete entry.pluginNextTurnInjections;
+    if (Object.keys(retained).length) {
+      entry.pluginNextTurnInjections = retained;
+    } else {
+      delete entry.pluginNextTurnInjections;
+    }
     if (drained.length > 0) {
       entry.updatedAt = now;
     }

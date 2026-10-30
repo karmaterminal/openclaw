@@ -135,6 +135,9 @@ describe("next-turn injection identity", () => {
     await writeEntry(scope, entry);
     const result = await drain({ cfg, ...scope });
     expect(result.prependContext).toContain("EXTERNAL_UNTRUSTED_CONTENT");
+    expect(result.prependContext!.indexOf("Plugin external data (owner-fixture):")).toBeGreaterThan(
+      result.prependContext!.indexOf("<<<EXTERNAL_UNTRUSTED_CONTENT"),
+    );
     expect(result.prependContext).toContain("Plugin external data (owner-fixture):");
     expect(result.prependContext).toContain("Subject: peer");
     expect(
@@ -147,6 +150,59 @@ describe("next-turn injection identity", () => {
         })
       ).state,
     ).toBe("consumed");
+  });
+
+  it("bounds a drain across plugin owners and settles metadata-only idempotent records", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:bounded-drain");
+    const pluginIds = ["owner-fixture", "second-fixture"] as const;
+    await writeEntry(scope, {
+      sessionId: "bounded-drain",
+      updatedAt: 1,
+      pluginNextTurnInjections: Object.fromEntries(
+        pluginIds.map((pluginId) => [
+          pluginId,
+          Array.from({ length: 20 }, (_, index) => ({
+            id: `${pluginId}-${index}`,
+            pluginId,
+            text: "x".repeat(2048),
+            idempotencyKey: `${pluginId}-${index}`,
+            metadata: { index },
+            placement: "prepend_context" as const,
+            createdAt: index,
+          })),
+        ]),
+      ),
+    });
+    const registry = createEmptyPluginRegistry();
+    for (const pluginId of pluginIds) {
+      registry.plugins.push(createPluginRecord({ id: pluginId, status: "loaded" }));
+    }
+    setActivePluginRegistry(registry);
+    const first = await drain({ cfg, ...scope });
+    expect(first.queuedInjections).toHaveLength(32);
+    expect(Buffer.byteLength(first.prependContext ?? "", "utf8")).toBeLessThanOrEqual(
+      64 * 1024 + 64,
+    );
+    expect(readEntry(scope)?.pluginNextTurnInjections?.["second-fixture"]).toHaveLength(8);
+    expect((await drain({ cfg, ...scope })).queuedInjections).toHaveLength(8);
+    expect(
+      readEntry(scope)?.pluginNextTurnInjectionOutcomes?.["owner-fixture"]?.["owner-fixture-0"]
+        ?.state,
+    ).toBe("consumed");
+    const entry = readEntry(scope)!;
+    entry.pluginNextTurnInjections = {
+      "owner-fixture": Array.from({ length: 3 }, (_, index) => ({
+        id: `large-${index}`,
+        pluginId: "owner-fixture",
+        text: "x".repeat(24_000),
+        placement: "prepend_context" as const,
+        createdAt: index,
+      })),
+    };
+    await writeEntry(scope, entry);
+    expect((await drain({ cfg, ...scope })).queuedInjections).toHaveLength(2);
+    expect(readEntry(scope)?.pluginNextTurnInjections?.["owner-fixture"]).toHaveLength(1);
   });
 
   it.each(["agent:main:missing", "agent:main:dashboard:incognito-injection"])(
