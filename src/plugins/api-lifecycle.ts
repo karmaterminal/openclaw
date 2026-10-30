@@ -5,7 +5,7 @@ import { getPluginValueInstance } from "./plugin-instance-scope.js";
 import type { OpenClawPluginApi, OpenClawPluginDefinition } from "./types.js";
 
 const LATE_CALLABLE_PLUGIN_API_METHODS: ReadonlySet<string> = new Set<
-  keyof OpenClawPluginApiWithoutFacades
+  keyof OpenClawPluginApiWithoutFacades | keyof OpenClawPluginApi["session"]["state"]
 >([
   "clearRunContext",
   "emitAgentEvent",
@@ -14,9 +14,10 @@ const LATE_CALLABLE_PLUGIN_API_METHODS: ReadonlySet<string> = new Set<
   "withdrawNextTurnInjection",
   "steerActiveRun",
   "getRunContext",
-  // Registered callbacks still need these pure utilities after register() returns.
+  // Registered callbacks still need these runtime methods after register() returns.
   "inlineView",
   "resolvePath",
+  "resolveLocalSessionRoute",
   "sendSessionAttachment",
   "scheduleSessionTurn",
   "setRunContext",

@@ -1,6 +1,6 @@
 import { resolveAgentMainSessionKey } from "../config/sessions/main-session.js";
 import { resolveSessionStorePathCore } from "../config/sessions/paths.js";
-import { loadExactSessionEntryReadOnly } from "../config/sessions/session-accessor.js";
+import { readSessionEntryReadOnlyInWorker } from "../config/sessions/session-entry-read-runtime.js";
 import type { InternalSessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
@@ -34,28 +34,34 @@ function hasOffHostRoute(
 }
 
 /** Read-only, exact session-store proof; never creates a session or sends to a route. */
-export function resolvePluginLocalSessionRoute(params: {
+export async function resolvePluginLocalSessionRoute(params: {
   cfg: OpenClawConfig;
   sessionKey: string;
-}): PluginLocalSessionRoute {
+}): Promise<PluginLocalSessionRoute> {
   const raw = typeof params.sessionKey === "string" ? params.sessionKey.trim() : "";
   try {
     const sessionKey = raw ? resolveSessionStoreKey({ cfg: params.cfg, sessionKey: raw }) : "";
     const absent = { sessionKey, exists: false, onHost: false };
-    if (!sessionKey || sessionKey === "global" || sessionKey === "unknown") {
+    if (!sessionKey || sessionKey === "unknown") {
       return absent;
     }
     const agentId = resolveSessionStoreAgentId(params.cfg, sessionKey);
     const storePath = resolveSessionStorePathCore(params.cfg.session?.store, { agentId });
     // Exact persisted-key lookup only; a folded alias could name another opaque peer.
-    const existing = loadExactSessionEntryReadOnly({ agentId, storePath, sessionKey })?.entry;
+    const existing = await readSessionEntryReadOnlyInWorker({
+      agentId,
+      storePath,
+      sessionKey,
+      projection: "list",
+    });
     if (!existing || !existing.sessionId) {
       return absent;
     }
     return {
       sessionKey,
       exists: true,
-      onHost: !hasOffHostRoute(params.cfg, sessionKey, agentId, existing),
+      onHost:
+        sessionKey !== "global" && !hasOffHostRoute(params.cfg, sessionKey, agentId, existing),
     };
   } catch {
     // An unreadable/transient store cannot prove that a target is local.

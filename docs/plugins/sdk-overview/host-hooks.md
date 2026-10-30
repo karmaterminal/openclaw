@@ -37,7 +37,7 @@ plugins.
 | `api.session.workflow.scheduleSessionTurn(...)` / `unscheduleSessionTurnsByTag(...)` | Bundled-only Cron-backed scheduled session turns plus tag-based cleanup                                                                                    |
 | `api.session.controls.registerSessionAction(...)`                                    | Typed session actions clients can dispatch through the Gateway                                                                                             |
 
-`api.session.state.resolveLocalSessionRoute(sessionKey)` returns `{ sessionKey, exists, onHost }`.
+`api.session.state.resolveLocalSessionRoute(sessionKey)` asynchronously returns `{ sessionKey, exists, onHost }`.
 It checks an exact persisted session key. A missing or unreadable entry cannot prove
 locality; shared main and channel sessions do not receive a positive host-locality
 claim from their key shape. This inspection does not authorize a send or wake.

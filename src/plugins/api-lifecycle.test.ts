@@ -1,8 +1,13 @@
 import { expect, it, vi } from "vitest";
+import { readSessionEntryReadOnlyInWorker } from "../config/sessions/session-entry-read-runtime.js";
 import { buildPluginApi } from "./api-builder.js";
 import { runPluginRegistration } from "./api-lifecycle.js";
 import type { PluginRuntime } from "./runtime/types.js";
 import type { OpenClawPluginApi } from "./types.js";
+
+vi.mock("../config/sessions/session-entry-read-runtime.js", () => ({
+  readSessionEntryReadOnlyInWorker: vi.fn(),
+}));
 
 function createPluginApi(handlers: Parameters<typeof buildPluginApi>[0]["handlers"] = {}) {
   return buildPluginApi({
@@ -55,6 +60,26 @@ it("lets registered callbacks construct inline view results", () => {
       },
     },
   });
+});
+
+it("keeps session route inspection callable after registration and reads each lifecycle anew", async () => {
+  const key = "agent:main:subagent:abc";
+  const read = vi.mocked(readSessionEntryReadOnlyInWorker);
+  read.mockReset();
+  const api = captureRegisteredPluginApi({});
+  read.mockResolvedValueOnce({ sessionId: "before", updatedAt: 1 });
+  expect(await api.session.state.resolveLocalSessionRoute(key)).toEqual({
+    sessionKey: key,
+    exists: true,
+    onHost: true,
+  });
+  read.mockResolvedValueOnce(undefined);
+  expect(await api.session.state.resolveLocalSessionRoute(key)).toEqual({
+    sessionKey: key,
+    exists: false,
+    onHost: false,
+  });
+  expect(read).toHaveBeenCalledTimes(2);
 });
 
 it.each<[string, unknown, boolean]>([
