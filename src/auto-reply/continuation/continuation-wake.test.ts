@@ -84,6 +84,23 @@ vi.mock("../../infra/session-delivery-queue-storage.js", async (importOriginal) 
     },
   };
 });
+const failingStamp = vi.hoisted(() => ({ armed: false }));
+// At-anchor rewrites stay real unless a case arms the consuming-run stamp's write to fail.
+vi.mock("../../config/sessions/session-message-rewrite.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../config/sessions/session-message-rewrite.js")>();
+  return {
+    ...actual,
+    rewritePreparedTranscriptMessageAtAnchor: async (
+      ...args: Parameters<typeof actual.rewritePreparedTranscriptMessageAtAnchor>
+    ) => {
+      if (failingStamp.armed) {
+        throw new Error("synthetic stamp write failure");
+      }
+      return await actual.rewritePreparedTranscriptMessageAtAnchor(...args);
+    },
+  };
+});
 // Match Gateway startup: activate the real reply runtimes before admitting turns.
 await Promise.all([
   import("../dispatch.js"),
@@ -97,6 +114,7 @@ const ROUTE = { channel: "telegram", to: "-100001", accountId: "default" };
 
 afterEach(() => {
   failingAcks.clear();
+  failingStamp.armed = false;
   resetContinuationWakesForTest();
   resetSystemEventsForTest();
   runEmbeddedAgentMock.mockReset();
@@ -765,4 +783,29 @@ it("never stamps a user-authored turn that adopts a queued return as a delegate 
     expect(rows[0]?.["__openclaw"]).not.toHaveProperty("inputRunId");
     expect(rows[0]?.["__openclaw"]).not.toHaveProperty("inputDeliveries");
   });
+});
+
+it("keeps a woken turn and its return when the consuming-run stamp fails to write", async ({
+  signal,
+}) => {
+  await withWakeFixture(
+    "consuming-run-stamp-failure",
+    async ({ sessionKey, sendText, prompts }) => {
+      answerTurns(prompts, "Delegate result reviewed.");
+      const row = await produceReturn(sessionKey, "delegate with a lost stamp");
+      failingStamp.armed = true;
+
+      await withinTest(settleContinuationWakesForTest(), signal);
+
+      // The stamp is best-effort: the turn answers and the return settles without it.
+      expect(prompts).toHaveLength(1);
+      expect(sendText).toHaveBeenCalledOnce();
+      expect(await rowPending(row)).toBe(false);
+      const [input] = await readStoredUserRows(sessionKey);
+      expect(input?.["__openclaw"]).toMatchObject({
+        inputDeliveries: [{ deliveryId: row, sourceRunId: "child-run:delegate with a lost stamp" }],
+      });
+      expect(input?.["__openclaw"]).not.toHaveProperty("inputRunId");
+    },
+  );
 });
