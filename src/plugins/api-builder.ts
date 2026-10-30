@@ -62,6 +62,8 @@ export const pluginApiDefaultHandlers = {
     sessionKey: injection.sessionKey,
   }),
   steerActiveRun: async () => ({ steered: false, reason: "not wired" }),
+  getNextTurnInjectionState: async (input) => ({ ...input, state: "unknown" }),
+  withdrawNextTurnInjection: async (input) => ({ ...input, state: "unknown" }),
   registerTrustedToolPolicy: () => {},
   registerToolMetadata: () => {},
   registerControlUiDescriptor: () => {},

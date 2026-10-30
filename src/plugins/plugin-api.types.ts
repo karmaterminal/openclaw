@@ -37,6 +37,7 @@ import type {
   PluginJsonValue,
   PluginNextTurnInjection,
   PluginNextTurnInjectionEnqueueResult,
+  PluginNextTurnInjectionStateResult,
   PluginRunContextGetParams,
   PluginRunContextPatch,
   PluginRuntimeLifecycleRegistration,
@@ -129,6 +130,16 @@ type OpenClawPluginSessionWorkflowApi = {
   enqueueNextTurnInjection: (
     injection: PluginNextTurnInjection,
   ) => Promise<PluginNextTurnInjectionEnqueueResult>;
+  getNextTurnInjectionState: (params: {
+    sessionKey: string;
+    agentId?: string;
+    idempotencyKey: string;
+  }) => Promise<PluginNextTurnInjectionStateResult>;
+  withdrawNextTurnInjection: (params: {
+    sessionKey: string;
+    agentId?: string;
+    idempotencyKey: string;
+  }) => Promise<PluginNextTurnInjectionStateResult>;
   /** Steer a current run without starting a turn; shown only as a Control UI notice, never a channel reply. */
   steerActiveRun: (params: PluginActiveRunSteerParams) => Promise<PluginActiveRunSteerResult>;
   /**
@@ -409,6 +420,8 @@ export type OpenClawPluginApi = {
    * @deprecated Use `api.session.workflow.enqueueNextTurnInjection(...)`.
    */
   enqueueNextTurnInjection: OpenClawPluginSessionWorkflowApi["enqueueNextTurnInjection"];
+  getNextTurnInjectionState: OpenClawPluginSessionWorkflowApi["getNextTurnInjectionState"];
+  withdrawNextTurnInjection: OpenClawPluginSessionWorkflowApi["withdrawNextTurnInjection"];
   /**
    * Register a trusted pre-tool policy. Installed plugins must declare the
    * policy id in `contracts.trustedToolPolicies`.

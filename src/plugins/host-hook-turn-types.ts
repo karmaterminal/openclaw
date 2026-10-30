@@ -12,6 +12,17 @@ export type PluginNextTurnInjection = {
   idempotencyKey?: string;
   placement?: PluginNextTurnInjectionPlacement;
   ttlMs?: number;
+  /** Absolute UTC milliseconds; never extended by replay. */
+  expiresAt?: number;
+  notBefore?: number;
+  /** Replace only an entry owned by this plugin in this session. */
+  supersedeKey?: string;
+  /** Conditional replacement: this key must still be pending. */
+  expectedSupersededKey?: string;
+  /** Absolute UTC milliseconds, at most 24 hours after admission. */
+  outcomeRetainUntil?: number;
+  /** Render as external data with a host-authored provenance banner. */
+  provenance?: { source: string };
   metadata?: PluginJsonValue;
 };
 
@@ -32,6 +43,28 @@ export type PluginNextTurnInjectionEnqueueResult = {
   enqueued: boolean;
   id: string;
   sessionKey: string;
+  reason?:
+    | "invalid"
+    | "expired"
+    | "duplicate"
+    | "capacity"
+    | "missing_session"
+    | "supersede_conflict";
+  state?: PluginNextTurnInjectionState;
+};
+
+export type PluginNextTurnInjectionState =
+  | "pending"
+  | "consumed"
+  | "withdrawn"
+  | "expired"
+  | "discarded"
+  | "unknown";
+export type PluginNextTurnInjectionStateResult = {
+  sessionKey: string;
+  idempotencyKey: string;
+  state: PluginNextTurnInjectionState;
+  settledAt?: number;
 };
 
 /** Event passed to plugins before an agent turn is prepared. */

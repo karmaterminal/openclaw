@@ -46,6 +46,10 @@ import type { SessionSkillSnapshot } from "./session-prompt-types.js";
 import type { SessionSystemPromptReport } from "./session-system-prompt-report.js";
 import type { SessionToolOverrides } from "./session-tool-overrides.js";
 import type { PendingSessionWorktree } from "./session-worktree-intent.js";
+import type {
+  SessionPluginNextTurnInjection,
+  SessionPluginNextTurnInjectionOutcome,
+} from "./types.plugin-injection.js";
 
 export type { SessionToolOverrides } from "./session-tool-overrides.js";
 export type { SessionSystemPromptReport } from "./session-system-prompt-report.js";
@@ -215,16 +219,19 @@ type SessionPluginDebugEntry = {
 
 export type { SessionPluginJsonValue };
 
-type SessionPluginNextTurnInjection = {
-  id: string;
-  pluginId: string;
-  pluginName?: string;
-  text: string;
-  idempotencyKey?: string;
-  placement: "prepend_context" | "append_context";
-  ttlMs?: number;
-  createdAt: number;
-  metadata?: SessionPluginJsonValue;
+type SubagentRecoveryState = {
+  /** Consecutive accepted automatic orphan-recovery resumes in the rapid re-wedge window. */
+  automaticAttempts?: number;
+  /** Timestamp (ms) of the latest accepted automatic orphan-recovery resume. */
+  lastAttemptAt?: number;
+  /** Registry run id that triggered the latest automatic orphan-recovery resume. */
+  lastRunId?: string;
+  /** Visible execution retained while the recovered run uses an internal transcript. */
+  sessionLifecycleRunId?: string;
+  /** Timestamp (ms) when automatic recovery was tombstoned for this session. */
+  wedgedAt?: number;
+  /** Human-readable reason automatic recovery was tombstoned. */
+  wedgedReason?: string;
 };
 
 type LaneExecutionState =
@@ -286,6 +293,13 @@ type SessionEntryCore = SessionEntryProvenance &
     pluginExtensionSlotKeys?: Record<string, Record<string, string>>;
     /** Durable one-shot prompt additions drained before the next agent turn. */
     pluginNextTurnInjections?: Record<string, SessionPluginNextTurnInjection[]>;
+    /** Settled next-turn keys remain separate from plugin-owned pending state. */
+    pluginNextTurnInjectionOutcomes?: Record<
+      string,
+      Record<string, SessionPluginNextTurnInjectionOutcome>
+    >;
+    /** Internal one-shot traceparent for a freshly spawned child agent run. */
+    continuationTraceparent?: string;
     sessionId: string;
     /** Latest operator client declaration; retained across internal turns and restart. */
     clientCapabilities?: string[];
