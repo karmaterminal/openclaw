@@ -50,6 +50,7 @@ import {
   retireFollowupRunCancellation,
   updateFollowupRetryHeartbeats,
 } from "./lifecycle.js";
+import { deferRoomAggregateForUnauditedPlugins } from "./room-aggregate-plugin-gate.js";
 import { followupQueueSources, followupSourceRunners } from "./state.js";
 import { isFollowupRunAborted, type FollowupRun } from "./types.js";
 
@@ -293,6 +294,10 @@ async function executeClaim(
         `mailbox refused a mixed claim for ${queue.key}: not every member may run as the room ` +
           `baseline; ${sources.length} members ${retry ? "retry alone" : "released unadopted"}`,
       );
+      return;
+    }
+    // Frond (karmaterminal, #1415): a plugin activated since selection splits the room again.
+    if (crossSender && deferRoomAggregateForUnauditedPlugins(claim, source.run)) {
       return;
     }
     if (admissionSessionRebind && run.run.sessionId === admissionSessionRebind.from) {
