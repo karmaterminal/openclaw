@@ -46,6 +46,10 @@ import type { SessionSkillSnapshot } from "./session-prompt-types.js";
 import type { SessionSystemPromptReport } from "./session-system-prompt-report.js";
 import type { SessionToolOverrides } from "./session-tool-overrides.js";
 import type { PendingSessionWorktree } from "./session-worktree-intent.js";
+import type {
+  SessionPluginNextTurnInjection,
+  SessionPluginNextTurnInjectionOutcome,
+} from "./types.plugin-injection.js";
 
 export type { SessionToolOverrides } from "./session-tool-overrides.js";
 export type { SessionSystemPromptReport } from "./session-system-prompt-report.js";
@@ -215,18 +219,6 @@ type SessionPluginDebugEntry = {
 
 export type { SessionPluginJsonValue };
 
-type SessionPluginNextTurnInjection = {
-  id: string;
-  pluginId: string;
-  pluginName?: string;
-  text: string;
-  idempotencyKey?: string;
-  placement: "prepend_context" | "append_context";
-  ttlMs?: number;
-  createdAt: number;
-  metadata?: SessionPluginJsonValue;
-};
-
 type LaneExecutionState =
   | "active"
   | "draining"
@@ -286,6 +278,11 @@ type SessionEntryCore = SessionEntryProvenance &
     pluginExtensionSlotKeys?: Record<string, Record<string, string>>;
     /** Durable one-shot prompt additions drained before the next agent turn. */
     pluginNextTurnInjections?: Record<string, SessionPluginNextTurnInjection[]>;
+    /** Settled next-turn keys remain separate from plugin-owned pending state. */
+    pluginNextTurnInjectionOutcomes?: Record<
+      string,
+      Record<string, SessionPluginNextTurnInjectionOutcome>
+    >;
     sessionId: string;
     /** Latest operator client declaration; retained across internal turns and restart. */
     clientCapabilities?: string[];

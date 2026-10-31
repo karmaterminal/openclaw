@@ -37,6 +37,7 @@ import type {
   PluginJsonValue,
   PluginNextTurnInjection,
   PluginNextTurnInjectionEnqueueResult,
+  PluginNextTurnInjectionStateResult,
   PluginRunContextGetParams,
   PluginRunContextPatch,
   PluginRuntimeLifecycleRegistration,
@@ -129,6 +130,22 @@ type OpenClawPluginSessionWorkflowApi = {
   enqueueNextTurnInjection: (
     injection: PluginNextTurnInjection,
   ) => Promise<PluginNextTurnInjectionEnqueueResult>;
+  getNextTurnInjectionState: (params: {
+    sessionKey: string;
+    agentId?: string;
+    idempotencyKey: string;
+  }) => Promise<PluginNextTurnInjectionStateResult>;
+  /** Register a metadata-only settlement notice handler. Notifications may be missed; query for truth. */
+  onNextTurnInjectionSettled: (
+    handler: (
+      event: import("./host-hook-turn-types.js").PluginNextTurnInjectionSettlement,
+    ) => void | Promise<void>,
+  ) => void;
+  withdrawNextTurnInjection: (params: {
+    sessionKey: string;
+    agentId?: string;
+    idempotencyKey: string;
+  }) => Promise<PluginNextTurnInjectionStateResult>;
   /** Steer a current run without starting a turn; shown only as a Control UI notice, never a channel reply. */
   steerActiveRun: (params: PluginActiveRunSteerParams) => Promise<PluginActiveRunSteerResult>;
   /**
@@ -409,6 +426,9 @@ export type OpenClawPluginApi = {
    * @deprecated Use `api.session.workflow.enqueueNextTurnInjection(...)`.
    */
   enqueueNextTurnInjection: OpenClawPluginSessionWorkflowApi["enqueueNextTurnInjection"];
+  getNextTurnInjectionState: OpenClawPluginSessionWorkflowApi["getNextTurnInjectionState"];
+  withdrawNextTurnInjection: OpenClawPluginSessionWorkflowApi["withdrawNextTurnInjection"];
+  onNextTurnInjectionSettled: OpenClawPluginSessionWorkflowApi["onNextTurnInjectionSettled"];
   /**
    * Register a trusted pre-tool policy. Installed plugins must declare the
    * policy id in `contracts.trustedToolPolicies`.

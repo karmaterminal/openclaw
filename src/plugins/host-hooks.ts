@@ -1,6 +1,7 @@
 /** Public host-hook type contracts exposed to plugin runtimes. */
 import type { OperatorScope } from "../gateway/operator-scopes.js";
 import type { AgentEventPayload, AgentEventStream } from "../infra/agent-events.js";
+import { wrapExternalContent } from "../security/external-content.js";
 import type { ControlUiLinkReaderMetadata } from "../shared/control-ui-link-reader.js";
 import type {
   PluginHookBeforeToolCallEvent,
@@ -24,6 +25,9 @@ export type {
   PluginNextTurnInjection,
   PluginNextTurnInjectionEnqueueResult,
   PluginNextTurnInjectionRecord,
+  PluginNextTurnInjectionState,
+  PluginNextTurnInjectionStateResult,
+  PluginNextTurnInjectionSettlement,
 } from "./host-hook-turn-types.js";
 
 /** Reason passed to plugin cleanup callbacks when host-owned state changes. */
@@ -352,7 +356,15 @@ export function buildPluginAgentTurnPrepareContext(params: {
     ) {
       return;
     }
-    const text = entry.text.trim();
+    const text = entry.provenance
+      ? `Plugin external data (${entry.pluginId.replace(/[^a-zA-Z0-9_.-]/g, "_")}):\n${wrapExternalContent(
+          entry.text.trim(),
+          {
+            source: "unknown",
+            subject: entry.provenance.source,
+          },
+        )}`
+      : entry.text.trim();
     if (text) {
       (entry.placement === "prepend_context" ? prepend : append).push(text);
     }

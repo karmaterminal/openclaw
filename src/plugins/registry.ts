@@ -350,6 +350,23 @@ export function createPluginRegistry(registryOptions: PluginRegistryParams) {
                   injection,
                 });
               },
+              onNextTurnInjectionSettled: (handler) => bound.onNextTurnInjectionSettled(handler),
+              getNextTurnInjectionState: async (input) => {
+                const { getPluginNextTurnInjectionState } = await loadHookState();
+                return getPluginNextTurnInjectionState({
+                  cfg: registryParams.runtime.config.current() as OpenClawConfig,
+                  pluginId: record.id,
+                  ...input,
+                });
+              },
+              withdrawNextTurnInjection: async (input) => {
+                const { withdrawPluginNextTurnInjection } = await loadHookState();
+                return withdrawPluginNextTurnInjection({
+                  cfg: registryParams.runtime.config.current() as OpenClawConfig,
+                  pluginId: record.id,
+                  ...input,
+                });
+              },
               steerActiveRun: async (input) => {
                 if (!resolvePromptInjectionAllowed(params.hookPolicy)) {
                   return {

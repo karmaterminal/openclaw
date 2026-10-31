@@ -23,6 +23,8 @@ export type PluginHostSessionCleanupStoreParams = {
   storePath: string;
   /** Cancels the cleanup before persistence when host lifecycle state changes. */
   shouldCleanup?: () => boolean;
+  /** Reset/disable retain settled injection tombstones across plugin teardown. */
+  preserveInjectionOutcomes?: boolean;
 };
 
 function collectPromotedSessionEntrySlotKeys(
@@ -93,13 +95,41 @@ export function clearPluginOwnedSessionState(
   entry: SessionEntry,
   pluginId?: string,
   sessionEntrySlotKeys?: ReadonlySet<string>,
+  preserveInjectionOutcomes = false,
 ): void {
   clearPromotedSessionEntrySlots(entry, pluginId, sessionEntrySlotKeys);
+  if (preserveInjectionOutcomes) {
+    const now = Date.now();
+    for (const [owner, records] of Object.entries(entry.pluginNextTurnInjections ?? {})) {
+      if (pluginId && owner !== pluginId) {
+        continue;
+      }
+      if (!Array.isArray(records)) {
+        continue;
+      }
+      for (const record of records) {
+        if (typeof record?.idempotencyKey !== "string" || !record.idempotencyKey) {
+          continue;
+        }
+        const outcomes = (entry.pluginNextTurnInjectionOutcomes ??= {});
+        const owned = (outcomes[owner] ??= {});
+        owned[record.idempotencyKey] ??= {
+          state: "discarded",
+          settledAt: now,
+          retainUntil: Math.max(now, record.expiresAt ?? 0, record.outcomeRetainUntil ?? 0) + 5_000,
+        };
+      }
+    }
+  }
   for (const field of [
     "pluginExtensions",
     "pluginExtensionSlotKeys",
     "pluginNextTurnInjections",
+    "pluginNextTurnInjectionOutcomes",
   ] as const) {
+    if (field === "pluginNextTurnInjectionOutcomes" && preserveInjectionOutcomes) {
+      continue;
+    }
     const state = entry[field];
     if (!pluginId) {
       delete entry[field];
@@ -158,9 +188,12 @@ export function hasPluginHostCleanupTarget(
   return (
     hasPromotedSessionEntrySlot(entry, params.pluginId, params.sessionEntrySlotKeys) ||
     (params.mode === "plugin-owned-state" &&
-      [entry.pluginExtensions, entry.pluginExtensionSlotKeys, entry.pluginNextTurnInjections].some(
-        (state) => Boolean(params.pluginId ? state?.[params.pluginId] : state),
-      ))
+      [
+        entry.pluginExtensions,
+        entry.pluginExtensionSlotKeys,
+        entry.pluginNextTurnInjections,
+        ...(params.preserveInjectionOutcomes ? [] : [entry.pluginNextTurnInjectionOutcomes]),
+      ].some((state) => Boolean(params.pluginId ? state?.[params.pluginId] : state)))
   );
 }
 
@@ -186,5 +219,10 @@ export function clearPluginHostCleanupTarget(
     });
     return;
   }
-  clearPluginOwnedSessionState(entry, params.pluginId, params.sessionEntrySlotKeys);
+  clearPluginOwnedSessionState(
+    entry,
+    params.pluginId,
+    params.sessionEntrySlotKeys,
+    params.preserveInjectionOutcomes,
+  );
 }

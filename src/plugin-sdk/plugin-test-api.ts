@@ -37,6 +37,9 @@ export function createTestPluginApi(api: TestPluginApiInput = {}): OpenClawPlugi
     ...pluginApiDefaultHandlers,
     registerNodeCliFeature() {},
     steerActiveRun: async () => ({ steered: false as const, reason: "test api" }),
+    getNextTurnInjectionState: async (input) => ({ ...input, state: "unknown" as const }),
+    withdrawNextTurnInjection: async (input) => ({ ...input, state: "unknown" as const }),
+    onNextTurnInjectionSettled() {},
     emitAgentEvent: () => ({ emitted: false as const, reason: "test api" }),
     sendSessionAttachment: async () => ({ ok: false, error: "test plugin api" }),
     resolvePath(input: string) {

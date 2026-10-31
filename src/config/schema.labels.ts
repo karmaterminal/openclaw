@@ -632,6 +632,8 @@ export const FIELD_LABELS: Record<string, string> = {
   "plugins.entries.*.hooks": "Plugin Hook Policy",
   "plugins.entries.*.hooks.allowConversationAccess": "Allow Conversation Access Hooks",
   "plugins.entries.*.hooks.allowPromptInjection": "Allow Prompt Injection Hooks",
+  "plugins.entries.*.hooks.nextTurnInjectionDrainMaxEntries": "Next-Turn Drain Entry Limit",
+  "plugins.entries.*.hooks.nextTurnInjectionDrainMaxBytes": "Next-Turn Drain Byte Limit",
   "plugins.entries.*.hooks.timeoutMs": "Plugin Hook Timeout (ms)",
   "plugins.entries.*.hooks.timeouts": "Plugin Hook Timeout Overrides",
   "plugins.entries.*.subagent": "Plugin Subagent Policy",

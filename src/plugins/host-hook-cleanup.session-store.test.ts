@@ -71,6 +71,46 @@ describe("plugin host cleanup session stores", () => {
     ],
   });
 
+  it.each(["reset", "disable"] as const)(
+    "settles pending injections without evicting settled outcomes on %s",
+    async (reason) => {
+      const { clean, read, write } = store();
+      const key = "agent:main:main";
+      const outcome = { state: "consumed" as const, settledAt: updatedAt, retainUntil: 10_000 };
+      await write(key, "main", {
+        pluginNextTurnInjections: {
+          cleanup: [
+            {
+              id: "pending",
+              pluginId: "cleanup",
+              text: "pending",
+              placement: "append_context",
+              idempotencyKey: "pending",
+              createdAt: updatedAt,
+              outcomeRetainUntil: Date.now() + 60_000,
+            },
+          ],
+        },
+        pluginNextTurnInjectionOutcomes: {
+          cleanup: { old: outcome },
+          other: { keep: outcome },
+        },
+      });
+
+      await clean({ pluginId: "cleanup", reason, sessionKey: key });
+      const after = read(key);
+      expect(after?.pluginNextTurnInjections).toBeUndefined();
+      expect(after?.pluginNextTurnInjectionOutcomes?.cleanup?.old).toEqual(outcome);
+      expect(after?.pluginNextTurnInjectionOutcomes?.cleanup?.pending).toMatchObject({
+        state: "discarded",
+      });
+      expect(after?.pluginNextTurnInjectionOutcomes?.other?.keep).toEqual(outcome);
+      await clean({ pluginId: "cleanup", reason, sessionKey: key }, 0);
+      await clean({ pluginId: "cleanup", reason: "delete", sessionKey: key });
+      expect(read(key)?.pluginNextTurnInjectionOutcomes).toEqual({ other: { keep: outcome } });
+    },
+  );
+
   const harnessRegistration = (pluginId: string, id: string): Harness => ({
     pluginId,
     source: "test",

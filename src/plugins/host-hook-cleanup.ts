@@ -50,6 +50,7 @@ async function clearPluginSessionStores(params: {
   storeTargets?: readonly SessionStoreTarget[];
   resolveStoreTargets?: ResolveCleanupSessionStoreTargets;
   shouldCleanup?: () => boolean;
+  preserveInjectionOutcomes?: boolean;
   failures: PluginHostCleanupFailure[];
 }): Promise<number> {
   if (
@@ -94,6 +95,7 @@ async function clearPluginSessionStores(params: {
         sessionEntrySlotKeys: params.sessionEntrySlotKeys,
         preserveLockedHarnessIds: params.preserveLockedHarnessIds,
         shouldCleanup: params.shouldCleanup,
+        preserveInjectionOutcomes: params.preserveInjectionOutcomes,
       });
     } catch (error) {
       params.failures.push({
@@ -232,6 +234,7 @@ export async function runPluginHostCleanup(params: {
           storeTargets: params.sessionStoreTargets,
           resolveStoreTargets: params.resolveSessionStoreTargets,
           shouldCleanup,
+          preserveInjectionOutcomes: params.reason === "reset" || params.reason === "disable",
           failures,
         });
       } catch (error) {

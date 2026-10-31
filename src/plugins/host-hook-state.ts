@@ -7,6 +7,11 @@ import { updateResolvedSessionEntry } from "../config/sessions/session-accessor.
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { resolvePromptInjectionAllowed } from "./hook-policy-decisions.js";
+import type {
+  PluginNextTurnInjectionSettlement,
+  PluginNextTurnInjectionState,
+  PluginNextTurnInjectionStateResult,
+} from "./host-hook-turn-types.js";
 import {
   buildPluginAgentTurnPrepareContext,
   isPluginJsonValue,
@@ -25,6 +30,31 @@ const log = createSubsystemLogger("plugins/host-hook-state");
 const MAX_PLUGIN_NEXT_TURN_INJECTION_TEXT_LENGTH = 32 * 1024;
 const MAX_PLUGIN_NEXT_TURN_INJECTION_IDEMPOTENCY_KEY_LENGTH = 512;
 const MAX_PLUGIN_NEXT_TURN_INJECTIONS_PER_SESSION = 32;
+const DEFAULT_DRAINED_NEXT_TURN_INJECTIONS_PER_PLUGIN = 32;
+const DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN = 64 * 1024;
+const MAX_OUTCOMES_PER_PLUGIN_SESSION = 256;
+const MAX_OUTCOME_RETENTION_MS = 86_400_000;
+type SettlementNotice = { pluginId: string; event: PluginNextTurnInjectionSettlement };
+
+async function notifySettlements(notices: SettlementNotice[], sessionKey: string) {
+  const registry = getPluginRegistryForContext();
+  for (const { pluginId, event } of notices) {
+    event.sessionKey = sessionKey;
+    if (!registry?.plugins.some((plugin) => plugin.id === pluginId && plugin.status === "loaded")) {
+      continue;
+    }
+    for (const registration of registry.nextTurnInjectionSettlementHandlers ?? []) {
+      if (registration.pluginId !== pluginId) {
+        continue;
+      }
+      try {
+        await registration.handler(event);
+      } catch (error) {
+        log.warn(`next-turn settlement notification failed for ${pluginId}: ${String(error)}`);
+      }
+    }
+  }
+}
 
 type MutableSessionEntry = SessionEntry & Record<string, unknown>;
 
@@ -50,7 +80,19 @@ function isPluginNextTurnInjectionRecord(value: unknown): value is PluginNextTur
       (typeof candidate.ttlMs === "number" &&
         Number.isFinite(candidate.ttlMs) &&
         candidate.ttlMs >= 0)) &&
-    (candidate.idempotencyKey === undefined || typeof candidate.idempotencyKey === "string")
+    (candidate.idempotencyKey === undefined || typeof candidate.idempotencyKey === "string") &&
+    (candidate.expiresAt === undefined ||
+      (typeof candidate.expiresAt === "number" && Number.isFinite(candidate.expiresAt))) &&
+    (candidate.notBefore === undefined ||
+      (typeof candidate.notBefore === "number" && Number.isFinite(candidate.notBefore))) &&
+    (candidate.supersedeKey === undefined || typeof candidate.supersedeKey === "string") &&
+    (candidate.outcomeRetainUntil === undefined ||
+      (typeof candidate.outcomeRetainUntil === "number" &&
+        Number.isFinite(candidate.outcomeRetainUntil))) &&
+    (candidate.provenance === undefined ||
+      (typeof candidate.provenance === "object" &&
+        candidate.provenance !== null &&
+        typeof candidate.provenance.source === "string"))
   );
 }
 
@@ -58,7 +100,127 @@ function isExpired(entry: unknown, now: number) {
   if (!isPluginNextTurnInjectionRecord(entry)) {
     return true;
   }
-  return entry.ttlMs !== undefined && now - entry.createdAt > entry.ttlMs;
+  return (
+    (entry.expiresAt !== undefined && now >= entry.expiresAt) ||
+    (entry.ttlMs !== undefined && now - entry.createdAt > entry.ttlMs)
+  );
+}
+
+function settle(
+  entry: SessionEntry,
+  pluginId: string,
+  record: PluginNextTurnInjectionRecord,
+  state: "consumed" | "withdrawn" | "expired" | "discarded",
+  now: number,
+  notices?: SettlementNotice[],
+) {
+  if (!record.idempotencyKey) {
+    return;
+  }
+  const byPlugin = (entry.pluginNextTurnInjectionOutcomes ??= {});
+  if (byPlugin[pluginId]?.[record.idempotencyKey]) {
+    return;
+  }
+  notices?.push({
+    pluginId,
+    event: { sessionKey: "", idempotencyKey: record.idempotencyKey, state, settledAt: now },
+  });
+  (byPlugin[pluginId] ??= {})[record.idempotencyKey] = {
+    state,
+    settledAt: now,
+    retainUntil: Math.max(record.expiresAt ?? 0, record.outcomeRetainUntil ?? 0, now) + 5_000,
+  };
+}
+
+function pruneOutcomes(entry: SessionEntry, pluginId: string, now: number) {
+  const outcomes = entry.pluginNextTurnInjectionOutcomes?.[pluginId];
+  if (!outcomes) {
+    return;
+  }
+  for (const [key, outcome] of Object.entries(outcomes)) {
+    if (outcome.retainUntil <= now) {
+      delete outcomes[key];
+    }
+  }
+}
+
+export async function getPluginNextTurnInjectionState(params: {
+  cfg: OpenClawConfig;
+  pluginId: string;
+  sessionKey: string;
+  agentId?: string;
+  idempotencyKey: string;
+}): Promise<PluginNextTurnInjectionStateResult> {
+  const entry = await readResolvedSessionEntryInWorker({
+    cfg: params.cfg,
+    sessionKey: params.sessionKey,
+    agentId: params.agentId,
+  });
+  const now = Date.now();
+  const pending = entry?.pluginNextTurnInjections?.[params.pluginId]?.find(
+    (item) => item.idempotencyKey === params.idempotencyKey,
+  );
+  const outcome =
+    entry?.pluginNextTurnInjectionOutcomes?.[params.pluginId]?.[params.idempotencyKey];
+  return {
+    sessionKey: params.sessionKey,
+    idempotencyKey: params.idempotencyKey,
+    state:
+      pending && !isExpired(pending, now)
+        ? "pending"
+        : outcome && outcome.retainUntil > now
+          ? outcome.state
+          : pending
+            ? "expired"
+            : "unknown",
+    settledAt: outcome?.settledAt,
+  };
+}
+
+export async function withdrawPluginNextTurnInjection(params: {
+  cfg: OpenClawConfig;
+  pluginId: string;
+  sessionKey: string;
+  agentId?: string;
+  idempotencyKey: string;
+}): Promise<PluginNextTurnInjectionStateResult> {
+  const now = Date.now();
+  const notices: SettlementNotice[] = [];
+  const updated = await updateResolvedSessionEntry(
+    { cfg: params.cfg, sessionKey: params.sessionKey, agentId: params.agentId },
+    (entry) => {
+      pruneOutcomes(entry, params.pluginId, now);
+      const entries = entry.pluginNextTurnInjections?.[params.pluginId] ?? [];
+      const pending = entries.find((item) => item.idempotencyKey === params.idempotencyKey);
+      if (pending) {
+        settle(
+          entry,
+          params.pluginId,
+          pending,
+          isExpired(pending, now) ? "expired" : "withdrawn",
+          now,
+          notices,
+        );
+        entry.pluginNextTurnInjections![params.pluginId] = entries.filter(
+          (item) => item !== pending,
+        );
+        entry.updatedAt = now;
+      }
+      const outcome =
+        entry.pluginNextTurnInjectionOutcomes?.[params.pluginId]?.[params.idempotencyKey];
+      return {
+        state: (outcome?.state ?? "unknown") as PluginNextTurnInjectionState,
+        settledAt: outcome?.settledAt,
+      };
+    },
+  );
+  await notifySettlements(notices, updated.canonicalKey);
+  return {
+    sessionKey: params.sessionKey,
+    idempotencyKey: params.idempotencyKey,
+    state: updated.found ? updated.result.state : "unknown",
+    settledAt: updated.found ? updated.result.settledAt : undefined,
+  };
 }
 
 export async function enqueuePluginNextTurnInjection(params: {
@@ -76,6 +238,9 @@ export async function enqueuePluginNextTurnInjection(params: {
   if (
     !text ||
     text.length > MAX_PLUGIN_NEXT_TURN_INJECTION_TEXT_LENGTH ||
+    Buffer.byteLength(text, "utf8") >
+      (params.cfg.plugins?.entries?.[params.pluginId]?.hooks?.nextTurnInjectionDrainMaxBytes ??
+        DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN) ||
     (params.injection.metadata !== undefined && !isPluginJsonValue(params.injection.metadata)) ||
     (params.injection.idempotencyKey !== undefined &&
       (typeof params.injection.idempotencyKey !== "string" ||
@@ -90,6 +255,44 @@ export async function enqueuePluginNextTurnInjection(params: {
     return { enqueued: false, id: "", sessionKey };
   }
   const now = params.now ?? Date.now();
+  const requested = params.injection;
+  const enhanced =
+    requested.expiresAt !== undefined ||
+    requested.notBefore !== undefined ||
+    requested.supersedeKey !== undefined ||
+    requested.expectedSupersededKey !== undefined ||
+    requested.outcomeRetainUntil !== undefined ||
+    requested.provenance !== undefined;
+  if (
+    (requested.expiresAt !== undefined &&
+      (!Number.isFinite(requested.expiresAt) || requested.expiresAt <= now)) ||
+    (requested.notBefore !== undefined &&
+      (!Number.isFinite(requested.notBefore) ||
+        (requested.expiresAt !== undefined && requested.notBefore >= requested.expiresAt))) ||
+    (requested.outcomeRetainUntil !== undefined &&
+      (!Number.isFinite(requested.outcomeRetainUntil) ||
+        requested.outcomeRetainUntil > now + MAX_OUTCOME_RETENTION_MS)) ||
+    (requested.supersedeKey !== undefined &&
+      (!requested.supersedeKey.trim() || requested.supersedeKey.length > 512)) ||
+    (requested.expectedSupersededKey !== undefined &&
+      (!requested.expectedSupersededKey.trim() || requested.expectedSupersededKey.length > 512)) ||
+    (requested.provenance !== undefined &&
+      (typeof requested.provenance !== "object" ||
+        requested.provenance === null ||
+        typeof requested.provenance.source !== "string" ||
+        !requested.provenance.source.trim() ||
+        requested.provenance.source.length > 256)) ||
+    ((requested.supersedeKey || requested.expectedSupersededKey || requested.outcomeRetainUntil) &&
+      !requested.idempotencyKey)
+  ) {
+    return {
+      enqueued: false,
+      id: "",
+      sessionKey,
+      reason:
+        requested.expiresAt !== undefined && requested.expiresAt <= now ? "expired" : "invalid",
+    };
+  }
   const injection = { ...params.injection };
   const record: PluginNextTurnInjectionRecord = {
     id: injection.idempotencyKey?.trim() || randomUUID(),
@@ -99,32 +302,97 @@ export async function enqueuePluginNextTurnInjection(params: {
     idempotencyKey: injection.idempotencyKey?.trim() || undefined,
     placement: injection.placement ?? "prepend_context",
     ttlMs: injection.ttlMs,
+    expiresAt: injection.expiresAt,
+    notBefore: injection.notBefore,
+    supersedeKey: injection.supersedeKey,
+    outcomeRetainUntil: injection.outcomeRetainUntil,
+    provenance: injection.provenance,
     createdAt: now,
     metadata: injection.metadata,
   };
   const scope = { cfg: params.cfg, sessionKey, agentId: params.injection.agentId };
+  const notices: SettlementNotice[] = [];
   const updated = await updateResolvedSessionEntry(scope, (entry) => {
+    if (
+      entry.agentHarnessId === "codex" ||
+      entry.agentHarnessId === "copilot" ||
+      /(?:^|:)harness:(?:codex|copilot)(?::|$)/.test(sessionKey)
+    ) {
+      return { enqueued: false, id: "", reason: "harness_does_not_drain" as const };
+    }
     const injections = { ...entry.pluginNextTurnInjections };
+    pruneOutcomes(entry, params.pluginId, now);
     // Guard against malformed/hand-edited persisted state — a non-array value
     // here would crash the spread/filter and break the whole session's enqueue.
     const rawExisting = injections[params.pluginId];
     const existing = (Array.isArray(rawExisting) ? rawExisting : []).filter(
-      (candidate): candidate is PluginNextTurnInjectionRecord => !isExpired(candidate, now),
+      (candidate): candidate is PluginNextTurnInjectionRecord => {
+        if (!isPluginNextTurnInjectionRecord(candidate)) {
+          return false;
+        }
+        if (!isExpired(candidate, now)) {
+          return true;
+        }
+        settle(entry, params.pluginId, candidate, "expired", now, notices);
+        return false;
+      },
     );
     const duplicate = record.idempotencyKey
       ? existing.find((candidate) => candidate.idempotencyKey === record.idempotencyKey)
       : undefined;
-    const enqueued = !duplicate && existing.length < MAX_PLUGIN_NEXT_TURN_INJECTIONS_PER_SESSION;
-    injections[params.pluginId] = enqueued ? [...existing, record] : existing;
+    const settled = record.idempotencyKey
+      ? entry.pluginNextTurnInjectionOutcomes?.[params.pluginId]?.[record.idempotencyKey]
+      : undefined;
+    const predecessor = record.supersedeKey
+      ? existing.find((item) => item.supersedeKey === record.supersedeKey)
+      : undefined;
+    const expectedState: PluginNextTurnInjectionState | undefined = injection.expectedSupersededKey
+      ? existing.some((item) => item.idempotencyKey === injection.expectedSupersededKey)
+        ? "pending"
+        : (entry.pluginNextTurnInjectionOutcomes?.[params.pluginId]?.[
+            injection.expectedSupersededKey
+          ]?.state ?? "unknown")
+      : undefined;
+    const conflict =
+      injection.expectedSupersededKey &&
+      (predecessor?.idempotencyKey !== injection.expectedSupersededKey ||
+        expectedState !== "pending");
+    const capacity =
+      (record.idempotencyKey !== undefined &&
+        Object.keys(entry.pluginNextTurnInjectionOutcomes?.[params.pluginId] ?? {}).length >=
+          MAX_OUTCOMES_PER_PLUGIN_SESSION) ||
+      existing.length - (predecessor ? 1 : 0) >= MAX_PLUGIN_NEXT_TURN_INJECTIONS_PER_SESSION;
+    const enqueued = !duplicate && !settled && !conflict && !capacity;
+    if (enqueued && predecessor) {
+      settle(entry, params.pluginId, predecessor, "withdrawn", now, notices);
+    }
+    injections[params.pluginId] = enqueued
+      ? [...existing.filter((item) => item !== predecessor), record]
+      : existing;
     entry.pluginNextTurnInjections = injections;
     if (enqueued) {
       entry.updatedAt = now;
     }
-    return { enqueued, id: duplicate?.id ?? record.id };
+    return {
+      enqueued,
+      id: duplicate?.id ?? record.id,
+      ...(!enhanced || enqueued
+        ? {}
+        : {
+            reason:
+              duplicate || settled
+                ? ("duplicate" as const)
+                : conflict
+                  ? ("supersede_conflict" as const)
+                  : ("capacity" as const),
+            state: duplicate ? ("pending" as const) : (settled?.state ?? expectedState),
+          }),
+    };
   });
   if (!updated.found) {
-    return { enqueued: false, id: "", sessionKey };
+    return { enqueued: false, id: "", sessionKey, reason: "missing_session" };
   }
+  await notifySettlements(notices, updated.canonicalKey);
   return { ...updated.result, sessionKey: updated.canonicalKey };
 }
 
@@ -145,6 +413,7 @@ async function drainPluginNextTurnInjections(
     return [];
   }
   const now = Date.now();
+  const notices: SettlementNotice[] = [];
   const updated = await updateResolvedSessionEntry(scope, (entry) => {
     if (!entry?.pluginNextTurnInjections) {
       return [];
@@ -155,32 +424,70 @@ async function drainPluginNextTurnInjections(
         .map((plugin) => plugin.id),
     );
     const drained: PluginNextTurnInjectionRecord[] = [];
+    const retained: NonNullable<SessionEntry["pluginNextTurnInjections"]> = {};
     for (const [pluginId, entries] of Object.entries(entry.pluginNextTurnInjections)) {
-      if (
-        !activePluginIds.has(pluginId) ||
-        !resolvePromptInjectionAllowed(params.cfg.plugins?.entries?.[pluginId]?.hooks)
-      ) {
-        continue;
-      }
       // Guard against malformed/hand-edited persisted state — a non-array value
       // here would crash .filter and break prompt-building for the session.
       if (!Array.isArray(entries)) {
         continue;
       }
-      const liveEntries = entries.filter(
-        (candidate): candidate is PluginNextTurnInjectionRecord => !isExpired(candidate, now),
-      );
-      drained.push(...liveEntries);
+      const allowed =
+        activePluginIds.has(pluginId) &&
+        resolvePromptInjectionAllowed(params.cfg.plugins?.entries?.[pluginId]?.hooks);
+      const drainLimits = params.cfg.plugins?.entries?.[pluginId]?.hooks;
+      const maxEntries =
+        drainLimits?.nextTurnInjectionDrainMaxEntries ??
+        DEFAULT_DRAINED_NEXT_TURN_INJECTIONS_PER_PLUGIN;
+      const maxBytes =
+        drainLimits?.nextTurnInjectionDrainMaxBytes ??
+        DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN;
+      let drainedEntriesForPlugin = 0;
+      let drainedBytesForPlugin = 0;
+      for (const candidate of entries) {
+        if (!isPluginNextTurnInjectionRecord(candidate)) {
+          continue;
+        }
+        if (isExpired(candidate, now)) {
+          settle(entry, pluginId, candidate, "expired", now, notices);
+        } else if (!allowed) {
+          if (candidate.expiresAt !== undefined) {
+            (retained[pluginId] ??= []).push(candidate);
+          } else {
+            settle(entry, pluginId, candidate, "discarded", now, notices);
+          }
+        } else if (candidate.notBefore !== undefined && now < candidate.notBefore) {
+          (retained[pluginId] ??= []).push(candidate);
+        } else {
+          const bytes = Buffer.byteLength(candidate.text, "utf8");
+          if (bytes > DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN) {
+            settle(entry, pluginId, candidate, "discarded", now, notices);
+            continue;
+          }
+          if (drainedEntriesForPlugin >= maxEntries || drainedBytesForPlugin + bytes > maxBytes) {
+            (retained[pluginId] ??= []).push(candidate);
+            continue;
+          }
+          drained.push(candidate);
+          drainedEntriesForPlugin += 1;
+          drainedBytesForPlugin += bytes;
+          settle(entry, pluginId, candidate, "consumed", now, notices);
+        }
+      }
     }
     drained.sort((left, right) => left.createdAt - right.createdAt);
     // A drain is the consume boundary for this session queue. Inactive plugin
     // records are stale owner state and are discarded with expired records.
-    delete entry.pluginNextTurnInjections;
+    if (Object.keys(retained).length) {
+      entry.pluginNextTurnInjections = retained;
+    } else {
+      delete entry.pluginNextTurnInjections;
+    }
     if (drained.length > 0) {
       entry.updatedAt = now;
     }
     return drained;
   });
+  await notifySettlements(notices, updated.canonicalKey);
   return updated.found ? updated.result : [];
 }
 
