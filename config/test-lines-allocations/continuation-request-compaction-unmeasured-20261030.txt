@@ -1,0 +1,2 @@
+# karmaterminal/openclaw-bootstrap#1727 (continuation, F″): request_compaction's unmeasured-usage fossils on both live runners and the tool's context_unmeasured cases. Sized to this change's full net test-line growth against F′ f15237ec92, so parallel F″ lanes do not spend F′'s shared slack twice.
+99

@@ -17,7 +17,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionEntry } from "../../config/sessions.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { createTestPreparedRunAdmission } from "../admitted-run-context.test-support.js";
+import type { RunEmbeddedAgentParams } from "../embedded-agent-runner/run/params.js";
 import type { EmbeddedAgentRunResult } from "../embedded-agent.js";
+import { createOpenClawContinuationTools } from "../openclaw-tools.continuation.js";
 import { runAgentAttempt } from "./attempt-execution.js";
 
 const runEmbeddedAgentMock = vi.hoisted(() => vi.fn());
@@ -227,21 +229,39 @@ describe("runAgentAttempt spawn-init requestCompactionOpts plumbing", () => {
     expect(callArgs?.requestCompactionOpts).toBeUndefined();
   });
 
-  // The request_compaction factory requires a synchronous number-or-null
-  // context-usage callback. A stub-shaped closure could still register the
-  // tool but produce incorrect rejection behavior at call time.
-  it("requestCompactionOpts.getContextUsage returns sync number-or-null", async () => {
+  // bootstrap#1727: a live runner's first turn has no fresh token totals yet. The
+  // rejection must say usage is unmeasured, not that this is an inventory-only path.
+  // This also drives the runner's real getContextUsage closure through the tool.
+  it("rejects a first-turn request_compaction as unmeasured, not as an inventory-only path", async () => {
+    const triggerCompaction = vi.fn();
+    let result: { content?: unknown; details?: unknown } | undefined;
+    runEmbeddedAgentMock.mockImplementationOnce(
+      async ({ requestCompactionOpts }: Pick<RunEmbeddedAgentParams, "requestCompactionOpts">) => {
+        const tool = createOpenClawContinuationTools({
+          config: makeContinuationEnabledConfig(),
+          agentSessionKey: sessionKey,
+          sessionId: sessionEntry.sessionId,
+          runId: "run-917-trap",
+          requestCompactionOpts: requestCompactionOpts && {
+            ...requestCompactionOpts,
+            triggerCompaction,
+          },
+        }).find((candidate) => candidate.name === "request_compaction");
+        result = await tool?.execute("call-first-turn", { reason: "first-turn pressure check" });
+        return makeEmbeddedResult();
+      },
+    );
+
     await runEmbeddedAttempt(makeContinuationEnabledConfig());
 
-    const callArgs = runEmbeddedAgentMock.mock.calls[0]?.[0] as
-      | { requestCompactionOpts?: { getContextUsage: () => number | null } }
-      | undefined;
-    expect(callArgs?.requestCompactionOpts).toBeDefined();
-
-    // Should be invocable without throwing and return number | null
-    // (synchronous, matching computeRequestCompactionContextUsage).
-    const result = callArgs?.requestCompactionOpts?.getContextUsage();
-    expect(result === null || typeof result === "number").toBe(true);
+    expect(result?.details).toMatchObject({
+      status: "rejected",
+      guard: "context_unmeasured",
+      cause: "no_fresh_usage",
+      reason: expect.stringContaining("not been measured"),
+    });
+    expect(JSON.stringify(result?.content)).not.toContain("inventory-only");
+    expect(triggerCompaction).not.toHaveBeenCalled();
   });
 
   // A successful turn-1 volitional compaction must run the same

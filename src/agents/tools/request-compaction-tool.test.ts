@@ -181,6 +181,46 @@ describe("request_compaction tool", () => {
     expect(mockTriggerCompaction).toHaveBeenCalledOnce();
   });
 
+  // bootstrap#1727: unmeasured usage is its own guard, never a threshold verdict.
+  // The live no_fresh_usage case is proven through both live runners' fossils, and
+  // the inventory stub through openclaw-tools.continuation-misconfig-warn.
+  const unmeasuredCases: Array<{
+    name: string;
+    opts: Pick<RequestCompactionToolOpts, "contextUsageOrigin" | "getContextUsage">;
+    cause: string;
+    reason: RegExp;
+  }> = [
+    {
+      // A named cause wins whatever the origin says.
+      name: "an unknown context window, with no origin given",
+      opts: { getContextUsage: () => "unknown_context_window" },
+      cause: "unknown_context_window",
+      reason: /^Context usage cannot be measured: the context window .* is unknown/,
+    },
+    {
+      // A live runner is never called inventory-only, even with a bare null.
+      name: "a live runner that names no cause",
+      opts: { contextUsageOrigin: "live_runner", getContextUsage: () => null },
+      cause: "no_fresh_usage",
+      reason: /^Context usage has not been measured: /,
+    },
+  ];
+
+  it.each(unmeasuredCases)(
+    "rejects unmeasured usage from $name",
+    async ({ opts, cause, reason }) => {
+      const result = await executeTool(makeTool(opts));
+
+      expect(result).toEqual({
+        status: "rejected",
+        guard: "context_unmeasured",
+        cause,
+        reason: expect.stringMatching(reason),
+      });
+      expect(mockTriggerCompaction).not.toHaveBeenCalled();
+    },
+  );
+
   // -------------------------------------------------------------------------
   // Guard: rate limit
   // -------------------------------------------------------------------------

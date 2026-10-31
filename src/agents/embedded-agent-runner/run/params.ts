@@ -275,8 +275,8 @@ export type RunEmbeddedAgentParams = Pick<
   requestCompactionOpts?: {
     sessionId?: string;
     ownerAgentId?: string;
-    getContextUsage: () => number | null;
-    contextUsageOrigin?: "live_runner" | "inventory_stub";
+    getContextUsage: RequestCompactionToolOpts["getContextUsage"];
+    contextUsageOrigin?: RequestCompactionToolOpts["contextUsageOrigin"];
     triggerCompaction: RequestCompactionToolOpts["triggerCompaction"];
   };
 } & AgentRunExecutionContext;

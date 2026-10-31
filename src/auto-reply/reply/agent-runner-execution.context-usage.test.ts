@@ -1,15 +1,15 @@
 /**
  * regression: computeRequestCompactionContextUsage must
- *   (a) honor the totalTokensFresh freshness contract, returning null when
- *       the prior turn could not compute a fresh totalTokens snapshot, and
+ *   (a) honor the totalTokensFresh freshness contract, returning
+ *       "no_fresh_usage" when the prior turn could not compute a fresh
+ *       totalTokens snapshot, and
  *   (b) resolve the context-window denominator via the canonical pipeline
  *       (session-entry → cfg/provider/model) instead of the prior
  *       hardcoded `?? 200_000` fallback that misreports utilization on any
- *       non-200K model.
+ *       non-200K model, returning "unknown_context_window" when it cannot.
  *
- * Both null-return branches map to request-compaction-tool.ts:209's
- * [request_compaction:context-unknown] rejection path, so the request_compaction
- * gate refuses rather than misfires on stale or unresolvable inputs.
+ * Both causes map to request_compaction's context_unmeasured rejection, so the
+ * gate refuses rather than misfires on stale or unresolvable inputs, and says why.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionEntry } from "../../config/sessions.js";
@@ -59,7 +59,7 @@ beforeEach(() => {
 });
 
 describe("computeRequestCompactionContextUsage: freshness contract (axis a)", () => {
-  it("returns null when totalTokensFresh is explicitly false (known-stale)", async () => {
+  it("returns no_fresh_usage when totalTokensFresh is explicitly false (known-stale)", async () => {
     const compute = await getComputeRequestCompactionContextUsage();
     state.resolveContextTokensForModelMock.mockReturnValue(200_000);
 
@@ -70,7 +70,7 @@ describe("computeRequestCompactionContextUsage: freshness contract (axis a)", ()
       model: MODEL,
     });
 
-    expect(result).toBeNull();
+    expect(result).toBe("no_fresh_usage");
     // The freshness short-circuit happens BEFORE context-window resolution, so
     // resolveContextTokensForModel must not be called in this path.
     expect(state.resolveContextTokensForModelMock).not.toHaveBeenCalled();
@@ -89,7 +89,7 @@ describe("computeRequestCompactionContextUsage: freshness contract (axis a)", ()
     expect(result).toBeCloseTo(0.75, 5);
   });
 
-  it("returns null when total-token freshness provenance is missing", async () => {
+  it("returns no_fresh_usage when total-token freshness provenance is missing", async () => {
     const compute = await getComputeRequestCompactionContextUsage();
 
     const result = compute({
@@ -104,11 +104,11 @@ describe("computeRequestCompactionContextUsage: freshness contract (axis a)", ()
       model: MODEL,
     });
 
-    expect(result).toBeNull();
+    expect(result).toBe("no_fresh_usage");
     expect(state.resolveContextTokensForModelMock).not.toHaveBeenCalled();
   });
 
-  it("returns null when totalTokens is missing (entry has no usage snapshot yet)", async () => {
+  it("returns no_fresh_usage when totalTokens is missing (entry has no usage snapshot yet)", async () => {
     const compute = await getComputeRequestCompactionContextUsage();
 
     const result = compute({
@@ -118,10 +118,10 @@ describe("computeRequestCompactionContextUsage: freshness contract (axis a)", ()
       model: MODEL,
     });
 
-    expect(result).toBeNull();
+    expect(result).toBe("no_fresh_usage");
   });
 
-  it("returns null when entry itself is undefined (no active session)", async () => {
+  it("returns no_fresh_usage when entry itself is undefined (no active session)", async () => {
     const compute = await getComputeRequestCompactionContextUsage();
 
     const result = compute({
@@ -131,7 +131,7 @@ describe("computeRequestCompactionContextUsage: freshness contract (axis a)", ()
       model: MODEL,
     });
 
-    expect(result).toBeNull();
+    expect(result).toBe("no_fresh_usage");
   });
 });
 
@@ -175,7 +175,7 @@ describe("computeRequestCompactionContextUsage: context-window resolution (axis 
     });
   });
 
-  it("returns null when resolveContextTokensForModel returns undefined (unknown model)", async () => {
+  it("returns unknown_context_window when resolveContextTokensForModel returns undefined (unknown model)", async () => {
     const compute = await getComputeRequestCompactionContextUsage();
     state.resolveContextTokensForModelMock.mockReturnValue(undefined);
 
@@ -186,10 +186,10 @@ describe("computeRequestCompactionContextUsage: context-window resolution (axis 
       model: "unknown-model",
     });
 
-    expect(result).toBeNull();
+    expect(result).toBe("unknown_context_window");
   });
 
-  it("returns null when resolveContextTokensForModel returns 0 or negative", async () => {
+  it("returns unknown_context_window when resolveContextTokensForModel returns 0 or negative", async () => {
     const compute = await getComputeRequestCompactionContextUsage();
     state.resolveContextTokensForModelMock.mockReturnValue(0);
 
@@ -199,7 +199,7 @@ describe("computeRequestCompactionContextUsage: context-window resolution (axis 
       provider: PROVIDER,
       model: MODEL,
     });
-    expect(zeroResult).toBeNull();
+    expect(zeroResult).toBe("unknown_context_window");
 
     state.resolveContextTokensForModelMock.mockReturnValue(-1);
     const negResult = compute({
@@ -208,7 +208,7 @@ describe("computeRequestCompactionContextUsage: context-window resolution (axis 
       provider: PROVIDER,
       model: MODEL,
     });
-    expect(negResult).toBeNull();
+    expect(negResult).toBe("unknown_context_window");
   });
 });
 
@@ -253,9 +253,9 @@ describe("computeRequestCompactionContextUsage: model-size matrix (anti-hardcode
 });
 
 describe("computeRequestCompactionContextUsage: signature contract for the consumer", () => {
-  // request-compaction-tool.ts:98 types getContextUsage as `() => number | null`
-  // and explicitly branches on `=== null` at :209. These tests anchor the
-  // narrow return-shape so a future refactor cannot silently widen it.
+  // request_compaction's getContextUsage returns a number or, on a live runner,
+  // the cause it could not measure usage (anchored by axes a and b above); the
+  // tool names that cause in its context_unmeasured rejection.
   it("returns number when both freshness + window resolve cleanly", async () => {
     const compute = await getComputeRequestCompactionContextUsage();
     const result = compute({
@@ -265,19 +265,5 @@ describe("computeRequestCompactionContextUsage: signature contract for the consu
       model: MODEL,
     });
     expect(typeof result).toBe("number");
-  });
-
-  it("returns null (not undefined, not 0) when context cannot be resolved", async () => {
-    const compute = await getComputeRequestCompactionContextUsage();
-    state.resolveContextTokensForModelMock.mockReturnValue(undefined);
-    const result = compute({
-      entry: makeEntry({ totalTokens: 10_000 }),
-      cfg: CFG,
-      provider: PROVIDER,
-      model: MODEL,
-    });
-    expect(result).toBeNull();
-    expect(result).not.toBe(0);
-    expect(result).not.toBeUndefined();
   });
 });

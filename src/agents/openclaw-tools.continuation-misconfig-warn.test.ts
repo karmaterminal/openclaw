@@ -246,6 +246,7 @@ describe("createOpenClawTools — silent partial-registration guard", () => {
           text: expect.stringContaining("inventory-only paths"),
         }),
       ],
+      details: { status: "rejected", guard: "context_unmeasured", cause: "inventory_only" },
     });
   });
 
