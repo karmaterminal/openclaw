@@ -135,6 +135,8 @@ describe("room aggregate eligibility (#1415)", () => {
     );
     for (const other of [
       member("carol", { run: { execOverrides: { ...execOverrides, security: "allowlist" } } }),
+      // A session permission mode an attempt wrote into its run's shared exec overrides.
+      member("erin", { run: { execOverrides: { ...execOverrides, mode: "deny" } } }),
       member("dave"),
     ]) {
       expect(resolveFollowupBatchKey(other)).not.toBe(resolveFollowupBatchKey(alice));

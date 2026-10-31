@@ -14,6 +14,7 @@ import {
   withTempState,
 } from "../../channels/message/ingress-drain.test-helpers.js";
 import type { SessionEntry } from "../../config/sessions.js";
+import { defaultRuntime } from "../../runtime.js";
 import { createReplyOperation } from "../../sessions/session-controller.js";
 import { testing as controllerTesting } from "../../sessions/session-controller.test-support.js";
 import { readUserTurnRequesterOrigin } from "../../sessions/user-turn-transcript-admission.js";
@@ -197,11 +198,15 @@ async function openRoomIngress(
     await admitFollowupRunLifecycle(run);
   };
   /** The active room turn ends; its successor drains the mailbox. */
-  const endActiveTurn = async (execute: (run: FollowupRun) => Promise<void> = adoptAndRecord) => {
+  const endActiveTurn = async (
+    execute: (run: FollowupRun) => Promise<void> = adoptAndRecord,
+    onScheduled?: () => void,
+  ) => {
     const settlements = (getExistingFollowupQueue(key)?.entries ?? []).map(
       (input) => input.settlement.promise,
     );
     scheduleFollowupDrain(key, execute);
+    onScheduled?.();
     await Promise.allSettled(settlements);
     await vi.waitFor(() => expect(getExistingFollowupQueue(key)).toBeUndefined());
     await drain.waitForIdle();
@@ -306,6 +311,26 @@ function aggregated(run: FollowupRun | undefined, rows: readonly Row[], shared: 
     expect(run?.prompt).toContain(`Queued #${index + 1} (from ${row.from?.senderName})`);
   }
   expectRoomBaseline(run, shared);
+}
+
+/**
+ * A selector regression no production path has: the next selected claim reaches the drain
+ * widened over the following `count` waiting inputs, whatever their batch identity.
+ */
+function widenNextClaim(key: string, count: number) {
+  const mailbox = getExistingFollowupQueue(key)!;
+  const dispatch = mailbox.dispatch!;
+  mailbox.dispatch = async (claim) => {
+    mailbox.dispatch = dispatch;
+    const extra = mailbox.entries.filter((input) => input.phase === "waiting").slice(0, count);
+    for (const input of extra) {
+      input.phase = "claimed";
+      input.claim = claim;
+    }
+    claim.inputs = [...claim.inputs, ...extra];
+    claim.sources = [...claim.sources, ...extra.map((input) => input.source!)];
+    await dispatch(claim);
+  };
 }
 
 /**
@@ -923,6 +948,64 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
       );
     });
   });
+
+  it("splits senders by exec permission mode, each turn under its own mode", async () => {
+    const rows: Row[] = (["deny", "deny", "full", "full"] as const).map((mode, index) => ({
+      id: `m${index + 1}`,
+      from: sender(`speaker-${index + 1}`, { execOverrides: { mode } }),
+    }));
+    await withRoomIngress(rows, async (harness) => {
+      await harness.dispatchRows();
+      await harness.endActiveTurn();
+      expect(harness.calls).toHaveLength(2);
+      aggregated(harness.calls[0], rows.slice(0, 2), { execOverrides: { mode: "deny" } });
+      aggregated(harness.calls[1], rows.slice(2), { execOverrides: { mode: "full" } });
+      await expectSettledOnce(
+        harness,
+        rows.map((row) => row.id),
+      );
+    });
+  });
+
+  const owner = sender("owner", { senderIsOwner: true, traceAuthorized: true });
+  it.each<[string, Omit<Row, "id">, Partial<QueueSettings>?]>([
+    ["an owner room event", { from: owner }],
+    ["an addressed request", { kind: "user_request", from: sender("asker") }],
+    ["an owner overflow summary", { from: owner }, { cap: 3, dropPolicy: "summarize" }],
+  ])(
+    "refuses a mixed claim holding %s and retries each member alone",
+    async (_, held, settings) => {
+      const rows: Row[] = [
+        { from: sender("alice") },
+        held,
+        ...["bob", "carol", "dave"].map((id) => ({ from: sender(id) })),
+      ].map((row, index) => ({ ...row, id: `f${index + 1}` }));
+      const error = vi.spyOn(defaultRuntime, "error");
+      try {
+        await withRoomIngress(
+          rows,
+          async (harness) => {
+            await harness.dispatchRows();
+            await harness.endActiveTurn(undefined, () => widenNextClaim(harness.key, 1));
+            // Neither runs as the senderless baseline: each member's turn runs as that member.
+            expect(harness.calls.slice(0, 2).map((call) => call.run)).toEqual(
+              rows.slice(0, 2).map((row) => harness.runs.get(row.id)?.run),
+            );
+            expect(error).toHaveBeenCalledWith(expect.stringContaining("refused a mixed claim"));
+            expect(harness.calls).toHaveLength(3);
+            aggregated(harness.calls[2], rows.slice(2));
+            await expectSettledOnce(
+              harness,
+              rows.map((row) => row.id),
+            );
+          },
+          { settings },
+        );
+      } finally {
+        error.mockRestore();
+      }
+    },
+  );
 
   /** One room event from each of `count` distinct non-owner senders; ids sort in arrival order. */
   function crowd(count: number): Row[] {
