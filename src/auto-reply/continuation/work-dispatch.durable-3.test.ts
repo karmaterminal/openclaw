@@ -353,6 +353,7 @@ import {
 } from "../../agents/subagents/registry/subagent-session-cleanup.js";
 import { resetGatewayWorkAdmission } from "../../process/gateway-work-admission.js";
 import { runWithGatewayRootWorkAdmissionForTest as runWithGatewayRootWorkAdmission } from "../../process/gateway-work-admission.test-helpers.js";
+import { cleanupSessionStateForTest } from "../../test-utils/session-state-cleanup.js";
 import { getReplyFromConfig } from "../reply/get-reply.js";
 import {
   DEFAULT_NO_OP_REARM_THRESHOLD,
@@ -622,6 +623,8 @@ describe("durable continuation_work dispatch", () => {
         }),
       ]);
     } finally {
+      // Close the fixture's agent database first: its WAL tick kills the worker on deleted sidecars.
+      await cleanupSessionStateForTest({ stateDir: tempDir });
       fs.rmSync(tempDir, { force: true, recursive: true });
     }
   });
