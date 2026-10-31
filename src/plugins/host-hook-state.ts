@@ -177,7 +177,11 @@ export async function withdrawPluginNextTurnInjection(params: {
       };
     },
   );
-  dispatchSettlements(notices, updated.canonicalKey);
+  void dispatchSettlements(notices, {
+    cfg: params.cfg,
+    sessionKey: updated.canonicalKey,
+    agentId: params.agentId,
+  });
   return {
     sessionKey: params.sessionKey,
     idempotencyKey,
@@ -353,7 +357,11 @@ export async function enqueuePluginNextTurnInjection(params: {
   if (!updated.found) {
     return { enqueued: false, id: "", sessionKey, reason: "missing_session" };
   }
-  dispatchSettlements(notices, updated.canonicalKey);
+  void dispatchSettlements(notices, {
+    cfg: params.cfg,
+    sessionKey: updated.canonicalKey,
+    agentId: params.injection.agentId,
+  });
   return { ...updated.result, sessionKey: updated.canonicalKey };
 }
 
@@ -381,7 +389,7 @@ async function drainPluginNextTurnInjections(
   }
   const notices: SettlementNotice[] = [];
   const updated = await updateResolvedSessionEntry(scope, (entry) => {
-    const now = Date.now();
+    const now = params.clock?.() ?? Date.now();
     if (!entry?.pluginNextTurnInjections) {
       return {
         records: [],
@@ -481,11 +489,13 @@ export async function drainPluginNextTurnInjectionContext(params: {
   cfg: OpenClawConfig;
   sessionKey?: string;
   agentId?: string;
+  /** Host clock seam for deterministic expiry-boundary tests. */
+  clock?: () => number;
 }): Promise<PluginAgentTurnPrepareResult & { queuedInjections: PluginNextTurnInjectionRecord[] }> {
   const drained = await drainPluginNextTurnInjections(params);
   let queuedInjections = drained.records;
   while (queuedInjections.length > 0) {
-    const now = Date.now();
+    const now = params.clock?.() ?? Date.now();
     const expired = queuedInjections.filter((record) => isExpired(record, now));
     if (expired.length === 0) {
       break;
@@ -502,7 +512,11 @@ export async function drainPluginNextTurnInjectionContext(params: {
       });
     }
   }
-  dispatchSettlements(drained.notices, drained.canonicalKey);
+  void dispatchSettlements(drained.notices, {
+    cfg: params.cfg,
+    sessionKey: drained.canonicalKey,
+    agentId: params.agentId,
+  });
   return {
     queuedInjections,
     ...buildPluginAgentTurnPrepareContext({ queuedInjections }),

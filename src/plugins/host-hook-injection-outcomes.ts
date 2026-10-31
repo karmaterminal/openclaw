@@ -28,6 +28,8 @@ export function settle(
   }
   notices?.push({
     pluginId,
+    sessionId: entry.sessionId,
+    lifecycleRevision: entry.lifecycleRevision,
     event: { sessionKey: "", idempotencyKey: record.idempotencyKey, state, settledAt: now },
   });
   if (!Object.hasOwn(byPlugin, pluginId)) {
@@ -79,6 +81,12 @@ export async function reconcileLateExpiredInjections(params: {
       ),
   );
   if (candidates.length === 0) {
+    return;
+  }
+  if (!params.lifecycleRevision) {
+    for (const notice of candidates) {
+      params.notices.splice(params.notices.indexOf(notice), 1);
+    }
     return;
   }
   const updated = await updateResolvedSessionEntry(params.scope, (entry) => {

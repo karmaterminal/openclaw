@@ -5,6 +5,7 @@ import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
 import {
   loadSessionEntryReadOnly as readEntry,
   replaceSessionEntry as writeEntry,
+  replaceSessionEntrySync as writeEntrySync,
   resolveSessionEntryAccessTarget as accessTarget,
 } from "../../config/sessions/session-accessor.entry.js";
 import { SessionCanonicalKeyMigrationRequiredError } from "../../config/sessions/session-canonical-row.js";
@@ -12,7 +13,6 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { openOpenClawAgentDatabase } from "../../state/openclaw-agent-db.js";
 import { createOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { normalizeSessionDeliveryState as deliveryState } from "../../utils/delivery-context.shared.js";
-import { reconcileLateExpiredInjections } from "../host-hook-injection-outcomes.js";
 import { dispatchSettlements, type SettlementNotice } from "../host-hook-settlement-dispatch.js";
 import {
   drainPluginNextTurnInjectionContext as drain,
@@ -96,7 +96,7 @@ describe("next-turn injection identity", () => {
   it("notifies only after durable settlement and leaves query authoritative", async () => {
     const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
     const scope = sessionScope(cfg, "main", "agent:main:notice");
-    await writeEntry(scope, { sessionId: "notice", updatedAt: 1 });
+    await writeEntry(scope, { sessionId: "notice", lifecycleRevision: "first", updatedAt: 1 });
     const registry = createEmptyPluginRegistry();
     registry.plugins.push(createPluginRecord({ id: "owner-fixture", status: "loaded" }));
     const notices: Array<{ idempotencyKey: string; state: string; settledAt: number }> = [];
@@ -144,7 +144,11 @@ describe("next-turn injection identity", () => {
   it("does not await a stalled settlement callback during drain", async () => {
     const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
     const scope = sessionScope(cfg, "main", "agent:main:stalled-notice");
-    await writeEntry(scope, { sessionId: "stalled-notice", updatedAt: 1 });
+    await writeEntry(scope, {
+      sessionId: "stalled-notice",
+      lifecycleRevision: "first",
+      updatedAt: 1,
+    });
     const registry = createEmptyPluginRegistry();
     registry.plugins.push(createPluginRecord({ id: "owner-fixture", status: "loaded" }));
     registry.nextTurnInjectionSettlementHandlers.push({
@@ -169,7 +173,11 @@ describe("next-turn injection identity", () => {
   it("bounds stalled settlement delivery to one call per registration", async () => {
     const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
     const scope = sessionScope(cfg, "main", "agent:main:bounded-notice");
-    await writeEntry(scope, { sessionId: "bounded-notice", updatedAt: 1 });
+    await writeEntry(scope, {
+      sessionId: "bounded-notice",
+      lifecycleRevision: "first",
+      updatedAt: 1,
+    });
     const registry = createEmptyPluginRegistry();
     registry.plugins.push(createPluginRecord({ id: "owner-fixture", status: "loaded" }));
     const handler = vi.fn(() => new Promise<void>(() => {}));
@@ -191,6 +199,13 @@ describe("next-turn injection identity", () => {
   });
 
   it("rejects a retired settlement registration before callback invocation", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:retired-notice");
+    await writeEntry(scope, {
+      sessionId: "retired-notice",
+      lifecycleRevision: "first",
+      updatedAt: 1,
+    });
     const registry = createEmptyPluginRegistry();
     const record = createPluginRecord({ id: "owner-fixture", status: "loaded" });
     registry.plugins.push(record);
@@ -201,21 +216,89 @@ describe("next-turn injection identity", () => {
       handler,
     });
     setActivePluginRegistry(registry);
-    dispatchSettlements(
+    const checked = dispatchSettlements(
       [
         {
           pluginId: "owner-fixture",
+          sessionId: "retired-notice",
+          lifecycleRevision: "first",
           event: { sessionKey: "", idempotencyKey: "key", state: "consumed", settledAt: 1 },
         },
       ],
-      "agent:main:retired-notice",
+      { cfg, ...scope },
     );
     record.status = "disabled";
-    await Promise.resolve();
+    await checked;
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("drops a notice when the session is replaced before callback invocation", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:replaced-notice");
+    await writeEntry(scope, {
+      sessionId: "predecessor",
+      lifecycleRevision: "old-revision",
+      updatedAt: 1,
+    });
+    const handler = vi.fn();
+    const registry = createEmptyPluginRegistry();
+    registry.plugins.push(createPluginRecord({ id: "owner-fixture", status: "loaded" }));
+    registry.nextTurnInjectionSettlementHandlers.push({
+      pluginId: "owner-fixture",
+      source: "fixture",
+      handler,
+    });
+    setActivePluginRegistry(registry);
+    const checked = dispatchSettlements(
+      [
+        {
+          pluginId: "owner-fixture",
+          sessionId: "predecessor",
+          lifecycleRevision: "old-revision",
+          event: { sessionKey: "", idempotencyKey: "key", state: "consumed", settledAt: 1 },
+        },
+      ],
+      { cfg, ...scope },
+    );
+    writeEntrySync(scope, {
+      sessionId: "successor",
+      lifecycleRevision: "new-revision",
+      updatedAt: 2,
+    });
+    await checked;
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("does not deliver an unversioned notice without incarnation authority", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:unversioned-notice");
+    await writeEntry(scope, { sessionId: "unversioned-notice", updatedAt: 1 });
+    const handler = vi.fn();
+    const registry = createEmptyPluginRegistry();
+    registry.plugins.push(createPluginRecord({ id: "owner-fixture", status: "loaded" }));
+    registry.nextTurnInjectionSettlementHandlers.push({
+      pluginId: "owner-fixture",
+      source: "fixture",
+      handler,
+    });
+    setActivePluginRegistry(registry);
+    await dispatchSettlements(
+      [
+        {
+          pluginId: "owner-fixture",
+          sessionId: "unversioned-notice",
+          event: { sessionKey: "", idempotencyKey: "key", state: "consumed", settledAt: 1 },
+        },
+      ],
+      { cfg, ...scope },
+    );
     expect(handler).not.toHaveBeenCalled();
   });
 
   it("delivers one settled notice to multiple live handlers", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:live-notice");
+    await writeEntry(scope, { sessionId: "live-notice", lifecycleRevision: "first", updatedAt: 1 });
     const registry = createEmptyPluginRegistry();
     registry.plugins.push(createPluginRecord({ id: "owner-fixture", status: "loaded" }));
     const first = vi.fn();
@@ -232,10 +315,12 @@ describe("next-turn injection identity", () => {
       [
         {
           pluginId: "owner-fixture",
+          sessionId: "live-notice",
+          lifecycleRevision: "first",
           event: { sessionKey: "", idempotencyKey: "key", state: "consumed", settledAt: 1 },
         },
       ],
-      "agent:main:live-notice",
+      { cfg, ...scope },
     );
     await vi.waitFor(() => {
       expect(first).toHaveBeenCalledOnce();
@@ -262,36 +347,26 @@ describe("next-turn injection identity", () => {
       sessionId: "expiry-boundary",
       lifecycleRevision: "generation-before",
       updatedAt: base,
-      pluginNextTurnInjectionOutcomes: {
-        "owner-fixture": {
-          deadline: { state: "consumed", settledAt: base, retainUntil: base + 3_000 },
-        },
+    });
+    await enqueuePluginNextTurnInjection({
+      cfg,
+      pluginId: "owner-fixture",
+      now: base,
+      injection: {
+        ...scope,
+        text: "deadline",
+        idempotencyKey: "deadline",
+        expiresAt: base + 1_000,
       },
     });
-    const notices: SettlementNotice[] = [
-      {
-        pluginId: "owner-fixture",
-        event: { sessionKey: "", idempotencyKey: "deadline", state: "consumed", settledAt: base },
-      },
-    ];
-    await reconcileLateExpiredInjections({
-      scope: { cfg, ...scope },
-      sessionId: "expiry-boundary",
-      lifecycleRevision: "generation-before",
-      expired: [
-        {
-          id: "deadline",
-          pluginId: "owner-fixture",
-          text: "deadline",
-          placement: "prepend_context",
-          idempotencyKey: "deadline",
-          createdAt: base,
-          expiresAt: base + 1_000,
-        },
-      ],
-      notices,
-      now: base + 2_000,
-    });
+    const clock = vi
+      .fn()
+      .mockReturnValueOnce(base)
+      .mockReturnValue(base + 2_000);
+    const result = await drain({ cfg, ...scope, clock });
+    expect(clock).toHaveBeenCalledTimes(2);
+    expect(result).toMatchObject({ queuedInjections: [] });
+    expect(result.prependContext).toBeUndefined();
     expect(
       readEntry(scope)?.pluginNextTurnInjectionOutcomes?.["owner-fixture"]?.deadline,
     ).toMatchObject({
@@ -299,8 +374,6 @@ describe("next-turn injection identity", () => {
       settledAt: base + 2_000,
       retainUntil: base + 7_000,
     });
-    expect(notices).toMatchObject([{ event: { state: "expired", settledAt: base + 2_000 } }]);
-    dispatchSettlements(notices, scope.sessionKey);
     await vi.waitFor(() => {
       expect(delivered).toMatchObject([{ state: "expired", settledAt: base + 2_000 }]);
       expect(delivered).toHaveLength(1);
@@ -312,43 +385,79 @@ describe("next-turn injection identity", () => {
     const scope = sessionScope(cfg, "main", "agent:main:expiry-replaced");
     const base = Date.now();
     await writeEntry(scope, {
-      sessionId: "successor",
-      lifecycleRevision: "successor-revision",
-      updatedAt: base,
-      pluginNextTurnInjectionOutcomes: {
-        "owner-fixture": {
-          deadline: { state: "consumed", settledAt: base, retainUntil: base + 10_000 },
-        },
-      },
-    });
-    const notices: SettlementNotice[] = [
-      {
-        pluginId: "owner-fixture",
-        event: { sessionKey: "", idempotencyKey: "deadline", state: "consumed", settledAt: base },
-      },
-    ];
-    await reconcileLateExpiredInjections({
-      scope: { cfg, ...scope },
       sessionId: "predecessor",
       lifecycleRevision: "old-revision",
-      expired: [
-        {
-          id: "deadline",
-          pluginId: "owner-fixture",
-          text: "deadline",
-          placement: "prepend_context",
-          idempotencyKey: "deadline",
-          createdAt: base,
-          expiresAt: base + 1_000,
-        },
-      ],
-      notices,
-      now: base + 2_000,
+      updatedAt: base,
     });
+    await enqueuePluginNextTurnInjection({
+      cfg,
+      pluginId: "owner-fixture",
+      now: base,
+      injection: {
+        ...scope,
+        text: "deadline",
+        idempotencyKey: "deadline",
+        expiresAt: base + 1_000,
+      },
+    });
+    const clock = vi
+      .fn()
+      .mockReturnValueOnce(base)
+      .mockImplementation(() => {
+        const committed = readEntry(scope)!;
+        writeEntrySync(scope, {
+          ...committed,
+          sessionId: "successor",
+          lifecycleRevision: "successor-revision",
+          updatedAt: base + 2_000,
+        });
+        return base + 2_000;
+      });
+    const result = await drain({ cfg, ...scope, clock });
+    expect(result.queuedInjections).toEqual([]);
+    expect(result.prependContext).toBeUndefined();
     expect(
       readEntry(scope)?.pluginNextTurnInjectionOutcomes?.["owner-fixture"]?.deadline?.state,
     ).toBe("consumed");
-    expect(notices).toEqual([]);
+    expect(clock).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails closed when a post-commit expiry has no lifecycle revision", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:expiry-unversioned");
+    const base = Date.now();
+    const handler = vi.fn();
+    const registry = createEmptyPluginRegistry();
+    registry.plugins.push(createPluginRecord({ id: "owner-fixture", status: "loaded" }));
+    registry.nextTurnInjectionSettlementHandlers.push({
+      pluginId: "owner-fixture",
+      source: "fixture",
+      handler,
+    });
+    setActivePluginRegistry(registry);
+    await writeEntry(scope, { sessionId: "expiry-unversioned", updatedAt: base });
+    await enqueuePluginNextTurnInjection({
+      cfg,
+      pluginId: "owner-fixture",
+      now: base,
+      injection: {
+        ...scope,
+        text: "deadline",
+        idempotencyKey: "deadline",
+        expiresAt: base + 1_000,
+      },
+    });
+    const clock = vi
+      .fn()
+      .mockReturnValueOnce(base)
+      .mockReturnValue(base + 2_000);
+    const result = await drain({ cfg, ...scope, clock });
+    expect(result.queuedInjections).toEqual([]);
+    expect(result.prependContext).toBeUndefined();
+    expect(
+      readEntry(scope)?.pluginNextTurnInjectionOutcomes?.["owner-fixture"]?.deadline?.state,
+    ).toBe("consumed");
+    expect(handler).not.toHaveBeenCalled();
   });
 
   it("normalizes lookup keys and persists __proto__ as an own tombstone", async () => {

@@ -1,3 +1,5 @@
+import { readResolvedSessionEntryInWorker } from "../config/sessions/session-accessor.entry.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { PluginNextTurnInjectionSettlement } from "./host-hook-turn-types.js";
 import { getPluginInstance } from "./plugin-instance-scope.js";
@@ -11,15 +13,26 @@ const inFlightByPluginId = new Map<string, number>();
 const MAX_IN_FLIGHT_PER_PLUGIN = 8;
 const HANDLER_TIMEOUT_MS = 1_000;
 
-export type SettlementNotice = { pluginId: string; event: PluginNextTurnInjectionSettlement };
+export type SettlementNotice = {
+  pluginId: string;
+  event: PluginNextTurnInjectionSettlement;
+  sessionId: string;
+  lifecycleRevision?: string;
+};
+
+type SettlementScope = { cfg: OpenClawConfig; sessionKey: string; agentId?: string };
 
 /** Best-effort delivery: one admitted call per registration, with no retained notice queue. */
-export function dispatchSettlements(notices: SettlementNotice[], sessionKey: string): void {
+export function dispatchSettlements(
+  notices: SettlementNotice[],
+  scope: SettlementScope,
+): Promise<void> {
   if (notices.length === 0) {
-    return;
+    return Promise.resolve();
   }
   const registry = getPluginRegistryForContext();
-  for (const { pluginId, event } of notices) {
+  const invocations: Promise<unknown>[] = [];
+  for (const { pluginId, event, sessionId, lifecycleRevision } of notices) {
     const record = registry?.plugins.find(
       (plugin) => plugin.id === pluginId && plugin.status === "loaded",
     );
@@ -47,15 +60,26 @@ export function dispatchSettlements(notices: SettlementNotice[], sessionKey: str
       }
       activeHandlers.add(registration);
       inFlightByPluginId.set(pluginId, (inFlightByPluginId.get(pluginId) ?? 0) + 1);
-      const delivered = Promise.resolve().then(() => {
-        if (!isCurrent()) {
+      const invocation = Promise.resolve().then(async () => {
+        if (!isCurrent() || !sessionId || !lifecycleRevision) {
           return;
         }
-        const notice = { ...event, sessionKey };
-        return instance
+        const entry = await readResolvedSessionEntryInWorker(scope);
+        if (
+          !isCurrent() ||
+          entry?.sessionId !== sessionId ||
+          entry.lifecycleRevision !== lifecycleRevision
+        ) {
+          return;
+        }
+        const notice = { ...event, sessionKey: scope.sessionKey };
+        const result = instance
           ? instance.runInRegistry(registry, () => registration.handler(notice))
           : registration.handler(notice);
+        return { result };
       });
+      invocations.push(invocation);
+      const delivered = invocation.then((value) => value?.result);
       const release = () => {
         const remaining = (inFlightByPluginId.get(pluginId) ?? 1) - 1;
         if (remaining > 0) {
@@ -87,4 +111,6 @@ export function dispatchSettlements(notices: SettlementNotice[], sessionKey: str
         });
     }
   }
+  // Only the authority checks and invocation are awaitable; callback settlement is detached.
+  return Promise.allSettled(invocations).then(() => {});
 }
