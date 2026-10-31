@@ -475,22 +475,35 @@ describe("mid-turn room events over durable ingress (#1415)", () => {
     );
   });
 
-  it("applies cap and drop:summarize without losing or replaying a row", async () => {
-    const rows: Row[] = ["r1", "r2", "r3", "r4", "r5"].map((id) => ({ id }));
-    await withRoomIngress(
-      rows,
-      async (harness) => {
-        await harness.dispatchRows();
-        await harness.endActiveTurn();
-        expect(harness.calls).toHaveLength(2);
-        expect(harness.calls[0]?.prompt).toContain("Dropped 2 messages due to cap");
-        expect(harness.calls[0]?.currentInboundEventKind).toBe("room_event");
-        collected(harness.calls[1], rows.slice(2));
-        await expectSettledOnce(harness, ["r1", "r2", "r3", "r4", "r5"]);
-      },
-      { settings: { cap: 3, dropPolicy: "summarize" } },
-    );
-  });
+  it.each(["collect", "followup"] as const)(
+    "applies cap and drop:summarize under %s without losing or replaying a row",
+    async (mode) => {
+      const rows: Row[] = ["r1", "r2", "r3", "r4", "r5"].map((id) => ({ id }));
+      await withRoomIngress(
+        rows,
+        async (harness) => {
+          await harness.dispatchRows();
+          await harness.endActiveTurn();
+          if (mode === "collect") {
+            expect(harness.calls).toHaveLength(2);
+            expect(harness.calls[0]?.prompt).toContain("Dropped 2 messages due to cap");
+            collected(harness.calls[1], rows.slice(2));
+          } else {
+            // Outside collect, overflowed room events keep one summary turn each.
+            expect(harness.calls).toHaveLength(5);
+            expect(harness.calls[0]?.prompt).toContain("Dropped 1 message due to cap");
+            expect(harness.calls[1]?.prompt).toContain("Dropped 1 message due to cap");
+            expect(harness.calls.slice(2).map((call) => call.prompt)).toEqual(
+              rows.slice(2).map(textOf),
+            );
+          }
+          expect(harness.calls[0]?.currentInboundEventKind).toBe("room_event");
+          await expectSettledOnce(harness, ["r1", "r2", "r3", "r4", "r5"]);
+        },
+        { settings: { mode, cap: 3, dropPolicy: "summarize" } },
+      );
+    },
+  );
 
   it("retries every member of a collected claim refused before execution, adopting each once", async () => {
     await withRoomIngress(burst, async (harness) => {
@@ -511,42 +524,48 @@ describe("mid-turn room events over durable ingress (#1415)", () => {
     });
   });
 
-  it("settles every member once when one member's ingress custody is lost during adoption", async () => {
-    // Named edge case: r2 loses custody while r1/r3 commit. The turn is refused without
-    // replaying r1/r3; supersede tombstones r2 and its replacement runs as a later turn.
-    await withRoomIngress(
-      burst,
-      async (harness) => {
-        await harness.dispatchRows();
-        const lostMember = harness.runs.get("r2")!.turnAdoptionLifecycle!;
-        const adoptLostMember = lostMember.onAdopted;
-        lostMember.onAdopted = async () => {
-          await harness.addRow({ id: "r2-edit" });
-          expect(await harness.drain.drainOnce()).toEqual({ started: 1 });
-          await adoptLostMember();
-        };
-        const lost: unknown[] = [];
-        await harness.endActiveTurn(async (run) => {
-          harness.calls.push(run);
-          try {
-            await admitFollowupRunLifecycle(run);
-          } catch (error) {
-            // Execution already accepted the input; it surfaces a terminal failure, no replay.
-            if (!isIngressAdoptionLostError(error)) {
-              throw error;
+  it.each(["returns a terminal failure", "rethrows"] as const)(
+    "settles every member once when one member's custody is lost during adoption and execution %s",
+    async (outcome) => {
+      // Named edge case: r2 loses custody while r1/r3 commit. The turn is refused without
+      // replaying r1/r3; supersede tombstones r2 and its replacement runs as a later turn.
+      await withRoomIngress(
+        burst,
+        async (harness) => {
+          await harness.dispatchRows();
+          const lostMember = harness.runs.get("r2")!.turnAdoptionLifecycle!;
+          const adoptLostMember = lostMember.onAdopted;
+          lostMember.onAdopted = async () => {
+            await harness.addRow({ id: "r2-edit" });
+            expect(await harness.drain.drainOnce()).toEqual({ started: 1 });
+            await adoptLostMember();
+          };
+          const lost: unknown[] = [];
+          await harness.endActiveTurn(async (run) => {
+            harness.calls.push(run);
+            try {
+              await admitFollowupRunLifecycle(run);
+            } catch (error) {
+              if (!isIngressAdoptionLostError(error)) {
+                throw error;
+              }
+              lost.push(error);
+              // Accepted input surfaces a terminal failure; an aborted turn rethrows.
+              if (outcome === "rethrows") {
+                throw error;
+              }
             }
-            lost.push(error);
-          }
-        });
-        expect(lost).toEqual([expect.objectContaining({ code: "superseded" })]);
-        expect(harness.calls).toHaveLength(2);
-        collected(harness.calls[0], burst);
-        expect(harness.calls[1]?.prompt).toBe(textOf({ id: "r2-edit" }));
-        await expectSettledOnce(harness, ["r1", "r2", "r3", "r2-edit"]);
-      },
-      { supersedes: (candidate, pending) => candidate === "r2-edit" && pending === "r2" },
-    );
-  });
+          });
+          expect(lost).toEqual([expect.objectContaining({ code: "superseded" })]);
+          expect(harness.calls).toHaveLength(2);
+          collected(harness.calls[0], burst);
+          expect(harness.calls[1]?.prompt).toBe(textOf({ id: "r2-edit" }));
+          await expectSettledOnce(harness, ["r1", "r2", "r3", "r2-edit"]);
+        },
+        { supersedes: (candidate, pending) => candidate === "r2-edit" && pending === "r2" },
+      );
+    },
+  );
 
   it.each(["before", "after"] as const)(
     "recovers a burst interrupted by restart %s adoption without replay or loss",
