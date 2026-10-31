@@ -1,13 +1,13 @@
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { runWithGatewayDetachedWorkAdmission } from "../../process/gateway-work-admission.js";
-// Continuation (karmaterminal): detached re-entries re-admit on the current plugin generation.
-import { runOutsideAdmittedGenerationScopes } from "../reply/queue/drain-admission-scope.js";
 import type {
   DelegateDispatchParams,
   DelegateDispatchResult,
 } from "./delegate-dispatch-contract.js";
 import { clearRecoverableDelegatesChainTokensFold } from "./delegate-store.js";
+// Continuation (karmaterminal): detached re-entries re-admit on the current plugin generation.
+import { runOnCurrentPluginGeneration } from "./detached-generation.js";
 import {
   registerContinuationTimerHandle,
   retainContinuationTimerRef,
@@ -172,7 +172,7 @@ export function armDelegateDispatchHedge(
     // closed by now. The delayed dispatch owns a fresh detached scope.
     void runWithGatewayDetachedWorkAdmission(() =>
       // Continuation (karmaterminal): admit on the plugin generation current at fire time.
-      runOutsideAdmittedGenerationScopes(async () => {
+      runOnCurrentPluginGeneration(async () => {
         // Enforce the budget against the latest persisted chain state rather than
         // the snapshot captured when the hedge was armed.
         const refreshedChainState = activeParams.loadFreshChainState
