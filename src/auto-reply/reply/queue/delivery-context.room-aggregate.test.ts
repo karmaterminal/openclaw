@@ -1,5 +1,8 @@
 // Frond (karmaterminal, #1415): which room events may join a cross-sender room aggregate.
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { clearCurrentPluginMetadataSnapshot } from "../../../plugins/current-plugin-metadata-state.js";
+import { createEmptyPluginRegistry } from "../../../plugins/registry-empty.js";
+import { setActivePluginRegistry } from "../../../plugins/runtime.js";
 import { resolveReplyExecOverrides } from "../get-reply-exec-overrides.js";
 import { createQueueTestRun } from "../queue.test-helpers.js";
 import {
@@ -7,7 +10,15 @@ import {
   resolveFollowupDeliveryStorageKey,
   resolveRoomAggregateExecution,
 } from "./delivery-context.js";
+import { stageGatewayPluginInventory } from "./room-aggregate-plugin-gate.test-support.js";
 import type { FollowupRun } from "./types.js";
+
+// A Gateway with no plugins loaded, so only authority facts decide eligibility.
+beforeEach(() => {
+  setActivePluginRegistry(createEmptyPluginRegistry());
+  stageGatewayPluginInventory();
+});
+afterEach(clearCurrentPluginMetadataSnapshot);
 
 const ROOM = {
   sessionKey: "agent:main:discord:channel:room",

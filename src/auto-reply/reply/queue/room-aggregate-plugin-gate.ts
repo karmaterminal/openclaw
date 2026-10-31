@@ -7,10 +7,7 @@ import { getGlobalPluginRegistry } from "../../../plugins/hook-runner-global.js"
 import { createInstalledPluginEnabledPredicate } from "../../../plugins/installed-plugin-index.js";
 import type { PluginOrigin } from "../../../plugins/plugin-origin.types.js";
 import type { PluginRegistry } from "../../../plugins/registry-types.js";
-import {
-  getActivePluginChannelRegistry,
-  getActivePluginRegistry,
-} from "../../../plugins/runtime.js";
+import { getActivePluginRegistry } from "../../../plugins/runtime.js";
 import { deferSessionControllerClaimBeforeExecution } from "../../../sessions/session-controller.mailbox-claim.js";
 import type { SessionControllerMailboxClaim } from "../../../sessions/session-controller.mailbox.js";
 import type { FollowupRun } from "./types.js";
@@ -88,27 +85,28 @@ function areTurnSurfacesAudited(registry: PluginRegistry): boolean {
 
 /**
  * Reads the process plugin owners, not request or generation overlays, so selection and the drain
- * agree; room events drain detached from any one request. Accepted edge cases: outside a Gateway
- * there is no boot inventory, so a tool plugin that has not loaded yet goes unseen (channel room
- * events only reach the queue through Gateway ingress); an unconfigured bundled channel reachable
- * only through the channel fallback holds no credentials to act with.
+ * agree; room events drain detached from any one request. Without an active registry or the
+ * Gateway's boot inventory the turn's owners cannot be enumerated, so the aggregate does not run.
+ * Accepted edge case: an unconfigured bundled channel reachable only through the channel fallback
+ * holds no credentials to act with.
  */
 export function isRoomAggregatePluginSurfaceAudited({ config, workspaceDir }: RoomTurn): boolean {
   try {
+    // The channel registry reads this same process slot. An empty slot is not neutral: channel
+    // lookups then fall back to bundled plugins.
     const active = getActivePluginRegistry();
+    // Plugin tools load lazily at turn time, so the inventory names owners no registry holds yet.
+    const inventory = getGatewayPluginMetadataSnapshot();
+    if (!active || !inventory) {
+      return false;
+    }
     const hooks = getGlobalPluginRegistry();
     // An SDK-initialized hook registry carries no loader origin.
     if (hooks && hooks !== active && (hooks.typedHooks.length > 0 || hooks.hooks.length > 0)) {
       return false;
     }
-    const registries = new Set([active, getActivePluginChannelRegistry()]);
-    if (![...registries].every((registry) => !registry || areTurnSurfacesAudited(registry))) {
+    if (!areTurnSurfacesAudited(active)) {
       return false;
-    }
-    // Plugin tools load lazily at turn time, so the inventory names owners no registry holds yet.
-    const inventory = getGatewayPluginMetadataSnapshot();
-    if (!inventory) {
-      return true;
     }
     // Discovery is per workspace: another workspace's plugins can shadow an audited id, so the
     // inventory speaks only for the workspace it was built for (as its metadata owner rules).
