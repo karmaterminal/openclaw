@@ -1,13 +1,15 @@
 // Continuation (karmaterminal): records which run consumed an event input carrying delegate
-// returns (#1504). "Consumed" means durably adopted into that run's model input: the run handed
-// the committed row to the provider. It does not mean the model attended to or acted on it.
+// returns (#1504). "Consumed" means durably adopted into that run's model input: after every
+// pre-dispatch check, the run handed the committed row to its provider request (the recorder's
+// sentToProvider boundary). It proves neither delivery to the provider nor that the model
+// attended to or acted on it.
 //
 // The input is staged before its run exists, and accepted input commits its staged bytes
-// verbatim, so the run is stamped on the committed row once its first request reaches the
-// provider: a correlation-only rewrite that keeps the transcript generation. A row without the
-// stamp reads as unknown, never as consumed: its run was aborted or blocked before dispatch, or
-// the process died first. A replay's run stamps only its own row, so recovering a return never
-// moves an earlier run's stamp. Delivering and acknowledging the returns never wait on the stamp.
+// verbatim, so the run is stamped on the committed row at that boundary: a correlation-only
+// rewrite that keeps the transcript generation. A row without the stamp reads as unknown, never
+// as consumed: its run was aborted or blocked before dispatch, or the process died first. A
+// replay's run stamps only its own row, so recovering a return never moves an earlier run's
+// stamp. Delivering and acknowledging the returns never wait on the stamp.
 import { publishTranscriptUpdate } from "../config/sessions/session-accessor.sqlite-events.js";
 import { rewritePreparedTranscriptMessageAtAnchor } from "../config/sessions/session-message-rewrite.js";
 import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
@@ -23,8 +25,8 @@ export function bindUserTurnInputRunId(recorder: UserTurnTranscriptRecorder, run
 }
 
 /**
- * Schedules the stamp when the bound run's request reaches the provider: after the admission
- * write and outside the request's async context. The turn's later persistence waits settle it.
+ * Schedules the stamp when the bound run hands the input to its provider request: after the
+ * admission write and outside the request's async context. Later persistence waits settle it.
  */
 export function scheduleUserTurnInputRunIdStamp(
   recorder: UserTurnTranscriptRecorder,

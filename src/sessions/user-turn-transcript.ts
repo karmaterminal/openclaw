@@ -654,7 +654,7 @@ export function createUserTurnTranscriptRecorder(
     },
     markSentToProvider: () => {
       sentToProvider = true;
-      // Continuation (karmaterminal): the run whose request reaches the provider consumed the input.
+      // Continuation (karmaterminal): the run handing this input to its provider consumed it.
       inputRunStamp ??= scheduleUserTurnInputRunIdStamp(
         recorder,
         admissionWrite,

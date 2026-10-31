@@ -201,7 +201,7 @@ function silentTerminal(): EmbeddedAgentRunResult {
   return { payloads: [], meta: { durationMs: 1, terminalReply: { disposition: "silent" } } };
 }
 
-/** Runs the turn as the runner does: its input commits, then its request reaches the provider. */
+/** Runs the turn in the runner's order: its input commits, then its provider request is sent. */
 async function admitWokenTurn(params: RunEmbeddedAgentParams) {
   await admitModelTurn(params);
   params.userTurnTranscriptRecorder?.markSentToProvider?.();

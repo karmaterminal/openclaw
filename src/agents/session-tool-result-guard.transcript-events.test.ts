@@ -460,7 +460,7 @@ describe("guardSessionManager transcript updates", () => {
   // openclaw#1504: a woken event's staged input is committed by this runtime writer; only a run
   // that then hands it to the provider is stamped as its consumer.
   it.each([
-    { outcome: "stamped once its request reaches the provider", inputRunId: "consuming-run" },
+    { outcome: "stamped once handed to its provider request", inputRunId: "consuming-run" },
     { outcome: "never stamped when aborted before provider dispatch", inputRunId: undefined },
   ])("commits a staged event input: $outcome", async (testCase) => {
     const { root, target, sessionEntry } = await openPersistedSessionManager();
