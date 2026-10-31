@@ -762,31 +762,32 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
     };
     const member = (id: string, extra: Partial<FollowupRun["run"]> = {}) =>
       sender(id, { config, ...extra });
+    // Same-millisecond ingress claims order by id, so ids sort in arrival order.
     const rows: Row[] = [
-      { id: "a", from: member("alice") },
-      { id: "b", from: member("bob") },
+      { id: "c01", from: member("alice") },
+      { id: "c02", from: member("bob") },
       // toolsBySender resolves from the sender at run time: one grant, one restriction.
-      { id: "g", from: member("grantee") },
-      { id: "r", from: member("restricted") },
+      { id: "c03", from: member("grantee") },
+      { id: "c04", from: member("restricted") },
       // Sender-scoped authority carried on the run itself.
       {
-        id: "e",
+        id: "c05",
         from: member("elevated", {
           bashElevated: { enabled: true, allowed: true, defaultLevel: "on" },
         }),
       },
-      { id: "x", from: member("exec", { execOverrides: { security: "full" } }) },
-      { id: "v", from: member("reviewer", { approvalReviewerDeviceId: "device-1" }) },
-      { id: "l", from: member("legacy", { conversationToolPolicy: { deny: ["exec"] } }) },
-      { id: "c", from: member("carol") },
-      { id: "d", from: member("peer-agent") },
+      { id: "c06", from: member("exec", { execOverrides: { security: "full" } }) },
+      { id: "c07", from: member("reviewer", { approvalReviewerDeviceId: "device-1" }) },
+      { id: "c08", from: member("legacy", { conversationToolPolicy: { deny: ["exec"] } }) },
+      { id: "c09", from: member("carol") },
+      { id: "c10", from: member("peer-agent") },
     ];
     await withRoomIngress(
       rows,
       async (harness) => {
         await harness.dispatchRows();
         await harness.endActiveTurn();
-        const own = ["g", "r", "e", "x", "v", "l"];
+        const own = ["c03", "c04", "c05", "c06", "c07", "c08"];
         expect(harness.calls).toHaveLength(own.length + 2);
         aggregated(harness.calls[0], rows.slice(0, 2));
         // Each excluded member runs as itself: its grant is never shared, its restriction never lifted.
