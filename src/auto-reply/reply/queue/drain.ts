@@ -202,7 +202,7 @@ async function executeClaim(
   const crossSender = mixedSenders && isRoomAggregateBatch(sources);
   // Frond (karmaterminal, #1415): any other mixed claim breaks the selection invariant. It fails
   // closed before execution: refused like a pre-execution rejection, each member retries alone.
-  const refused = mixedSenders && !crossSender;
+  const refuseMixedClaim = mixedSenders && !crossSender;
   const readSummaryLine = (item: FollowupRun) => {
     const index = queue.summarySources.indexOf(item);
     if (index >= 0) {
@@ -238,7 +238,7 @@ async function executeClaim(
     await Promise.all(sources.flatMap((item) => item.controllerInput?.custody.settling ?? []));
   };
   let run = source;
-  if (!refused && (claim.summary || sources.length > 1)) {
+  if (!refuseMixedClaim && (claim.summary || sources.length > 1)) {
     const execution = resolveCollectedRun(sources, source.run, crossSender);
     // Frond (karmaterminal, #1415): the transcript turn records the authority the turn runs as.
     const recorder = claim.summary
@@ -283,7 +283,7 @@ async function executeClaim(
   let waitForFreshKick = false;
   let executionThrew = false;
   try {
-    if (refused) {
+    if (refuseMixedClaim) {
       for (const item of sources) {
         item.disableCollectBatching = true;
       }
