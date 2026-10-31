@@ -1,6 +1,7 @@
 // Frond (karmaterminal, #1415): a senderless room aggregate runs only while every plugin surface its
 // turn can reach is an audited bundled implementation.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { onGatewayWorkMetricsChanged } from "../../../infra/gateway-work-metrics-events.js";
 import {
   clearCurrentPluginMetadataSnapshot,
@@ -38,8 +39,8 @@ const ROOM = {
   chatType: "channel",
 } as const;
 
-/** A non-owner room event as Discord ingress stages it. */
-function member(id: string): FollowupRun {
+/** A non-owner room event as Discord ingress stages it, in the "/tmp" test workspace. */
+function member(id: string, config: OpenClawConfig = {}): FollowupRun {
   return createQueueTestRun(
     {
       prompt: `room message from ${id}`,
@@ -52,6 +53,7 @@ function member(id: string): FollowupRun {
     {
       sessionKey: ROOM.sessionKey,
       messageProvider: "discord",
+      config,
       senderId: id,
       senderName: id,
       senderIsOwner: false,
@@ -113,8 +115,37 @@ describe("room aggregate plugin gate (#1415)", () => {
     expect(joins(member("alice"))).toBe(true);
   });
 
+  it.each([
+    "typedHooks",
+    "hooks",
+    "legacyInternalHooks",
+    "tools",
+    "channels",
+    "agentHarnesses",
+    "trustedToolPolicies",
+    "mcpServerConnectionResolvers",
+    "memoryCapabilities",
+    "memoryPromptPreparations",
+    "memoryPromptSupplements",
+    "memoryCorpusSupplements",
+  ] as const)("keeps a member on its own key while an unaudited plugin registers %s", (surface) => {
+    const registry = pluginRegistry(...FLEET);
+    setActivePluginRegistry(registry);
+    registry.plugins.push(
+      createPluginRecord({
+        id: "sender-gate",
+        origin: "bundled",
+        source: "/plugins/bundled/sender-gate/index.js",
+        enabled: true,
+        configSchema: false,
+      }),
+    );
+    // The gate reads only a registration's owner; an owner-only stub stays out of activation.
+    (registry[surface] as Array<{ pluginId: string }>).push({ pluginId: "sender-gate" });
+    expect(joins(member("alice"))).toBe(false);
+  });
+
   it.each<[string, Owner[]]>([
-    ["an unaudited bundled plugin", [{ id: "sender-gate" }]],
     ["a third-party plugin under an audited name", [{ id: "codex", origin: "config" }]],
     ["an audited name also loaded from elsewhere", [{ id: "discord", origin: "workspace" }]],
   ])("keeps a member on its own key while %s registers a turn-time hook", (_, extra) => {
@@ -151,21 +182,31 @@ describe("room aggregate plugin gate (#1415)", () => {
     expect(joins(member("alice"))).toBe(false);
   });
 
-  it("keeps a member on its own key while the Gateway inventory enables an unloaded unaudited tool plugin", () => {
-    const inventory = (id: string, origin: PluginOrigin) =>
+  it("reads unloaded tool owners from the Gateway inventory of the run's workspace", () => {
+    const inventory = (id: string, origin: PluginOrigin, workspaceDir = "/tmp") =>
       setCurrentPluginMetadataSnapshotState(
-        createPluginMetadataSnapshotFixture({
-          plugins: [{ id, origin, contracts: { tools: [`${id}_tool`] } }],
-        }),
+        {
+          ...createPluginMetadataSnapshotFixture({
+            plugins: [{ id, origin, contracts: { tools: [`${id}_tool`] } }],
+          }),
+          workspaceDir,
+        },
         undefined,
         undefined,
         undefined,
         "gateway",
       );
-    // Plugin tools load lazily at turn time; no runtime registry holds this one yet.
+    // Plugin tools load lazily at turn time; no runtime registry holds these yet.
     inventory("memory-core", "bundled");
     expect(joins(member("alice"))).toBe(true);
     inventory("lazy-tools", "global");
+    expect(joins(member("alice"))).toBe(false);
+    // A disabled tool plugin never loads.
+    expect(
+      joins(member("alice", { plugins: { entries: { "lazy-tools": { enabled: false } } } })),
+    ).toBe(true);
+    // Another workspace's discovery is not this run's: a workspace plugin there may shadow an id.
+    inventory("memory-core", "bundled", "/srv/other-agent");
     expect(joins(member("alice"))).toBe(false);
   });
 });

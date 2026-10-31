@@ -191,7 +191,7 @@ function resolveRoomAggregateSource(source: FollowupRun): FollowupRun | undefine
     execution.gatewayUiCommandTarget ||
     execution.spawnedBy ||
     execution.bashElevated?.allowed === true ||
-    !isRoomAggregatePluginSurfaceAudited(execution.config)
+    !isRoomAggregatePluginSurfaceAudited(execution)
   ) {
     return undefined;
   }

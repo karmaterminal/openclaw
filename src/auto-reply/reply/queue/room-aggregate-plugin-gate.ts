@@ -2,7 +2,6 @@
 // treats an absent sender more permissively than a known one could allow a member something it
 // would deny that member. Until plugins can report a per-member sender decision, the aggregate runs
 // only while every plugin surface its turn can reach is an audited bundled implementation.
-import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { getGatewayPluginMetadataSnapshot } from "../../../plugins/current-plugin-metadata-state.js";
 import { getGlobalPluginRegistry } from "../../../plugins/hook-runner-global.js";
 import { createInstalledPluginEnabledPredicate } from "../../../plugins/installed-plugin-index.js";
@@ -14,6 +13,9 @@ import {
 } from "../../../plugins/runtime.js";
 import { deferSessionControllerClaimBeforeExecution } from "../../../sessions/session-controller.mailbox-claim.js";
 import type { SessionControllerMailboxClaim } from "../../../sessions/session-controller.mailbox.js";
+import type { FollowupRun } from "./types.js";
+
+type RoomTurn = Pick<FollowupRun["run"], "config" | "workspaceDir">;
 
 /**
  * Bundled plugins whose turn-time surfaces deny an absent sender or never read one, cited relative
@@ -86,11 +88,12 @@ function areTurnSurfacesAudited(registry: PluginRegistry): boolean {
 
 /**
  * Reads the process plugin owners, not request or generation overlays, so selection and the drain
- * agree; room events drain detached from any one request. Accepted edge case: outside a Gateway
- * there is no boot inventory, so a tool plugin that has not loaded yet goes unseen; channel room
- * events only reach the queue through Gateway ingress.
+ * agree; room events drain detached from any one request. Accepted edge cases: outside a Gateway
+ * there is no boot inventory, so a tool plugin that has not loaded yet goes unseen (channel room
+ * events only reach the queue through Gateway ingress); an unconfigured bundled channel reachable
+ * only through the channel fallback holds no credentials to act with.
  */
-export function isRoomAggregatePluginSurfaceAudited(config: OpenClawConfig): boolean {
+export function isRoomAggregatePluginSurfaceAudited({ config, workspaceDir }: RoomTurn): boolean {
   try {
     const active = getActivePluginRegistry();
     const hooks = getGlobalPluginRegistry();
@@ -106,6 +109,11 @@ export function isRoomAggregatePluginSurfaceAudited(config: OpenClawConfig): boo
     const inventory = getGatewayPluginMetadataSnapshot();
     if (!inventory) {
       return true;
+    }
+    // Discovery is per workspace: another workspace's plugins can shadow an audited id, so the
+    // inventory speaks only for the workspace it was built for (as its metadata owner rules).
+    if ((inventory.workspaceDir ?? "") !== workspaceDir) {
+      return false;
     }
     const enabled = createInstalledPluginEnabledPredicate(inventory.index.plugins, config);
     return inventory.plugins.every(
@@ -124,9 +132,9 @@ export function isRoomAggregatePluginSurfaceAudited(config: OpenClawConfig): boo
  */
 export function deferRoomAggregateForUnauditedPlugins(
   claim: SessionControllerMailboxClaim,
-  config: OpenClawConfig,
+  turn: RoomTurn,
 ): boolean {
-  if (isRoomAggregatePluginSurfaceAudited(config)) {
+  if (isRoomAggregatePluginSurfaceAudited(turn)) {
     return false;
   }
   deferSessionControllerClaimBeforeExecution(claim);

@@ -280,7 +280,7 @@ async function executeClaim(
   let executionThrew = false;
   try {
     // Frond (karmaterminal, #1415): a plugin activated since selection splits the room again.
-    if (crossSender && deferRoomAggregateForUnauditedPlugins(claim, source.run.config)) {
+    if (crossSender && deferRoomAggregateForUnauditedPlugins(claim, source.run)) {
       return;
     }
     if (admissionSessionRebind && run.run.sessionId === admissionSessionRebind.from) {
