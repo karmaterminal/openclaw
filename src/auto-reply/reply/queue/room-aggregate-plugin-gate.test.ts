@@ -84,6 +84,7 @@ function pluginRegistry(...owners: Owner[]): PluginRegistry {
         pluginId: id,
         hookName: "before_tool_call",
         handler: () => undefined,
+        source: `/plugins/${origin}/${id}/index.js`,
       });
     }
   }
@@ -125,7 +126,12 @@ describe("room aggregate plugin gate (#1415)", () => {
   it("keeps a member on its own key when a hook's provenance or the registry is unreadable", () => {
     // A hook with no loader record behind it has no provenance.
     const orphan = pluginRegistry(...FLEET);
-    orphan.typedHooks.push({ pluginId: "ghost", hookName: "llm_input", handler: () => undefined });
+    orphan.typedHooks.push({
+      pluginId: "ghost",
+      hookName: "llm_input",
+      handler: () => undefined,
+      source: "/plugins/ghost/index.js",
+    });
     setActivePluginRegistry(orphan);
     expect(joins(member("alice"))).toBe(false);
 

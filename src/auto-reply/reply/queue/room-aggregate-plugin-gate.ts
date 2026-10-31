@@ -5,7 +5,7 @@
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { getGatewayPluginMetadataSnapshot } from "../../../plugins/current-plugin-metadata-state.js";
 import { getGlobalPluginRegistry } from "../../../plugins/hook-runner-global.js";
-import { listAvailableManifestContractPlugins } from "../../../plugins/manifest-contract-eligibility.js";
+import { createInstalledPluginEnabledPredicate } from "../../../plugins/installed-plugin-index.js";
 import type { PluginOrigin } from "../../../plugins/plugin-origin.types.js";
 import type { PluginRegistry } from "../../../plugins/registry-types.js";
 import {
@@ -103,13 +103,13 @@ export function isRoomAggregatePluginSurfaceAudited(config: OpenClawConfig): boo
     }
     // Plugin tools load lazily at turn time, so the inventory names owners no registry holds yet.
     const inventory = getGatewayPluginMetadataSnapshot();
-    return (
-      !inventory ||
-      listAvailableManifestContractPlugins({
-        snapshot: inventory,
-        contract: "tools",
-        config,
-      }).every(isAuditedBundledPlugin)
+    if (!inventory) {
+      return true;
+    }
+    const enabled = createInstalledPluginEnabledPredicate(inventory.index.plugins, config);
+    return inventory.plugins.every(
+      (plugin) =>
+        !plugin.contracts?.tools?.length || !enabled(plugin.id) || isAuditedBundledPlugin(plugin),
     );
   } catch {
     return false;
