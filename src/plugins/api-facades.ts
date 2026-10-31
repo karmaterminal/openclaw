@@ -1,5 +1,4 @@
 import { bindPluginCliProgram } from "./cli-callback-binding.js";
-import { resolvePluginLocalSessionRoute } from "./local-session-route.js";
 import { pluginInstanceState, type PluginInstanceHandle } from "./plugin-instance-scope.js";
 import type { OpenClawPluginCliRegistrar } from "./plugin-registration.types.js";
 import type { OpenClawPluginApi } from "./types.js";
@@ -61,8 +60,11 @@ export function attachPluginApiFacades(api: OpenClawPluginApiWithoutFacades): Op
     session: {
       state: {
         registerSessionExtension: api.registerSessionExtension,
-        resolveLocalSessionRoute: (sessionKey) =>
-          resolvePluginLocalSessionRoute({ cfg: api.config, sessionKey }),
+        resolveLocalSessionRoute: async (sessionKey) => {
+          // Setup/CLI metadata constructs this API without needing the session DB worker graph.
+          const { resolvePluginLocalSessionRoute } = await import("./local-session-route.js");
+          return resolvePluginLocalSessionRoute({ cfg: api.config, sessionKey });
+        },
       },
       workflow: {
         enqueueNextTurnInjection: api.enqueueNextTurnInjection,
