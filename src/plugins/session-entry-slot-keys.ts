@@ -13,6 +13,7 @@ const SESSION_ENTRY_RESERVED_SLOT_KEY_LIST = [
   "initializationPending",
   "pluginExtensionSlotKeys",
   "pluginNextTurnInjections",
+  "pluginNextTurnInjectionOutcomes",
   "sessionId",
   "clientCapabilities",
   "lifecycleRevision",

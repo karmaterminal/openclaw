@@ -107,7 +107,7 @@ function isExpired(entry: unknown, now: number) {
 }
 
 function settle(
-  entry: MutableSessionEntry,
+  entry: SessionEntry,
   pluginId: string,
   record: PluginNextTurnInjectionRecord,
   state: "consumed" | "withdrawn" | "expired" | "discarded",
@@ -132,7 +132,7 @@ function settle(
   };
 }
 
-function pruneOutcomes(entry: MutableSessionEntry, pluginId: string, now: number) {
+function pruneOutcomes(entry: SessionEntry, pluginId: string, now: number) {
   const outcomes = entry.pluginNextTurnInjectionOutcomes?.[pluginId];
   if (!outcomes) {
     return;

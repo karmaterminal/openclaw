@@ -219,21 +219,6 @@ type SessionPluginDebugEntry = {
 
 export type { SessionPluginJsonValue };
 
-type SubagentRecoveryState = {
-  /** Consecutive accepted automatic orphan-recovery resumes in the rapid re-wedge window. */
-  automaticAttempts?: number;
-  /** Timestamp (ms) of the latest accepted automatic orphan-recovery resume. */
-  lastAttemptAt?: number;
-  /** Registry run id that triggered the latest automatic orphan-recovery resume. */
-  lastRunId?: string;
-  /** Visible execution retained while the recovered run uses an internal transcript. */
-  sessionLifecycleRunId?: string;
-  /** Timestamp (ms) when automatic recovery was tombstoned for this session. */
-  wedgedAt?: number;
-  /** Human-readable reason automatic recovery was tombstoned. */
-  wedgedReason?: string;
-};
-
 type LaneExecutionState =
   | "active"
   | "draining"
@@ -298,8 +283,6 @@ type SessionEntryCore = SessionEntryProvenance &
       string,
       Record<string, SessionPluginNextTurnInjectionOutcome>
     >;
-    /** Internal one-shot traceparent for a freshly spawned child agent run. */
-    continuationTraceparent?: string;
     sessionId: string;
     /** Latest operator client declaration; retained across internal turns and restart. */
     clientCapabilities?: string[];
