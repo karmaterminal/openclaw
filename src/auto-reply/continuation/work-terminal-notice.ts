@@ -24,6 +24,8 @@
 import { prepareSessionDeliveryEnqueue } from "../../infra/session-delivery-queue-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { OpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.types.js";
+// Continuation (karmaterminal): detached re-entries re-admit on the current plugin generation.
+import { runOutsideAdmittedGenerationScopes } from "../reply/queue/drain-admission-scope.js";
 import {
   defaultContinuationNoticeSurfaceDeps,
   scheduleCommittedContinuationNotice,
@@ -155,7 +157,8 @@ function armTerminalNoticeRetry(
   }
   const timer = setTimeout(() => {
     retryTimers.delete(flowId);
-    void (async () => {
+    // Continuation (karmaterminal): admit on the plugin generation current at retry time.
+    void runOutsideAdmittedGenerationScopes(async () => {
       try {
         const owed = await readPendingTerminalNoticeWork(flowId);
         if (owed) {
@@ -175,7 +178,7 @@ function armTerminalNoticeRetry(
         );
         armTerminalNoticeRetry(work, attempt + 1, deps);
       }
-    })();
+    });
   }, delayMs);
   timer.unref?.();
   retryTimers.set(flowId, timer);

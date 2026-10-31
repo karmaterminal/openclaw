@@ -15,6 +15,8 @@ import {
   getPluginRuntimeGatewayRequestScope,
 } from "../../plugins/runtime/gateway-request-scope.js";
 import { runWithGatewayIndependentRootWorkAdmission } from "../../process/gateway-work-admission.js";
+// Continuation (karmaterminal): detached re-entries re-admit on the current plugin generation.
+import { runOutsideAdmittedGenerationScopes } from "../reply/queue/drain-admission-scope.js";
 import { clampDelayMs, resolveContinuationRuntimeConfig } from "./config.js";
 import {
   abortContinuationDispatchClaims,
@@ -101,8 +103,9 @@ export function dispatchPendingContinuationWorkFromDetachedCallback(
       withPluginRuntimeGatewayContextResolver(
         resolveGatewayContext,
         () =>
-          runWithGatewayIndependentRootWorkAdmission(
-            async () => await dispatchPendingContinuationWork(params),
+          runWithGatewayIndependentRootWorkAdmission(() =>
+            // Continuation (karmaterminal): admit on the plugin generation current at fire time.
+            runOutsideAdmittedGenerationScopes(() => dispatchPendingContinuationWork(params)),
           ),
         { inheritRequestScope: false },
       ),
