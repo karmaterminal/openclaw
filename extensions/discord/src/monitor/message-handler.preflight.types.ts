@@ -17,6 +17,7 @@ import type { DiscordChannelInfo } from "./message-channel-info.js";
 import type { DiscordHistoryEntry } from "./message-handler.history.js";
 import type { DiscordMediaInfo } from "./message-media.js";
 import type { DiscordThreadBindingLookup } from "./reply-delivery.js";
+import type { DiscordRoomHistoryWatermarks } from "./room-history-watermark.js";
 import type { DiscordSenderIdentity } from "./sender-identity.js";
 import type { DiscordThreadChannel } from "./threading.js";
 
@@ -39,6 +40,7 @@ type DiscordMessagePreflightSharedFields = {
   abortSignal?: AbortSignal;
   isPolicyCurrent?: () => boolean;
   guildHistories: Map<string, DiscordHistoryEntry[]>;
+  roomHistoryWatermarks: DiscordRoomHistoryWatermarks;
   historyLimit: number;
   mediaMaxBytes: number;
   textLimit: number;

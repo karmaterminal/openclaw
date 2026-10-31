@@ -805,6 +805,7 @@ export async function preflightDiscordMessage(
     abortSignal: params.abortSignal,
     isPolicyCurrent: params.isPolicyCurrent,
     guildHistories: params.guildHistories,
+    roomHistoryWatermarks: params.roomHistoryWatermarks,
     historyLimit: params.historyLimit,
     mediaMaxBytes: params.mediaMaxBytes,
     textLimit: params.textLimit,
