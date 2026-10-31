@@ -352,6 +352,8 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/reply/queue.personal-bootstrap-overflow.test.ts",
   "src/auto-reply/reply/queue.authority.test.ts",
   "src/auto-reply/reply/queue.collect.test.ts",
+  // Frond (karmaterminal, #1415): room-event collect over real durable ingress rows.
+  "src/auto-reply/reply/queue.room-event-collect.test.ts",
   "src/auto-reply/reply/reply-run-registry.preparation.test.ts",
   "src/auto-reply/reply/reply-run-registry.question-registration.test.ts",
   "src/auto-reply/reply/reply-tool-authority.worker.test.ts",
