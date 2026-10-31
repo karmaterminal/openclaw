@@ -1,6 +1,8 @@
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { runWithGatewayDetachedWorkAdmission } from "../../process/gateway-work-admission.js";
+// Continuation (karmaterminal): detached re-entries re-admit on the current plugin generation.
+import { runOutsideAdmittedGenerationScopes } from "../reply/queue/drain-admission-scope.js";
 import type {
   DelegateDispatchParams,
   DelegateDispatchResult,
@@ -168,43 +170,46 @@ export function armDelegateDispatchHedge(
     const { params: activeParams, dispatchToolDelegates: activeDispatchToolDelegates } = hedge;
     // The timer inherits the arming caller's async work scope, which has usually
     // closed by now. The delayed dispatch owns a fresh detached scope.
-    void runWithGatewayDetachedWorkAdmission(async () => {
-      // Enforce the budget against the latest persisted chain state rather than
-      // the snapshot captured when the hedge was armed.
-      const refreshedChainState = activeParams.loadFreshChainState
-        ? activeParams.loadFreshChainState()
-        : activeParams.chainState;
-      const result = await activeDispatchToolDelegates({
-        sessionKey,
-        chainState: refreshedChainState,
-        ctx: activeParams.ctx,
-        maxChainLength: activeParams.maxChainLength,
-        ...(activeParams.config ? { config: activeParams.config } : {}),
-        loadFreshChainState: activeParams.loadFreshChainState,
-        ...(activeParams.applyDelegateChainTokensFold
-          ? { applyDelegateChainTokensFold: true }
-          : {}),
-        persistChainState: activeParams.persistChainState,
-        ...(activeParams.persistBeforeTerminalCommit || activeParams.persistChainState
-          ? { persistBeforeTerminalCommit: true }
-          : {}),
-        ...(activeParams.recoverRunningDelegates ? { recoverRunningDelegates: true } : {}),
-        ...(activeParams.queuedCreatedAtOrBefore !== undefined
-          ? { queuedCreatedAtOrBefore: activeParams.queuedCreatedAtOrBefore }
-          : {}),
-        ...(activeParams.includeRunningUpdatedAtOrBefore !== undefined
-          ? { includeRunningUpdatedAtOrBefore: activeParams.includeRunningUpdatedAtOrBefore }
-          : {}),
-      });
-      if (activeParams.persistChainState && (result.dispatched > 0 || result.rejected > 0)) {
-        if (!result.chainStatePersistedBeforeTerminalCommit) {
-          await activeParams.persistChainState(result.chainState);
+    void runWithGatewayDetachedWorkAdmission(() =>
+      // Continuation (karmaterminal): admit on the plugin generation current at fire time.
+      runOutsideAdmittedGenerationScopes(async () => {
+        // Enforce the budget against the latest persisted chain state rather than
+        // the snapshot captured when the hedge was armed.
+        const refreshedChainState = activeParams.loadFreshChainState
+          ? activeParams.loadFreshChainState()
+          : activeParams.chainState;
+        const result = await activeDispatchToolDelegates({
+          sessionKey,
+          chainState: refreshedChainState,
+          ctx: activeParams.ctx,
+          maxChainLength: activeParams.maxChainLength,
+          ...(activeParams.config ? { config: activeParams.config } : {}),
+          loadFreshChainState: activeParams.loadFreshChainState,
+          ...(activeParams.applyDelegateChainTokensFold
+            ? { applyDelegateChainTokensFold: true }
+            : {}),
+          persistChainState: activeParams.persistChainState,
+          ...(activeParams.persistBeforeTerminalCommit || activeParams.persistChainState
+            ? { persistBeforeTerminalCommit: true }
+            : {}),
+          ...(activeParams.recoverRunningDelegates ? { recoverRunningDelegates: true } : {}),
+          ...(activeParams.queuedCreatedAtOrBefore !== undefined
+            ? { queuedCreatedAtOrBefore: activeParams.queuedCreatedAtOrBefore }
+            : {}),
+          ...(activeParams.includeRunningUpdatedAtOrBefore !== undefined
+            ? { includeRunningUpdatedAtOrBefore: activeParams.includeRunningUpdatedAtOrBefore }
+            : {}),
+        });
+        if (activeParams.persistChainState && (result.dispatched > 0 || result.rejected > 0)) {
+          if (!result.chainStatePersistedBeforeTerminalCommit) {
+            await activeParams.persistChainState(result.chainState);
+          }
+          if (result.appliedChainTokensFold && result.appliedChainTokensFold > 0) {
+            await clearRecoverableDelegatesChainTokensFold(sessionKey);
+          }
         }
-        if (result.appliedChainTokensFold && result.appliedChainTokensFold > 0) {
-          await clearRecoverableDelegatesChainTokensFold(sessionKey);
-        }
-      }
-    }).catch((err: unknown) => {
+      }),
+    ).catch((err: unknown) => {
       const errorMessage = formatErrorMessage(err);
       log.error(`[continuation:delegate-hedge-error] error=${errorMessage} session=${sessionKey}`);
       surfaceHedgeDispatchFailure(sessionKey, errorMessage);
