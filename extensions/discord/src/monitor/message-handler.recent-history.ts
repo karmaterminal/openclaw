@@ -33,22 +33,6 @@ type IsSenderAllowed = Parameters<
 >[0]["isSenderAllowed"];
 
 /** The channel facts a room turn resolved to read its history: no message, no turn handles. */
-type DiscordRoomHistorySource = Pick<
-  DiscordMessagePreflightContext,
-  | "accountId"
-  | "botUserId"
-  | "channelConfig"
-  | "client"
-  | "discordConfig"
-  | "guildHistories"
-  | "guildInfo"
-  | "historyLimit"
-  | "messageChannelId"
-  | "runtime"
-  | "threadBinding"
-  | "threadChannel"
-> & { guildId?: string };
-
 function selectDiscordRoomHistorySource(ctx: DiscordMessagePreflightContext) {
   return {
     accountId: ctx.accountId,
@@ -64,7 +48,7 @@ function selectDiscordRoomHistorySource(ctx: DiscordMessagePreflightContext) {
     threadBinding: ctx.threadBinding,
     threadChannel: ctx.threadChannel,
     guildId: ctx.data.guild?.id ?? ctx.data.guild_id,
-  } satisfies DiscordRoomHistorySource;
+  };
 }
 
 /** Fetch a physical recent window, never walking older pages to refill filtered rows. */
@@ -92,11 +76,10 @@ export async function recoverDiscordChannelHistory(params: {
   });
 }
 
-// Frond (karmaterminal, #1415): a scheduled turn in the room session (its heartbeat) has no
-// triggering message, so it re-reads the newest window with the facts its room turn resolved.
 /**
- * Reads the room's newest window as this session's room turn read it. Fails closed, reading
- * nothing, once the policy those facts came from is replaced; the next room turn records anew.
+ * Frond (karmaterminal, #1415): a scheduled turn in the room session has no triggering message,
+ * so it reads the newest window with the facts this session's room turn resolved. Fails closed,
+ * reading nothing, once the policy behind those facts is replaced; the next room turn records anew.
  */
 export function createDiscordRoomHistoryReread(params: {
   ctx: DiscordMessagePreflightContext;
@@ -131,7 +114,7 @@ export function createDiscordRoomHistoryReread(params: {
 }
 
 async function readDiscordChannelHistory(params: {
-  source: DiscordRoomHistorySource;
+  source: ReturnType<typeof selectDiscordRoomHistorySource>;
   /** The triggering message and its batch: read only what precedes them. Omitted: the newest. */
   trigger?: { id: string; timestamp?: number; excludedIds: readonly string[] };
   sessionStartedAt?: number;

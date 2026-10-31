@@ -101,12 +101,7 @@ async function readScheduledTurnRoomHistory(params: {
   }
   params.assertCurrent();
   // Text only: a scheduled turn never attaches the room's history media as current input.
-  return entries?.map(({ sender, body, timestamp, messageId }) => ({
-    sender,
-    body,
-    timestamp,
-    messageId,
-  }));
+  return entries?.map(({ media: _media, ...entry }) => entry);
 }
 
 export async function buildSessionEventContext(params: {
