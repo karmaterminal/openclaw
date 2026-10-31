@@ -45,9 +45,9 @@ function createChannel(channelId: string) {
         pinned: false,
       } satisfies APIMessage);
     },
-    get: async (_route: string, query: { before: string; limit: number }) =>
+    get: async (_route: string, query: { before?: string; limit: number }) =>
       timeline
-        .filter((row) => BigInt(row.id) < BigInt(query.before))
+        .filter((row) => query.before === undefined || BigInt(row.id) < BigInt(query.before))
         .toReversed()
         .slice(0, query.limit),
   };
@@ -66,6 +66,7 @@ async function turnContext(params: {
   kind?: "room_event" | "user_request";
   thread?: { parentId: string };
   abortSignal?: AbortSignal;
+  isPolicyCurrent?: () => boolean;
 }) {
   const agentId = params.agentId ?? "main";
   const sessionKey = `agent:${agentId}:discord:channel:${params.channel.channelId}`;
@@ -109,6 +110,7 @@ async function turnContext(params: {
         }
       : {}),
     ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
+    ...(params.isPolicyCurrent ? { isPolicyCurrent: params.isPolicyCurrent } : {}),
   });
 }
 
@@ -385,5 +387,76 @@ describe("Discord room-history watermark", () => {
       ["seen", "note"],
       ["seen", "@main q"],
     ]);
+  });
+});
+
+// Frond (karmaterminal, #1415): a scheduled turn in the room session, such as its heartbeat.
+describe("Discord room history for a scheduled turn", () => {
+  const roomSession = { sessionKey: "agent:main:discord:channel:c1", channelId: "c1" };
+
+  it("marks what room turns handled as seen and leaves the watermark where they put it", async () => {
+    const watermarks = createDiscordRoomHistoryWatermarks();
+    const channel = createChannel("c1");
+    await turn(
+      { watermarks, channel, id: 800, author: "figs", content: "what's for breakfast?" },
+      completes,
+    );
+    channel.post(801, "cael", "the backup on silas failed");
+
+    const scheduled = marks(await watermarks.readScheduledHistory(roomSession));
+    const next = await turn(
+      { watermarks, channel, id: 802, author: "rune", content: "next" },
+      completes,
+    );
+
+    expect(scheduled).toEqual([
+      ["seen", "what's for breakfast?"],
+      ["new", "the backup on silas failed"],
+    ]);
+    // Reading handled nothing: the next room turn still gets the unhandled message as new.
+    expect(next.history).toEqual([
+      ["seen", "what's for breakfast?"],
+      ["new", "the backup on silas failed"],
+    ]);
+  });
+
+  it("counts a room turn still queued ahead of the scheduled turn as handling its message", async () => {
+    const watermarks = createDiscordRoomHistoryWatermarks();
+    const channel = createChannel("c1");
+    await turn({ watermarks, channel, id: 900, author: "figs", content: "q" }, completes);
+    await turn({ watermarks, channel, id: 901, author: "cael", content: "queued" }, queued);
+
+    expect(marks(await watermarks.readScheduledHistory(roomSession))).toEqual([
+      ["seen", "q"],
+      ["seen", "queued"],
+    ]);
+  });
+
+  it("reads nothing without a room turn in this session under the current policy", async () => {
+    const watermarks = createDiscordRoomHistoryWatermarks();
+    const channel = createChannel("c1");
+    let policyCurrent = true;
+    await turn(
+      {
+        watermarks,
+        channel,
+        id: 1000,
+        author: "figs",
+        content: "q",
+        isPolicyCurrent: () => policyCurrent,
+      },
+      completes,
+    );
+
+    // Another session in the channel, or the same one after a restart, has no room turn to follow.
+    expect(
+      await watermarks.readScheduledHistory({ sessionKey: "agent:main:main", channelId: "c1" }),
+    ).toBeUndefined();
+    expect(
+      await createDiscordRoomHistoryWatermarks().readScheduledHistory(roomSession),
+    ).toBeUndefined();
+    await expect(watermarks.readScheduledHistory(roomSession)).resolves.toHaveLength(1);
+    policyCurrent = false;
+    await expect(watermarks.readScheduledHistory(roomSession)).resolves.toBeUndefined();
   });
 });

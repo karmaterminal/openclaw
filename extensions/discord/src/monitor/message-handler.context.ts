@@ -44,7 +44,10 @@ import {
   type DiscordHistoryEntry,
 } from "./message-handler.history.js";
 import type { DiscordMessagePreflightContext } from "./message-handler.preflight.types.js";
-import { recoverDiscordChannelHistory } from "./message-handler.recent-history.js";
+import {
+  createDiscordRoomHistoryReread,
+  recoverDiscordChannelHistory,
+} from "./message-handler.recent-history.js";
 import { removeDiscordReplayHistoryEntry } from "./message-handler.retry.js";
 import { formatDiscordMediaText, resolveReferencedReplyMediaList } from "./message-media.js";
 import type { DiscordMediaInfo } from "./message-media.js";
@@ -439,8 +442,21 @@ export async function buildDiscordMessageProcessContext(params: {
   // Room events re-read the same backlog turn after turn, so only they mark it seen or new;
   // mention turns keep today's history. Read last, next to dispatch, where the turn begins:
   // a turn dispatched in between is missed and its messages read new, as without watermarks.
+  const marksRoomHistory = isGuildMessage && ctx.inboundEventKind === "room_event";
+  if (recentHistory && marksRoomHistory) {
+    // Frond (karmaterminal, #1415): the session's scheduled turns read the room as this turn did.
+    ctx.roomHistoryWatermarks.recordReread(
+      roomHistoryScope,
+      createDiscordRoomHistoryReread({
+        ctx,
+        historySession: historySessionScope,
+        mode: contextVisibilityMode,
+        isSenderAllowed: isSupplementalContextSenderAllowed,
+      }),
+    );
+  }
   const inboundHistory =
-    recentHistory && isGuildMessage && ctx.inboundEventKind === "room_event"
+    recentHistory && marksRoomHistory
       ? ctx.roomHistoryWatermarks.markHistory(roomHistoryScope, recentHistory)
       : recentHistory;
   const ctxPayload = await (ctx.buildContext ?? buildChannelInboundEventContext)({

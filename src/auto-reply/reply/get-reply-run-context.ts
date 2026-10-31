@@ -57,6 +57,7 @@ import { hasInboundMedia } from "./inbound-media.js";
 import {
   buildInboundMetaSystemPrompt,
   buildInboundUserContextPrefix,
+  buildScheduledRoomHistoryContext,
   formatActiveGoalContext,
   resolveInboundUserContextPromptJoiner,
 } from "./inbound-meta.js";
@@ -462,11 +463,12 @@ export async function prepareReplyRunContext(params: RunPreparedReplyParams) {
 ${buildPrAttributionPrompt(
   Boolean(requester?.isCurrent()) && attributionEnabled() && !inboundContextSessionEntry?.incognito,
 )}`;
-  // Synthetic turns retain routing facts without inventing user-role inbound context.
+  // Synthetic turns retain routing facts without inventing user-role inbound context; a
+  // scheduled turn's room history is the only channel context they carry (#1415).
   const buildInboundContextState = () => ({
     activeGoalContext: formatActiveGoalContext(inboundContextSessionEntry),
     inboundUserContext: isInternalEvent
-      ? ""
+      ? buildScheduledRoomHistoryContext(inboundUserContextSessionCtx, envelopeOptions)
       : [
           attributionPrompt(),
           buildInboundUserContextPrefix(

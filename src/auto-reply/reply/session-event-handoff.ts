@@ -512,7 +512,7 @@ export function enqueueSessionEventForHost(
         ? await options.scheduledAutomation.preparePrompt(cfg)
         : eventText;
       assertEffectCurrent();
-      const ctx = buildSessionEventContext({
+      const ctx = await buildSessionEventContext({
         cfg,
         agentId,
         sessionKey,

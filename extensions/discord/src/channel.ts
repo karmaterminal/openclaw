@@ -65,6 +65,7 @@ import {
   resolveDiscordGroupToolPolicy,
 } from "./group-policy.js";
 import { withDiscordRequestAuthority } from "./internal/request-authority.js";
+import { getPublishedDiscordRoomHistoryWatermarks } from "./monitor/room-history-watermark.js";
 import { withAbortTimeout } from "./monitor/timeouts.js";
 import {
   looksLikeDiscordTargetId,
@@ -128,6 +129,29 @@ async function sendDiscordHeartbeatTyping(params: {
       accountId: params.accountId ?? undefined,
       signal: params.signal,
     }),
+  );
+}
+
+// Frond (karmaterminal, #1415): a scheduled turn in a room session sees the room as its room
+// turns marked it, so a message they already handled reads as seen instead of unanswered.
+async function readDiscordScheduledRoomHistory(params: {
+  cfg: OpenClawConfig;
+  sessionKey: string;
+  to: string;
+  accountId?: string | null;
+  threadId?: string | number | null;
+  signal?: AbortSignal;
+}) {
+  const target = parseDiscordTarget(resolveDiscordAttachedOutboundTarget(params), {
+    defaultKind: "channel",
+  });
+  if (target?.kind !== "channel") {
+    return undefined;
+  }
+  const { accountId } = resolveDiscordAccount({ cfg: params.cfg, accountId: params.accountId });
+  return await getPublishedDiscordRoomHistoryWatermarks(accountId)?.readScheduledHistory(
+    { sessionKey: params.sessionKey, channelId: target.id },
+    params.signal,
   );
 }
 
@@ -330,6 +354,7 @@ export const discordPlugin: ChannelPlugin<ResolvedDiscordAccount, DiscordProbe, 
       heartbeat: {
         sendTyping: sendDiscordHeartbeatTyping,
         sendTypingGuarded: sendDiscordHeartbeatTyping,
+        readRoomHistory: readDiscordScheduledRoomHistory,
       },
       status: createComputedAccountStatusAdapter<ResolvedDiscordAccount, DiscordProbe>({
         defaultRuntime: createDefaultChannelRuntimeState(DEFAULT_ACCOUNT_ID, {
