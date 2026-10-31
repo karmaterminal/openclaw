@@ -92,8 +92,8 @@ function areTurnSurfacesAudited(registry: PluginRegistry): boolean {
  */
 export function isRoomAggregatePluginSurfaceAudited({ config, workspaceDir }: RoomTurn): boolean {
   try {
-    // The channel registry reads this same process slot; with it empty, channels resolve through
-    // the bundled fallback instead.
+    // The channel registry reads this same process slot. An empty slot is not neutral: channel
+    // lookups then fall back to bundled plugins.
     const active = getActivePluginRegistry();
     // Plugin tools load lazily at turn time, so the inventory names owners no registry holds yet.
     const inventory = getGatewayPluginMetadataSnapshot();
