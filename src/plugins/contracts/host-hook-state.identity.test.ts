@@ -12,7 +12,8 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { openOpenClawAgentDatabase } from "../../state/openclaw-agent-db.js";
 import { createOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { normalizeSessionDeliveryState as deliveryState } from "../../utils/delivery-context.shared.js";
-import { dispatchSettlements } from "../host-hook-settlement-dispatch.js";
+import { reconcileLateExpiredInjections } from "../host-hook-injection-outcomes.js";
+import { dispatchSettlements, type SettlementNotice } from "../host-hook-settlement-dispatch.js";
 import {
   drainPluginNextTurnInjectionContext as drain,
   enqueuePluginNextTurnInjection,
@@ -242,40 +243,112 @@ describe("next-turn injection identity", () => {
     });
   });
 
-  it("checks absolute expiry again before rendering", async () => {
+  it("repairs a post-commit expiry without notifying consumed", async () => {
     const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
     const scope = sessionScope(cfg, "main", "agent:main:expiry-boundary");
     const base = Date.now();
-    let clock = base;
-    const dateSpy = vi.spyOn(Date, "now").mockImplementation(() => clock);
-    try {
-      await writeEntry(scope, { sessionId: "expiry-boundary", updatedAt: 1 });
-      const registry = createEmptyPluginRegistry();
-      registry.plugins.push(createPluginRecord({ id: "owner-fixture", status: "loaded" }));
-      registry.nextTurnInjectionSettlementHandlers.push({
-        pluginId: "owner-fixture",
-        source: "fixture",
-        handler: () => {
-          clock = base + 2_000;
+    const delivered: Array<{ state: string; settledAt: number }> = [];
+    const registry = createEmptyPluginRegistry();
+    registry.plugins.push(createPluginRecord({ id: "owner-fixture", status: "loaded" }));
+    registry.nextTurnInjectionSettlementHandlers.push({
+      pluginId: "owner-fixture",
+      source: "fixture",
+      handler: (event) => {
+        delivered.push(event);
+      },
+    });
+    setActivePluginRegistry(registry);
+    await writeEntry(scope, {
+      sessionId: "expiry-boundary",
+      lifecycleRevision: "generation-before",
+      updatedAt: base,
+      pluginNextTurnInjectionOutcomes: {
+        "owner-fixture": {
+          deadline: { state: "consumed", settledAt: base, retainUntil: base + 3_000 },
         },
-      });
-      setActivePluginRegistry(registry);
-      await enqueuePluginNextTurnInjection({
-        cfg,
+      },
+    });
+    const notices: SettlementNotice[] = [
+      {
         pluginId: "owner-fixture",
-        injection: {
-          ...scope,
+        event: { sessionKey: "", idempotencyKey: "deadline", state: "consumed", settledAt: base },
+      },
+    ];
+    await reconcileLateExpiredInjections({
+      scope: { cfg, ...scope },
+      sessionId: "expiry-boundary",
+      lifecycleRevision: "generation-before",
+      expired: [
+        {
+          id: "deadline",
+          pluginId: "owner-fixture",
           text: "deadline",
+          placement: "prepend_context",
           idempotencyKey: "deadline",
+          createdAt: base,
           expiresAt: base + 1_000,
         },
-      });
-      const result = await drain({ cfg, ...scope });
-      expect(result.queuedInjections).toEqual([]);
-      expect(result.prependContext).toBeUndefined();
-    } finally {
-      dateSpy.mockRestore();
-    }
+      ],
+      notices,
+      now: base + 2_000,
+    });
+    expect(
+      readEntry(scope)?.pluginNextTurnInjectionOutcomes?.["owner-fixture"]?.deadline,
+    ).toMatchObject({
+      state: "expired",
+      settledAt: base + 2_000,
+      retainUntil: base + 7_000,
+    });
+    expect(notices).toMatchObject([{ event: { state: "expired", settledAt: base + 2_000 } }]);
+    dispatchSettlements(notices, scope.sessionKey);
+    await vi.waitFor(() => {
+      expect(delivered).toMatchObject([{ state: "expired", settledAt: base + 2_000 }]);
+      expect(delivered).toHaveLength(1);
+    });
+  });
+
+  it("does not rewrite a replacement session's outcome during late-expiry repair", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:expiry-replaced");
+    const base = Date.now();
+    await writeEntry(scope, {
+      sessionId: "successor",
+      lifecycleRevision: "successor-revision",
+      updatedAt: base,
+      pluginNextTurnInjectionOutcomes: {
+        "owner-fixture": {
+          deadline: { state: "consumed", settledAt: base, retainUntil: base + 10_000 },
+        },
+      },
+    });
+    const notices: SettlementNotice[] = [
+      {
+        pluginId: "owner-fixture",
+        event: { sessionKey: "", idempotencyKey: "deadline", state: "consumed", settledAt: base },
+      },
+    ];
+    await reconcileLateExpiredInjections({
+      scope: { cfg, ...scope },
+      sessionId: "predecessor",
+      lifecycleRevision: "old-revision",
+      expired: [
+        {
+          id: "deadline",
+          pluginId: "owner-fixture",
+          text: "deadline",
+          placement: "prepend_context",
+          idempotencyKey: "deadline",
+          createdAt: base,
+          expiresAt: base + 1_000,
+        },
+      ],
+      notices,
+      now: base + 2_000,
+    });
+    expect(
+      readEntry(scope)?.pluginNextTurnInjectionOutcomes?.["owner-fixture"]?.deadline?.state,
+    ).toBe("consumed");
+    expect(notices).toEqual([]);
   });
 
   it("normalizes lookup keys and persists __proto__ as an own tombstone", async () => {

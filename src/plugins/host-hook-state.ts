@@ -7,6 +7,12 @@ import { updateResolvedSessionEntry } from "../config/sessions/session-accessor.
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { resolvePromptInjectionAllowed } from "./hook-policy-decisions.js";
+import {
+  ownOutcome,
+  pruneOutcomes,
+  reconcileLateExpiredInjections,
+  settle,
+} from "./host-hook-injection-outcomes.js";
 import { dispatchSettlements, type SettlementNotice } from "./host-hook-settlement-dispatch.js";
 import type {
   PluginNextTurnInjectionState,
@@ -35,13 +41,6 @@ const DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN = 64 * 1024;
 const MAX_OUTCOMES_PER_PLUGIN_SESSION = 256;
 const MAX_OUTCOME_RETENTION_MS = 86_400_000;
 type MutableSessionEntry = SessionEntry & Record<string, unknown>;
-
-function ownOutcome(entry: SessionEntry | undefined, pluginId: string, key: string) {
-  const owned = Object.hasOwn(entry?.pluginNextTurnInjectionOutcomes ?? {}, pluginId)
-    ? entry?.pluginNextTurnInjectionOutcomes?.[pluginId]
-    : undefined;
-  return owned && Object.hasOwn(owned, key) ? owned[key] : undefined;
-}
 
 function isPluginNextTurnInjectionPlacement(
   value: unknown,
@@ -89,57 +88,6 @@ function isExpired(entry: unknown, now: number) {
     (entry.expiresAt !== undefined && now >= entry.expiresAt) ||
     (entry.ttlMs !== undefined && now - entry.createdAt > entry.ttlMs)
   );
-}
-
-function settle(
-  entry: SessionEntry,
-  pluginId: string,
-  record: PluginNextTurnInjectionRecord,
-  state: "consumed" | "withdrawn" | "expired" | "discarded",
-  now: number,
-  notices?: SettlementNotice[],
-) {
-  if (!record.idempotencyKey) {
-    return;
-  }
-  const byPlugin = (entry.pluginNextTurnInjectionOutcomes ??= {});
-  if (ownOutcome(entry, pluginId, record.idempotencyKey)) {
-    return;
-  }
-  notices?.push({
-    pluginId,
-    event: { sessionKey: "", idempotencyKey: record.idempotencyKey, state, settledAt: now },
-  });
-  if (!Object.hasOwn(byPlugin, pluginId)) {
-    Object.defineProperty(byPlugin, pluginId, {
-      value: {},
-      enumerable: true,
-      writable: true,
-      configurable: true,
-    });
-  }
-  Object.defineProperty(byPlugin[pluginId], record.idempotencyKey, {
-    enumerable: true,
-    writable: true,
-    configurable: true,
-    value: {
-      state,
-      settledAt: now,
-      retainUntil: Math.max(record.expiresAt ?? 0, record.outcomeRetainUntil ?? 0, now) + 5_000,
-    },
-  });
-}
-
-function pruneOutcomes(entry: SessionEntry, pluginId: string, now: number) {
-  const outcomes = entry.pluginNextTurnInjectionOutcomes?.[pluginId];
-  if (!outcomes) {
-    return;
-  }
-  for (const [key, outcome] of Object.entries(outcomes)) {
-    if (outcome.retainUntil <= now) {
-      delete outcomes[key];
-    }
-  }
 }
 
 export async function getPluginNextTurnInjectionState(params: {
@@ -411,10 +359,16 @@ export async function enqueuePluginNextTurnInjection(params: {
 
 async function drainPluginNextTurnInjections(
   params: Parameters<typeof drainPluginNextTurnInjectionContext>[0],
-): Promise<PluginNextTurnInjectionRecord[]> {
+): Promise<{
+  records: PluginNextTurnInjectionRecord[];
+  notices: SettlementNotice[];
+  canonicalKey: string;
+  sessionId?: string;
+  lifecycleRevision?: string;
+}> {
   const sessionKey = params.sessionKey?.trim();
   if (!sessionKey) {
-    return [];
+    return { records: [], notices: [], canonicalKey: "" };
   }
   const scope = { cfg: params.cfg, sessionKey, agentId: params.agentId };
   const selectedEntry = await readResolvedSessionEntryInWorker(scope);
@@ -423,13 +377,17 @@ async function drainPluginNextTurnInjections(
     !selectedEntry?.pluginNextTurnInjections ||
     Object.keys(selectedEntry.pluginNextTurnInjections).length === 0
   ) {
-    return [];
+    return { records: [], notices: [], canonicalKey: sessionKey };
   }
   const notices: SettlementNotice[] = [];
   const updated = await updateResolvedSessionEntry(scope, (entry) => {
     const now = Date.now();
     if (!entry?.pluginNextTurnInjections) {
-      return [];
+      return {
+        records: [],
+        sessionId: entry.sessionId,
+        lifecycleRevision: entry.lifecycleRevision,
+      };
     }
     const activePluginIds = new Set(
       (getPluginRegistryForContext()?.plugins ?? [])
@@ -504,10 +462,19 @@ async function drainPluginNextTurnInjections(
     if (drained.length > 0) {
       entry.updatedAt = now;
     }
-    return drained;
+    return {
+      records: drained,
+      sessionId: entry.sessionId,
+      lifecycleRevision: entry.lifecycleRevision,
+    };
   });
-  dispatchSettlements(notices, updated.canonicalKey);
-  return updated.found ? updated.result : [];
+  return {
+    records: updated.found ? updated.result.records : [],
+    notices,
+    canonicalKey: updated.canonicalKey,
+    sessionId: updated.found ? updated.result.sessionId : undefined,
+    lifecycleRevision: updated.found ? updated.result.lifecycleRevision : undefined,
+  };
 }
 
 export async function drainPluginNextTurnInjectionContext(params: {
@@ -515,9 +482,27 @@ export async function drainPluginNextTurnInjectionContext(params: {
   sessionKey?: string;
   agentId?: string;
 }): Promise<PluginAgentTurnPrepareResult & { queuedInjections: PluginNextTurnInjectionRecord[] }> {
-  const queuedInjections = (await drainPluginNextTurnInjections(params)).filter(
-    (record) => !isExpired(record, Date.now()),
-  );
+  const drained = await drainPluginNextTurnInjections(params);
+  let queuedInjections = drained.records;
+  while (queuedInjections.length > 0) {
+    const now = Date.now();
+    const expired = queuedInjections.filter((record) => isExpired(record, now));
+    if (expired.length === 0) {
+      break;
+    }
+    queuedInjections = queuedInjections.filter((record) => !isExpired(record, now));
+    if (drained.sessionId) {
+      await reconcileLateExpiredInjections({
+        scope: { cfg: params.cfg, sessionKey: params.sessionKey!.trim(), agentId: params.agentId },
+        sessionId: drained.sessionId,
+        lifecycleRevision: drained.lifecycleRevision,
+        expired,
+        notices: drained.notices,
+        now,
+      });
+    }
+  }
+  dispatchSettlements(drained.notices, drained.canonicalKey);
   return {
     queuedInjections,
     ...buildPluginAgentTurnPrepareContext({ queuedInjections }),
