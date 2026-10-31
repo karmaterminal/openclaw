@@ -1,0 +1,2 @@
+# Jump 12 baseline shift, not new coverage. Upstream U12 (b8b054c13a) left 30,624 fewer lines of test-lines slack than U11 (4fc73d6995): U12 itself measures 6,334,023 against a ceiling of 6,361,057 (slack 27,034). The fork's carried continuation delta is unchanged (+103,324 at F″ vs U11; +103,322 at the jump-12 merge 337430f68a vs U12), and the bare merge is over by exactly 30,624. 🌊-approved (2026-10-31): allocate the measured delta rather than delete regression evidence to recover slack upstream removed.
+30624
