@@ -111,11 +111,9 @@ export function clearTrackedContinuationTimers(sessionKey: string): void {
   continuationTimerHandles.delete(sessionKey);
   for (const handle of existing) {
     clearTimeout(handle);
-    // Release refs asynchronously to avoid re-entrancy during cleanup.
-    const releaseHandle = setTimeout(() => {
-      releaseContinuationTimerRef(sessionKey);
-    }, 0);
-    releaseHandle.unref();
+    // The reset must not resolve while a cleared timer still retains the session.
+    // The handle set is already detached, and releasing the ref has no callbacks.
+    releaseContinuationTimerRef(sessionKey);
   }
 }
 
