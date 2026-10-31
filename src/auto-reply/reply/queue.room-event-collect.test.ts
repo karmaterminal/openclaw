@@ -888,4 +888,90 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
       await expectSettledOnce(harness, [...breakfast.map((row) => row.id), "late"]);
     });
   });
+
+  /** One room event from each of `count` distinct non-owner senders; ids sort in arrival order. */
+  function crowd(count: number): Row[] {
+    return Array.from({ length: count }, (_, index) => {
+      const n = String(index + 1).padStart(3, "0");
+      return { id: `p${n}`, from: sender(`speaker-${n}`) };
+    });
+  }
+
+  // The harness queue is the fleet's: collect, cap 50, drop:old, no debounce. The mailbox cap
+  // bounds the backlog; the aggregate bounds the turns. drop:old dead-letters the 50 oldest rows
+  // with no summary; drop:summarize (upstream's default) turns them into one baseline summary turn.
+  it.each([
+    ["old", 1],
+    ["summarize", 2],
+  ] as const)(
+    "bounds a 100-sender burst under collect cap 50 drop:%s to %i turn(s)",
+    async (dropPolicy, turns) => {
+      const rows = crowd(100);
+      const [evicted, kept] = [rows.slice(0, 50), rows.slice(50)];
+      await withRoomIngress(
+        rows,
+        async (harness) => {
+          await harness.dispatchRows();
+          await harness.endActiveTurn();
+          expect(harness.calls).toHaveLength(turns);
+          aggregated(harness.calls.at(-1), kept);
+          if (dropPolicy === "summarize") {
+            const summary = harness.calls[0];
+            expect(summary?.prompt).toContain("Dropped 50 messages due to cap");
+            // Every evicted member is a summary line, in arrival order.
+            expect(summary?.prompt.split("\n").filter((line) => line.startsWith("- "))).toEqual(
+              evicted.map((row) => `- ${textOf(row)}`),
+            );
+            expectRoomBaseline(summary);
+            await expectSettledOnce(
+              harness,
+              rows.map((row) => row.id),
+            );
+            return;
+          }
+          // Every evicted row is dead-lettered once with its policy-drop reason.
+          await expectSettledOnce(
+            harness,
+            kept.map((row) => row.id),
+            evicted.map((row) => row.id),
+          );
+          const failed = await harness.queue.listFailed?.();
+          expect(failed?.map((row) => [row.id, row.reason]).toSorted()).toEqual(
+            evicted.map((row) => [row.id, "queue-cap-old"]),
+          );
+        },
+        { settings: { dropPolicy } },
+      );
+    },
+  );
+
+  it("keeps owner and addressed messages as their own turns, in order, inside a 100-sender burst", async () => {
+    const rows = crowd(100);
+    const owner = sender("owner", { senderIsOwner: true, traceAuthorized: true });
+    // Interleaved inside the 50 newest rows, which the cap keeps (cap eviction is kind-blind).
+    rows.splice(59, 0, { id: "p059o", from: owner });
+    rows.splice(74, 0, { id: "p073m", kind: "user_request", from: sender("asker") });
+    rows.splice(89, 0, { id: "p087o", from: owner });
+    await withRoomIngress(rows, async (harness) => {
+      await harness.dispatchRows();
+      await harness.endActiveTurn();
+      const kept = rows.slice(-50);
+      const own = ["p059o", "p073m", "p087o"];
+      expect(harness.calls).toHaveLength(own.length * 2 + 1);
+      let start = 0;
+      for (const [index, id] of own.entries()) {
+        const end = kept.findIndex((row) => row.id === id);
+        aggregated(harness.calls[index * 2], kept.slice(start, end));
+        // Each keeps its own run: the owner's authority, the asker's addressed request.
+        expect(harness.calls[index * 2 + 1]).toBe(harness.runs.get(id));
+        start = end + 1;
+      }
+      aggregated(harness.calls.at(-1), kept.slice(start));
+      await expectSettledOnce(
+        harness,
+        kept.map((row) => row.id),
+        rows.slice(0, -50).map((row) => row.id),
+      );
+    });
+  });
 });
