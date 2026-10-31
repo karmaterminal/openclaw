@@ -1,0 +1,7 @@
+{
+  "id": "frond-1415-gate-probe",
+  "name": "Frond #1415 gate probe",
+  "description": "No-op canary probe: one model_call_started hook that does nothing, so the room aggregate plugin gate sees an unaudited turn-time surface.",
+  "activation": { "onCapabilities": ["hook"] },
+  "configSchema": { "type": "object", "additionalProperties": false, "properties": {} }
+}
