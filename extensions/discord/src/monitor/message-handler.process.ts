@@ -143,7 +143,7 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
   if (!processContext) {
     return;
   }
-  const { ctxPayload, persistedSessionKey, record, replyPlan } = processContext;
+  const { ctxPayload, persistedSessionKey, record, replyPlan, roomHistoryScope } = processContext;
   let deliverTarget = replyPlan.deliverTarget;
   const sourceMessageId = ctx.canonicalMessageId ?? message.id;
   const sourceReplyReference = replyPlan.replyReference;
@@ -603,6 +603,11 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
       return { visibleReplySent: false };
     }
   };
+  // The watermark snapshot is taken at dispatch. A queued turn settles when core reports its
+  // run's outcome after this dispatch returns; every other path settles in `finally` below.
+  const roomHistoryTurn = roomHistoryScope
+    ? ctx.roomHistoryWatermarks.beginTurn(roomHistoryScope, message.id)
+    : undefined;
   try {
     if (abortSignal?.aborted || isPolicyCurrent?.() === false) {
       dispatchAborted = true;
@@ -671,6 +676,13 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
         ...progressReplyOptions,
         onObservedReplyDelivery: observeFinalDelivery,
         onModelSelected,
+        ...(roomHistoryTurn
+          ? {
+              onAgentRunTerminalOutcome: roomHistoryTurn.settle,
+              // A queue-cap drop never runs, so it never reports an outcome.
+              onFollowupQueueDisposition: () => roomHistoryTurn.settle("failed"),
+            }
+          : {}),
       },
     });
     if (!preparedResult.dispatched) {
@@ -711,6 +723,10 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
     }
     throw err;
   } finally {
+    if (dispatchResult?.deferredToActiveRun !== "followup") {
+      // No-op once an inline run has reported its outcome.
+      roomHistoryTurn?.settle("failed");
+    }
     endActiveThreadRoute();
     endDeliveryCorrelation();
     dispatchError ||= readAgentRunTerminalOutcome(dispatchResult) === "failed";

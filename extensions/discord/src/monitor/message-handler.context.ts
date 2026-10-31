@@ -397,7 +397,7 @@ export async function buildDiscordMessageProcessContext(params: {
     return null;
   }
   const lastRouteTo = dmConversationTarget ?? effectiveTo;
-  const inboundHistory = shouldIncludeChannelHistory
+  const recentHistory = shouldIncludeChannelHistory
     ? buildInboundHistoryFromEntries({
         entries: visibleChannelHistory ?? [],
         limit: historyLimit,
@@ -406,6 +406,10 @@ export async function buildDiscordMessageProcessContext(params: {
   const originatingTo = autoThreadContext?.OriginatingTo ?? dmConversationTarget ?? replyTarget;
   const effectiveSessionKey =
     boundSessionKey ?? autoThreadContext?.SessionKey ?? threadKeys.sessionKey;
+  // Every guild turn feeds the watermark of the transcript it runs in, per channel or thread.
+  const roomHistoryScope = isGuildMessage
+    ? { sessionKey: effectiveSessionKey, channelId: messageChannelId }
+    : undefined;
   const effectivePreviousTimestamp =
     effectiveSessionKey === route.sessionKey
       ? previousTimestamp
@@ -434,6 +438,13 @@ export async function buildDiscordMessageProcessContext(params: {
 
   const batchMessageIds =
     ctx.sourceMessageIds && ctx.sourceMessageIds.length > 1 ? [...ctx.sourceMessageIds] : undefined;
+  // Room events re-read the same backlog turn after turn, so only they mark it seen or new;
+  // mention turns keep today's history. Read last, next to dispatch, where the turn begins:
+  // a turn dispatched in between is missed and its messages read new, as without watermarks.
+  const inboundHistory =
+    recentHistory && roomHistoryScope && ctx.inboundEventKind === "room_event"
+      ? ctx.roomHistoryWatermarks.markHistory(roomHistoryScope, recentHistory)
+      : recentHistory;
   const ctxPayload = await (ctx.buildContext ?? buildChannelInboundEventContext)({
     channelIngress,
     channel: "discord",
@@ -605,6 +616,7 @@ export async function buildDiscordMessageProcessContext(params: {
   return {
     ctxPayload,
     persistedSessionKey,
+    roomHistoryScope,
     record: {
       updateLastRoute: {
         sessionKey: persistedSessionKey,
