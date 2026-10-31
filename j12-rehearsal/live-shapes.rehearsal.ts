@@ -553,16 +553,19 @@ async function captureShapeStructure(shape: Shape): Promise<StructureMap> {
       continue;
     }
     // Per-column definitions without the column's own name token catch COLLATE, CHECK and
-    // REFERENCES clauses that the pragmas do not report. The parser keys columns lowercased.
+    // REFERENCES clauses that the pragmas do not report. The parser keys columns lowercased; the
+    // definitions are keyed by name in name order, since `columns` already carries the order.
     const parsed = parseSqliteTableDefinition(object.sql, object.name);
     const definitions = Object.fromEntries(
-      columns.map(({ name }) => {
-        const definition = parsed.columns.get(String(name).toLowerCase());
-        if (definition === undefined) {
-          throw new Error(`${key}: column ${String(name)} has no parsed definition`);
-        }
-        return [String(name), normalizeDdl(definition.slice(readSqlToken(definition, 0)!.end))];
-      }),
+      columns
+        .map(({ name }) => {
+          const definition = parsed.columns.get(String(name).toLowerCase());
+          if (definition === undefined) {
+            throw new Error(`${key}: column ${String(name)} has no parsed definition`);
+          }
+          return [String(name), normalizeDdl(definition.slice(readSqlToken(definition, 0)!.end))];
+        })
+        .toSorted(([left], [right]) => left!.localeCompare(right!)),
     );
     structure.set(key, {
       kind: table.type,
