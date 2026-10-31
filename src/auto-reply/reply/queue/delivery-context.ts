@@ -20,6 +20,7 @@ import {
   resolveReplyPersonalToolTargets,
   resolveReplyToolAuthorityContext,
 } from "../reply-tool-authority.js";
+import { isRoomAggregatePluginSurfaceAudited } from "./room-aggregate-plugin-gate.js";
 import {
   FollowupRunDeferredError,
   isFollowupRunAborted,
@@ -189,7 +190,8 @@ function resolveRoomAggregateSource(source: FollowupRun): FollowupRun | undefine
     execution.approvalReviewerDeviceId ||
     execution.gatewayUiCommandTarget ||
     execution.spawnedBy ||
-    execution.bashElevated?.allowed === true
+    execution.bashElevated?.allowed === true ||
+    !isRoomAggregatePluginSurfaceAudited(execution.config)
   ) {
     return undefined;
   }

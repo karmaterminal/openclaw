@@ -1,4 +1,5 @@
 // Frond (karmaterminal, #1415): room events queued mid-turn over durable ingress collect into one turn.
+import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { resolveRequesterPrincipalKey } from "../../agents/requester-origin.js";
@@ -14,6 +15,9 @@ import {
   withTempState,
 } from "../../channels/message/ingress-drain.test-helpers.js";
 import type { SessionEntry } from "../../config/sessions.js";
+import { createPluginRecord } from "../../plugins/loader-records.js";
+import { createEmptyPluginRegistry } from "../../plugins/registry-empty.js";
+import { getActivePluginRegistry, setActivePluginRegistry } from "../../plugins/runtime.js";
 import { createReplyOperation } from "../../sessions/session-controller.js";
 import { testing as controllerTesting } from "../../sessions/session-controller.test-support.js";
 import { readUserTurnRequesterOrigin } from "../../sessions/user-turn-transcript-admission.js";
@@ -76,6 +80,26 @@ function textOf(row: Row): string {
   return `${row.kind === "user_request" ? "mention" : "room"} message ${row.id}`;
 }
 
+/** Ingress runs through the bundled Discord plugin, whose turn-time sender surfaces are audited. */
+function useBundledDiscordPlugin(): void {
+  const discord = expectDefined(
+    getActivePluginRegistry()?.channels.find(({ pluginId }) => pluginId === "discord"),
+    "Discord test channel",
+  );
+  const registry = createEmptyPluginRegistry();
+  registry.channels.push(discord);
+  registry.plugins.push(
+    createPluginRecord({
+      id: "discord",
+      origin: "bundled",
+      source: discord.source,
+      enabled: true,
+      configSchema: false,
+    }),
+  );
+  setActivePluginRegistry(registry);
+}
+
 /**
  * Real durable ingress (SQLite rows, drain, exclusive lifecycles) feeding the real
  * session mailbox. Only the model turn and the Discord transport are replaced.
@@ -96,6 +120,7 @@ async function openRoomIngress(
     ) => FollowupRun | Promise<FollowupRun>;
   } = {},
 ) {
+  useBundledDiscordPlugin();
   const key = `agent:main:discord:channel:room:${expect.getState().currentTestName}`;
   const settings: QueueSettings = {
     mode: "collect",

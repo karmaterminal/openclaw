@@ -49,6 +49,7 @@ import {
   retireFollowupRunCancellation,
   updateFollowupRetryHeartbeats,
 } from "./lifecycle.js";
+import { deferRoomAggregateForUnauditedPlugins } from "./room-aggregate-plugin-gate.js";
 import { followupQueueSources, followupSourceRunners } from "./state.js";
 import { isFollowupRunAborted, type FollowupRun } from "./types.js";
 
@@ -278,6 +279,10 @@ async function executeClaim(
   let waitForFreshKick = false;
   let executionThrew = false;
   try {
+    // Frond (karmaterminal, #1415): a plugin activated since selection splits the room again.
+    if (crossSender && deferRoomAggregateForUnauditedPlugins(claim, source.run.config)) {
+      return;
+    }
     if (admissionSessionRebind && run.run.sessionId === admissionSessionRebind.from) {
       run = { ...run, admissionSessionId: admissionSessionRebind.to };
     }

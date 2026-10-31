@@ -1,6 +1,6 @@
 // Frond (karmaterminal, #1415): a senderless room aggregate runs only while every plugin surface its
 // turn can reach is an audited bundled implementation.
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { onGatewayWorkMetricsChanged } from "../../../infra/gateway-work-metrics-events.js";
 import {
   clearCurrentPluginMetadataSnapshot,
@@ -24,6 +24,8 @@ import { getExistingFollowupQueue } from "./state.js";
 import type { FollowupRun, QueueSettings } from "./types.js";
 
 installQueueRuntimeErrorSilencer();
+// Start each case from a process with no plugins loaded.
+beforeEach(() => setActivePluginRegistry(createEmptyPluginRegistry()));
 afterEach(() => {
   controllerTesting.resetSessionControllerForTest();
   resetPluginRuntimeStateForTest();
