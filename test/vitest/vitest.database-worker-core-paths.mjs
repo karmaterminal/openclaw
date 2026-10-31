@@ -1055,6 +1055,8 @@ export const databaseWorkerCoreTestFiles = [
   "src/state/openclaw-agent-db.recipient-authority-migration.test.ts",
   "src/state/openclaw-agent-db.schema25-bridge.test.ts",
   "src/state/openclaw-agent-db.schema26-bridge.test.ts",
+  // Frond (karmaterminal): fork-39 bridge; migrates through the agent schema owner.
+  "src/state/openclaw-agent-db.fork39-bridge.test.ts",
   "src/state/openclaw-agent-db.integrity-recovery.test.ts",
   "src/state/openclaw-agent-db-disposal.test.ts",
   "src/state/openclaw-agent-admission-order.diagnostic.test.ts",

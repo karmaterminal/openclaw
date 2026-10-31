@@ -470,6 +470,17 @@ const fingerprints: Readonly<Record<string, CatalogReference>> = {
     ],
     [],
   ],
+  // agent-fork-version-39
+  "803bd430e7d0d16862fe5edd8430261a25fd7a71d45621ae15e48a11289d58ec": [
+    "agent-fork-version-39",
+    "e9c4f8dbe5d18046b38a15404db09c3b04a5edf9cb4a35bbfb4bfc53fde49cb8",
+    [
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+      26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
+      49, 50, 51, 52, 53, 54, 55, 81, 57,
+    ],
+    [],
+  ],
   // agent-v14-core
   "067f95cffb76737d9084b726b640bc79b266b19279e6b1a3d2322d0e298c6ab6": [
     "agent-v14-core",

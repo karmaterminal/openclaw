@@ -2,7 +2,10 @@ import { constants, type DatabaseSync } from "node:sqlite";
 import { expect, it } from "vitest";
 import { observeSqliteReadSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { openNodeSqliteDatabase, requireNodeSqlite } from "../infra/node-sqlite.js";
-import { runSqliteIntegrityCheckSync } from "../infra/sqlite-integrity.js";
+import {
+  runSqliteIntegrityCheckSync,
+  sqliteIntegrityCheckSteps,
+} from "../infra/sqlite-integrity.js";
 import { captureSqliteSchemaFacts } from "../infra/sqlite-schema-admission.js";
 import { parseSqliteTableDefinition } from "../infra/sqlite-schema-contract-assembly.js";
 import {
@@ -11,8 +14,14 @@ import {
   quoteSqliteIdentifier,
 } from "../infra/sqlite-schema-sql.js";
 import { AGENT_COLD_NAVIGATION_SCHEMA_VERSION as target } from "./openclaw-agent-db-contract.js";
-import { assertOpenClawAgentCurrentRuntimeSchema } from "./openclaw-agent-db-schema-helpers.js";
-import { agentDatabaseIntegrityBeforeMutationSteps } from "./openclaw-agent-db-schema.js";
+import {
+  assertOpenClawAgentSchemaContains,
+  getOpenClawAgentMigrationSchema,
+} from "./openclaw-agent-db-schema-helpers.js";
+import {
+  assertCurrentAgentSchemaMetadata,
+  readExistingAgentSchemaMeta,
+} from "./openclaw-agent-db-schema-read.js";
 import { OPENCLAW_AGENT_SCHEMA_SQL } from "./openclaw-agent-schema.js";
 import { assertOpenClawMigrationWitnessPreserved } from "./openclaw-migration-witness.js";
 import {
@@ -181,13 +190,23 @@ it("converges with the original rebuild catalog and runtime admission", async ()
       ...expected
     } = captureSqliteSchemaFacts(rebuilt);
     expect(captureSqliteSchemaFacts(database)).toMatchObject(expected);
+    // Continuation (karmaterminal): recipient authority (40) follows upstream's 39, so 39 is a
+    // historical schema here; both databases must still be upstream's exact schema 39.
     for (const db of [rebuilt, database]) {
-      expect(() =>
-        assertOpenClawAgentCurrentRuntimeSchema(db, {
-          agentId: "main",
-          pathname: "convergence.sqlite",
-        }),
-      ).not.toThrow();
+      expect(() => {
+        assertCurrentAgentSchemaMetadata(
+          readExistingAgentSchemaMeta(db),
+          "main",
+          "convergence.sqlite",
+          target,
+        );
+        assertOpenClawAgentSchemaContains(
+          db,
+          "convergence.sqlite",
+          getOpenClawAgentMigrationSchema(target),
+          "current",
+        );
+      }).not.toThrow();
     }
     const migration = {
       kind: "agent" as const,
@@ -222,10 +241,17 @@ it("checks only schema facts before the v39 crossing", async () => {
   await withFixture("integrity-scope.sqlite", async ({ database }) => {
     const observer = observeSqliteReadSql(requireNodeSqlite().StatementSync.prototype);
     try {
-      for (const check of agentDatabaseIntegrityBeforeMutationSteps(
+      // Continuation (karmaterminal): the startup gate's crossing to the current schema also
+      // includes recipient authority (40), so this checks the v39 crossing's own gate.
+      for (const check of sqliteIntegrityCheckSteps(
         database,
-        "main",
         database.location()!,
+        undefined,
+        resolveSchemaMigrationIntegrityCheck({
+          kind: "agent",
+          foundVersion: predecessor,
+          supportedVersion: target,
+        }),
       )) {
         runSqliteIntegrityCheckSync(check);
       }

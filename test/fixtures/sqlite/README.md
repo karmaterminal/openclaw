@@ -42,6 +42,14 @@ build's own schema owner wrote when it migrated `openclaw-agent-schema-v25-fleet
 to schema 26, the path fleet seats took through `doctor --fix`; it keeps that file's
 migration history. Together they are the inputs to the schema-26 bridge.
 
+<!-- Frond (karmaterminal): fork-39 bridge. Fork-only; omitted from the upstream presentation. -->
+
+Agent schema 39 also has two histories. `openclaw-agent-schema-v39.sql` is the exact agent DDL
+from commit `b8b054c13a` (U12), upstream's cold-navigation schema 39 (Git blob `2e1c9fa973`).
+`openclaw-agent-schema-v39-fleet.sql` is the exact agent DDL of fork commit `20a1ffd3d9` (F″),
+the fleet's recipient-authority schema 39 as a fresh install writes it (Git blob `0800da7d05`,
+unchanged since jump 9, `48a4a4b441`). Together they are the inputs to the fork-39 bridge.
+
 `openclaw-state-v2026.7.1-2.sqlite.gz` is a deterministic fixture for the
 shared state database created by OpenClaw tag `v2026.7.1-2` at commit
 `0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c`.

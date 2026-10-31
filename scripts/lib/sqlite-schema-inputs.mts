@@ -19,6 +19,7 @@ import {
   getOpenClawAgentFleetSchema25MigrationSchema,
   getOpenClawAgentFleetSchema26MigrationSchema,
 } from "../../src/state/openclaw-agent-db-schema-helpers.js";
+import { getAgentFork39MigrationSchema } from "../../src/state/openclaw-agent-fork39-bridge.js";
 import {
   AGENT_PROGRESS_CARD_SCHEMA_SQL,
   AGENT_V14_ADDITIVE_SCHEMA_SQL,
@@ -232,6 +233,8 @@ export function listSqliteSchemaInputs(): SqliteSchemaInput[] {
   // Continuation (karmaterminal): the fleet's own schemas 25 and 26 carry recipient authority.
   add("agent-fleet-version-25", "agent", getOpenClawAgentFleetSchema25MigrationSchema());
   add("agent-fleet-version-26", "agent", getOpenClawAgentFleetSchema26MigrationSchema());
+  // Frond (karmaterminal): fork-39 bridge. The fleet's own 39 is upstream's 38 plus authority.
+  add("agent-fork-version-39", "agent", getAgentFork39MigrationSchema());
   for (const [id, sql] of [
     ["agent-v14-core", AGENT_V14_CORE_SCHEMA_SQL],
     ["agent-v14-session-sharing", AGENT_V14_SESSION_SHARING_SCHEMA_SQL],
