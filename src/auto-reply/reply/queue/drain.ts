@@ -196,7 +196,8 @@ async function executeClaim(
   // Frond (karmaterminal, #1415): differing per-sender identities only batch through the room
   // aggregate key; that turn runs as the senderless room baseline, never as any one member, so
   // each summary line names its sender.
-  const crossSender = new Set(sources.map(resolveFollowupDeliveryStorageKey)).size > 1;
+  const crossSender =
+    sources.length > 1 && new Set(sources.map(resolveFollowupDeliveryStorageKey)).size > 1;
   const readSummaryLine = (item: FollowupRun) => {
     const index = queue.summarySources.indexOf(item);
     if (index >= 0) {
