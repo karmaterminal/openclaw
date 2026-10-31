@@ -7,6 +7,7 @@ import {
   WORKER_LAUNCH_V2_PROTOCOL_FEATURE,
   WORKER_EXECUTION_CONTEXT_PROTOCOL_FEATURE,
 } from "../../../packages/gateway-protocol/src/schema/worker-admission.js";
+import { WORKER_TURN_ADMISSION_PROTOCOL_FEATURE } from "../../../packages/gateway-protocol/src/schema/worker-turn-admission.js";
 import { awaitGateBeforeSettlement, createDeferred } from "../../../test/helpers/promise.js";
 import { observeHostDataSql } from "../../../test/helpers/sqlite-statement-execution-counter.js";
 import { resolveAgentDir } from "../../agents/agent-scope.js";
@@ -41,7 +42,7 @@ import { observeMainThreadSql } from "../../test-utils/main-thread-sql-spies.tes
 import type { WorkerLaunchPlan } from "../../worker/launch-descriptor.js";
 import { roundTripWorkerLaunchDescriptor } from "../../worker/launch-descriptor.test-support.js";
 import { projectWorkerSessionTurnClaim } from "./placement-record.js";
-import { getWorkerTurnToolSurface } from "./placement-turn-claim-events.js";
+import { admitWorkerTurnInput, getWorkerTurnToolSurface } from "./placement-turn-claim-events.js";
 import { WorkerRunnerCapacityError, type WorkerTunnelHandle } from "./tunnel-contract.js";
 import { registerWorkerTurnInferenceTests } from "./worker-turn-execution.inference.suite.js";
 import {
@@ -721,25 +722,58 @@ describe("worker turn execution", () => {
     }
   });
 
-  // openclaw#1504: a woken event's input names its consuming run only once the worker launch that
-  // carries it is dispatched; a launch that fails first leaves the row unknown.
+  // openclaw#1504: a woken event's input names its consuming run only once the worker takes it: a
+  // dispatched launch, or the launched worker's admission. A launch that fails first leaves it unknown.
   it.each([
     { dispatched: false, outcome: "never stamped when its worker launch fails before dispatch" },
     { dispatched: true, outcome: "stamped once its worker launch is dispatched" },
-  ])("records an event input's consuming run: $outcome", async ({ dispatched }) => {
+    { dispatched: true, admission: true, outcome: "stamped once the launched worker admits it" },
+  ])("records an event input's consuming run: $outcome", async ({ dispatched, admission }) => {
     await seedActivePlacement();
-    const input = turn(`consuming-run-${dispatched}`);
+    const input = turn(`consuming-run-${dispatched}-${admission}`);
     const inputDeliveries = [{ deliveryId: "delivery-1", sourceRunId: "delegate-run" }];
     const recorder = createUserTurnTranscriptRecorder({
       target: () => ({ ...sessionTarget, sessionEntry: undefined }),
       input: { text: input.prompt, inputDeliveries },
     });
     bindUserTurnInputRunId(recorder, input.runId);
+    const environment = attachedEnvironment();
+    const receipt = environment.bootstrapReceipt;
+    assert(receipt);
+    if (admission) {
+      receipt.protocolFeatures.push(WORKER_TURN_ADMISSION_PROTOCOL_FEATURE);
+    }
     const launchTurn = vi.fn<NonNullable<WorkerTunnelHandle["launchTurn"]>>(async (request) => {
       if (!dispatched) {
         throw new WorkerRunnerCapacityError();
       }
       request.onDispatchReady?.();
+      if (admission) {
+        // The launched worker's admission RPC, as the worker runtime calls it before inference.
+        const { turnClaim } = request;
+        const admitted = await admitWorkerTurnInput(
+          {
+            environmentId: environment.environmentId,
+            ownerEpoch: environment.ownerEpoch,
+            sessionId: turnClaim.sessionId,
+            runId: turnClaim.runId,
+            turnClaim,
+            credentialHash: credential().deliveryId,
+            bundleHash: receipt.bundleHash,
+            rpcSetVersion: 1,
+            protocolFeatures: receipt.protocolFeatures,
+            credentialExpiresAtMs: Date.now() + 60_000,
+          },
+          {
+            runEpoch: environment.ownerEpoch,
+            systemPrompt: "Worker system prompt",
+            prompt: input.prompt,
+            messages: [],
+          },
+          () => true,
+        );
+        expect(admitted).toMatchObject({ ok: true, result: { outcome: "allow" } });
+      }
       const leafId = await (
         await openSessionManager()
       ).appendMessageAsync(
@@ -753,6 +787,7 @@ describe("worker turn execution", () => {
       stop: vi.fn(async () => {}),
     });
     const provider = turnProvider({
+      get: () => environment,
       acquireTurnCredential: async () => credential(),
       acknowledgeCredentialDelivery: async () => true,
       startTunnel: async () => tunnel,
