@@ -25,8 +25,35 @@ import { getExistingFollowupQueue } from "./state.js";
 import type { FollowupRun, QueueSettings } from "./types.js";
 
 installQueueRuntimeErrorSilencer();
-// Start each case from a process with no plugins loaded.
-beforeEach(() => setActivePluginRegistry(createEmptyPluginRegistry()));
+
+/** The boot inventory a Gateway publishes, naming each tool plugin it may load at turn time. */
+function stageInventory(
+  plugins: Array<{ id: string; origin: PluginOrigin }> = [],
+  workspaceDir = "/tmp",
+) {
+  setCurrentPluginMetadataSnapshotState(
+    {
+      ...createPluginMetadataSnapshotFixture({
+        plugins: plugins.map((plugin) => ({
+          ...plugin,
+          contracts: { tools: [`${plugin.id}_tool`] },
+        })),
+      }),
+      workspaceDir,
+    },
+    undefined,
+    undefined,
+    undefined,
+    "gateway",
+  );
+}
+
+// Start each case from a Gateway with no plugins loaded: an empty active registry and an empty
+// boot inventory for the run's workspace.
+beforeEach(() => {
+  setActivePluginRegistry(createEmptyPluginRegistry());
+  stageInventory();
+});
 afterEach(() => {
   controllerTesting.resetSessionControllerForTest();
   resetPluginRuntimeStateForTest();
@@ -182,31 +209,35 @@ describe("room aggregate plugin gate (#1415)", () => {
     expect(joins(member("alice"))).toBe(false);
   });
 
+  it.each<[string, () => void]>([
+    // Outside a Gateway nothing names the tool plugins a turn may load lazily.
+    ["no Gateway inventory exists", clearCurrentPluginMetadataSnapshot],
+    // The channel registry reads the same process slot, so it is gone too.
+    [
+      "no plugin registry is active",
+      () => {
+        resetPluginRuntimeStateForTest();
+        stageInventory();
+      },
+    ],
+  ])("keeps a member on its own key when %s", (_, unstage) => {
+    setActivePluginRegistry(pluginRegistry(...FLEET));
+    unstage();
+    expect(joins(member("alice"))).toBe(false);
+  });
+
   it("reads unloaded tool owners from the Gateway inventory of the run's workspace", () => {
-    const inventory = (id: string, origin: PluginOrigin, workspaceDir = "/tmp") =>
-      setCurrentPluginMetadataSnapshotState(
-        {
-          ...createPluginMetadataSnapshotFixture({
-            plugins: [{ id, origin, contracts: { tools: [`${id}_tool`] } }],
-          }),
-          workspaceDir,
-        },
-        undefined,
-        undefined,
-        undefined,
-        "gateway",
-      );
     // Plugin tools load lazily at turn time; no runtime registry holds these yet.
-    inventory("memory-core", "bundled");
+    stageInventory([{ id: "memory-core", origin: "bundled" }]);
     expect(joins(member("alice"))).toBe(true);
-    inventory("lazy-tools", "global");
+    stageInventory([{ id: "lazy-tools", origin: "global" }]);
     expect(joins(member("alice"))).toBe(false);
     // A disabled tool plugin never loads.
     expect(
       joins(member("alice", { plugins: { entries: { "lazy-tools": { enabled: false } } } })),
     ).toBe(true);
     // Another workspace's discovery is not this run's: a workspace plugin there may shadow an id.
-    inventory("memory-core", "bundled", "/srv/other-agent");
+    stageInventory([{ id: "memory-core", origin: "bundled" }], "/srv/other-agent");
     expect(joins(member("alice"))).toBe(false);
   });
 });
@@ -255,6 +286,16 @@ describe("room aggregate plugin gate at the drain (#1415)", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]?.prompt.startsWith(COLLECT_TITLE)).toBe(true);
     expect(calls[0]?.run.senderId).toBeUndefined();
+  });
+
+  it("runs each member as itself when the room is claimed without the Gateway inventory", async () => {
+    setActivePluginRegistry(pluginRegistry(...FLEET));
+    clearCurrentPluginMetadataSnapshot();
+    const senders = ["alice", "bob", "carol"];
+    const calls = await drainRoom(senders);
+    expect(calls.map((call) => [call.prompt, call.run.senderId])).toEqual(
+      senders.map((id) => [`room message from ${id}`, id]),
+    );
   });
 
   it("falls back to per-sender turns when an unaudited plugin activates after the claim formed", async () => {
