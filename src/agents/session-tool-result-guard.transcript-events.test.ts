@@ -458,10 +458,14 @@ describe("guardSessionManager transcript updates", () => {
   );
 
   // openclaw#1504: a woken event's staged input is committed by this runtime writer; only a run
-  // that then hands it to the provider is stamped as its consumer.
+  // whose provider dispatch is then accepted is stamped as its consumer.
   it.each([
-    { outcome: "stamped once handed to its provider request", inputRunId: "consuming-run" },
-    { outcome: "never stamped when aborted before provider dispatch", inputRunId: undefined },
+    { outcome: "stamped once its provider dispatch is accepted", inputRunId: "consuming-run" },
+    {
+      outcome: "never stamped when its provider stream rejects before dispatch",
+      failure: "reject",
+    },
+    { outcome: "never stamped when aborted before provider dispatch", failure: "abort" },
   ])("commits a staged event input: $outcome", async (testCase) => {
     const { root, target, sessionEntry } = await openPersistedSessionManager();
     const inputDeliveries = [{ deliveryId: "delivery-1", sourceRunId: "delegate-run" }];
@@ -493,33 +497,43 @@ describe("guardSessionManager transcript updates", () => {
         { ...approved, content: "Rendered event prompt" },
         { invalidateSerializedPrefixCache: false },
       );
-      // The real provider boundary: a request aborted after the commit never reaches the model.
+      // The real provider boundary: a request aborted after the commit, or one its provider stream
+      // rejects before accepting it (a rate-limit, auth or launch failure), never reaches the model.
       const { activeSession } = createSession();
-      const providerStream = vi.fn<StreamFn>(() => createAssistantMessageEventStream());
+      const dispatchFailure = new Error("synthetic provider launch failure before dispatch");
+      const providerStream = vi.fn<StreamFn>(async () => {
+        if (testCase.failure === "reject") {
+          throw dispatchFailure;
+        }
+        return createAssistantMessageEventStream();
+      });
       activeSession.agent.streamFn = providerStream;
       const request = new AbortController();
       const input = createBaseInput();
-      const submitted = submitEmbeddedAttemptPrompt({
+      const failure = await submitEmbeddedAttemptPrompt({
         ...input,
         attempt: { ...input.attempt, userTurnTranscriptRecorder: source },
         activeSession,
         promptActiveSession: async (_prompt, options) => {
           options?.preflightResult?.(true);
-          if (!testCase.inputRunId) {
+          if (testCase.failure === "abort") {
             request.abort();
           }
           await activeSession.agent.streamFn(model, { messages: [] }, { signal: request.signal });
         },
-      });
-      if (testCase.inputRunId) {
-        await submitted;
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      if (testCase.failure === "abort") {
+        expect(failure).toMatchObject({ name: "AbortError" });
       } else {
-        await expect(submitted).rejects.toMatchObject({ name: "AbortError" });
+        expect(failure).toBe(testCase.failure ? dispatchFailure : undefined);
       }
       await source.waitForRuntimePersistence();
 
       assert(entryId);
-      expect(providerStream).toHaveBeenCalledTimes(testCase.inputRunId ? 1 : 0);
+      expect(providerStream).toHaveBeenCalledTimes(testCase.failure === "abort" ? 0 : 1);
       const stored = SessionManager.open(target, root).getEntry(entryId);
       assert(stored?.type === "message", "Expected the committed event input");
       expect(stored.message).toMatchObject({

@@ -34,6 +34,7 @@ import {
   resetGlobalHookRunner,
 } from "../../plugins/hook-runner-global.js";
 import { waitForSessionRunEnd } from "../../sessions/session-controller.native-runtime.js";
+import { bindUserTurnInputRunId } from "../../sessions/user-turn-transcript-input-run.js";
 import { createUserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
 import { closeStateDatabaseForTest } from "../../test-utils/database-cleanup.js";
 import { observeMainThreadSql } from "../../test-utils/main-thread-sql-spies.test-support.js";
@@ -716,6 +717,66 @@ describe("worker turn execution", () => {
       release.resolve();
       await settled;
       hydration.mockRestore();
+      input.preparedRunAdmission.close();
+    }
+  });
+
+  // openclaw#1504: a woken event's input names its consuming run only once the worker launch that
+  // carries it is dispatched; a launch that fails first leaves the row unknown.
+  it.each([
+    { dispatched: false, outcome: "never stamped when its worker launch fails before dispatch" },
+    { dispatched: true, outcome: "stamped once its worker launch is dispatched" },
+  ])("records an event input's consuming run: $outcome", async ({ dispatched }) => {
+    await seedActivePlacement();
+    const input = turn(`consuming-run-${dispatched}`);
+    const inputDeliveries = [{ deliveryId: "delivery-1", sourceRunId: "delegate-run" }];
+    const recorder = createUserTurnTranscriptRecorder({
+      target: () => ({ ...sessionTarget, sessionEntry: undefined }),
+      input: { text: input.prompt, inputDeliveries },
+    });
+    bindUserTurnInputRunId(recorder, input.runId);
+    const launchTurn = vi.fn<NonNullable<WorkerTunnelHandle["launchTurn"]>>(async (request) => {
+      if (!dispatched) {
+        throw new WorkerRunnerCapacityError();
+      }
+      request.onDispatchReady?.();
+      const leafId = await (
+        await openSessionManager()
+      ).appendMessageAsync(
+        makeAgentAssistantMessage({ content: [{ type: "text", text: "Reviewed." }], timestamp: 2 }),
+      );
+      return await acknowledgeCompletedWorkerTurn(request.turnClaim, leafId);
+    });
+    const tunnel = unusedTunnel({
+      launchTurn,
+      quiesceWorkspace: async () => ({ assertActive: async () => {}, resume: async () => {} }),
+      stop: vi.fn(async () => {}),
+    });
+    const provider = turnProvider({
+      acquireTurnCredential: async () => credential(),
+      acknowledgeCredentialDelivery: async () => true,
+      startTunnel: async () => tunnel,
+    });
+    try {
+      const outcome = await execute(provider, {
+        ...input,
+        userTurnTranscriptRecorder: recorder,
+      }).catch(captureFailure);
+      if (dispatched) {
+        expect(outcome).toMatchObject({ payloads: [{ text: "Reviewed." }] });
+      } else {
+        expect(outcome).toBeInstanceOf(WorkerRunnerCapacityError);
+      }
+      await recorder.waitForRuntimePersistence();
+
+      const [stored] = (await openSessionManager()).getEntries();
+      assert(stored?.type === "message", "Expected the committed event input");
+      const metadata = isRecord(stored.message) ? stored.message["__openclaw"] : undefined;
+      expect(metadata).toMatchObject({ inputDeliveries });
+      expect(isRecord(metadata) ? metadata.inputRunId : undefined).toBe(
+        dispatched ? input.runId : undefined,
+      );
+    } finally {
       input.preparedRunAdmission.close();
     }
   });
