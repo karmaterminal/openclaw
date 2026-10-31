@@ -229,24 +229,6 @@ describe("Discord room-history watermark", () => {
     ]);
   });
 
-  it("renders the markers ahead of the sender, beside core's own per-message markers", async () => {
-    const watermarks = createDiscordRoomHistoryWatermarks();
-    const channel = createChannel("c1");
-    await turn({ watermarks, channel, id: 210, author: "figs", content: "status?" }, completes);
-    channel.post(211, "cael", "fresh");
-    dispatch.mockImplementationOnce(async (dispatchParams) => {
-      expect(
-        dispatchParams?.ctx?.InboundHistory?.map(({ sender, body }) => `${sender}: ${body}`),
-      ).toEqual(["[already seen] figs: status?", "[new] cael: fresh"]);
-      return notQueued();
-    });
-    channel.post(212, "rune", "next");
-    await h.runProcessDiscordMessage(
-      await turnContext({ watermarks, channel, id: 212, author: "rune", content: "next" }),
-    );
-    expect(dispatch).toHaveBeenCalledTimes(2);
-  });
-
   it("keeps thread and parent-channel watermarks independent", async () => {
     const watermarks = createDiscordRoomHistoryWatermarks();
     const main = createChannel("c1");

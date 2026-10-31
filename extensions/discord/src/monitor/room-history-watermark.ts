@@ -23,19 +23,19 @@ import type { HistoryEntry } from "openclaw/plugin-sdk/reply-history";
 import type { GetReplyOptions } from "openclaw/plugin-sdk/reply-runtime";
 
 /** Maximum (session, channel) scopes retained (oldest-touched evicted first). */
-const DEFAULT_MAX_SCOPES = 5000;
+const MAX_SCOPES = 5000;
 // Rendered ahead of the sender, beside core's own per-message markers such as "[reply target]".
 const SEEN_MARKER = "[already seen]";
 const NEW_MARKER = "[new]";
 
-export type DiscordRoomHistoryScope = {
+type DiscordRoomHistoryScope = {
   /** Dispatch session: the transcript that holds this agent's consumed turns. */
   sessionKey: string;
   /** Discord channel or thread whose message timeline the snowflakes order. */
   channelId: string;
 };
 
-export type DiscordRoomHistoryTurn = {
+type DiscordRoomHistoryTurn = {
   /** Core reports the inline or queued agent run's outcome through these, once per turn. */
   replyOptions: Pick<GetReplyOptions, "onAgentRunTerminalOutcome" | "onFollowupQueueDisposition">;
   /** Called when dispatch returns: a turn core did not queue as a follow-up ends here. */
@@ -51,7 +51,7 @@ function parseSnowflake(id: string | undefined): bigint | undefined {
   return id && /^\d+$/u.test(id) ? BigInt(id) : undefined;
 }
 
-export function createDiscordRoomHistoryWatermarks(maxScopes = DEFAULT_MAX_SCOPES) {
+export function createDiscordRoomHistoryWatermarks() {
   const scopes = new Map<string, ScopeState>();
   const keyOf = (scope: DiscordRoomHistoryScope) =>
     JSON.stringify([scope.sessionKey, scope.channelId]);
@@ -60,7 +60,7 @@ export function createDiscordRoomHistoryWatermarks(maxScopes = DEFAULT_MAX_SCOPE
     // Refresh insertion order so the cap evicts the stalest channel, not an active one.
     scopes.delete(key);
     scopes.set(key, state);
-    pruneMapToMaxSize(scopes, maxScopes);
+    pruneMapToMaxSize(scopes, MAX_SCOPES);
     return state;
   };
 
