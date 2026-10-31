@@ -1,0 +1,1104 @@
+{
+  "shape": "elliott",
+  "input": {
+    "file": "fleet38-shape-elliott.sql",
+    "sha256": "e56cd13c79e5b96de9b0e65a128a9ca5ae7ec2ae120bebbc6358bc6d56f5c5e9",
+    "sha256Expected": "e56cd13c79e5b96de9b0e65a128a9ca5ae7ec2ae120bebbc6358bc6d56f5c5e9"
+  },
+  "build": {
+    "sqliteVersion": "3.53.4",
+    "vecVersion": "v0.1.9",
+    "vecExtension": "sqlite-vec-linux-arm64",
+    "pragmas": {
+      "auto_vacuum": "incremental",
+      "journal_mode": "wal"
+    },
+    "objects": {
+      "shape": 139,
+      "executed": 116,
+      "shadow": 23,
+      "virtual": [
+        {
+          "name": "memory_index_chunks_fts",
+          "module": "fts5"
+        },
+        {
+          "name": "memory_index_chunks_vec",
+          "module": "vec0"
+        },
+        {
+          "name": "memory_index_paths_fts",
+          "module": "fts5"
+        },
+        {
+          "name": "session_transcript_fts",
+          "module": "fts5"
+        },
+        {
+          "name": "standing_intents_fts",
+          "module": "fts5"
+        }
+      ]
+    },
+    "byteEqualObjects": 116,
+    "unequalObjects": [],
+    "shadowTablesEqual": 23,
+    "shadowTablesUnequal": [],
+    "unexpectedObjects": [],
+    "seedingChangedSchema": []
+  },
+  "seeded": {
+    "userVersion": 38,
+    "schemaMeta": [
+      {
+        "rowid": "1",
+        "meta_key": "primary",
+        "role": "agent",
+        "schema_version": "38",
+        "agent_id": "main",
+        "app_version": "2026.10.7",
+        "created_at": "1793400000000",
+        "updated_at": "1793400000000"
+      },
+      {
+        "rowid": "2",
+        "meta_key": "historical-transcript-directives-v1",
+        "role": "agent",
+        "schema_version": "1",
+        "agent_id": "main",
+        "app_version": "{\"phase\":\"complete\",\"version\":2}",
+        "created_at": "1793400000001",
+        "updated_at": "1793400000002"
+      },
+      {
+        "rowid": "3",
+        "meta_key": "media-transcript-archive-verification-v1",
+        "role": "agent",
+        "schema_version": "1",
+        "agent_id": "main",
+        "app_version": "rehearsal-synthetic-archive.jsonl.zst",
+        "created_at": "1793400000001",
+        "updated_at": "1793400000002"
+      }
+    ],
+    "tables": {
+      "acp_parent_stream_events": {
+        "rows": 0,
+        "sha256": "9be2912debde469f8755b7cb9d2e1cecccfbc0573b55ff7da6b099b794eb496a"
+      },
+      "auth_profile_state": {
+        "rows": 0,
+        "sha256": "490fd28eb0b0f717b6b8e2d5f71b9829901aef86c4d851ae3e042933cc7e27c2"
+      },
+      "auth_profile_store": {
+        "rows": 0,
+        "sha256": "af0a9733fd7e8944859e25af421246c5a857bc8570c98de2d541f63d40b30eb9"
+      },
+      "board_tabs": {
+        "rows": 0,
+        "sha256": "f158d44026e75ef9bba4ac64b1159bfcbe21b33b1fb001dd9943871cc041c476"
+      },
+      "board_widgets": {
+        "rows": 0,
+        "sha256": "5fbb850c172161b7938a02a27b7e3d6eb092bb89470dfadef946771c56c7b492"
+      },
+      "cache_entries": {
+        "rows": 1,
+        "sha256": "beda82f582160805715017d36ace198c8e52e0f9820c5eeccaea29a50476c464"
+      },
+      "context_engine_turn_outbox": {
+        "rows": 0,
+        "sha256": "3c645e067e240ab0a116964b00fa8895341e759035188f3e060f30b4b32106e8"
+      },
+      "conversation_deliveries": {
+        "rows": 0,
+        "sha256": "df01dadbe7712ba75f964402f6fad2af127f9ce937fbb0dc709a70644aea2179"
+      },
+      "conversations": {
+        "rows": 1,
+        "sha256": "670ec9bc7fad9da4b4af8e451f2e8f9b61b3b1fa6f5a0ecc756b57522715c388"
+      },
+      "heartbeat_outcomes": {
+        "rows": 0,
+        "sha256": "770e76926af4bc7d2f9df3ff6211582cd671bab2701cbf33ac1db614b2a78ed5"
+      },
+      "memory_embedding_cache": {
+        "rows": 0,
+        "sha256": "be76958a79b2ee5c14003b2632191b20c225fa13af0b1e58977723b96cebf2f9"
+      },
+      "memory_entry_origins": {
+        "rows": 0,
+        "sha256": "faf39a63f617755ec5a56b3bc3b7bde6a2dca3ff87bce072f2a55b4b83d63c8a"
+      },
+      "memory_index_chunk_provenance": {
+        "rows": 0,
+        "sha256": "e3adc9f5fd8e6c212162d17d0ea9f87a0c33b1b8c437df424d947e28a2c63c75"
+      },
+      "memory_index_chunk_recall_metadata": {
+        "rows": 0,
+        "sha256": "349bf6369d79f38c4c142fb212745498ea12e35586a186440bc6a56eeaabb7d1"
+      },
+      "memory_index_chunks": {
+        "rows": 1,
+        "sha256": "2c1fbb8e2b8d97c5c98d469fb34941a94d47e6ffcfee11e2523789d67e54f489"
+      },
+      "memory_index_chunks_fts_config": {
+        "rows": 1,
+        "sha256": "f5d9d0915f477d9cedc3f484844dd6cefb355d123491a3d1c96b29a569d4e5f0"
+      },
+      "memory_index_chunks_fts_content": {
+        "rows": 1,
+        "sha256": "e31869dcbcac4259e7327d25869ab4aae2de0b883af7f7bb3689e99db5b8a1de"
+      },
+      "memory_index_chunks_fts_data": {
+        "rows": 3,
+        "sha256": "ce834eafb456efdaa55c652614ec521eaa986576ad7786998a0a8bf6924fdbd6"
+      },
+      "memory_index_chunks_fts_docsize": {
+        "rows": 1,
+        "sha256": "c02a246e41648470677bbef1a008e763ab864111ff26987da3534d679771d191"
+      },
+      "memory_index_chunks_fts_idx": {
+        "rows": 1,
+        "sha256": "a95a80fb610bc2bf3dd66629db9342e30b155cc5be5eccfa3865edc2060af868"
+      },
+      "memory_index_chunks_vec_chunks": {
+        "rows": 1,
+        "sha256": "3cdb4b04317603a1ad25e5c9ca3a32ada1e7029f0435f698ac394edf452c5da0"
+      },
+      "memory_index_chunks_vec_info": {
+        "rows": 4,
+        "sha256": "3378ea76801508a713112d20c1bf71473b6f6b49fb66adbbac2f61abd77c0958"
+      },
+      "memory_index_chunks_vec_rowids": {
+        "rows": 1,
+        "sha256": "d1833b9604e5d73d27f6b56cd34881dda0187ec3b8517a60d34f9190d94ff9c1"
+      },
+      "memory_index_chunks_vec_vector_chunks00": {
+        "rows": 1,
+        "sha256": "b75698eba0d56d704c1a54a69853b1fb85a003b78e5feb3ee3ea65e50bac705f"
+      },
+      "memory_index_meta": {
+        "rows": 0,
+        "sha256": "a4ed520865e2d1b6e12540c47afe3466322857104221b68e3e2d342888039c76"
+      },
+      "memory_index_paths_fts_config": {
+        "rows": 1,
+        "sha256": "f5d9d0915f477d9cedc3f484844dd6cefb355d123491a3d1c96b29a569d4e5f0"
+      },
+      "memory_index_paths_fts_content": {
+        "rows": 1,
+        "sha256": "aa15070abe46a99ed586f3c9b6880f647466b8a587c3533ebb48fc73eede9fd3"
+      },
+      "memory_index_paths_fts_data": {
+        "rows": 3,
+        "sha256": "1582d3d09dc2d3257a9254fac9c7feadb9631e96fd0aa72eab39970dd3467617"
+      },
+      "memory_index_paths_fts_docsize": {
+        "rows": 1,
+        "sha256": "03e70d0cb2cef0e2a74b09f976d5755704e03d392f0179fcecea4408d82072cc"
+      },
+      "memory_index_paths_fts_idx": {
+        "rows": 1,
+        "sha256": "a95a80fb610bc2bf3dd66629db9342e30b155cc5be5eccfa3865edc2060af868"
+      },
+      "memory_index_sources": {
+        "rows": 1,
+        "sha256": "d400ad5666135a9881e98e5e5a0ac9f4e728e2f3c5a79a33bf405d0cfe913938"
+      },
+      "memory_index_state": {
+        "rows": 0,
+        "sha256": "f444970962403c9934ed0b9c3ffdebea9bc8fd8669c6a621177410e5a789e610"
+      },
+      "memory_session_tombstones": {
+        "rows": 0,
+        "sha256": "31756be24353e02302975a224c26612c866687e87ac7e8821a8d1e65acbd5a03"
+      },
+      "message_tool_run_outcomes": {
+        "rows": 0,
+        "sha256": "c34acbe1b52004d7d8e53c9d362292d0c8cad561d9edb236b739775d9c2ed1af"
+      },
+      "schema_meta": {
+        "rows": 3,
+        "sha256": "999aaada95fb791b3617e35e3f5cac97b1131a539abedaae41802165beaeea6a"
+      },
+      "session_canonical_validation_pending": {
+        "rows": 0,
+        "sha256": "da7fe18a250f5fcd122462dbb52a7a07039144e8613a67581ea0f78b2418d90f"
+      },
+      "session_conversations": {
+        "rows": 0,
+        "sha256": "641ca8aedf09ac02de9f23feeeeb59ec767bbe4cf697cc3528d18e350ab36334"
+      },
+      "session_entry_snapshots": {
+        "rows": 0,
+        "sha256": "f18cadc2e3d850ee8ad9de6e25f0caa628aba9a351a08187a6c48a4675c5f752"
+      },
+      "session_goal_operations": {
+        "rows": 0,
+        "sha256": "4c5649540fe571ee5817525ec7691fc35665de96c69eaf766390a7c98143e7b8"
+      },
+      "session_input_completions": {
+        "rows": 0,
+        "sha256": "31e80d25806e58080d9dd748e85b73eae3d89d2cb4cde4ea8c4439fd68dd3a4c"
+      },
+      "session_key_contract": {
+        "rows": 1,
+        "sha256": "4fcd02bd050846dfaae47bb1fda872fc4c608e33527745b6e5ee6580171af225"
+      },
+      "session_members": {
+        "rows": 0,
+        "sha256": "ee96c73b2e0185499983334994630fbb01c290b7ef44681b53b6c44767e88d40"
+      },
+      "session_nodes": {
+        "rows": 3,
+        "sha256": "cf2555d517754e31e38c254ada9ce475492bb15f26ecbad191256c3e419cb2b2"
+      },
+      "session_participants": {
+        "rows": 0,
+        "sha256": "056f5420b666153865a8a49f8767e1cdf40654d3e6c3480e55fa50fe3366307f"
+      },
+      "session_pending_inputs": {
+        "rows": 0,
+        "sha256": "8c866f85c5a4345a894a2cb05d629546067515ed5ce82268f03306fde1691193"
+      },
+      "session_progress_cards": {
+        "rows": 0,
+        "sha256": "1275de6fe12907627a5c3caabfc19e3878098a4f5f9ae5a41a6ad646fb533719"
+      },
+      "session_reactions": {
+        "rows": 0,
+        "sha256": "0748594273959f91b66118f3a526162203f4605bef489159c998e9eae9cebd23"
+      },
+      "session_recipient_authority": {
+        "rows": 2,
+        "sha256": "75a4f2f16cd03b8e8206bb501e988514b3838a7e186cccc438fb8b204908d7b2"
+      },
+      "session_suggestions": {
+        "rows": 0,
+        "sha256": "5164a2345664c81b354e119a7678815a5a4c8eb70b63796f50221dd87c9327d7"
+      },
+      "session_transcript_active_events": {
+        "rows": 3,
+        "sha256": "504e2eb1af75366b4c313ff6ecc2684271e6ab76265254b9dc274e167f6c0d23"
+      },
+      "session_transcript_archives": {
+        "rows": 0,
+        "sha256": "ea189c01307d03206f7e3c449694e11b67ba2960be42d86f8aad617ad3697f67"
+      },
+      "session_transcript_cold_archive_chunks": {
+        "rows": 1,
+        "sha256": "ed81e49bc32997d8d2fc692e848e3c7dfa490d4f548203768102b30a16ce0d5b"
+      },
+      "session_transcript_cold_archives": {
+        "rows": 1,
+        "sha256": "ebf4f3a333a8cbbbb051555d7a69c1d1231c181de6b7188283f09a58df95e98b"
+      },
+      "session_transcript_fts_config": {
+        "rows": 1,
+        "sha256": "f5d9d0915f477d9cedc3f484844dd6cefb355d123491a3d1c96b29a569d4e5f0"
+      },
+      "session_transcript_fts_content": {
+        "rows": 1,
+        "sha256": "a6c90cd4847bcc354ffabcf99e2de716444e23431de168fedf014186abd31f44"
+      },
+      "session_transcript_fts_data": {
+        "rows": 3,
+        "sha256": "56bc74d6cc2bf833dea9743e1c674e585de06f71a0c16294af17e8d069f76aca"
+      },
+      "session_transcript_fts_docsize": {
+        "rows": 1,
+        "sha256": "035cc49bbf079c4c89decf4459286a6af798d7f6729a5e608b05e69aea6e91b7"
+      },
+      "session_transcript_fts_idx": {
+        "rows": 1,
+        "sha256": "a95a80fb610bc2bf3dd66629db9342e30b155cc5be5eccfa3865edc2060af868"
+      },
+      "session_transcript_fts_rows": {
+        "rows": 1,
+        "sha256": "0acfcd6a519bc17e0d7344e7eed4197680c18b2b23af8d64efe59dd13e3954aa"
+      },
+      "session_transcript_index_state": {
+        "rows": 0,
+        "sha256": "55299b35dad1894e48c4346ba1c27e7bd849673bc99fff4664c30a08d6b1cf90"
+      },
+      "session_windows": {
+        "rows": 4,
+        "sha256": "b9cf6a71de13563f96dd4e22b8e8aca278aaa9ca93d041227578c769ea82f65a"
+      },
+      "sqlite_sequence": {
+        "rows": 2,
+        "sha256": "201bb3d739f24962c90b214656be75e32c4ed309044d0270879ba235359407b5"
+      },
+      "standing_intents": {
+        "rows": 1,
+        "sha256": "937846a555e1a8a9dda482316450d7daccf57a0a685aff59666bd7926658b95b"
+      },
+      "standing_intents_fts_config": {
+        "rows": 1,
+        "sha256": "f5d9d0915f477d9cedc3f484844dd6cefb355d123491a3d1c96b29a569d4e5f0"
+      },
+      "standing_intents_fts_data": {
+        "rows": 3,
+        "sha256": "7d2a9e0d0a696f73988a21471c48e1f7734553cf6c2392dfcae0505d5408289e"
+      },
+      "standing_intents_fts_docsize": {
+        "rows": 1,
+        "sha256": "67e2f6faae6f4e3f160b917dd1bba3d79d24021c96c6f5e99318ea1dc5d22b4b"
+      },
+      "standing_intents_fts_idx": {
+        "rows": 1,
+        "sha256": "a95a80fb610bc2bf3dd66629db9342e30b155cc5be5eccfa3865edc2060af868"
+      },
+      "trajectory_runtime_events": {
+        "rows": 0,
+        "sha256": "eaea86324ef8df33d7fa3436172536257b4f794c859e3bfc8e226b8c54f764f8"
+      },
+      "transcript_event_identities": {
+        "rows": 3,
+        "sha256": "e1a664b6e2fdf07b5cc020ee3ac07d60c98d50175953df4230f25572997e3020"
+      },
+      "transcript_events": {
+        "rows": 3,
+        "sha256": "ed608c616f3112d1f2fafc186f7cc44a453be6152ccb9a2141acbe7b77e0e193"
+      },
+      "transcript_rewrite_watermarks": {
+        "rows": 0,
+        "sha256": "2b5920d5c056c3b55c4d88ad559a863507a23c3d6305a9194b66fc7932563bcc"
+      }
+    },
+    "rows": {
+      "session_nodes": [
+        {
+          "rowid": "1",
+          "session_key": "agent:main:main",
+          "current_session_id": "sess-main",
+          "entry_json": "{\"sessionId\":\"sess-main\",\"updatedAt\":1793400000000}",
+          "entry_valid": "1",
+          "updated_at": "1793400000000",
+          "status": null,
+          "created_at": "1793400000000",
+          "created_via": "operator",
+          "created_actor_type": "human",
+          "created_actor_id": null,
+          "project_id": null,
+          "parent_session_key": null,
+          "spawned_by": null,
+          "fork_source_session_key": null,
+          "fork_source_session_id": null,
+          "fork_source_entry_id": null,
+          "label": null,
+          "display_name": null,
+          "category": null,
+          "icon": null,
+          "pinned_at": null,
+          "archived_at": null,
+          "last_read_at": null,
+          "last_interaction_at": null,
+          "last_activity_at": null,
+          "owner_actor_type": null,
+          "owner_actor_id": null,
+          "owner_assigned_by_type": null,
+          "owner_assigned_by_id": null,
+          "owner_assigned_at": null,
+          "snapshot_revision": "0",
+          "session_started_at": null,
+          "has_optional_references": "0"
+        },
+        {
+          "rowid": "2",
+          "session_key": "agent:main:discord:channel:rehearsal",
+          "current_session_id": "sess-channel",
+          "entry_json": "{\"sessionId\":\"sess-channel\",\"updatedAt\":1793400000000}",
+          "entry_valid": "1",
+          "updated_at": "1793400000001",
+          "status": null,
+          "created_at": "1793400000000",
+          "created_via": "channel",
+          "created_actor_type": "system",
+          "created_actor_id": null,
+          "project_id": null,
+          "parent_session_key": null,
+          "spawned_by": null,
+          "fork_source_session_key": null,
+          "fork_source_session_id": null,
+          "fork_source_entry_id": null,
+          "label": "rehearsal channel",
+          "display_name": null,
+          "category": null,
+          "icon": null,
+          "pinned_at": null,
+          "archived_at": null,
+          "last_read_at": null,
+          "last_interaction_at": null,
+          "last_activity_at": null,
+          "owner_actor_type": null,
+          "owner_actor_id": null,
+          "owner_assigned_by_type": null,
+          "owner_assigned_by_id": null,
+          "owner_assigned_at": null,
+          "snapshot_revision": "0",
+          "session_started_at": null,
+          "has_optional_references": "0"
+        },
+        {
+          "rowid": "3",
+          "session_key": "agent:main:subagent:rehearsal",
+          "current_session_id": "sess-child",
+          "entry_json": "{\"sessionId\":\"sess-child\",\"updatedAt\":1793400000000}",
+          "entry_valid": "1",
+          "updated_at": "1793400000002",
+          "status": "done",
+          "created_at": "1793400000000",
+          "created_via": "spawn",
+          "created_actor_type": "agent",
+          "created_actor_id": null,
+          "project_id": null,
+          "parent_session_key": "agent:main:main",
+          "spawned_by": "agent:main:main",
+          "fork_source_session_key": null,
+          "fork_source_session_id": null,
+          "fork_source_entry_id": null,
+          "label": null,
+          "display_name": null,
+          "category": null,
+          "icon": null,
+          "pinned_at": null,
+          "archived_at": null,
+          "last_read_at": null,
+          "last_interaction_at": null,
+          "last_activity_at": null,
+          "owner_actor_type": null,
+          "owner_actor_id": null,
+          "owner_assigned_by_type": null,
+          "owner_assigned_by_id": null,
+          "owner_assigned_at": null,
+          "snapshot_revision": "0",
+          "session_started_at": null,
+          "has_optional_references": "0"
+        }
+      ],
+      "session_windows": [
+        {
+          "rowid": "1",
+          "session_id": "sess-main",
+          "session_key": "agent:main:main",
+          "previous_session_id": null,
+          "reason": "initial",
+          "session_scope": "conversation",
+          "created_at": "1793400000000",
+          "updated_at": "1793400000000",
+          "transcript_updated_at": null,
+          "transcript_observed_at": null,
+          "session_entry_provenance": "0",
+          "acp_owned": "0",
+          "plugin_owner_id": null,
+          "hook_external_content_source": null,
+          "started_at": null,
+          "ended_at": null,
+          "status": null,
+          "chat_type": null,
+          "channel": null,
+          "account_id": null,
+          "primary_conversation_id": null,
+          "model_provider": null,
+          "model": null,
+          "agent_harness_id": null,
+          "parent_session_key": null,
+          "spawned_by": null,
+          "display_name": null,
+          "row_transcript_json": null,
+          "row_transcript_updated_at": null
+        },
+        {
+          "rowid": "2",
+          "session_id": "sess-channel",
+          "session_key": "agent:main:discord:channel:rehearsal",
+          "previous_session_id": null,
+          "reason": "initial",
+          "session_scope": "conversation",
+          "created_at": "1793400000000",
+          "updated_at": "1793400000000",
+          "transcript_updated_at": null,
+          "transcript_observed_at": null,
+          "session_entry_provenance": "0",
+          "acp_owned": "0",
+          "plugin_owner_id": null,
+          "hook_external_content_source": null,
+          "started_at": null,
+          "ended_at": null,
+          "status": null,
+          "chat_type": null,
+          "channel": null,
+          "account_id": null,
+          "primary_conversation_id": "conv-rehearsal",
+          "model_provider": null,
+          "model": null,
+          "agent_harness_id": null,
+          "parent_session_key": null,
+          "spawned_by": null,
+          "display_name": null,
+          "row_transcript_json": null,
+          "row_transcript_updated_at": null
+        },
+        {
+          "rowid": "3",
+          "session_id": "sess-child",
+          "session_key": "agent:main:subagent:rehearsal",
+          "previous_session_id": null,
+          "reason": "initial",
+          "session_scope": "conversation",
+          "created_at": "1793400000000",
+          "updated_at": "1793400000000",
+          "transcript_updated_at": null,
+          "transcript_observed_at": null,
+          "session_entry_provenance": "0",
+          "acp_owned": "0",
+          "plugin_owner_id": null,
+          "hook_external_content_source": null,
+          "started_at": null,
+          "ended_at": null,
+          "status": null,
+          "chat_type": null,
+          "channel": null,
+          "account_id": null,
+          "primary_conversation_id": null,
+          "model_provider": null,
+          "model": null,
+          "agent_harness_id": null,
+          "parent_session_key": null,
+          "spawned_by": null,
+          "display_name": null,
+          "row_transcript_json": null,
+          "row_transcript_updated_at": null
+        },
+        {
+          "rowid": "4",
+          "session_id": "sess-cold",
+          "session_key": "agent:main:main",
+          "previous_session_id": null,
+          "reason": "initial",
+          "session_scope": "conversation",
+          "created_at": "1793400000000",
+          "updated_at": "1793400000000",
+          "transcript_updated_at": null,
+          "transcript_observed_at": null,
+          "session_entry_provenance": "0",
+          "acp_owned": "0",
+          "plugin_owner_id": null,
+          "hook_external_content_source": null,
+          "started_at": null,
+          "ended_at": null,
+          "status": null,
+          "chat_type": null,
+          "channel": null,
+          "account_id": null,
+          "primary_conversation_id": null,
+          "model_provider": null,
+          "model": null,
+          "agent_harness_id": null,
+          "parent_session_key": null,
+          "spawned_by": null,
+          "display_name": null,
+          "row_transcript_json": null,
+          "row_transcript_updated_at": null
+        }
+      ],
+      "conversations": [
+        {
+          "rowid": "1",
+          "conversation_id": "conv-rehearsal",
+          "channel": "discord",
+          "account_id": "acct-rehearsal",
+          "kind": "channel",
+          "peer_id": "peer-rehearsal",
+          "delivery_target": "channel:peer-rehearsal",
+          "parent_conversation_id": null,
+          "thread_id": null,
+          "native_channel_id": null,
+          "native_direct_user_id": null,
+          "label": "rehearsal",
+          "metadata_json": null,
+          "created_at": "1793400000000",
+          "updated_at": "1793400000000"
+        }
+      ],
+      "transcript_events": [
+        {
+          "rowid": "1",
+          "session_id": "sess-main",
+          "seq": "1",
+          "event_json": "{\"type\":\"message\",\"id\":\"evt-1\",\"parentId\":null,\"timestamp\":\"2026-10-30T22:40:00.000Z\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"synthetic rehearsal prompt\"}]}}",
+          "created_at": "1793400000001",
+          "event_zstd": null,
+          "event_utf8_bytes": "176",
+          "navigation_json": null,
+          "navigation_type": "message",
+          "navigation_custom_type": null,
+          "navigation_display": "0",
+          "message_role": "user",
+          "navigation_last_type": "message",
+          "navigation_last_custom_type": null,
+          "navigation_valid": "1"
+        },
+        {
+          "rowid": "2",
+          "session_id": "sess-main",
+          "seq": "2",
+          "event_json": "{\"type\":\"message\",\"id\":\"evt-2\",\"parentId\":\"evt-1\",\"timestamp\":\"2026-10-30T22:40:00.000Z\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"synthetic rehearsal reply\"}]}}",
+          "created_at": "1793400000002",
+          "event_zstd": null,
+          "event_utf8_bytes": "183",
+          "navigation_json": "{\"version\":1,\"report\":{\"kind\":\"canonical\",\"hasParentId\":true,\"entry\":{\"id\":\"evt-2\",\"parentId\":\"evt-1\",\"timestamp\":\"2026-10-30T22:40:00.000Z\",\"type\":\"message\"}},\"navigation\":{\"type\":\"message\",\"id\":\"evt-2\",\"parentId\":\"evt-1\",\"timestamp\":\"2026-10-30T22:40:00.000Z\",\"message\":{\"role\":\"assistant\"}},\"reset\":{\"type\":\"message\",\"id\":\"evt-2\",\"parentId\":\"evt-1\",\"timestamp\":\"2026-10-30T22:40:00.000Z\",\"message\":{\"role\":\"assistant\"}},\"model\":{\"type\":\"message\",\"id\":\"evt-2\",\"parentId\":\"evt-1\",\"timestamp\":\"2026-10-30T22:40:00.000Z\",\"message\":{\"role\":\"assistant\",\"content\":[],\"command\":\"\",\"output\":\"\",\"providerReplay\":{\"type\":null},\"details\":{\"openclawSyntheticMissingToolResult\":false}}},\"modelBytes\":183,\"modelWithoutCheckpointBytes\":183,\"withoutCustomDataBytes\":183}",
+          "navigation_type": "message",
+          "navigation_custom_type": null,
+          "navigation_display": "0",
+          "message_role": "assistant",
+          "navigation_last_type": "message",
+          "navigation_last_custom_type": null,
+          "navigation_valid": "1"
+        },
+        {
+          "rowid": "3",
+          "session_id": "sess-main",
+          "seq": "3",
+          "event_json": null,
+          "created_at": "1793400000003",
+          "event_zstd": "blob(181 bytes, sha256 2b39562011ac04f4a7b4006b60147be5f7769e131b00e6d00a0dba42696f4381)",
+          "event_utf8_bytes": "5358",
+          "navigation_json": "{\"version\":1,\"report\":{\"kind\":\"canonical\",\"hasParentId\":true,\"entry\":{\"id\":\"evt-3\",\"parentId\":\"evt-2\",\"timestamp\":\"2026-10-30T22:40:00.000Z\",\"type\":\"message\"}},\"navigation\":{\"type\":\"message\",\"id\":\"evt-3\",\"parentId\":\"evt-2\",\"timestamp\":\"2026-10-30T22:40:00.000Z\",\"message\":{\"role\":\"assistant\"}},\"reset\":{\"type\":\"message\",\"id\":\"evt-3\",\"parentId\":\"evt-2\",\"timestamp\":\"2026-10-30T22:40:00.000Z\",\"message\":{\"role\":\"assistant\"}},\"model\":{\"type\":\"message\",\"id\":\"evt-3\",\"parentId\":\"evt-2\",\"timestamp\":\"2026-10-30T22:40:00.000Z\",\"message\":{\"role\":\"assistant\",\"content\":[],\"command\":\"\",\"output\":\"\",\"providerReplay\":{\"type\":null},\"details\":{\"openclawSyntheticMissingToolResult\":false}}},\"modelBytes\":5358,\"modelWithoutCheckpointBytes\":5358,\"withoutCustomDataBytes\":5358}",
+          "navigation_type": "message",
+          "navigation_custom_type": null,
+          "navigation_display": "0",
+          "message_role": "assistant",
+          "navigation_last_type": "message",
+          "navigation_last_custom_type": null,
+          "navigation_valid": "1"
+        }
+      ],
+      "transcript_event_identities": [
+        {
+          "rowid": "1",
+          "session_id": "sess-main",
+          "event_id": "evt-1",
+          "seq": "1",
+          "event_type": "message",
+          "parent_id": null,
+          "message_idempotency_key": "idem-rehearsal-1",
+          "created_at": "1793400000001"
+        },
+        {
+          "rowid": "2",
+          "session_id": "sess-main",
+          "event_id": "evt-2",
+          "seq": "2",
+          "event_type": "message",
+          "parent_id": "evt-1",
+          "message_idempotency_key": null,
+          "created_at": "1793400000002"
+        },
+        {
+          "rowid": "3",
+          "session_id": "sess-main",
+          "event_id": "evt-3",
+          "seq": "3",
+          "event_type": "message",
+          "parent_id": "evt-2",
+          "message_idempotency_key": null,
+          "created_at": "1793400000003"
+        }
+      ],
+      "session_transcript_active_events": [
+        {
+          "rowid": "1",
+          "session_id": "sess-main",
+          "active_position": "0",
+          "event_seq": "1",
+          "message_position": "0",
+          "context_eligible": "1"
+        },
+        {
+          "rowid": "2",
+          "session_id": "sess-main",
+          "active_position": "1",
+          "event_seq": "2",
+          "message_position": "1",
+          "context_eligible": "1"
+        },
+        {
+          "rowid": "3",
+          "session_id": "sess-main",
+          "active_position": "2",
+          "event_seq": "3",
+          "message_position": "2",
+          "context_eligible": "1"
+        }
+      ],
+      "session_recipient_authority": [
+        {
+          "rowid": "1",
+          "session_key": "agent:main:main",
+          "epoch": "11111111-2222-4333-8444-555555555555",
+          "created_at": "1793400000000",
+          "updated_at": "1793400000010"
+        },
+        {
+          "rowid": "2",
+          "session_key": "agent:main:discord:channel:rehearsal",
+          "epoch": "66666666-7777-4888-9999-aaaaaaaaaaaa",
+          "created_at": "1793400000001",
+          "updated_at": "1793400000011"
+        }
+      ],
+      "session_transcript_cold_archives": [
+        {
+          "rowid": "1",
+          "session_id": "sess-cold",
+          "generation": "gen-rehearsal",
+          "archive_name": "50ce41965eaf55fe38b4ad20520f5b8459bc7f95ad1e2416d14aba1a887afa76.jsonl.zst",
+          "archive_sha256": "50ce41965eaf55fe38b4ad20520f5b8459bc7f95ad1e2416d14aba1a887afa76",
+          "event_count": "1",
+          "raw_bytes": "178",
+          "archive_bytes": "313",
+          "last_seq": "0",
+          "archived_at": "1793400000000",
+          "storage": "sqlite",
+          "archive_blob": "blob(313 bytes, sha256 2bdafece08343b3f72adab17a26afe6be9dcf3cef1e6c8e97e325f650bc88e28)"
+        }
+      ],
+      "session_transcript_cold_archive_chunks": [
+        {
+          "session_id": "sess-cold",
+          "chunk_index": "0",
+          "archive_name": "2bdafece08343b3f72adab17a26afe6be9dcf3cef1e6c8e97e325f650bc88e28.jsonl.zst",
+          "archive_sha256": "2bdafece08343b3f72adab17a26afe6be9dcf3cef1e6c8e97e325f650bc88e28",
+          "first_seq": "0",
+          "last_seq": "0",
+          "event_count": "1",
+          "raw_bytes": "178",
+          "archive_bytes": "313",
+          "archive_blob": "blob(313 bytes, sha256 2bdafece08343b3f72adab17a26afe6be9dcf3cef1e6c8e97e325f650bc88e28)"
+        }
+      ],
+      "session_key_contract": [
+        {
+          "rowid": "1",
+          "id": "1",
+          "main_key": "main",
+          "updated_at": "1793400000000",
+          "canonical_ready": null
+        }
+      ],
+      "memory_index_chunks": [
+        {
+          "rowid": "1",
+          "chunk_rowid": "1",
+          "id": "chunk-rehearsal",
+          "path": "memory/rehearsal.md",
+          "source": "memory",
+          "start_line": "1",
+          "end_line": "3",
+          "hash": "hash-chunk",
+          "model": "rehearsal-embedding",
+          "text": "synthetic rehearsal memory text",
+          "embedding": "blob(3072 bytes, sha256 4104988d05488fa63d3d7513766fe0a75c6f8d7bd760b82539e9ea2f40732e84)",
+          "updated_at": "1793400000000"
+        }
+      ],
+      "memory_index_sources": [
+        {
+          "rowid": "1",
+          "id": "1",
+          "path": "memory/rehearsal.md",
+          "source": "memory",
+          "hash": "hash-rehearsal",
+          "mtime": "1.5",
+          "size": "42"
+        }
+      ],
+      "standing_intents": [
+        {
+          "rowid": "1",
+          "intent_key": "1",
+          "id": "intent-rehearsal",
+          "description": "synthetic intent",
+          "trigger_keywords": "rehearsal synthetic",
+          "trigger_embedding": null,
+          "channel_scope": null,
+          "sender_scope": null,
+          "creator_sender": null,
+          "status": "armed",
+          "expires_at": "1793486400000",
+          "max_fires": "1",
+          "fire_count": "0",
+          "cooldown_seconds": "86400",
+          "last_fired_at": null,
+          "created_at": "1793400000000",
+          "source_session_id": null
+        }
+      ],
+      "session_transcript_fts_rows": [
+        {
+          "rowid": "1",
+          "id": "1",
+          "session_id": "sess-main",
+          "message_id": "evt-1"
+        }
+      ],
+      "cache_entries": [
+        {
+          "rowid": "1",
+          "scope": "rehearsal",
+          "key": "bytes",
+          "value_json": null,
+          "blob": "x'000100ff'",
+          "expires_at": null,
+          "updated_at": "1793400000000"
+        }
+      ]
+    }
+  },
+  "migration": {
+    "doctor": {
+      "preflight": {
+        "incompatible": [],
+        "indeterminate": [],
+        "agentRefusals": [],
+        "pendingMigrations": [
+          {
+            "kind": "agent",
+            "path": "<state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite",
+            "agentId": "main",
+            "foundVersion": 38,
+            "supportedVersion": 40
+          }
+        ],
+        "targets": [
+          {
+            "agentId": "main",
+            "path": "<state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite",
+            "source": "configured"
+          }
+        ]
+      },
+      "changes": [
+        "Saved pre-migration SQLite backup: <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite.pre-startup-migration-0591c126-d629-8948-8b75-516d6b418be3.scoped.bak",
+        "Saved pre-migration SQLite backup: <state-root>/home/.openclaw/state/openclaw.sqlite.pre-startup-migration-0591c126-d629-8948-8b75-516d6b418be3.bak",
+        "Upgraded agent database schema in <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite: v38 -> v40."
+      ],
+      "warnings": []
+    },
+    "plan": [
+      {
+        "previousVersion": 38,
+        "targetVersion": 40,
+        "shapeVersion": 38,
+        "crosses": [
+          39,
+          40
+        ]
+      }
+    ],
+    "fork39Bridge": [
+      {
+        "previousVersion": 38,
+        "targetVersion": 40,
+        "bridged": false
+      }
+    ],
+    "backupCrossing": [
+      {
+        "foundVersion": 38,
+        "crossingFrom": 38
+      }
+    ],
+    "declaredBackupScope": [
+      "schema_meta",
+      "session_recipient_authority",
+      "transcript_events"
+    ],
+    "backupArchiveTables": [
+      "schema_meta",
+      "session_recipient_authority",
+      "transcript_events"
+    ],
+    "undeclaredTablesPreserved": true,
+    "userVersion": 40,
+    "schemaMetaPrimary": {
+      "schema_version": 40,
+      "app_version": "2026.10.9"
+    },
+    "integrityCheck": [
+      {
+        "integrity_check": "ok"
+      }
+    ],
+    "foreignKeyCheck": [],
+    "transcriptPayloadCheck": {
+      "before": "prior",
+      "after": "widened"
+    },
+    "transcriptEventsSqlAfter": "CREATE TABLE \"transcript_events\" ( session_id TEXT NOT NULL, seq INTEGER NOT NULL, event_json TEXT, created_at INTEGER NOT NULL, event_zstd BLOB, event_utf8_bytes INTEGER CHECK (event_utf8_bytes IS NULL OR event_utf8_bytes >= 0), navigation_json TEXT, navigation_type TEXT, navigation_custom_type TEXT, navigation_display INTEGER NOT NULL DEFAULT 0, message_role TEXT, navigation_last_type TEXT, navigation_last_custom_type TEXT, navigation_valid INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (session_id, seq), FOREIGN KEY (session_id) REFERENCES \"session_windows\"(session_id) ON DELETE CASCADE, CHECK ( (event_json IS NOT NULL AND event_zstd IS NULL) OR ( event_json IS NULL AND event_zstd IS NOT NULL AND event_utf8_bytes IS NOT NULL AND event_utf8_bytes BETWEEN 1 AND 4194304 AND length(event_zstd) BETWEEN 1 AND 4194304 AND navigation_json IS NOT NULL ) OR ( event_json IS NULL AND event_zstd IS NULL AND event_utf8_bytes IS NOT NULL AND event_utf8_bytes BETWEEN 1 AND 4194304 AND navigation_json IS NOT NULL ) ), CHECK ( navigation_json IS NULL OR CASE WHEN json_valid(navigation_json) THEN coalesce( octet_length(navigation_json) <= 16384 AND json_type(navigation_json, '$.version') = 'integer' AND json_extract(navigation_json, '$.version') = 1 AND json_type(navigation_json, '$.report') = 'object' AND json_extract(navigation_json, '$.report.kind') IN ('canonical', 'leaf', 'link', 'ignored') AND json_type(navigation_json, '$.navigation') = 'object' AND json_type(navigation_json, '$.reset') = 'object' AND json_type(navigation_json, '$.model') = 'object' AND json_type(navigation_json, '$.modelBytes') = 'integer' AND json_extract(navigation_json, '$.modelBytes') BETWEEN 0 AND 4194304 AND json_type(navigation_json, '$.modelWithoutCheckpointBytes') = 'integer' AND json_extract(navigation_json, '$.modelWithoutCheckpointBytes') BETWEEN 0 AND 4194304 AND json_type(navigation_json, '$.withoutCustomDataBytes') = 'integer' AND json_extract(navigation_json, '$.withoutCustomDataBytes') BETWEEN 0 AND 4194304, 0) ELSE 0 END ) ) STRICT",
+    "schemaObjectsChanged": [
+      "table transcript_events: sql changed"
+    ],
+    "tablesChanged": [
+      "schema_meta: content changed"
+    ],
+    "schemaMetaBefore": [
+      {
+        "rowid": "1",
+        "meta_key": "primary",
+        "role": "agent",
+        "schema_version": "38",
+        "agent_id": "main",
+        "app_version": "2026.10.7",
+        "created_at": "1793400000000",
+        "updated_at": "1793400000000"
+      },
+      {
+        "rowid": "2",
+        "meta_key": "historical-transcript-directives-v1",
+        "role": "agent",
+        "schema_version": "1",
+        "agent_id": "main",
+        "app_version": "{\"phase\":\"complete\",\"version\":2}",
+        "created_at": "1793400000001",
+        "updated_at": "1793400000002"
+      },
+      {
+        "rowid": "3",
+        "meta_key": "media-transcript-archive-verification-v1",
+        "role": "agent",
+        "schema_version": "1",
+        "agent_id": "main",
+        "app_version": "rehearsal-synthetic-archive.jsonl.zst",
+        "created_at": "1793400000001",
+        "updated_at": "1793400000002"
+      }
+    ],
+    "schemaMetaAfter": [
+      {
+        "rowid": "1",
+        "meta_key": "primary",
+        "role": "agent",
+        "schema_version": "40",
+        "agent_id": "main",
+        "app_version": "2026.10.9",
+        "created_at": "1793400000000",
+        "updated_at": "1793467658727"
+      },
+      {
+        "rowid": "2",
+        "meta_key": "historical-transcript-directives-v1",
+        "role": "agent",
+        "schema_version": "1",
+        "agent_id": "main",
+        "app_version": "{\"phase\":\"complete\",\"version\":2}",
+        "created_at": "1793400000001",
+        "updated_at": "1793400000002"
+      },
+      {
+        "rowid": "3",
+        "meta_key": "media-transcript-archive-verification-v1",
+        "role": "agent",
+        "schema_version": "1",
+        "agent_id": "main",
+        "app_version": "rehearsal-synthetic-archive.jsonl.zst",
+        "created_at": "1793400000001",
+        "updated_at": "1793400000002"
+      }
+    ]
+  },
+  "afterMigration": {
+    "doctorRerun": {
+      "pendingMigrations": [],
+      "versionPhaseRan": false
+    },
+    "schemaOwnerRuns": [
+      {
+        "schema": [],
+        "tables": []
+      },
+      {
+        "schema": [],
+        "tables": []
+      }
+    ],
+    "ordinaryOpens": [
+      {
+        "userVersion": 40,
+        "schema": [],
+        "tables": []
+      },
+      {
+        "userVersion": 40,
+        "schema": [],
+        "tables": []
+      }
+    ],
+    "finalVersusPristine": {
+      "schema": [
+        "table transcript_events: sql changed"
+      ],
+      "tables": [
+        "schema_meta: content changed"
+      ]
+    },
+    "finalChangedRows": {}
+  },
+  "backupRestore": {
+    "doctor": {
+      "changes": [
+        "Saved pre-migration SQLite backup: <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite.pre-startup-migration-c87e0bbc-7a8f-87cb-8b2f-c385e79ed99f.scoped.bak",
+        "Saved pre-migration SQLite backup: <state-root>/home/.openclaw/state/openclaw.sqlite.pre-startup-migration-c87e0bbc-7a8f-87cb-8b2f-c385e79ed99f.bak",
+        "Upgraded agent database schema in <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite: v38 -> v40."
+      ],
+      "warnings": []
+    },
+    "backupArchive": "openclaw-agent.sqlite.pre-startup-migration-c87e0bbc-7a8f-87cb-8b2f-c385e79ed99f.scoped.bak",
+    "backupArchiveTables": [
+      "schema_meta",
+      "session_recipient_authority",
+      "transcript_events"
+    ],
+    "migratedUserVersion": 40,
+    "restoredUserVersion": 38,
+    "restoredVersusPredecessor": {
+      "schema": [],
+      "tables": []
+    },
+    "schemaObjectsCompared": 187,
+    "tablesCompared": 71,
+    "integrityCheck": [
+      {
+        "integrity_check": "ok"
+      }
+    ],
+    "foreignKeyCheck": [],
+    "remigration": {
+      "pendingMigrations": [
+        {
+          "kind": "agent",
+          "path": "<state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite",
+          "agentId": "main",
+          "foundVersion": 38,
+          "supportedVersion": 40
+        }
+      ],
+      "changes": [
+        "Reused pre-migration SQLite backup: <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite.pre-startup-migration-c87e0bbc-7a8f-87cb-8b2f-c385e79ed99f.scoped.bak",
+        "Reused pre-migration SQLite backup: <state-root>/home/.openclaw/state/openclaw.sqlite.pre-startup-migration-c87e0bbc-7a8f-87cb-8b2f-c385e79ed99f.bak",
+        "Upgraded agent database schema in <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite: v38 -> v40."
+      ],
+      "warnings": [],
+      "userVersion": 40,
+      "versusFirstMigration": {
+        "schema": [],
+        "tables": [
+          "schema_meta: content changed"
+        ]
+      }
+    }
+  }
+}
