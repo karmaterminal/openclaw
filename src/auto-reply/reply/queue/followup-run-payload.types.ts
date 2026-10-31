@@ -16,6 +16,7 @@ import type { ReplyToMode } from "../../../config/types.base.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import type { CronCreatorAuthorityRunScope as CronCreatorAuthorityCapability } from "../../../gateway/cron-creator-authority-grant.js";
 import type { GatewayLocalUserIngress } from "../../../gateway/local-user-ingress.js";
+import type { ExecMode } from "../../../infra/exec-approvals-core.js";
 import type { MediaFact } from "../../../media/media-facts.js";
 import type { PromptImageOrderEntry } from "../../../media/prompt-image-order.js";
 import type { UserTurnTranscriptRecorder } from "../../../sessions/user-turn-transcript.types.js";
@@ -214,7 +215,9 @@ export type FollowupRunPayload = {
     /** Explicit turn choice; absent queued replies follow live session verbosity. */
     verboseLevelOverride?: VerboseLevel;
     elevatedLevel?: ElevatedLevel;
-    execOverrides?: ExecToolRoutingDefaults;
+    // Frond (karmaterminal, #1415): runners receive this object by reference and write the
+    // session permission mode into it.
+    execOverrides?: ExecToolRoutingDefaults & { mode?: ExecMode };
     bashElevated?: {
       enabled: boolean;
       allowed: boolean;

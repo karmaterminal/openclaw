@@ -26,6 +26,7 @@ import { AgentDatabaseExecutionAdmissionClosedError } from "../../../state/agent
 import { buildCollectPrompt, previewQueueSummaryPrompt } from "../../../utils/queue-helpers.js";
 import {
   collectRuntimeMetadata,
+  isRoomAggregateBatch,
   resolveFollowupDeliveryStorageKey,
   resolveFollowupReplyAnchor,
   resolveRoomAggregateExecution,
@@ -196,8 +197,13 @@ async function executeClaim(
   // Frond (karmaterminal, #1415): differing per-sender identities only batch through the room
   // aggregate key; that turn runs as the senderless room baseline, never as any one member, so
   // each summary line names its sender.
-  const crossSender =
+  const mixedSenders =
     sources.length > 1 && new Set(sources.map(resolveFollowupDeliveryStorageKey)).size > 1;
+  const crossSender = mixedSenders && isRoomAggregateBatch(sources);
+  // Frond (karmaterminal, #1415): any other mixed claim breaks the selection invariant. It fails
+  // closed before execution, refused like a pre-execution rejection: each member retries alone,
+  // or is released unadopted when the claim can no longer be deferred.
+  const refuseMixedClaim = mixedSenders && !crossSender;
   const readSummaryLine = (item: FollowupRun) => {
     const index = queue.summarySources.indexOf(item);
     if (index >= 0) {
@@ -233,7 +239,7 @@ async function executeClaim(
     await Promise.all(sources.flatMap((item) => item.controllerInput?.custody.settling ?? []));
   };
   let run = source;
-  if (claim.summary || sources.length > 1) {
+  if (!refuseMixedClaim && (claim.summary || sources.length > 1)) {
     const execution = resolveCollectedRun(sources, source.run, crossSender);
     // Frond (karmaterminal, #1415): the transcript turn records the authority the turn runs as.
     const recorder = claim.summary
@@ -278,6 +284,17 @@ async function executeClaim(
   let waitForFreshKick = false;
   let executionThrew = false;
   try {
+    if (refuseMixedClaim) {
+      for (const item of sources) {
+        item.disableCollectBatching = true;
+      }
+      const retry = deferSessionControllerClaimBeforeExecution(claim);
+      defaultRuntime.error?.(
+        `mailbox refused a mixed claim for ${queue.key}: not every member may run as the room ` +
+          `baseline; ${sources.length} members ${retry ? "retry alone" : "released unadopted"}`,
+      );
+      return;
+    }
     if (admissionSessionRebind && run.run.sessionId === admissionSessionRebind.from) {
       run = { ...run, admissionSessionId: admissionSessionRebind.to };
     }

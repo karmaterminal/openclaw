@@ -200,13 +200,24 @@ function resolveRoomAggregateSource(source: FollowupRun): FollowupRun | undefine
     : undefined;
 }
 
+function resolveRoomAggregateBatchKey(run: FollowupRun): string | undefined {
+  const baseline = resolveRoomAggregateSource(run);
+  return (
+    baseline && JSON.stringify(["room-aggregate", resolveFollowupDeliveryStorageKey(baseline)])
+  );
+}
+
 // Frond (karmaterminal, #1415): the batch identity. A room event with baseline authority keys by
 // the room baseline so senders share one collect; everything else keeps its storage key.
 export function resolveFollowupBatchKey(run: FollowupRun): string {
-  const baseline = resolveRoomAggregateSource(run);
-  return baseline
-    ? JSON.stringify(["room-aggregate", resolveFollowupDeliveryStorageKey(baseline)])
-    : resolveFollowupDeliveryStorageKey(run);
+  return resolveRoomAggregateBatchKey(run) ?? resolveFollowupDeliveryStorageKey(run);
+}
+
+// Frond (karmaterminal, #1415): whether a claim may run as the senderless room baseline: every
+// member is aggregate-eligible under one room-aggregate key.
+export function isRoomAggregateBatch(sources: readonly FollowupRun[]): boolean {
+  const keys = new Set(sources.map(resolveRoomAggregateBatchKey));
+  return keys.size === 1 && !keys.has(undefined);
 }
 
 /** Storage grouping is policy-independent; drain prepares current screen/theme authority. */
@@ -228,6 +239,10 @@ export function resolveFollowupDeliveryStorageKey(run: FollowupRun): string {
     run.originatingReplyToMode ?? "",
     normalizeChatType(run.originatingChatType) ?? "",
     resolveFollowupAuthorizationKey(run),
+    // Frond (karmaterminal, #1415): the session permission mode an attempt narrowed this run's
+    // shared exec overrides to. Kept out of the authorization key, which also hands a stalled
+    // turn to its sender's queued request.
+    execution.execOverrides?.mode ?? "",
     run.turnAdoptionLifecycle?.ownerKey ?? "",
     normalizeOptionalString(execution.runtimePolicySessionKey ?? execution.sessionKey) ?? "",
     execution.provider,
