@@ -1,0 +1,119 @@
+{
+  "u12Commit": "b8b054c13ae859b9ab14d31c5fec90078141e327",
+  "probeSource": "j12-rehearsal/u12-refusal/u12-refusal.probe.ts",
+  "u12AgentSchemaVersion": 39,
+  "shapes": {
+    "cael": {
+      "storeSha256": "f075a296fecd3b800e052813f51ad0a37f27172664cd845605c2ae6725908637",
+      "openRefused": true,
+      "openError": "This OpenClaw build cannot open your existing data.\nOpenClaw agent database <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite uses newer schema version 40; this build supports 39.\nIt was written by OpenClaw 2026.10.9; run openclaw doctor --fix to inspect this database.\nRefused by OpenClaw 2026.10.9 (b8b054c) installed at <u12-checkout>.\nUse a build that supports schema 40 or newer with this state directory. To use an older build, restore your pre-update backup created with openclaw backup create.\nSee https://docs.openclaw.ai/reference/database-schemas.",
+      "doctorPreflight": {
+        "refused": true,
+        "name": "OpenClawDatabaseSchemaPreflightError",
+        "message": "Doctor refused to continue because 1 OpenClaw database schema(s) are newer than this build. agent database for agent main <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite uses schema 40; this build supports 39; writer build 2026.10.9. Refused by OpenClaw 2026.10.9 (b8b054c) installed at <u12-checkout>. Run a build at least as new as the writer that supports these schemas, or stop the service and restore your pre-upgrade backup created with openclaw backup create. See https://docs.openclaw.ai/reference/database-schemas.",
+        "kind": "newer-schema",
+        "code": "gateway.maintenance_required",
+        "incompatibleDatabases": [
+          {
+            "kind": "agent",
+            "path": "<state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite",
+            "agentId": "main",
+            "foundVersion": 40,
+            "supportedVersion": 39,
+            "writerAppVersion": "2026.10.9"
+          }
+        ]
+      },
+      "storeUnchangedAfterRefusal": true,
+      "agentDirectoryAfter": [
+        "openclaw-agent.sqlite"
+      ],
+      "rehearsalMigratedCopySha256": "f075a296fecd3b800e052813f51ad0a37f27172664cd845605c2ae6725908637",
+      "sameStoreAsRehearsal": true
+    },
+    "ronan": {
+      "storeSha256": "105b4a97a6a3411f68dec7de0a25c1fe94818bb7f37814e2af030e936a95a9f9",
+      "openRefused": true,
+      "openError": "This OpenClaw build cannot open your existing data.\nOpenClaw agent database <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite uses newer schema version 40; this build supports 39.\nIt was written by OpenClaw 2026.10.9; run openclaw doctor --fix to inspect this database.\nRefused by OpenClaw 2026.10.9 (b8b054c) installed at <u12-checkout>.\nUse a build that supports schema 40 or newer with this state directory. To use an older build, restore your pre-update backup created with openclaw backup create.\nSee https://docs.openclaw.ai/reference/database-schemas.",
+      "doctorPreflight": {
+        "refused": true,
+        "name": "OpenClawDatabaseSchemaPreflightError",
+        "message": "Doctor refused to continue because 1 OpenClaw database schema(s) are newer than this build. agent database for agent main <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite uses schema 40; this build supports 39; writer build 2026.10.9. Refused by OpenClaw 2026.10.9 (b8b054c) installed at <u12-checkout>. Run a build at least as new as the writer that supports these schemas, or stop the service and restore your pre-upgrade backup created with openclaw backup create. See https://docs.openclaw.ai/reference/database-schemas.",
+        "kind": "newer-schema",
+        "code": "gateway.maintenance_required",
+        "incompatibleDatabases": [
+          {
+            "kind": "agent",
+            "path": "<state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite",
+            "agentId": "main",
+            "foundVersion": 40,
+            "supportedVersion": 39,
+            "writerAppVersion": "2026.10.9"
+          }
+        ]
+      },
+      "storeUnchangedAfterRefusal": true,
+      "agentDirectoryAfter": [
+        "openclaw-agent.sqlite"
+      ],
+      "rehearsalMigratedCopySha256": "105b4a97a6a3411f68dec7de0a25c1fe94818bb7f37814e2af030e936a95a9f9",
+      "sameStoreAsRehearsal": true
+    },
+    "elliott": {
+      "storeSha256": "38e5c6c84405ce1af82be944e3ccb036f58e6cabdb8d4c5f315d79d32ca691b5",
+      "openRefused": true,
+      "openError": "This OpenClaw build cannot open your existing data.\nOpenClaw agent database <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite uses newer schema version 40; this build supports 39.\nIt was written by OpenClaw 2026.10.9; run openclaw doctor --fix to inspect this database.\nRefused by OpenClaw 2026.10.9 (b8b054c) installed at <u12-checkout>.\nUse a build that supports schema 40 or newer with this state directory. To use an older build, restore your pre-update backup created with openclaw backup create.\nSee https://docs.openclaw.ai/reference/database-schemas.",
+      "doctorPreflight": {
+        "refused": true,
+        "name": "OpenClawDatabaseSchemaPreflightError",
+        "message": "Doctor refused to continue because 1 OpenClaw database schema(s) are newer than this build. agent database for agent main <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite uses schema 40; this build supports 39; writer build 2026.10.9. Refused by OpenClaw 2026.10.9 (b8b054c) installed at <u12-checkout>. Run a build at least as new as the writer that supports these schemas, or stop the service and restore your pre-upgrade backup created with openclaw backup create. See https://docs.openclaw.ai/reference/database-schemas.",
+        "kind": "newer-schema",
+        "code": "gateway.maintenance_required",
+        "incompatibleDatabases": [
+          {
+            "kind": "agent",
+            "path": "<state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite",
+            "agentId": "main",
+            "foundVersion": 40,
+            "supportedVersion": 39,
+            "writerAppVersion": "2026.10.9"
+          }
+        ]
+      },
+      "storeUnchangedAfterRefusal": true,
+      "agentDirectoryAfter": [
+        "openclaw-agent.sqlite"
+      ],
+      "rehearsalMigratedCopySha256": "38e5c6c84405ce1af82be944e3ccb036f58e6cabdb8d4c5f315d79d32ca691b5",
+      "sameStoreAsRehearsal": true
+    },
+    "emeric": {
+      "storeSha256": "626f46e5b49df1d8339c1e60e703988bfa86ea5ac6a840d72e6a39e54550558c",
+      "openRefused": true,
+      "openError": "This OpenClaw build cannot open your existing data.\nOpenClaw agent database <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite uses newer schema version 40; this build supports 39.\nIt was written by OpenClaw 2026.10.9; run openclaw doctor --fix to inspect this database.\nRefused by OpenClaw 2026.10.9 (b8b054c) installed at <u12-checkout>.\nUse a build that supports schema 40 or newer with this state directory. To use an older build, restore your pre-update backup created with openclaw backup create.\nSee https://docs.openclaw.ai/reference/database-schemas.",
+      "doctorPreflight": {
+        "refused": true,
+        "name": "OpenClawDatabaseSchemaPreflightError",
+        "message": "Doctor refused to continue because 1 OpenClaw database schema(s) are newer than this build. agent database for agent main <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite uses schema 40; this build supports 39; writer build 2026.10.9. Refused by OpenClaw 2026.10.9 (b8b054c) installed at <u12-checkout>. Run a build at least as new as the writer that supports these schemas, or stop the service and restore your pre-upgrade backup created with openclaw backup create. See https://docs.openclaw.ai/reference/database-schemas.",
+        "kind": "newer-schema",
+        "code": "gateway.maintenance_required",
+        "incompatibleDatabases": [
+          {
+            "kind": "agent",
+            "path": "<state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite",
+            "agentId": "main",
+            "foundVersion": 40,
+            "supportedVersion": 39,
+            "writerAppVersion": "2026.10.9"
+          }
+        ]
+      },
+      "storeUnchangedAfterRefusal": true,
+      "agentDirectoryAfter": [
+        "openclaw-agent.sqlite"
+      ],
+      "rehearsalMigratedCopySha256": "626f46e5b49df1d8339c1e60e703988bfa86ea5ac6a840d72e6a39e54550558c",
+      "sameStoreAsRehearsal": true
+    }
+  }
+}
