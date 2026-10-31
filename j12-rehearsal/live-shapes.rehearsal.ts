@@ -84,7 +84,8 @@ vi.mock("../src/state/openclaw-agent-fleet-schema-history.js", async (importOrig
       ...args: Parameters<typeof actual.planAgentFleetSchemaHistory>
     ): ReturnType<typeof actual.planAgentFleetSchemaHistory> {
       const plan = actual.planAgentFleetSchemaHistory(...args);
-      const [, , previousVersion, targetVersion] = args;
+      const previousVersion = args[2];
+      const targetVersion = args[3];
       recorded.plans.push({
         previousVersion,
         targetVersion,
@@ -512,10 +513,14 @@ function describeRows(capture: TableCapture) {
 
 type StructureMap = Map<string, Record<string, unknown>>;
 
-/** Whitespace-normalized DDL with plain double-quoted identifiers unquoted; literals keep bytes. */
+/**
+ * Whitespace-normalized DDL with plain double-quoted identifiers unquoted; string literals and
+ * identifiers holding escaped quotes keep their bytes. SQLite's double-quoted-string fallback could
+ * make a `"x"` in a trigger body a literal; the fleet's dumps double-quote identifiers only.
+ */
 function normalizeDdl(sql: string): string {
   return normalizeSqlWhitespace(sql).replace(
-    /'(?:[^']|'')*'|"([A-Za-z_][A-Za-z0-9_]*)"/gu,
+    /'(?:[^']|'')*'|(?<!")"([A-Za-z_][A-Za-z0-9_]*)"(?!")/gu,
     (match, identifier: string | undefined) => identifier ?? match,
   );
 }
@@ -539,30 +544,32 @@ async function captureShapeStructure(shape: Shape): Promise<StructureMap> {
       .prepare(
         `SELECT name, type, "notnull", dflt_value, pk, hidden FROM pragma_table_xinfo(?) ORDER BY cid`,
       )
-      .all(object.name)
-      .map((column) => ({ ...column }));
+      .all(object.name);
     const foreignKeys = db
       .prepare("SELECT * FROM pragma_foreign_key_list(?) ORDER BY id, seq")
-      .all(object.name)
-      .map((key) => ({ ...key }));
+      .all(object.name);
     if (object.virtualModule) {
       structure.set(key, { kind: table.type, columns, definition: normalizeDdl(object.sql) });
       continue;
     }
     // Per-column definitions without the column's own name token catch COLLATE, CHECK and
-    // REFERENCES clauses that the pragmas do not report.
+    // REFERENCES clauses that the pragmas do not report. The parser keys columns lowercased.
     const parsed = parseSqliteTableDefinition(object.sql, object.name);
+    const definitions = Object.fromEntries(
+      columns.map(({ name }) => {
+        const definition = parsed.columns.get(String(name).toLowerCase());
+        if (definition === undefined) {
+          throw new Error(`${key}: column ${String(name)} has no parsed definition`);
+        }
+        return [String(name), normalizeDdl(definition.slice(readSqlToken(definition, 0)!.end))];
+      }),
+    );
     structure.set(key, {
       kind: table.type,
       strict: table.strict,
       withoutRowid: table.wr,
       columns,
-      definitions: Object.fromEntries(
-        [...parsed.columns].map(([name, definition]) => [
-          name,
-          normalizeDdl(definition.slice(readSqlToken(definition, 0)!.end)),
-        ]),
-      ),
+      definitions,
       constraints: parsed.constraints.map(normalizeDdl).toSorted(),
       foreignKeys,
     });
@@ -602,7 +609,7 @@ function diffStructure(shape: StructureMap, reference: StructureMap): string[] {
       out.push(`${key}: missing columns ${missing.join(", ")}`);
     }
     const shared = names.filter((name) => referenceNames.includes(name));
-    if (shared.join() !== referenceNames.filter((name) => names.includes(name)).join()) {
+    if (shared.join(",") !== referenceNames.filter((name) => names.includes(name)).join(",")) {
       out.push(`${key}: column order differs`);
     }
     const definitions = (mine.definitions ?? {}) as Record<string, string>;
@@ -619,7 +626,15 @@ function diffStructure(shape: StructureMap, reference: StructureMap): string[] {
         );
       }
     }
-    for (const field of ["kind", "strict", "withoutRowid", "constraints", "foreignKeys"]) {
+    // Backstop: any captured field that differs is structural even if no line above named it.
+    for (const field of [
+      "kind",
+      "strict",
+      "withoutRowid",
+      "definitions",
+      "constraints",
+      "foreignKeys",
+    ]) {
       if (JSON.stringify(mine[field]) !== JSON.stringify(theirs[field])) {
         out.push(`${key}: ${field} differs`);
       }
@@ -726,7 +741,9 @@ async function buildShapeDatabase(shape: Shape, pathname: string, legacyEpoch = 
     );
     insertMeta.run("primary", shape.userVersion, AGENT_ID, APP_VERSION_38, T0, T0);
     // The bookkeeping rows each shape's own header names; not every store has run every migration.
-    for (const { key, schemaVersion } of shape.schemaMeta.filter(({ key }) => key !== "primary")) {
+    for (const { key, schemaVersion } of shape.schemaMeta.filter(
+      (entry) => entry.key !== "primary",
+    )) {
       insertMeta.run(
         key,
         schemaVersion,
@@ -933,6 +950,7 @@ function seedSyntheticRows(db: DatabaseSync, legacyEpoch: boolean): void {
     ),
   );
   const chunk = {
+    session_id: SESSIONS.cold.id,
     chunk_index: 0,
     archive_name: `${sha256(archive)}.jsonl.zst`,
     archive_sha256: sha256(archive),
@@ -1064,7 +1082,14 @@ async function runDoctorActivation(env: NodeJS.ProcessEnv, options: DoctorActiva
     };
     // Activation returns before maintenance when nothing is pending.
     if (pendingMigrations.length === 0) {
-      return { ...facts, result: undefined, plans: [], bridges: [], backupCrossings: [] };
+      return {
+        ...facts,
+        result: undefined,
+        plans: [],
+        bridges: [],
+        backupCrossings: [],
+        tail: undefined,
+      };
     }
     const versionPhase = () =>
       prepareDoctorDatabaseMigrations({
@@ -1087,7 +1112,7 @@ async function runDoctorActivation(env: NodeJS.ProcessEnv, options: DoctorActiva
     }
     options.afterVersionPhase?.();
     if (!options.tail) {
-      return { ...facts, result, ...decisions };
+      return { ...facts, result, ...decisions, tail: undefined };
     }
     const registeredBefore = listOpenClawRegisteredAgentDatabases({ env }).map(
       ({ agentId, path: pathname }) => ({ agentId, path: pathname }),
@@ -1246,11 +1271,15 @@ describe.each(SHAPE_NAMES)("fleet schema-38 shape %s", (shapeName) => {
       expect(shape.sha256).toBe(sums.get(path.basename(shape.file)));
       expect(inventory.get(shape.inventoryHash)?.length).toBeGreaterThan(0);
       expect(shape.userVersion).toBe(38);
-      // Each header names a subset of the fleet's bookkeeping keys, primary (38) first.
+      // The main shapes carry every bookkeeping key; the others name a subset, primary (38) first.
       expect(shape.schemaMeta[0]).toEqual({ key: "primary", schemaVersion: 38 });
       expect(shape.schemaMeta).toEqual(
         readBookkeepingKeys()
-          .filter(({ key }) => shape.schemaMeta.some((entry) => entry.key === key))
+          .filter(
+            ({ key }) =>
+              MAIN_SHAPES.includes(shapeName) ||
+              shape.schemaMeta.some((entry) => entry.key === key),
+          )
           .toSorted(byPrimaryThenKey),
       );
 
@@ -1771,6 +1800,49 @@ describe.each(SHAPE_NAMES)("fleet schema-38 shape %s", (shapeName) => {
     },
     TIMEOUT_MS,
   );
+});
+
+// The classifier's own controls: identifier quoting and whitespace are textual; a CHECK, COLLATE or
+// default difference is structural even on a mixed-case column, and an escaped quote keeps its bytes.
+it("classifier self-check: only identifier quoting and whitespace count as textual", async () => {
+  const classify = async (left: ShapeObject[], right: ShapeObject[]) => {
+    const shapeOf = (name: string, objects: ShapeObject[]): Shape => ({
+      name,
+      file: name,
+      sha256: "",
+      inventoryHash: "",
+      userVersion: 38,
+      schemaMeta: [],
+      objects,
+    });
+    const [a, b] = [shapeOf("left", left), shapeOf("right", right)];
+    const [sa, sb] = [await captureShapeStructure(a), await captureShapeStructure(b)];
+    return { structural: diffStructure(sa, sb), textOnly: textOnlyDifferences(a, b, sa, sb) };
+  };
+  const table = (sql: string): ShapeObject[] => [{ type: "table", name: "t", sql }];
+  const view = (sql: string): ShapeObject[] => [{ type: "view", name: "v", sql }];
+  expect(
+    await classify(
+      table("CREATE TABLE \"t\" (\n  Status TEXT NOT NULL CHECK (Status IN ('a', 'b'))\n)"),
+      table("CREATE TABLE t ( Status TEXT NOT NULL CHECK (Status IN ('a', 'b')) )"),
+    ),
+  ).toEqual({ structural: [], textOnly: ["table t"] });
+  for (const [left, right] of [
+    [
+      table("CREATE TABLE t (Status TEXT CHECK (Status IN ('a', 'b')))"),
+      table("CREATE TABLE t (Status TEXT CHECK (Status IN ('a', 'b', 'c')))"),
+    ],
+    [table("CREATE TABLE t (Label TEXT COLLATE NOCASE)"), table("CREATE TABLE t (Label TEXT)")],
+    [
+      table("CREATE TABLE t (target TEXT NOT NULL DEFAULT '')"),
+      table("CREATE TABLE t (target TEXT NOT NULL)"),
+    ],
+    [view('CREATE VIEW v AS SELECT 1 AS "a""b"'), view("CREATE VIEW v AS SELECT 1 AS ab")],
+  ]) {
+    const result = await classify(left!, right!);
+    expect(result.structural).not.toEqual([]);
+    expect(result.textOnly).toEqual([]);
+  }
 });
 
 // Which shapes differ only in text from the main-agent shapes and which differ in structure, and
