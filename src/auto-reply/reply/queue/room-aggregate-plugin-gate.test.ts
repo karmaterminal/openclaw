@@ -3,13 +3,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { onGatewayWorkMetricsChanged } from "../../../infra/gateway-work-metrics-events.js";
-import {
-  clearCurrentPluginMetadataSnapshot,
-  setCurrentPluginMetadataSnapshotState,
-} from "../../../plugins/current-plugin-metadata-state.js";
+import { clearCurrentPluginMetadataSnapshot } from "../../../plugins/current-plugin-metadata-state.js";
 import { initializeGlobalHookRunner } from "../../../plugins/hook-runner-global.js";
 import { createPluginRecord } from "../../../plugins/loader-records.js";
-import { createPluginMetadataSnapshotFixture } from "../../../plugins/plugin-metadata.test-support.js";
 import type { PluginOrigin } from "../../../plugins/plugin-origin.types.js";
 import { createEmptyPluginRegistry } from "../../../plugins/registry-empty.js";
 import type { PluginRegistry } from "../../../plugins/registry-types.js";
@@ -21,38 +17,16 @@ import { testing as controllerTesting } from "../../../sessions/session-controll
 import { admitFollowupRunLifecycle, enqueueFollowupRun, scheduleFollowupDrain } from "../queue.js";
 import { createQueueTestRun, installQueueRuntimeErrorSilencer } from "../queue.test-helpers.js";
 import { resolveFollowupBatchKey, resolveFollowupDeliveryStorageKey } from "./delivery-context.js";
+import { stageGatewayPluginInventory } from "./room-aggregate-plugin-gate.test-support.js";
 import { getExistingFollowupQueue } from "./state.js";
 import type { FollowupRun, QueueSettings } from "./types.js";
 
 installQueueRuntimeErrorSilencer();
-
-/** The boot inventory a Gateway publishes, naming each tool plugin it may load at turn time. */
-function stageInventory(
-  plugins: Array<{ id: string; origin: PluginOrigin }> = [],
-  workspaceDir = "/tmp",
-) {
-  setCurrentPluginMetadataSnapshotState(
-    {
-      ...createPluginMetadataSnapshotFixture({
-        plugins: plugins.map((plugin) => ({
-          ...plugin,
-          contracts: { tools: [`${plugin.id}_tool`] },
-        })),
-      }),
-      workspaceDir,
-    },
-    undefined,
-    undefined,
-    undefined,
-    "gateway",
-  );
-}
-
 // Start each case from a Gateway with no plugins loaded: an empty active registry and an empty
 // boot inventory for the run's workspace.
 beforeEach(() => {
   setActivePluginRegistry(createEmptyPluginRegistry());
-  stageInventory();
+  stageGatewayPluginInventory();
 });
 afterEach(() => {
   controllerTesting.resetSessionControllerForTest();
@@ -217,7 +191,7 @@ describe("room aggregate plugin gate (#1415)", () => {
       "no plugin registry is active",
       () => {
         resetPluginRuntimeStateForTest();
-        stageInventory();
+        stageGatewayPluginInventory();
       },
     ],
   ])("keeps a member on its own key when %s", (_, unstage) => {
@@ -228,16 +202,16 @@ describe("room aggregate plugin gate (#1415)", () => {
 
   it("reads unloaded tool owners from the Gateway inventory of the run's workspace", () => {
     // Plugin tools load lazily at turn time; no runtime registry holds these yet.
-    stageInventory([{ id: "memory-core", origin: "bundled" }]);
+    stageGatewayPluginInventory([{ id: "memory-core", origin: "bundled" }]);
     expect(joins(member("alice"))).toBe(true);
-    stageInventory([{ id: "lazy-tools", origin: "global" }]);
+    stageGatewayPluginInventory([{ id: "lazy-tools", origin: "global" }]);
     expect(joins(member("alice"))).toBe(false);
     // A disabled tool plugin never loads.
     expect(
       joins(member("alice", { plugins: { entries: { "lazy-tools": { enabled: false } } } })),
     ).toBe(true);
     // Another workspace's discovery is not this run's: a workspace plugin there may shadow an id.
-    stageInventory([{ id: "memory-core", origin: "bundled" }], "/srv/other-agent");
+    stageGatewayPluginInventory([{ id: "memory-core", origin: "bundled" }], "/srv/other-agent");
     expect(joins(member("alice"))).toBe(false);
   });
 });

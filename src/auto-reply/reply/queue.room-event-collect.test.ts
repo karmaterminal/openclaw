@@ -15,6 +15,7 @@ import {
   withTempState,
 } from "../../channels/message/ingress-drain.test-helpers.js";
 import type { SessionEntry } from "../../config/sessions.js";
+import { clearCurrentPluginMetadataSnapshot } from "../../plugins/current-plugin-metadata-state.js";
 import { createPluginRecord } from "../../plugins/loader-records.js";
 import { createEmptyPluginRegistry } from "../../plugins/registry-empty.js";
 import { getActivePluginRegistry, setActivePluginRegistry } from "../../plugins/runtime.js";
@@ -43,6 +44,7 @@ import {
   installQueueRuntimeErrorSilencer,
   rejectQueuePreparation,
 } from "./queue.test-helpers.js";
+import { stageGatewayPluginInventory } from "./queue/room-aggregate-plugin-gate.test-support.js";
 import { clearFollowupQueue, getExistingFollowupQueue } from "./queue/state.js";
 import { bindReplySourceToFollowup, prepareReplySourceInput } from "./reply-source-binding.js";
 import { createTypingController } from "./typing.js";
@@ -81,7 +83,10 @@ function textOf(row: Row): string {
   return `${row.kind === "user_request" ? "mention" : "room"} message ${row.id}`;
 }
 
-/** Ingress runs through the bundled Discord plugin, whose turn-time sender surfaces are audited. */
+/**
+ * Ingress runs in a Gateway through the bundled Discord plugin, whose turn-time sender surfaces
+ * are audited.
+ */
 function useBundledDiscordPlugin(): void {
   const discord = expectDefined(
     getActivePluginRegistry()?.channels.find(({ pluginId }) => pluginId === "discord"),
@@ -99,6 +104,8 @@ function useBundledDiscordPlugin(): void {
     }),
   );
   setActivePluginRegistry(registry);
+  stageGatewayPluginInventory();
+  onTestFinished(clearCurrentPluginMetadataSnapshot);
 }
 
 /**
