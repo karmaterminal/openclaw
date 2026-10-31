@@ -99,6 +99,8 @@ export function resolveFollowupAuthorizationKey(run: FollowupRun): string {
     execution.execOverrides?.ask ?? "",
     execution.execOverrides?.node ?? "",
     execution.execOverrides?.nodeCwd ?? "",
+    // Frond (karmaterminal, #1415): the session permission policy a runner selects from it.
+    execution.execOverrides?.mode ?? "",
     execution.bashElevated?.enabled === true,
     execution.bashElevated?.allowed === true,
     execution.bashElevated?.defaultLevel ?? "",
@@ -200,13 +202,24 @@ function resolveRoomAggregateSource(source: FollowupRun): FollowupRun | undefine
     : undefined;
 }
 
+function resolveRoomAggregateBatchKey(run: FollowupRun): string | undefined {
+  const baseline = resolveRoomAggregateSource(run);
+  return (
+    baseline && JSON.stringify(["room-aggregate", resolveFollowupDeliveryStorageKey(baseline)])
+  );
+}
+
 // Frond (karmaterminal, #1415): the batch identity. A room event with baseline authority keys by
 // the room baseline so senders share one collect; everything else keeps its storage key.
 export function resolveFollowupBatchKey(run: FollowupRun): string {
-  const baseline = resolveRoomAggregateSource(run);
-  return baseline
-    ? JSON.stringify(["room-aggregate", resolveFollowupDeliveryStorageKey(baseline)])
-    : resolveFollowupDeliveryStorageKey(run);
+  return resolveRoomAggregateBatchKey(run) ?? resolveFollowupDeliveryStorageKey(run);
+}
+
+// Frond (karmaterminal, #1415): whether a claim may run as the senderless room baseline: every
+// member is aggregate-eligible under one room-aggregate key.
+export function isRoomAggregateBatch(sources: readonly FollowupRun[]): boolean {
+  const keys = new Set(sources.map(resolveRoomAggregateBatchKey));
+  return keys.size === 1 && !keys.has(undefined);
 }
 
 /** Storage grouping is policy-independent; drain prepares current screen/theme authority. */
