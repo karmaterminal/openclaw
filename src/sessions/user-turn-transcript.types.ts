@@ -90,6 +90,8 @@ export type UserTurnInput = Pick<PersistedUserTurnMessage, "display" | "excludeF
   idempotencyKey?: string;
   /** Private durable receipts for managed system events adopted by this turn. */
   sessionDeliveryAckIds?: readonly string[];
+  /** Continuation (karmaterminal): the returns an event turn consumes, each with its producing run. */
+  inputDeliveries?: readonly { deliveryId: string; sourceRunId?: string }[];
   /** Durable transcript message reference used to render and hydrate replies. */
   replyToId?: string;
   /** Bounded display fallback for replies whose target is outside loaded history. */

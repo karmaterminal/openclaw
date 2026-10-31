@@ -11,6 +11,7 @@ import {
 import { emitAgentRunStatusEvent } from "../../infra/agent-run-status-events.js";
 import { markDiagnosticRunProgress } from "../../logging/diagnostic-run-activity.js";
 import { getReplyOperationSessionReader } from "../../sessions/session-controller.state.js";
+import { markUserTurnInputDispatched } from "../../sessions/user-turn-transcript-input-run.js";
 import { createLazyRuntimeModule } from "../../shared/lazy-runtime.js";
 import { WORKER_ADMISSION_DEADLINE_MS } from "../../worker/worker-connection-contract.js";
 import { StaleWorkerBuildError } from "./admission.js";
@@ -429,6 +430,14 @@ export function createWorkerSessionTurnPlacementProvider(options: WorkerTurnLaun
                 environments: options.environments,
                 onHandoff: (custody?: { requiresTerminalReceipt: true }) => {
                   handedOff = true;
+                  // Continuation (karmaterminal): a legacy worker launch carries the input it just
+                  // marked sent, so the worker taking it consumed it. The admission protocol sends
+                  // it after handoff (nothing is sent yet here) and remote exec from its local run;
+                  // both report their own acceptance. A remote-exec handoff never reports: an
+                  // earlier refused candidate can leave the input marked sent.
+                  if (!remoteExec) {
+                    markUserTurnInputDispatched(turn.userTurnTranscriptRecorder);
+                  }
                   terminalReceiptRequired = custody?.requiresTerminalReceipt === true;
                   activeWorkerTurn?.beginExecution();
                   if (!admissionReported) {

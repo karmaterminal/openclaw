@@ -720,4 +720,29 @@ describe("persistUserTurnTranscript", () => {
       expect(metadata?.steerTargetRunId).toBe(producerTarget);
     },
   );
+
+  // openclaw#1504: only the host names the delegate returns an input consumed, and by which run.
+  it.each([true, false])(
+    "keeps a delegate-return consumption record host-owned across write hooks (event input: %s)",
+    async (isEvent) => {
+      const inputDeliveries = [{ deliveryId: "delivery-1", sourceRunId: "delegate-run" }];
+      const forged = { inputDeliveries: [{ deliveryId: "forged" }], inputRunId: "forged-run" };
+      const runtime = restorePreparedUserTurnOperationalMetaForRuntime({
+        preparedMessage: userMessage(
+          "returned",
+          isEvent ? { __openclaw: { inputDeliveries } } : {},
+        ),
+        runtimeMessage: userMessage("returned", { __openclaw: forged }),
+      });
+      expect(runtime["__openclaw"]).toEqual(isEvent ? { inputDeliveries } : undefined);
+      installWriteHook((message) => ({ ...message, __openclaw: forged }));
+      await writeInput(
+        { text: "returned", ...(isEvent ? { inputDeliveries } : {}) },
+        { beforeMessageWrite: runAgentHarnessBeforeMessageWriteHook },
+      );
+      const metadata = (await readMessage())?.["__openclaw"] as Record<string, unknown> | undefined;
+      expect(metadata?.inputDeliveries).toEqual(isEvent ? inputDeliveries : undefined);
+      expect(metadata?.inputRunId).toBeUndefined();
+    },
+  );
 });

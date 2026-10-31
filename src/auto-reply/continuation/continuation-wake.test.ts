@@ -5,6 +5,7 @@
 // continuation chain-budget gate, restart replay and the durable session-delivery queue.
 // Only the model decision (runEmbeddedAgent) is synthetic.
 import { expectDefined } from "@openclaw/normalization-core/expect";
+import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { afterEach, expect, it, vi } from "vitest";
 import { createDeferred, withinTest } from "../../../test/helpers/promise.js";
 import {
@@ -17,12 +18,14 @@ import { runEmbeddedAgent } from "../../agents/embedded-agent.js";
 import type { ChannelOutboundAdapter } from "../../channels/plugins/outbound.types.js";
 import type { ChannelPlugin } from "../../channels/plugins/types.public.js";
 import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
+import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
 import {
   assignSessionOwner,
   deleteSessionEntryLifecycle,
   replaceSessionEntry,
 } from "../../config/sessions/session-accessor.js";
 import { readSessionEntryInWorker } from "../../config/sessions/session-entry-read-writable.js";
+import { readSessionHistoryPageInWorker } from "../../config/sessions/session-history-worker-runtime.js";
 import { captureSessionRecipientAuthority } from "../../config/sessions/session-sharing-store.async.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { recoverPendingProducedSessionDeliveries } from "../../gateway/server-restart-sentinel.js";
@@ -44,6 +47,8 @@ import {
   restoreActivePluginRegistrySnapshot,
   setActivePluginRegistry,
 } from "../../plugins/runtime.js";
+import { markUserTurnInputDispatched } from "../../sessions/user-turn-transcript-input-run.js";
+import { createUserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
 import { resolveOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
 import { openOpenClawStateDatabase } from "../../state/openclaw-state-db.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
@@ -53,7 +58,9 @@ import {
 } from "../../test-utils/channel-plugins.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { normalizeSessionDeliveryState } from "../../utils/delivery-context.shared.js";
+import { getReplyFromConfig } from "../reply/get-reply.js";
 import { enqueueSessionEventForHost } from "../reply/session-event-handoff.js";
+import type { MsgContext } from "../templating.js";
 import {
   requestContinuationWake,
   resetContinuationWakesForTest,
@@ -81,6 +88,23 @@ vi.mock("../../infra/session-delivery-queue-storage.js", async (importOriginal) 
     },
   };
 });
+const failingStamp = vi.hoisted(() => ({ armed: false }));
+// At-anchor rewrites stay real unless a case arms the consuming-run stamp's write to fail.
+vi.mock("../../config/sessions/session-message-rewrite.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../config/sessions/session-message-rewrite.js")>();
+  return {
+    ...actual,
+    rewritePreparedTranscriptMessageAtAnchor: async (
+      ...args: Parameters<typeof actual.rewritePreparedTranscriptMessageAtAnchor>
+    ) => {
+      if (failingStamp.armed) {
+        throw new Error("synthetic stamp write failure");
+      }
+      return await actual.rewritePreparedTranscriptMessageAtAnchor(...args);
+    },
+  };
+});
 // Match Gateway startup: activate the real reply runtimes before admitting turns.
 await Promise.all([
   import("../dispatch.js"),
@@ -94,6 +118,7 @@ const ROUTE = { channel: "telegram", to: "-100001", accountId: "default" };
 
 afterEach(() => {
   failingAcks.clear();
+  failingStamp.armed = false;
   resetContinuationWakesForTest();
   resetSystemEventsForTest();
   runEmbeddedAgentMock.mockReset();
@@ -177,11 +202,22 @@ function silentTerminal(): EmbeddedAgentRunResult {
   return { payloads: [], meta: { durationMs: 1, terminalReply: { disposition: "silent" } } };
 }
 
+/**
+ * Runs the turn in the runner's order: its input commits, its request is sent, and the provider
+ * accepts it. The accepted-dispatch boundary itself is proven at the attempt and worker owners.
+ */
+async function admitWokenTurn(params: RunEmbeddedAgentParams) {
+  await admitModelTurn(params);
+  params.userTurnTranscriptRecorder?.markSentToProvider?.();
+  markUserTurnInputDispatched(params.userTurnTranscriptRecorder);
+  await params.userTurnTranscriptRecorder?.waitForRuntimePersistence();
+}
+
 /** The model answers every turn with `reply`, or ends it silently for `NO_REPLY`. */
 function answerTurns(prompts: string[], reply: string) {
   runEmbeddedAgentMock.mockImplementation(async (params: RunEmbeddedAgentParams) => {
     prompts.push(params.prompt);
-    await admitModelTurn(params);
+    await admitWokenTurn(params);
     return reply === "NO_REPLY"
       ? silentTerminal()
       : {
@@ -211,8 +247,105 @@ async function produceReturn(
   return expectDefined(outcome.deliveryIds[0], "durable return row");
 }
 
+/** The first turn holds the session busy until released; every turn ends silently. */
+function holdFirstTurn(prompts: string[]) {
+  const started = createDeferred();
+  const released = createDeferred();
+  runEmbeddedAgentMock.mockImplementation(async (params: RunEmbeddedAgentParams) => {
+    prompts.push(params.prompt);
+    await admitWokenTurn(params);
+    if (prompts.length === 1) {
+      started.resolve();
+      await released.promise;
+    }
+    return silentTerminal();
+  });
+  return { started: started.promise, release: () => released.resolve() };
+}
+
+/** Resolves once the row's queued event is handed to a turn (owned, not yet adopted). */
+function handedOff(sessionKey: string, row: string) {
+  const queueKey = resolveSystemEventQueueKey(sessionKey, AGENT_ID);
+  return vi.waitFor(() =>
+    expect(
+      peekSystemEventEntries(queueKey).some(
+        (event) => event.sessionDeliveryAckId === row && isSystemEventTurnOwned(queueKey, event),
+      ),
+    ).toBe(true),
+  );
+}
+
 async function rowPending(id: string) {
   return (await loadPendingSessionDelivery(id, captureOpenClawStateWorkerContext())) !== null;
+}
+
+type StoredUserRow = {
+  provenance?: { kind?: string; sourceTool?: string; runId?: string };
+  __openclaw?: Record<string, unknown>;
+};
+
+/** An operator's direct message on the session's route. */
+function operatorMessage(sessionKey: string): MsgContext {
+  return {
+    Body: "what did the delegate find?",
+    SessionKey: sessionKey,
+    Provider: "telegram",
+    Surface: "telegram",
+    OriginatingChannel: "telegram",
+    OriginatingTo: ROUTE.to,
+    AccountId: ROUTE.accountId,
+    ChatType: "direct",
+    From: "telegram:operator",
+    SenderId: "operator",
+    CommandAuthorized: true,
+  };
+}
+
+/** The session's user rows as sessions.get returns them: its unprojected stored-transcript read. */
+async function readStoredUserRows(sessionKey: string): Promise<StoredUserRow[]> {
+  const entry = await readSessionEntryInWorker({ agentId: AGENT_ID, sessionKey });
+  const sessionId = expectDefined(entry?.sessionId, "session id");
+  const messages = await readSessionHistoryPageInWorker({
+    kind: "recent",
+    params: {
+      target: {
+        agentId: AGENT_ID,
+        sessionEntry: { sessionId },
+        sessionId,
+        sessionKey,
+        storePath: resolveSessionStorePathCore(undefined, { agentId: AGENT_ID }),
+      },
+      maxMessages: 200,
+      maxLines: 4020,
+      allowResetArchiveFallback: true,
+    },
+  });
+  return messages.filter(
+    (message): message is StoredUserRow =>
+      typeof message === "object" && message !== null && Reflect.get(message, "role") === "user",
+  );
+}
+
+/** Run ids the synthetic model decisions were admitted under, in turn order. */
+function consumingRunIds() {
+  return runEmbeddedAgentMock.mock.calls.map(([params]) => params.runId);
+}
+
+/**
+ * The RFC's read rule (§2.4): a return is consumed only by a run that a stored input row names
+ * beside it; every other state is unknown.
+ */
+function consumptionOf(rows: readonly StoredUserRow[], deliveryId: string) {
+  const runIds = rows.flatMap((row) => {
+    const metadata = row["__openclaw"];
+    const deliveries = Array.isArray(metadata?.inputDeliveries) ? metadata.inputDeliveries : [];
+    return deliveries.some(
+      (delivery) => isRecord(delivery) && delivery.deliveryId === deliveryId,
+    ) && typeof metadata?.inputRunId === "string"
+      ? [metadata.inputRunId]
+      : [];
+  });
+  return runIds.length > 0 ? { state: "consumed", runIds } : { state: "unknown" };
 }
 
 it("hands a delegate return to one adopted turn that keeps the chain budget", async ({
@@ -242,6 +375,20 @@ it("hands a delegate return to one adopted turn that keeps the chain budget", as
       continuationChainCount: 2,
       continuationChainId: "chain-before-wake",
     });
+    // openclaw#1504: the input row names the return, its delegate's run, and the consuming run.
+    expect(await readStoredUserRows(sessionKey)).toMatchObject([
+      {
+        provenance: {
+          kind: "internal_system",
+          sourceTool: "continuation",
+          runId: "child-run:delegate alpha finished",
+        },
+        __openclaw: {
+          inputDeliveries: [{ deliveryId: row, sourceRunId: "child-run:delegate alpha finished" }],
+          inputRunId: expectDefined(consumingRunIds()[0], "consuming run"),
+        },
+      },
+    ]);
   });
 });
 
@@ -319,6 +466,16 @@ it("coalesces several pending returns into one turn without merging their rows",
     expect(prompts[0]).toContain("delegate two finished");
     expect(await rowPending(first)).toBe(false);
     expect(await rowPending(second)).toBe(false);
+    // openclaw#1504: the wake's provenance names only the last delegate; each row names its own.
+    const rows = await readStoredUserRows(sessionKey);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.["__openclaw"]).toMatchObject({
+      inputDeliveries: [
+        { deliveryId: first, sourceRunId: "child-run:delegate one finished" },
+        { deliveryId: second, sourceRunId: "child-run:delegate two finished" },
+      ],
+      inputRunId: expectDefined(consumingRunIds()[0], "consuming run"),
+    });
   });
 });
 
@@ -351,48 +508,42 @@ it("waits behind a busy session and acknowledges only once its turn is adopted",
   signal,
 }) => {
   await withWakeFixture("busy", async ({ sessionKey, prompts }) => {
-    const firstStarted = createDeferred();
-    const releaseFirst = createDeferred();
-    runEmbeddedAgentMock.mockImplementation(async (params: RunEmbeddedAgentParams) => {
-      prompts.push(params.prompt);
-      await admitModelTurn(params);
-      if (prompts.length === 1) {
-        firstStarted.resolve();
-        await releaseFirst.promise;
-      }
-      return silentTerminal();
-    });
+    const firstTurn = holdFirstTurn(prompts);
     const busy = enqueueSessionEventForHost("unrelated work in progress", {
       agentId: AGENT_ID,
       sessionKey,
       source: "task",
       deliver: false,
     });
-    await withinTest(firstStarted.promise, signal);
+    await withinTest(firstTurn.started, signal);
     const row = await produceReturn(sessionKey, "delegate behind busy turn");
 
     const wakes = settleContinuationWakesForTest();
-    await withinTest(
-      vi.waitFor(() =>
-        expect(
-          peekSystemEventEntries(resolveSystemEventQueueKey(sessionKey, AGENT_ID)).some((event) =>
-            isSystemEventTurnOwned(resolveSystemEventQueueKey(sessionKey, AGENT_ID), event),
-          ),
-        ).toBe(true),
-      ),
-      signal,
-    );
+    await withinTest(handedOff(sessionKey, row), signal);
     // Deferred behind the active run: handed off, not yet adopted, row still pending.
     expect(prompts).toHaveLength(1);
     expect(await rowPending(row)).toBe(true);
 
-    releaseFirst.resolve();
+    firstTurn.release();
     await withinTest(busy.settled, signal);
     await withinTest(wakes, signal);
 
     expect(prompts).toHaveLength(2);
     expect(prompts[1]).toContain("delegate behind busy turn");
     expect(await rowPending(row)).toBe(false);
+    // openclaw#1504: the run that executed the deferred return is stamped, not the busy run;
+    // an event turn that consumed no return carries no stamp.
+    const [busyRunId, wakeRunId] = consumingRunIds();
+    expect(wakeRunId).not.toBe(busyRunId);
+    const rows = await readStoredUserRows(sessionKey);
+    const busyInput = rows.find((input) => input.provenance?.sourceTool === "task");
+    expect(busyInput?.["__openclaw"]).not.toHaveProperty("inputRunId");
+    expect(rows.find((input) => input.provenance?.sourceTool === "continuation")).toMatchObject({
+      __openclaw: {
+        inputDeliveries: [{ deliveryId: row, sourceRunId: "child-run:delegate behind busy turn" }],
+        inputRunId: expectDefined(wakeRunId, "deferred consuming run"),
+      },
+    });
   });
 });
 
@@ -417,6 +568,15 @@ it("replays a pending return after restart and wakes as its producer would", asy
     expect(await readSessionEntryInWorker({ agentId: AGENT_ID, sessionKey })).toMatchObject({
       continuationChainCount: 2,
     });
+    // openclaw#1504: the replay keeps the row's delegate run; the post-recovery run is stamped.
+    expect(await readStoredUserRows(sessionKey)).toMatchObject([
+      {
+        __openclaw: {
+          inputDeliveries: [{ deliveryId: row, sourceRunId: "child-run:delegate before restart" }],
+          inputRunId: expectDefined(consumingRunIds()[0], "consuming run"),
+        },
+      },
+    ]);
   });
 });
 
@@ -571,3 +731,211 @@ it("emits the queue drain for the returns it hands off, parented by their tracep
     }
   });
 });
+
+// openclaw#1504: a user-authored row is never a delegate consumption, and the stamp is best-effort.
+it("never stamps a user-authored turn that adopts a queued return as a delegate consumption", async ({
+  signal,
+}) => {
+  await withWakeFixture("consuming-run-user", async ({ sessionKey, prompts }) => {
+    answerTurns(prompts, "Answered the operator.");
+    const row = await produceReturn(sessionKey, "delegate before the operator asked", {
+      wakeRecipients: false,
+    });
+
+    await withinTest(getReplyFromConfig(operatorMessage(sessionKey)), signal);
+
+    // The operator's turn adopted the return: it carries the receipt, but no consumption stamp.
+    expect(await rowPending(row)).toBe(false);
+    const rows = await readStoredUserRows(sessionKey);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.["__openclaw"]).toMatchObject({ sessionDeliveryAckIds: [row] });
+    expect(rows[0]?.["__openclaw"]).not.toHaveProperty("inputRunId");
+    expect(rows[0]?.["__openclaw"]).not.toHaveProperty("inputDeliveries");
+  });
+});
+
+it("keeps a woken turn and its return when the consuming-run stamp fails to write", async ({
+  signal,
+}) => {
+  await withWakeFixture(
+    "consuming-run-stamp-failure",
+    async ({ sessionKey, sendText, prompts }) => {
+      answerTurns(prompts, "Delegate result reviewed.");
+      const row = await produceReturn(sessionKey, "delegate with a lost stamp");
+      failingStamp.armed = true;
+
+      await withinTest(settleContinuationWakesForTest(), signal);
+
+      // The stamp is best-effort: the turn answers and the return settles without it.
+      expect(prompts).toHaveLength(1);
+      expect(sendText).toHaveBeenCalledOnce();
+      expect(await rowPending(row)).toBe(false);
+      const [input] = await readStoredUserRows(sessionKey);
+      expect(input?.["__openclaw"]).toMatchObject({
+        inputDeliveries: [{ deliveryId: row, sourceRunId: "child-run:delegate with a lost stamp" }],
+      });
+      expect(input?.["__openclaw"]).not.toHaveProperty("inputRunId");
+    },
+  );
+});
+
+it("maps each coalesced return to the run that adopted it, not a run it queued behind", async ({
+  signal,
+}) => {
+  await withWakeFixture("consumed-coalesced", async ({ sessionKey, prompts }) => {
+    const firstTurn = holdFirstTurn(prompts);
+    const first = await produceReturn(sessionKey, "delegate one finished");
+    const second = await produceReturn(sessionKey, "delegate two finished");
+    const coalescedWake = settleContinuationWakesForTest();
+    await withinTest(firstTurn.started, signal);
+    // A third return lands while the coalesced turn runs; its own wake queues behind that turn.
+    const third = await produceReturn(sessionKey, "delegate three finished");
+    const laterWake = settleContinuationWakesForTest();
+    await withinTest(handedOff(sessionKey, third), signal);
+    firstTurn.release();
+    await withinTest(Promise.all([coalescedWake, laterWake]), signal);
+
+    // Each credited run's model input carried exactly the returns it is credited with.
+    const [coalescedRun, laterRun] = consumingRunIds();
+    expect(laterRun).not.toBe(coalescedRun);
+    expect(prompts).toHaveLength(2);
+    expect(prompts[0]).toContain("delegate two finished");
+    expect(prompts[0]).not.toContain("delegate three finished");
+    expect(prompts[1]).toContain("delegate three finished");
+    expect(prompts[1]).not.toContain("delegate one finished");
+    const rows = await readStoredUserRows(sessionKey);
+    expect([first, second, third].map((id) => consumptionOf(rows, id))).toEqual([
+      { state: "consumed", runIds: [coalescedRun] },
+      { state: "consumed", runIds: [coalescedRun] },
+      { state: "consumed", runIds: [laterRun] },
+    ]);
+  });
+});
+
+it("never reports a retired return as consumed by the turn its wake still ran", async ({
+  signal,
+}) => {
+  await withWakeFixture("consumed-retired", async ({ sessionKey, prompts }) => {
+    answerTurns(prompts, "Current result reviewed.");
+    const scope = { agentId: AGENT_ID, sessionKey };
+    const retired = await produceReturn(sessionKey, "delegate for the old owner", {
+      recipientAuthorities: new Map([[sessionKey, await captureSessionRecipientAuthority(scope)]]),
+    });
+    assignSessionOwner(scope, {
+      owner: { type: "human", id: "new-owner" },
+      assignedBy: { type: "human", id: "operator" },
+    });
+    const current = await produceReturn(sessionKey, "delegate for the current owner", {
+      recipientAuthorities: new Map([[sessionKey, await captureSessionRecipientAuthority(scope)]]),
+    });
+
+    await withinTest(settleContinuationWakesForTest(), signal);
+
+    // One coalesced wake: the retired row settles undelivered, the current one is adopted.
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain("delegate for the current owner");
+    expect(prompts[0]).not.toContain("delegate for the old owner");
+    expect(await rowPending(retired)).toBe(false);
+    const rows = await readStoredUserRows(sessionKey);
+    expect(consumptionOf(rows, retired)).toEqual({ state: "unknown" });
+    expect(consumptionOf(rows, current)).toEqual({
+      state: "consumed",
+      runIds: [consumingRunIds()[0]],
+    });
+  });
+});
+
+it("reports a return adopted without a durable receipt as unknown, though its model saw it", async ({
+  signal,
+}) => {
+  await withWakeFixture("consumed-no-receipt", async ({ sessionKey, prompts }) => {
+    answerTurns(prompts, "Answered the operator.");
+    const row = await produceReturn(sessionKey, "delegate the operator's turn picked up", {
+      wakeRecipients: false,
+    });
+    // The operator's input is durable before its turn drains the return, so its recorder cannot
+    // carry the return's id (session-system-event-adoption.ts: adoptedWithoutReceipt).
+    const sessionEntry = expectDefined(
+      await readSessionEntryInWorker({ agentId: AGENT_ID, sessionKey }),
+      "session entry",
+    );
+    const recorder = createUserTurnTranscriptRecorder({
+      input: { text: "what did the delegate find?", timestamp: Date.now() },
+      target: {
+        agentId: AGENT_ID,
+        sessionKey,
+        sessionId: sessionEntry.sessionId,
+        sessionEntry,
+        storePath: resolveSessionStorePathCore(undefined, { agentId: AGENT_ID }),
+      },
+    });
+    await recorder.persistApproved();
+
+    await withinTest(
+      getReplyFromConfig(operatorMessage(sessionKey), { userTurnTranscriptRecorder: recorder }),
+      signal,
+    );
+
+    // Adopted and acknowledged, and the model saw it, yet no durable row names it: unknown.
+    expect(prompts).toHaveLength(1);
+    expect(runEmbeddedAgentMock.mock.calls[0]?.[0].currentInboundContext?.text).toContain(
+      "delegate the operator's turn picked up",
+    );
+    expect(await rowPending(row)).toBe(false);
+    const rows = await readStoredUserRows(sessionKey);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.["__openclaw"]).not.toHaveProperty("sessionDeliveryAckIds");
+    expect(consumptionOf(rows, row)).toEqual({ state: "unknown" });
+  });
+});
+
+it.for([
+  { dispatched: false, crashed: "after committing its input, before provider dispatch" },
+  { dispatched: true, crashed: "after provider dispatch" },
+])(
+  "keeps a crashed run's evidence its own when a replay adopts the return again ($crashed)",
+  async ({ dispatched }, { signal }) => {
+    await withWakeFixture(`consumed-replay-${dispatched}`, async ({ sessionKey, prompts }) => {
+      const row = await produceReturn(sessionKey, "delegate before the crash");
+      // The crashed run adopts the return, but its queue ack never lands.
+      failingAcks.add(row);
+      runEmbeddedAgentMock.mockImplementationOnce(async (params: RunEmbeddedAgentParams) => {
+        prompts.push(params.prompt);
+        await (dispatched ? admitWokenTurn(params) : admitModelTurn(params));
+        throw new Error("synthetic process death");
+      });
+      await withinTest(settleContinuationWakesForTest(), signal);
+      const crashedRun = expectDefined(consumingRunIds()[0], "crashed run");
+      // The process dies: queued events and wakes are gone, the unacknowledged row stays.
+      resetContinuationWakesForTest();
+      resetSystemEventsForTest();
+      failingAcks.clear();
+      expect(await rowPending(row)).toBe(true);
+      expect(consumptionOf(await readStoredUserRows(sessionKey), row)).toEqual(
+        dispatched ? { state: "consumed", runIds: [crashedRun] } : { state: "unknown" },
+      );
+
+      answerTurns(prompts, "Recovered result reviewed.");
+      await recoverPendingProducedSessionDeliveries({
+        deps: {},
+        queueContext: captureOpenClawStateWorkerContext(),
+      });
+      await withinTest(settleContinuationWakesForTest(), signal);
+
+      // Recovering the row never moves the crashed run's evidence; the replay records its own.
+      const replayRun = expectDefined(consumingRunIds()[1], "replay run");
+      expect(replayRun).not.toBe(crashedRun);
+      expect(prompts[1]).toContain("delegate before the crash");
+      expect(await rowPending(row)).toBe(false);
+      const rows = await readStoredUserRows(sessionKey);
+      expect(rows.map((input) => input["__openclaw"]?.inputRunId)).toEqual([
+        dispatched ? crashedRun : undefined,
+        replayRun,
+      ]);
+      expect(consumptionOf(rows, row)).toEqual({
+        state: "consumed",
+        runIds: dispatched ? [crashedRun, replayRun] : [replayRun],
+      });
+    });
+  },
+);

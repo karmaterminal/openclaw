@@ -1,10 +1,19 @@
+import assert from "node:assert/strict";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core/expect";
+import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import type { StreamFn } from "openclaw/plugin-sdk/agent-core";
 import { Value } from "typebox/value";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { WorkerConnectRequestFrameSchema } from "../../../packages/gateway-protocol/src/schema/worker-admission.js";
 import { awaitGateBeforeSettlement, createDeferred } from "../../../test/helpers/promise.js";
 import { makeTextToolResult } from "../../../test/helpers/text-tool-result.js";
+import { submitEmbeddedAttemptPrompt } from "../../agents/embedded-agent-runner/run/attempt-prompt-submit.js";
+import {
+  createBaseInput,
+  createSession,
+} from "../../agents/embedded-agent-runner/run/attempt-prompt-submit.test-support.js";
 import {
   installSessionPlacementAdmissionProvider,
   withSessionPlacementTurnAdmission,
@@ -14,6 +23,7 @@ import {
   makeAgentAssistantMessage,
   makeAgentUserMessage,
 } from "../../agents/test-helpers/agent-message-fixtures.js";
+import { makeProviderModelFixture } from "../../agents/test-helpers/provider-model-fixture.js";
 import {
   configureExecutionIdentityAdmissionSink,
   type ExecutionIdentityAdmissionWork,
@@ -24,6 +34,7 @@ import { withOwnedSessionTranscriptWrites } from "../../config/sessions/transcri
 import { setActiveNodeContexts } from "../../infra/active-node-context.js";
 import { runCommandWithTimeout, type SpawnResult } from "../../process/exec.js";
 import { waitForSessionRunEnd } from "../../sessions/session-controller.native-runtime.js";
+import { bindUserTurnInputRunId } from "../../sessions/user-turn-transcript-input-run.js";
 import { createUserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
 import {
   buildWorkerConnectParams,
@@ -39,6 +50,7 @@ import {
   environmentForTunnel,
   launchDescriptor,
   localResult,
+  remoteExecEnvironment,
   runIdentity,
 } from "./worker-turn-launcher-flow.test-support.js";
 import {
@@ -454,5 +466,75 @@ describe("worker turn launcher remote handoff", () => {
             ))),
     );
     expect(persistedCurrentUsers).toHaveLength(1);
+  });
+
+  // openclaw#1504: remote exec hands off before its local run sends the input, so the handoff
+  // never names a consumer, even when an earlier candidate's local run sent it and was refused.
+  it("never stamps a woken input at a remote-exec handoff after a refused candidate", async () => {
+    const remote = path.join(root, "remote-workspace");
+    await mkdir(remote);
+    await seedActivePlacement("remote-exec", remote);
+    const input = turn("remote-consuming-run");
+    const inputDeliveries = [{ deliveryId: "delivery-1", sourceRunId: "delegate-run" }];
+    const recorder = createUserTurnTranscriptRecorder({
+      target: () => ({ ...sessionTarget, sessionEntry: undefined }),
+      input: { text: input.prompt, inputDeliveries },
+    });
+    bindUserTurnInputRunId(recorder, input.runId);
+    await recorder.persistApproved();
+    // A local run through the real attempt boundary whose provider stream refuses the request.
+    const refusal = new Error("synthetic provider refusal before dispatch");
+    const runRefused = async () => {
+      const { activeSession } = createSession();
+      activeSession.agent.streamFn = vi.fn<StreamFn>(async () => {
+        throw refusal;
+      });
+      const base = createBaseInput();
+      await submitEmbeddedAttemptPrompt({
+        ...base,
+        attempt: { ...base.attempt, userTurnTranscriptRecorder: recorder },
+        activeSession,
+        promptActiveSession: async (_prompt, options) => {
+          options?.preflightResult?.(true);
+          const model = makeProviderModelFixture({
+            id: "test-model",
+            api: "openai-responses",
+            provider: "openai",
+            baseUrl: "https://example.invalid",
+          });
+          await activeSession.agent.streamFn(model, { messages: [] });
+        },
+      });
+      return await localResult();
+    };
+    await expect(runRefused()).rejects.toBe(refusal);
+    const environments = remoteExecEnvironment(
+      async (command) =>
+        await runCommandWithTimeout([...command.argv], {
+          cwd: remote,
+          input: command.input,
+          timeoutMs: 5000,
+        }),
+    );
+    try {
+      const fallback = await createLauncher({ environments })
+        .executeTurn(
+          runIdentity(input.runId),
+          { ...input, userTurnTranscriptRecorder: recorder },
+          runRefused,
+        )
+        .catch((error: unknown) => error);
+      expect(environments.startTunnel).toHaveBeenCalledOnce();
+      expect(fallback).toBe(refusal);
+      await recorder.waitForRuntimePersistence();
+
+      const [stored] = (await openSessionManager()).getEntries();
+      assert(stored?.type === "message", "Expected the committed event input");
+      const metadata = isRecord(stored.message) ? stored.message["__openclaw"] : undefined;
+      expect(metadata).toMatchObject({ inputDeliveries });
+      expect(metadata).not.toHaveProperty("inputRunId");
+    } finally {
+      input.preparedRunAdmission.close();
+    }
   });
 });

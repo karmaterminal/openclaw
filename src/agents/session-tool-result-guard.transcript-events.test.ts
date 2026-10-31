@@ -1,7 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { setImmediate as yieldToEventLoop } from "node:timers/promises";
+import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import type { StreamFn } from "openclaw/plugin-sdk/agent-core";
 import { SessionManager } from "openclaw/plugin-sdk/agent-sessions";
+import { createAssistantMessageEventStream } from "openclaw/plugin-sdk/llm";
 import { upsertSessionEntry } from "openclaw/plugin-sdk/session-store-runtime";
 import { closeOpenClawAgentDatabasesForTest } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
@@ -41,6 +44,7 @@ import {
   onInternalSessionTranscriptUpdate,
   type InternalSessionTranscriptUpdate,
 } from "../sessions/transcript-events.js";
+import { bindUserTurnInputRunId } from "../sessions/user-turn-transcript-input-run.js";
 import { createUserTurnTranscriptRecorder } from "../sessions/user-turn-transcript.js";
 import {
   closeOpenClawAgentDatabasesAsync,
@@ -48,6 +52,13 @@ import {
 } from "../state/openclaw-agent-db.js";
 import { createAssistantErrorTranscript } from "./assistant-error-transcript.js";
 import { normalizeAssistantReplayContent } from "./embedded-agent-runner/replay-history.js";
+import { submitEmbeddedAttemptPrompt } from "./embedded-agent-runner/run/attempt-prompt-submit.js";
+import {
+  createBaseInput,
+  createSession,
+  sessionId as promptStateSessionId,
+} from "./embedded-agent-runner/run/attempt-prompt-submit.test-support.js";
+import { clearEmbeddedSessionPromptStates } from "./embedded-agent-runner/session-prompt-state.js";
 import { createSubscribedSessionHarness } from "./embedded-agent-subscribe.e2e-harness.js";
 import { runAgentHarnessBeforeMessageWriteHook } from "./harness/hook-helpers.js";
 import { guardSessionManager } from "./session-tool-result-guard-wrapper.js";
@@ -103,6 +114,11 @@ function installWriteHook(
     handler,
   });
   initializeGlobalHookRunner(registry);
+}
+/** The consumption record's run, read by key from a stored or recorded input row (#1504). */
+function readInputRunId(message: unknown) {
+  const metadata = isRecord(message) ? message["__openclaw"] : undefined;
+  return isRecord(metadata) ? metadata.inputRunId : undefined;
 }
 const listeners: Array<() => void> = [];
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
@@ -440,6 +456,99 @@ describe("guardSessionManager transcript updates", () => {
       }
     },
   );
+
+  // openclaw#1504: a woken event's staged input is committed by this runtime writer; only a run
+  // whose provider dispatch is then accepted is stamped as its consumer.
+  it.each([
+    { outcome: "stamped once its provider dispatch is accepted", inputRunId: "consuming-run" },
+    {
+      outcome: "never stamped when its provider stream rejects before dispatch",
+      failure: "reject",
+    },
+    { outcome: "never stamped when aborted before provider dispatch", failure: "abort" },
+  ])("commits a staged event input: $outcome", async (testCase) => {
+    const { root, target, sessionEntry } = await openPersistedSessionManager();
+    const inputDeliveries = [{ deliveryId: "delivery-1", sourceRunId: "delegate-run" }];
+    const source = createUserTurnTranscriptRecorder({
+      input: {
+        text: "Delegate finished",
+        timestamp: 1,
+        idempotencyKey: "occurrence-1",
+        provenance: { kind: "internal_system", sourceTool: "continuation", runId: "delegate-run" },
+        inputDeliveries,
+      },
+      target: { ...target, sessionEntry },
+    });
+    try {
+      expect(await source.stageApproved!({ runId: "occurrence-1", assertCurrent: () => {} })).toBe(
+        true,
+      );
+      bindUserTurnInputRunId(source, "consuming-run");
+      const approved = await source.resolveMessage();
+      assert(approved, "Expected the staged event input");
+      const guarded = guardSessionManager(await SessionManager.openAsync(target, root), {
+        ...target,
+        preparedUserTurnMessage: approved,
+        preparedUserTurnTranscriptRecorder: source,
+      });
+
+      const entryId = await persistAgentSessionMessage(
+        guarded,
+        { ...approved, content: "Rendered event prompt" },
+        { invalidateSerializedPrefixCache: false },
+      );
+      // The real provider boundary: a request aborted after the commit, or one its provider stream
+      // rejects before accepting it (a rate-limit, auth or launch failure), never reaches the model.
+      const { activeSession } = createSession();
+      const dispatchFailure = new Error("synthetic provider launch failure before dispatch");
+      const providerStream = vi.fn<StreamFn>(async () => {
+        if (testCase.failure === "reject") {
+          throw dispatchFailure;
+        }
+        return createAssistantMessageEventStream();
+      });
+      activeSession.agent.streamFn = providerStream;
+      const request = new AbortController();
+      const input = createBaseInput();
+      const failure = await submitEmbeddedAttemptPrompt({
+        ...input,
+        attempt: { ...input.attempt, userTurnTranscriptRecorder: source },
+        activeSession,
+        promptActiveSession: async (_prompt, options) => {
+          options?.preflightResult?.(true);
+          if (testCase.failure === "abort") {
+            request.abort();
+          }
+          await activeSession.agent.streamFn(model, { messages: [] }, { signal: request.signal });
+        },
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      if (testCase.failure === "abort") {
+        expect(failure).toMatchObject({ name: "AbortError" });
+      } else {
+        expect(failure).toBe(testCase.failure ? dispatchFailure : undefined);
+      }
+      await source.waitForRuntimePersistence();
+
+      assert(entryId);
+      expect(providerStream).toHaveBeenCalledTimes(testCase.failure === "abort" ? 0 : 1);
+      const stored = SessionManager.open(target, root).getEntry(entryId);
+      assert(stored?.type === "message", "Expected the committed event input");
+      expect(stored.message).toMatchObject({
+        content: "Delegate finished",
+        __openclaw: { inputDeliveries },
+      });
+      for (const message of [stored.message, source.getPersistedMessage?.()]) {
+        expect(readInputRunId(message)).toBe(testCase.inputRunId);
+      }
+      expect(await listSessionPendingInputs(target)).toEqual({ items: [], total: 0 });
+    } finally {
+      source.finishPendingInput?.("interrupted");
+      clearEmbeddedSessionPromptStates([promptStateSessionId]);
+    }
+  });
 
   it("preserves text with one fresh SQLite admission across replay despite logging patterns", async () => {
     const config = { logging: { redactPatterns: [String.raw`private-note=([^\s]+)`] } };

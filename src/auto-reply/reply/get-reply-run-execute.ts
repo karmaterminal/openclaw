@@ -330,6 +330,10 @@ export async function executePreparedReplyRun(
           requesterOrigin,
           ...(inputIdempotencyKey ? { idempotencyKey: inputIdempotencyKey } : {}),
           ...managedDeliveryTurn.resolveManagedDeliveryAckInput(managedSystemEventDeliveries),
+          // Only a host-issued event turn names the returns it consumes; plugins cannot.
+          ...(opts?.internalEventExecution && opts.continuationInputDeliveries?.length
+            ? { inputDeliveries: opts.continuationInputDeliveries }
+            : {}),
           ...(inputProvenance ? { provenance: inputProvenance } : {}),
           ...(Object.keys(transport).length > 0 ? { transport } : {}),
           ...(userTurnMediaForPersistence.length > 0 ? { media: userTurnMediaForPersistence } : {}),

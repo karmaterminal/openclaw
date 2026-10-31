@@ -4,6 +4,7 @@ import {
   type SessionSourceAssertion,
 } from "../../../config/sessions/session-source-authority.js";
 import type { ImageContent } from "../../../llm/types.js";
+import { markUserTurnInputDispatched } from "../../../sessions/user-turn-transcript-input-run.js";
 import type { createTrajectoryRuntimeRecorder } from "../../../trajectory/runtime.js";
 import { isOpenClawSystemUpdateMessage } from "../../internal-runtime-context.js";
 import type { Agent, AgentMessage } from "../../runtime/index.js";
@@ -216,6 +217,10 @@ export async function submitEmbeddedAttemptPrompt(input: {
             projectionRecorder?.markSentToProvider?.();
           }
           const stream = await baseStreamFn(model, requestContext, options);
+          // Continuation (karmaterminal): the provider accepted the request; its input is consumed.
+          if (foregroundRequest) {
+            markUserTurnInputDispatched(projectionRecorder);
+          }
           return stream;
         },
         { checkAfter: false },

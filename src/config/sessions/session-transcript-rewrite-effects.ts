@@ -21,6 +21,7 @@ export function transcriptRewritePreservesAdmission(
     isRecord(before) && isUserMessage(before.message) ? before.message["__openclaw"] : undefined;
   const previousSteerTarget = beforeMetadata?.steerTargetRunId;
   const previousProjection = beforeMetadata?.modelPromptProjection;
+  const previousInputRunId = beforeMetadata?.inputRunId;
   for (const event of [before, after]) {
     if (!isRecord(event) || event.type !== "message" || !isUserMessage(event.message)) {
       return false;
@@ -40,6 +41,15 @@ export function transcriptRewritePreservesAdmission(
     }
     if (metadata) {
       delete metadata.steerTargetRunId;
+      // Continuation (karmaterminal): first naming the run that consumed an input is correlation.
+      if (
+        event === after &&
+        previousInputRunId === undefined &&
+        typeof metadata.inputRunId === "string" &&
+        metadata.inputRunId.length > 0
+      ) {
+        delete metadata.inputRunId;
+      }
       // Recording already-identical replay text must not revoke earlier completed turns.
       if (event === after && previousProjection === undefined && metadata.modelPromptProjection) {
         const projection = metadata.modelPromptProjection;

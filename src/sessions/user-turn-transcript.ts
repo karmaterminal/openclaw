@@ -28,6 +28,7 @@ import {
   registerUserTurnTranscriptAdmissionOwner,
   inheritUserTurnPromptReactionSource,
 } from "./user-turn-transcript-admission.js";
+import { registerUserTurnInputDispatch } from "./user-turn-transcript-input-run.js";
 import { persistUserTurnInput, stageUserTurnPendingInput } from "./user-turn-transcript-media.js";
 import { createUserTurnProcessingCompletion } from "./user-turn-transcript-processing.js";
 import {
@@ -118,6 +119,7 @@ export function createUserTurnTranscriptRecorder(
   let admissionWrite: Promise<void> | undefined;
   let replacementText: string | undefined;
   let confirmedSteerTargetRunId: string | undefined;
+  let inputRunStamp: Promise<void> | undefined;
   let pendingInput: Awaited<ReturnType<typeof stageUserTurnPendingInput>>;
   const processing = createUserTurnProcessingCompletion(
     () => pendingInput,
@@ -318,6 +320,7 @@ export function createUserTurnTranscriptRecorder(
     }
     // A failed durable admission reaches the turn owner before provider dispatch.
     await admissionWrite;
+    await inputRunStamp;
   };
 
   const prepareProjectionParams = async (text: string, assertCurrent: () => void) => {
@@ -712,6 +715,10 @@ export function createUserTurnTranscriptRecorder(
   });
   registerUserTurnInputActor(recorder, (binding) => {
     inputActorBinding = binding;
+  });
+  // Continuation (karmaterminal): a run consumed this input once its sent request was accepted.
+  registerUserTurnInputDispatch(recorder, (schedule) => {
+    inputRunStamp ??= sentToProvider ? schedule(admissionWrite, handlePersistenceError) : undefined;
   });
   registerUserTurnTranscriptAdmissionOwner(recorder, {
     requesterOrigin: () =>

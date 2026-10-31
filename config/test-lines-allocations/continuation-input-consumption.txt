@@ -1,0 +1,2 @@
+# karmaterminal/openclaw#1504 (continuation input consumption): fossils that an event input carrying delegate returns is stamped with its consuming run only after that run's provider dispatch is accepted (embedded stream, legacy worker launch, admission worker, remote-exec handoff), and reads unknown when the run was aborted, blocked, refused or never dispatched; coalesced, retired, receipt-less and replay cases.
+638
