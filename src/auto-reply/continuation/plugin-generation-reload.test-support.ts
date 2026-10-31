@@ -8,7 +8,10 @@ import {
   withPreparedModelRuntimePluginGenerationScope,
 } from "../../agents/prepared-model-runtime-generation-scope.js";
 import { acquirePreparedModelRuntimeSnapshotInvocation } from "../../agents/prepared-model-runtime.resources.js";
-import type { PreparedModelRuntimePluginGeneration } from "../../agents/prepared-model-runtime.types.js";
+import type {
+  PreparedModelRuntimePluginGeneration,
+  PreparedReplyDispatchRuntime,
+} from "../../agents/prepared-model-runtime.types.js";
 import { createTestInstance } from "../../plugins/plugin-instance.test-support.js";
 import { createEmptyPluginMetadataSnapshot } from "../../plugins/plugin-metadata-empty.test-support.js";
 import { createEmptyPluginRegistry } from "../../plugins/registry-empty.js";
@@ -24,11 +27,16 @@ import {
   withPluginRuntimeGenerationScope,
 } from "../../plugins/runtime/generation-scope.js";
 import { createPluginRecord } from "../../plugins/status.test-helpers.js";
+import {
+  bindPreparedReplyDispatchRuntime,
+  getPreparedReplyDispatchRuntime,
+} from "../reply/prepared-reply-dispatch-context.js";
 
 export type ObservedPluginGeneration = {
   registry: string | undefined;
   generationRegistry: string | undefined;
   preparedGeneration: string | undefined;
+  dispatchGeneration: string | undefined;
   plugin: string | undefined;
 };
 
@@ -37,6 +45,7 @@ export const CURRENT_PLUGIN_GENERATION: ObservedPluginGeneration = {
   registry: "current",
   generationRegistry: undefined,
   preparedGeneration: undefined,
+  dispatchGeneration: undefined,
   plugin: "current",
 };
 
@@ -77,6 +86,15 @@ export function createPluginGenerationReload(generationOverlap: boolean) {
     configuredCatalogEntries: [],
     pluginRegistry: previous.registry,
   };
+  const dispatchRuntime: PreparedReplyDispatchRuntime = {
+    agentId: "main",
+    agentDir: "/synthetic/agent",
+    workspaceDir: "/synthetic/workspace",
+    config: {},
+    modelCatalog: { entries: [], routeVariants: [] },
+    inboundPluginRegistry: previous.registry,
+    pluginGeneration: preparedGeneration,
+  };
   const original = captureActivePluginRegistrySnapshot();
   setActivePluginRegistry(previous.registry);
   // The production admission: a retained invocation exists only for opted-in plugins.
@@ -84,16 +102,18 @@ export function createPluginGenerationReload(generationOverlap: boolean) {
   const generationOf = (registry: PluginRegistry | null | undefined) =>
     [previous, current].find((generation) => generation.registry === registry);
   return {
-    /** Runs inside the predecessor's reply turn, composed as get-reply-run composes it. */
+    /** Runs inside the predecessor's reply turn, composed as dispatch and get-reply-run compose it. */
     armInPredecessorTurn<T>(arm: () => T): T {
-      return turn.run(() =>
-        withPreparedModelRuntimePluginGenerationScope(preparedGeneration, () =>
-          withPluginRuntimeGenerationScope(
-            { metadataSnapshot, pluginRegistry: previous.registry },
-            arm,
+      return bindPreparedReplyDispatchRuntime(dispatchRuntime, () =>
+        turn.run(() =>
+          withPreparedModelRuntimePluginGenerationScope(preparedGeneration, () =>
+            withPluginRuntimeGenerationScope(
+              { metadataSnapshot, pluginRegistry: previous.registry },
+              arm,
+            ),
           ),
         ),
-      );
+      )();
     },
     /** Publishes the successor; the predecessor turn then ends and releases its admission. */
     async reload(): Promise<void> {
@@ -110,11 +130,13 @@ export function createPluginGenerationReload(generationOverlap: boolean) {
       } catch (error) {
         plugin = error instanceof Error ? error.message : String(error);
       }
-      const prepared = getPreparedModelRuntimePluginGeneration();
+      const pin = (generation: PreparedModelRuntimePluginGeneration | undefined) =>
+        generation === preparedGeneration ? "previous" : generation && "unknown";
       return {
         registry: resolved?.label,
         generationRegistry: generationOf(getPluginRuntimeGenerationRegistry())?.label,
-        preparedGeneration: prepared === preparedGeneration ? "previous" : prepared && "unknown",
+        preparedGeneration: pin(getPreparedModelRuntimePluginGeneration()),
+        dispatchGeneration: pin(getPreparedReplyDispatchRuntime()?.pluginGeneration),
         plugin,
       };
     },

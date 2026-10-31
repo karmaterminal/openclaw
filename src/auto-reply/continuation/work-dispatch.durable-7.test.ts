@@ -889,6 +889,50 @@ describe("durable continuation_work dispatch", () => {
     },
   );
 
+  it("wakes delayed operator work on the current plugin generation after a reload", async () => {
+    const sessionKey = "agent:main:generation-reload-operator-wake";
+    mockSessionStore[sessionKey] = { sessionKey };
+    const { getPluginRuntimeGatewayRequestScope, withPluginRuntimeGatewayRequestScope } =
+      await import("../../plugins/runtime/gateway-request-scope.js");
+    const timers = inheritArmingContextInFakeTimers();
+    const reload = createPluginGenerationReload(true);
+    const observed: ObservedPluginGeneration[] = [];
+    observeReplyGeneration = () => observed.push(reload.observe());
+    try {
+      await reload.armInPredecessorTurn(() => {
+        // As the in-process operator authority does, retain the arming request's whole scope.
+        const continuationScope = {
+          isWebchatConnect: () => false,
+          ...getPluginRuntimeGatewayRequestScope(),
+        };
+        const operatorContinuation = {
+          operatorAuthority: {},
+          assertCurrent: vi.fn(),
+          release: vi.fn(),
+          run: <T>(run: () => T): T => withPluginRuntimeGatewayRequestScope(continuationScope, run),
+        };
+        return scheduleContinuationWork({
+          sessionKey,
+          chainState: {
+            currentChainCount: 0,
+            chainStartedAt: Date.now(),
+            accumulatedChainTokens: 0,
+          },
+          request: { reason: "operator generation reload", delaySeconds: 5, operatorContinuation },
+          config,
+        });
+      });
+      await reload.reload();
+      await advanceTimers(5_000);
+      expect(observed).toEqual([CURRENT_PLUGIN_GENERATION]);
+      expect(turnGrants).toHaveLength(1);
+    } finally {
+      observeReplyGeneration = undefined;
+      timers.mockRestore();
+      await reload.dispose();
+    }
+  });
+
   it("re-enters retained role limits for an accepted operator wake", async () => {
     const sessionKey = "agent:main:role-limited-wake";
     mockSessionStore[sessionKey] = { sessionKey };
