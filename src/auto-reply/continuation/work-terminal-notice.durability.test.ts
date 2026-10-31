@@ -37,6 +37,12 @@ import {
   readCustodyRecordForTest,
   useContinuationCustodyTestState,
 } from "./custody/custody.test-support.js";
+import {
+  createPluginGenerationReload,
+  CURRENT_PLUGIN_GENERATION,
+  inheritArmingContextInFakeTimers,
+  type ObservedPluginGeneration,
+} from "./plugin-generation-reload.test-support.js";
 import { captureContinuationQueueContext } from "./queue-context.js";
 import { listPendingTerminalNoticeWork, markPendingWorkFailed } from "./work-store.js";
 import { enqueuePendingWork } from "./work-store.test-support.js";
@@ -438,6 +444,60 @@ describe("continuation_work terminal notice durability", () => {
       }
     });
   });
+
+  it.each([
+    ["opted-in", true],
+    ["non-opted-in", false],
+  ])(
+    "retries the handoff on the current plugin generation after a %s reload",
+    async (_reload, generationOverlap) => {
+      await withDurableState(async (stateDir) => {
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        const timers = inheritArmingContextInFakeTimers();
+        const reload = createPluginGenerationReload(generationOverlap);
+        try {
+          await terminalizeWithPendingNotice();
+          const [owed] = await listPendingTerminalNoticeWork();
+          if (!owed) {
+            throw new Error("expected a pending terminal notice");
+          }
+          let attempts = 0;
+          const observed: ObservedPluginGeneration[] = [];
+          const deps = {
+            ...realDeps(stateDir),
+            settleContinuationNotice: (async (input, options) => {
+              attempts += 1;
+              if (attempts === 1) {
+                throw new Error("transient sqlite failure");
+              }
+              return await settleContinuationNotice(input, options);
+            }) as typeof settleContinuationNotice,
+            // The wake hands the notice to the owning session's next turn.
+            requestContinuationWake: ((request) => {
+              observed.push(reload.observe());
+              requestContinuationWake(request);
+            }) as typeof requestContinuationWake,
+          };
+          // The predecessor turn's handoff fails and arms the live retry.
+          expect(
+            await reload.armInPredecessorTurn(() =>
+              deliverPendingTerminalNoticeWithRetry(owed, deps),
+            ),
+          ).toBe(false);
+          await reload.reload();
+          await vi.advanceTimersByTimeAsync(TERMINAL_NOTICE_RETRY_DELAYS_MS[0]);
+          await vi.waitFor(() => expect(observed).toHaveLength(1));
+          expect(observed).toEqual([CURRENT_PLUGIN_GENERATION]);
+          expect(attempts).toBe(2);
+        } finally {
+          resetTerminalNoticeRetriesForTests();
+          timers.mockRestore();
+          vi.useRealTimers();
+          await reload.dispose();
+        }
+      });
+    },
+  );
 
   it("commits the notice row and the obligation clear together, and replays add no row", async () => {
     await withDurableState(async (stateDir) => {

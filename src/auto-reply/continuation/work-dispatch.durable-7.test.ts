@@ -35,6 +35,7 @@ const observedOperatorScopes: string[][] = [];
 let continuationEnabledForTest = true;
 const capturedReplyTraceparents: Array<string | undefined> = [];
 let bumpWorkRevisionOnReply = false;
+let observeReplyGeneration: (() => void) | undefined;
 const { emitContinuationWorkFireSpanMock, resolveContinuationTraceparentMock } = vi.hoisted(() => ({
   emitContinuationWorkFireSpanMock: vi.fn(),
   resolveContinuationTraceparentMock: vi.fn((traceparent: string | undefined) => traceparent),
@@ -261,6 +262,7 @@ vi.mock("../../process/command-queue.js", () => ({
 vi.mock("../reply/get-reply.js", () => ({
   getReplyFromConfig: vi.fn(async (context: unknown, options: unknown, cfg: unknown) => {
     workTransitionEvents.push("provider-called");
+    observeReplyGeneration?.();
     if (observedDetachedAuthority.length === 1) {
       const [{ readOperatorToolGatewayAuthority }, { getPluginRuntimeGatewayRequestScope }] =
         await Promise.all([
@@ -393,6 +395,12 @@ import {
   enqueuePendingDelegate,
   pendingDelegateCount,
 } from "./delegate-store.js";
+import {
+  createPluginGenerationReload,
+  CURRENT_PLUGIN_GENERATION,
+  inheritArmingContextInFakeTimers,
+  type ObservedPluginGeneration,
+} from "./plugin-generation-reload.test-support.js";
 import type { ContinuationRuntimeConfig } from "./types.js";
 import { runDetachedAuthorityFossil } from "./work-dispatch-authority.test-support.js";
 import {
@@ -842,6 +850,87 @@ describe("durable continuation_work dispatch", () => {
   });
   it("does not inherit settled request authority into a detached wake", async () => {
     await runDetachedAuthorityFossil({ mockSessionStore, observedDetachedAuthority, turnGrants });
+  });
+
+  it.each([
+    ["opted-in", true],
+    ["non-opted-in", false],
+  ])(
+    "wakes delayed work on the current plugin generation after a %s reload",
+    async (_reload, generationOverlap) => {
+      const sessionKey = "agent:main:generation-reload-wake";
+      mockSessionStore[sessionKey] = { sessionKey };
+      const timers = inheritArmingContextInFakeTimers();
+      const reload = createPluginGenerationReload(generationOverlap);
+      const observed: ObservedPluginGeneration[] = [];
+      observeReplyGeneration = () => observed.push(reload.observe());
+      try {
+        await reload.armInPredecessorTurn(() =>
+          scheduleContinuationWork({
+            sessionKey,
+            chainState: {
+              currentChainCount: 0,
+              chainStartedAt: Date.now(),
+              accumulatedChainTokens: 0,
+            },
+            request: { reason: "generation reload", delaySeconds: 5 },
+            config,
+          }),
+        );
+        await reload.reload();
+        await advanceTimers(5_000);
+        expect(observed).toEqual([CURRENT_PLUGIN_GENERATION]);
+        expect(turnGrants).toHaveLength(1);
+      } finally {
+        observeReplyGeneration = undefined;
+        timers.mockRestore();
+        await reload.dispose();
+      }
+    },
+  );
+
+  it("wakes delayed operator work on the current plugin generation after a reload", async () => {
+    const sessionKey = "agent:main:generation-reload-operator-wake";
+    mockSessionStore[sessionKey] = { sessionKey };
+    const { getPluginRuntimeGatewayRequestScope, withPluginRuntimeGatewayRequestScope } =
+      await import("../../plugins/runtime/gateway-request-scope.js");
+    const timers = inheritArmingContextInFakeTimers();
+    const reload = createPluginGenerationReload(true);
+    const observed: ObservedPluginGeneration[] = [];
+    observeReplyGeneration = () => observed.push(reload.observe());
+    try {
+      await reload.armInPredecessorTurn(() => {
+        // As the in-process operator authority does, retain the arming request's whole scope.
+        const continuationScope = {
+          isWebchatConnect: () => false,
+          ...getPluginRuntimeGatewayRequestScope(),
+        };
+        const operatorContinuation = {
+          operatorAuthority: {},
+          assertCurrent: vi.fn(),
+          release: vi.fn(),
+          run: <T>(run: () => T): T => withPluginRuntimeGatewayRequestScope(continuationScope, run),
+        };
+        return scheduleContinuationWork({
+          sessionKey,
+          chainState: {
+            currentChainCount: 0,
+            chainStartedAt: Date.now(),
+            accumulatedChainTokens: 0,
+          },
+          request: { reason: "operator generation reload", delaySeconds: 5, operatorContinuation },
+          config,
+        });
+      });
+      await reload.reload();
+      await advanceTimers(5_000);
+      expect(observed).toEqual([CURRENT_PLUGIN_GENERATION]);
+      expect(turnGrants).toHaveLength(1);
+    } finally {
+      observeReplyGeneration = undefined;
+      timers.mockRestore();
+      await reload.dispose();
+    }
   });
 
   it("re-enters retained role limits for an accepted operator wake", async () => {

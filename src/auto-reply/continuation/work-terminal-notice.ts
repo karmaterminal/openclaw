@@ -31,6 +31,8 @@ import {
   type ContinuationNoticeSurfaceDeps,
 } from "./continuation-notice-surface.js";
 import { settleContinuationNotice } from "./custody/custody-store.js";
+// Continuation (karmaterminal): detached re-entries re-admit on the current plugin generation.
+import { runOnCurrentPluginGeneration } from "./detached-generation.js";
 import type { PendingContinuationWork } from "./work-flow-state.js";
 import { listPendingTerminalNoticeWork, readPendingTerminalNoticeWork } from "./work-store.js";
 
@@ -155,7 +157,8 @@ function armTerminalNoticeRetry(
   }
   const timer = setTimeout(() => {
     retryTimers.delete(flowId);
-    void (async () => {
+    // Continuation (karmaterminal): admit on the plugin generation current at retry time.
+    void runOnCurrentPluginGeneration(async () => {
       try {
         const owed = await readPendingTerminalNoticeWork(flowId);
         if (owed) {
@@ -175,7 +178,7 @@ function armTerminalNoticeRetry(
         );
         armTerminalNoticeRetry(work, attempt + 1, deps);
       }
-    })();
+    });
   }, delayMs);
   timer.unref?.();
   retryTimers.set(flowId, timer);

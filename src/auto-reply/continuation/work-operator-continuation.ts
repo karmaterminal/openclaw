@@ -1,5 +1,7 @@
 import { captureOperatorToolGatewayContinuationContext } from "../../gateway/server-plugin-in-process-authority.js";
 import { formatErrorMessage } from "../../infra/errors.js";
+// Continuation (karmaterminal): detached re-entries re-admit on the current plugin generation.
+import { runOnCurrentPluginGeneration } from "./detached-generation.js";
 import type { ContinueWorkRequest } from "./types.js";
 import { executePendingContinuationWork } from "./work-dispatch-execution.js";
 import type { PendingContinuationWork } from "./work-flow-state.js";
@@ -69,7 +71,8 @@ async function runWithWorkOperatorContinuation<T>(
   }
   try {
     custody?.assertCurrent();
-    return await (custody ? custody.run(run) : run());
+    // Continuation (karmaterminal): the retained scope still carries the arming turn's registry.
+    return await (custody ? custody.run(() => runOnCurrentPluginGeneration(run)) : run());
   } catch (error) {
     if (!work.operatorAuthorityRequired) {
       throw error;
