@@ -585,8 +585,8 @@ describe("mid-turn room events over durable ingress (#1415)", () => {
     const rows: Row[] = [
       { id: "r1" },
       { id: "r2" },
-      { id: "m3", kind: "user_request" },
-      { id: "m4", kind: "user_request" },
+      { id: "r3m", kind: "user_request" },
+      { id: "r4m", kind: "user_request" },
       { id: "r5" },
       { id: "r6" },
     ];
@@ -768,7 +768,7 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
     const rows: Row[] = [
       { id: "n1", from: sender("alice") },
       { id: "n2", from: sender("bob") },
-      { id: "o3", from: sender("owner", { senderIsOwner: true, traceAuthorized: true }) },
+      { id: "n3o", from: owner },
       { id: "n4", from: sender("carol") },
       { id: "n5", from: sender("peer-agent") },
     ];
@@ -778,7 +778,7 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
       expect(harness.calls).toHaveLength(3);
       aggregated(harness.calls[0], rows.slice(0, 2));
       // The owner's turn is the owner's own run, owner authority intact.
-      expect(harness.calls[1]).toBe(harness.runs.get("o3"));
+      expect(harness.calls[1]).toBe(harness.runs.get("n3o"));
       expect(harness.calls[1]?.run).toMatchObject({ senderId: "owner", senderIsOwner: true });
       aggregated(harness.calls[2], rows.slice(3));
       await expectSettledOnce(
@@ -947,6 +947,7 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
   });
 
   it("splits senders by exec permission mode, each turn under its own mode", async () => {
+    // An attempt narrows its run's shared exec overrides to the session mode; recovery reuses them.
     const rows: Row[] = (["deny", "deny", "full", "full"] as const).map((mode, index) => ({
       id: `m${index + 1}`,
       from: sender(`speaker-${index + 1}`, { execOverrides: { mode } }),

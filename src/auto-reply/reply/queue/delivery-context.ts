@@ -99,8 +99,6 @@ export function resolveFollowupAuthorizationKey(run: FollowupRun): string {
     execution.execOverrides?.ask ?? "",
     execution.execOverrides?.node ?? "",
     execution.execOverrides?.nodeCwd ?? "",
-    // Frond (karmaterminal, #1415): the session permission policy a runner selects from it.
-    execution.execOverrides?.mode ?? "",
     execution.bashElevated?.enabled === true,
     execution.bashElevated?.allowed === true,
     execution.bashElevated?.defaultLevel ?? "",
@@ -241,6 +239,10 @@ export function resolveFollowupDeliveryStorageKey(run: FollowupRun): string {
     run.originatingReplyToMode ?? "",
     normalizeChatType(run.originatingChatType) ?? "",
     resolveFollowupAuthorizationKey(run),
+    // Frond (karmaterminal, #1415): the session permission mode an attempt narrowed this run's
+    // shared exec overrides to. Kept out of the authorization key, which also hands a stalled
+    // turn to its sender's queued request.
+    execution.execOverrides?.mode ?? "",
     run.turnAdoptionLifecycle?.ownerKey ?? "",
     normalizeOptionalString(execution.runtimePolicySessionKey ?? execution.sessionKey) ?? "",
     execution.provider,

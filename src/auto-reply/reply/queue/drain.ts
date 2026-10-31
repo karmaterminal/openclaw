@@ -201,7 +201,8 @@ async function executeClaim(
     sources.length > 1 && new Set(sources.map(resolveFollowupDeliveryStorageKey)).size > 1;
   const crossSender = mixedSenders && isRoomAggregateBatch(sources);
   // Frond (karmaterminal, #1415): any other mixed claim breaks the selection invariant. It fails
-  // closed before execution: refused like a pre-execution rejection, each member retries alone.
+  // closed before execution, refused like a pre-execution rejection: each member retries alone,
+  // or is released unadopted when the claim can no longer be deferred.
   const refuseMixedClaim = mixedSenders && !crossSender;
   const readSummaryLine = (item: FollowupRun) => {
     const index = queue.summarySources.indexOf(item);
@@ -287,11 +288,10 @@ async function executeClaim(
       for (const item of sources) {
         item.disableCollectBatching = true;
       }
-      deferSessionControllerClaimBeforeExecution(claim);
+      const retry = deferSessionControllerClaimBeforeExecution(claim);
       defaultRuntime.error?.(
-        "mailbox refused a mixed claim for " +
-          queue.key +
-          ": not every member may run as the room baseline",
+        `mailbox refused a mixed claim for ${queue.key}: not every member may run as the room ` +
+          `baseline; ${sources.length} members ${retry ? "retry alone" : "released unadopted"}`,
       );
       return;
     }
