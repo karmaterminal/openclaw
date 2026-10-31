@@ -23,39 +23,49 @@ import { getUserTurnTranscriptAdmissionOwner } from "./user-turn-transcript-admi
 import { isUserMessage } from "./user-turn-transcript.message.js";
 import type { UserTurnTranscriptRecorder } from "./user-turn-transcript.types.js";
 
+type InputRunStampScheduler = (
+  admissionWrite: Promise<void> | undefined,
+  onError: (error: unknown) => void,
+) => Promise<void> | undefined;
+
 const inputRunIds = new WeakMap<UserTurnTranscriptRecorder, string>();
-const dispatchHandlers = new WeakMap<UserTurnTranscriptRecorder, () => void>();
+const dispatchHandlers = new WeakMap<
+  UserTurnTranscriptRecorder,
+  (schedule: InputRunStampScheduler) => void
+>();
 
 /** The executing run binds itself before it may dispatch; a later preparation's run replaces it. */
 export function bindUserTurnInputRunId(recorder: UserTurnTranscriptRecorder, runId: string): void {
   inputRunIds.set(recorder, runId);
 }
 
-/** Only the recorder factory registers how an accepted dispatch schedules its stamp. */
+/**
+ * Only the recorder factory registers: it schedules the stamp for an input it marked sent and
+ * keeps the stamp for its persistence waits to settle.
+ */
 export function registerUserTurnInputDispatch(
   recorder: UserTurnTranscriptRecorder,
-  onDispatched: () => void,
+  onDispatched: (schedule: InputRunStampScheduler) => void,
 ): void {
   dispatchHandlers.set(recorder, onDispatched);
 }
 
 /**
- * The dispatch owner reports that the transport carrying the run's request accepted it, after the
- * input was marked sent. A rejected or aborted dispatch never reaches this call.
+ * The dispatch owner reports that the transport carrying the run's request accepted it. A
+ * rejected or aborted dispatch never reaches this call.
  */
 export function markUserTurnInputDispatched(
   recorder: UserTurnTranscriptRecorder | undefined,
 ): void {
   if (recorder) {
-    dispatchHandlers.get(recorder)?.();
+    dispatchHandlers.get(recorder)?.((admissionWrite, onError) =>
+      scheduleUserTurnInputRunIdStamp(recorder, admissionWrite, onError),
+    );
   }
 }
 
-/**
- * Schedules the stamp once the bound run's dispatch is accepted: after the admission write and
- * outside the request's async context. Later persistence waits settle it.
- */
-export function scheduleUserTurnInputRunIdStamp(
+/** The stamp follows the admission write, outside the request's async context. */
+function scheduleUserTurnInputRunIdStamp(
   recorder: UserTurnTranscriptRecorder,
   admissionWrite: Promise<void> | undefined,
   onError: (error: unknown) => void,

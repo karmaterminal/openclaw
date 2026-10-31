@@ -11,6 +11,7 @@ import {
 import { emitAgentRunStatusEvent } from "../../infra/agent-run-status-events.js";
 import { markDiagnosticRunProgress } from "../../logging/diagnostic-run-activity.js";
 import { getReplyOperationSessionReader } from "../../sessions/session-controller.state.js";
+import { markUserTurnInputDispatched } from "../../sessions/user-turn-transcript-input-run.js";
 import { createLazyRuntimeModule } from "../../shared/lazy-runtime.js";
 import { WORKER_ADMISSION_DEADLINE_MS } from "../../worker/worker-connection-contract.js";
 import { StaleWorkerBuildError } from "./admission.js";
@@ -429,6 +430,10 @@ export function createWorkerSessionTurnPlacementProvider(options: WorkerTurnLaun
                 environments: options.environments,
                 onHandoff: (custody?: { requiresTerminalReceipt: true }) => {
                   handedOff = true;
+                  // Continuation (karmaterminal): a legacy launch carries an input already sent, so
+                  // the worker taking it consumed it. Admission and remote exec send it later and
+                  // report their own acceptance; for them this is a no-op.
+                  markUserTurnInputDispatched(turn.userTurnTranscriptRecorder);
                   terminalReceiptRequired = custody?.requiresTerminalReceipt === true;
                   activeWorkerTurn?.beginExecution();
                   if (!admissionReported) {
