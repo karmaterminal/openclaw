@@ -1,15 +1,22 @@
 // Integration pin for delegate-dispatch span shape across continuation modes.
 //
 // The current tracer contract names the span `continuation.delegate.dispatch`.
-// This test drives the runner-side tool delegate path for silent modes and
-// leaves the post-compaction mode as a production-gap TODO.
+// This test drives the runner-side tool delegate path for silent modes, and the
+// auto-compaction release of a staged post-compaction delegate through the real
+// custody store, delivery queue, and queue drain (#1497).
 
+import { createHash, randomBytes } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { RunEmbeddedAgentInternalParams } from "../../agents/embedded-agent-runner/run/internal-params.js";
 import { abortEmbeddedAgentRun } from "../../agents/embedded-agent-runner/runs.js";
 import { testing as embeddedRunTesting } from "../../agents/embedded-agent-runner/runs.test-support.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
-import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
+import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
+import {
+  loadSessionEntry,
+  upsertSessionEntryCore,
+} from "../../config/sessions/session-accessor.js";
 import {
   resetContinuationTracer,
   setContinuationTracer,
@@ -25,9 +32,14 @@ import {
   createOpenClawTestState,
   type OpenClawTestState,
 } from "../../test-utils/openclaw-test-state.js";
-import { useContinuationCustodyTestState } from "../continuation/custody/custody.test-support.js";
+import {
+  listCustodyRecordsForTest,
+  useContinuationCustodyTestState,
+} from "../continuation/custody/custody.test-support.js";
+import { stagePostCompactionCustodyDelegate } from "../continuation/delegate-store-post-compaction.js";
 import { enqueuePendingDelegate } from "../continuation/delegate-store.js";
 import type { TemplateContext } from "../templating.js";
+import { drainPostCompactionDelegateDeliveries } from "./post-compaction-delegate-dispatch.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
 import { createMockTypingController } from "./test-helpers.js";
 
@@ -43,7 +55,47 @@ const compactState = vi.hoisted(() => ({
 }));
 const requestContinuationWakeMock = vi.hoisted(() => vi.fn());
 const spawnSubagentDirectMock = vi.hoisted(() => vi.fn());
+const queueDrains = vi.hoisted(() => [] as Promise<void>[]);
+const attemptStartFaults = vi.hoisted(() => ({ remaining: 0 }));
 let testState: OpenClawTestState;
+
+// Fault injection: an attempt-ownership write that does not commit, thrown the
+// way the real writer reports one. Otherwise the real queue storage.
+vi.mock("../../infra/session-delivery-queue-storage.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../infra/session-delivery-queue-storage.js")>();
+  const { SessionDeliveryAttemptStartError } =
+    await import("../../infra/session-delivery-queue.records.js");
+  return {
+    ...actual,
+    markSessionDeliveryAttemptStarted: async (
+      ...args: Parameters<typeof actual.markSessionDeliveryAttemptStarted>
+    ) => {
+      if (attemptStartFaults.remaining > 0) {
+        attemptStartFaults.remaining -= 1;
+        throw new SessionDeliveryAttemptStartError("attempt ownership write failed");
+      }
+      return await actual.markSessionDeliveryAttemptStarted(...args);
+    },
+  };
+});
+
+// The compaction release starts its queue drain without awaiting it. Record each
+// real drain so a case can await the delivery it started instead of polling.
+vi.mock("../../infra/session-delivery-queue-recovery.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../infra/session-delivery-queue-recovery.js")>();
+  return {
+    ...actual,
+    drainPendingSessionDeliveries: (
+      ...args: Parameters<typeof actual.drainPendingSessionDeliveries>
+    ) => {
+      const drain = actual.drainPendingSessionDeliveries(...args);
+      queueDrains.push(drain);
+      return drain;
+    },
+  };
+});
 
 // mock-isolation: Turns run through a scripted fallback runner; the real one reads auth profiles and calls providers.
 vi.mock("../../agents/model-fallback-runner.js", () => ({
@@ -161,6 +213,13 @@ vi.mock("../../agents/subagents/registry/subagent-registry.js", () => ({
   initSubagentRegistry: () => {},
   listSubagentRunsForController: () => [],
   markSubagentRunTerminated: () => 0,
+  // A released delegate's drain reads admission evidence here; nothing is admitted yet.
+  prepareSubagentRunsByRunIds: async () => ({
+    consume: <T>(read: (runs: ReadonlyMap<string, never>) => T) => ({
+      ready: true as const,
+      value: read(new Map<string, never>()),
+    }),
+  }),
 }));
 
 import { runReplyAgent } from "./agent-runner-run.js";
@@ -176,6 +235,10 @@ type RecordedSpan = {
   attributes: SpanAttributes;
   status: SpanStatus | undefined;
   ended: boolean;
+  /** The W3C parent the emitter passed in `StartSpanOptions.traceparent`. */
+  parentTraceparent: string | undefined;
+  /** This span's own W3C traceparent, in its parent's trace when it has one. */
+  traceparent: string;
 };
 
 type DelegateModeUnderTest = "silent" | "silent-wake";
@@ -186,11 +249,14 @@ function createRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
   const spans: RecordedSpan[] = [];
   const tracer: Tracer = {
     startSpan(name: string, opts?: StartSpanOptions): Span {
+      const traceId = opts?.traceparent?.split("-")[1] ?? randomBytes(16).toString("hex");
       const rec: RecordedSpan = {
         name,
         attributes: { ...opts?.attributes },
         status: undefined,
         ended: false,
+        parentTraceparent: opts?.traceparent,
+        traceparent: `00-${traceId}-${randomBytes(8).toString("hex")}-01`,
       };
       spans.push(rec);
       const span: Span = {
@@ -201,7 +267,10 @@ function createRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
           rec.status = status;
         },
         recordException(_err: unknown): void {
-          // unused by the delegate dispatch accept path
+          // status carries the outcome these cases assert
+        },
+        traceparent(): string {
+          return rec.traceparent;
         },
         end(): void {
           rec.ended = true;
@@ -211,6 +280,23 @@ function createRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
     },
   };
   return { tracer, spans };
+}
+
+/** Await every queue drain started so far, including drains a drain starts. */
+async function settleQueueDrains(): Promise<void> {
+  while (queueDrains.length > 0) {
+    await Promise.all(queueDrains.splice(0));
+  }
+}
+
+/** The privacy-safe reason fingerprint every delegate span carries (`continuation-tracer.ts`). */
+function reasonFingerprint(task: string) {
+  return {
+    "reason.present": true,
+    "reason.length": task.length,
+    "reason.hash": createHash("sha256").update(task).digest("hex").slice(0, 16),
+    "reason.redacted": false,
+  };
 }
 
 beforeEach(async () => {
@@ -257,6 +343,8 @@ beforeEach(async () => {
 const custodyState = useContinuationCustodyTestState();
 
 afterEach(async () => {
+  await settleQueueDrains();
+  attemptStartFaults.remaining = 0;
   vi.useRealTimers();
   clearRuntimeConfigSnapshot();
   clearMemoryPluginState();
@@ -450,12 +538,196 @@ describe("runReplyAgent :: delegate dispatch span uniformity", () => {
     expect(silent.attributes["chain.step.remaining"]).toBe(4);
     expect(silentWake.attributes["chain.step.remaining"]).toBe(3);
   });
+});
 
-  // Post-compaction delegate delivery persists continuation chain state but
-  // does not yet emit `continuation.delegate.dispatch` with
-  // `delegate.mode = "post-compaction"`. Keep this todo as the coverage marker
-  // for the production lane.
-  it.todo(
-    "emits exactly one continuation.delegate.dispatch span for post-compaction delegates with the same attribute-key shape",
-  );
+describe("runReplyAgent :: released post-compaction delegate spans (#1497)", () => {
+  // The staging turn's span: the continue_delegate tool captured it on the delegate.
+  const STAGING_TRACEPARENT = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+
+  async function stageLifeboat(sessionKey: string, task: string): Promise<void> {
+    await stagePostCompactionCustodyDelegate(sessionKey, {
+      task,
+      stagedAt: Date.now(),
+      traceparent: STAGING_TRACEPARENT,
+    });
+  }
+
+  /** One reply turn whose embedded run auto-compacted, releasing the staged lifeboats. */
+  async function runCompactingTurn(sessionKey: string): Promise<void> {
+    const run = createContinuationRun({ mode: "silent-wake", sessionKey, currentChainCount: 1 });
+    runEmbeddedAgentMock.mockImplementationOnce(async (params: RunEmbeddedAgentInternalParams) => {
+      const storePath = resolveSessionStorePathCore(undefined, { agentId: "main" });
+      const stored = loadSessionEntry({ storePath, sessionKey });
+      params.onCompactionAccounting?.({
+        kind: "durable",
+        count: 1,
+        currentContextSnapshot: { tokens: 40 },
+        target: {
+          agentId: "main",
+          sessionId: run.sessionEntry.sessionId,
+          sessionKey,
+          storePath,
+          lifecycleRevision: stored?.lifecycleRevision,
+          activeWriterRunId: undefined,
+        },
+      });
+      return {
+        payloads: [{ text: "Compacted and continuing." }],
+        meta: { agentMeta: { usage: { input: 1, output: 1 }, compactionCount: 1 } },
+      };
+    });
+    await runDelegateTurn(run, { [sessionKey]: run.sessionEntry });
+    await settleQueueDrains();
+  }
+
+  it("emits one dispatch and one fire span per released lifeboat, joined to its release", async () => {
+    const typed = await dispatchToolDelegateMode({ mode: "silent-wake", currentChainCount: 1 });
+    const { tracer, spans } = createRecordingTracer();
+    setContinuationTracer(tracer);
+    const sessionKey = "agent:main:continuation-span-uniformity-lifeboat";
+    const task = "carry the audit plan across compaction";
+    await stageLifeboat(sessionKey, task);
+
+    await runCompactingTurn(sessionKey);
+
+    const released = spans.filter((s) => s.name === "continuation.compaction.released");
+    expect(released).toHaveLength(1);
+    const compactionId = released[0]?.attributes["compaction.id"];
+    expect(compactionId).toEqual(expect.any(Number));
+    const dispatches = spans.filter((s) => s.name === "continuation.delegate.dispatch");
+    const fires = spans.filter((s) => s.name === "continuation.delegate.fire");
+    expect(dispatches).toHaveLength(1);
+    expect(fires).toHaveLength(1);
+    const [dispatch, fire] = [dispatches[0], fires[0]];
+    // The dispatch continues the staging turn's trace; the fire and the spawned
+    // child hang off the dispatch, and the fire names the release it came from.
+    expect(dispatch).toMatchObject({
+      status: "OK",
+      ended: true,
+      parentTraceparent: STAGING_TRACEPARENT,
+      attributes: {
+        ...reasonFingerprint(task),
+        "chain.id": PARENT_CHAIN_ID,
+        "delay.ms": 0,
+        "delegate.delivery": "compaction",
+        "delegate.mode": "post-compaction",
+      },
+    });
+    expect(fire).toMatchObject({
+      status: "OK",
+      ended: true,
+      parentTraceparent: dispatch?.traceparent,
+      attributes: {
+        ...reasonFingerprint(task),
+        "chain.id": PARENT_CHAIN_ID,
+        "chain.step.remaining": dispatch?.attributes["chain.step.remaining"],
+        "compaction.id": compactionId,
+        "delegate.delivery": "compaction",
+        "delegate.mode": "post-compaction",
+      },
+    });
+    expect(spawnSubagentDirectMock.mock.calls.at(-1)?.[0]).toMatchObject({
+      traceparent: dispatch?.traceparent,
+    });
+    // Same attribute keys as a typed dispatch; the fire adds only the release join.
+    expect(Object.keys(dispatch?.attributes ?? {}).toSorted()).toEqual(
+      Object.keys(typed.attributes).toSorted(),
+    );
+    expect(Object.keys(fire?.attributes ?? {}).toSorted()).toEqual(
+      [...Object.keys(typed.attributes), "compaction.id", "fire.deferred_ms"].toSorted(),
+    );
+
+    // A replayed drain finds the delivery settled and fires nothing again.
+    await drainPostCompactionDelegateDeliveries({ sessionKey });
+    await settleQueueDrains();
+    expect(spans.filter((s) => s.name === "continuation.delegate.fire")).toHaveLength(1);
+    expect(spans.filter((s) => s.name === "continuation.delegate.dispatch")).toHaveLength(1);
+  });
+
+  it("counts and fires every lifeboat one release frees together", async () => {
+    const { tracer, spans } = createRecordingTracer();
+    setContinuationTracer(tracer);
+    const sessionKey = "continuation-span-uniformity-lifeboats";
+    const tasks = ["carry the audit plan", "carry the open review threads"];
+    for (const task of tasks) {
+      await stageLifeboat(sessionKey, task);
+    }
+
+    await runCompactingTurn(sessionKey);
+
+    const released = spans.filter((s) => s.name === "continuation.compaction.released");
+    expect(released).toHaveLength(1);
+    expect(released[0]?.attributes["compaction.released"]).toBe(tasks.length);
+    const compactionId = released[0]?.attributes["compaction.id"];
+    for (const task of tasks) {
+      const hash = reasonFingerprint(task)["reason.hash"];
+      const dispatches = spans.filter(
+        (s) => s.name === "continuation.delegate.dispatch" && s.attributes["reason.hash"] === hash,
+      );
+      const fires = spans.filter(
+        (s) => s.name === "continuation.delegate.fire" && s.attributes["reason.hash"] === hash,
+      );
+      expect(dispatches).toHaveLength(1);
+      expect(fires).toHaveLength(1);
+      expect(fires[0]).toMatchObject({
+        parentTraceparent: dispatches[0]?.traceparent,
+        attributes: {
+          "chain.id": dispatches[0]?.attributes["chain.id"],
+          "compaction.id": compactionId,
+        },
+      });
+    }
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(tasks.length);
+  });
+
+  it("fires a lifeboat whose spawn is forbidden once, and fails its dispatch and custody", async () => {
+    const { tracer, spans } = createRecordingTracer();
+    setContinuationTracer(tracer);
+    const sessionKey = "continuation-span-uniformity-forbidden-lifeboat";
+    await stageLifeboat(sessionKey, "carry the audit plan");
+    spawnSubagentDirectMock.mockResolvedValueOnce({
+      status: "forbidden",
+      error: "spawn policy denied",
+    });
+
+    await runCompactingTurn(sessionKey);
+    // The failure is terminal: a replayed drain neither respawns nor refires.
+    await drainPostCompactionDelegateDeliveries({ sessionKey });
+    await settleQueueDrains();
+
+    expect(spans.filter((s) => s.name === "continuation.delegate.dispatch")).toMatchObject([
+      { status: "ERROR", ended: true },
+    ]);
+    expect(spans.filter((s) => s.name === "continuation.delegate.fire")).toHaveLength(1);
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+    // A durably handed-off record keeps its status and records the rejection.
+    expect(await listCustodyRecordsForTest({ ownerSessionKey: sessionKey })).toMatchObject([
+      {
+        kind: "post_compaction",
+        phase: expect.stringContaining("spawn forbidden: spawn policy denied"),
+      },
+    ]);
+  });
+
+  it("fires only once attempt ownership is durable, so a failed ownership write never doubles the fire", async () => {
+    const { tracer, spans } = createRecordingTracer();
+    setContinuationTracer(tracer);
+    const sessionKey = "continuation-span-uniformity-ownership-retry";
+    await stageLifeboat(sessionKey, "carry the audit plan");
+    attemptStartFaults.remaining = 1;
+
+    await runCompactingTurn(sessionKey);
+    expect(spans.filter((s) => s.name === "continuation.delegate.fire")).toHaveLength(0);
+    expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
+
+    // The deferred entry is redelivered by the next drain.
+    await drainPostCompactionDelegateDeliveries({ sessionKey });
+    await settleQueueDrains();
+    expect(spans.filter((s) => s.name === "continuation.delegate.dispatch")).toMatchObject([
+      { status: "ERROR" },
+      { status: "OK" },
+    ]);
+    expect(spans.filter((s) => s.name === "continuation.delegate.fire")).toHaveLength(1);
+    expect(spawnSubagentDirectMock).toHaveBeenCalledTimes(1);
+  });
 });

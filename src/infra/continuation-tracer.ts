@@ -98,7 +98,9 @@ export type ContinuationSpanAttrs = {
   /**
    * Delivery shape of the delegate dispatch — `"immediate"` when no
    * delay was requested (or delay was 0), `"timer"` when `setTimeout`
-   * armed for a non-zero clamped delay. Distinct from `delegate.mode`
+   * armed for a non-zero clamped delay, `"compaction"` when a staged
+   * post-compaction delegate was held until a compaction released it.
+   * Distinct from `delegate.mode`
    * (which captures *intent*: normal/silent/silent-wake/post-compaction).
    * Threaded so `continuation.disabled` reject spans can
    * distinguish cap-rejected-immediate (no timer ever armed) from
@@ -142,6 +144,11 @@ export type ContinuationSpanAttrs = {
    * timer fired late under load; near-zero is on-schedule. Pinned in JSDoc
    * so every consumer doesn't rediscover the formula.
    *
+   * A `delegate.delivery="compaction"` fire arms no timer: its value is the
+   * hold from staging (`firstArmedAt`) until a compaction released it and the
+   * queue drain fired it, with `delay.ms=0`. It is not drift, so drift
+   * consumers select `delegate.delivery="timer"`.
+   *
    * Integer ms (`Math.floor` at emit-time) so the attr round-trips
    * cleanly through OTLP without rounding ambiguity.
    */
@@ -179,10 +186,10 @@ export type ContinuationSpanAttrs = {
   readonly "fanout.recipient.outcomes"?: readonly string[];
   /**
    * Only set on `continuation.compaction.released` spans.
-   * Aggregate count of staged post-compaction delegates released for
-   * dispatch by a single auto-compaction event. Snapshotted from
-   * `sessionEntry.pendingPostCompactionDelegates.length` at the moment
-   * `dispatchPostCompactionDelegates` is invoked.
+   * Aggregate count of staged post-compaction delegates a single compaction
+   * released for delivery: the `queuedDelegates` that
+   * `dispatchPostCompactionDelegates` returns, whether a delegate was staged
+   * in continuation custody or in the session entry.
    *
    * Integer ≥ 0. May be 0 when auto-compaction occurred but no delegates
    * were staged (the dispatch still runs to consume staged-but-unflushed
@@ -192,8 +199,9 @@ export type ContinuationSpanAttrs = {
   /**
    * Session-local monotone compaction counter. Join key is `(session.id, compaction.id)`.
    *
-   * Currently emitted on `continuation.compaction.released` spans. Future
-   * post-compaction-mode `continuation.delegate.fire` spans can join via this attr.
+   * Emitted on `continuation.compaction.released` spans and on the
+   * post-compaction-mode `continuation.delegate.fire` span of each delegate that
+   * release queued, so each released delegate joins the release that freed it.
    *
    * Invariant: integer ≥ 0, monotone-by-construction at producer (incrementRunCompactionCount).
    */
@@ -524,7 +532,7 @@ type ContinuationDelegateSpanArgs = {
   chainId: string | undefined;
   chainStepRemaining: number;
   delayMs: number;
-  delivery: "immediate" | "timer";
+  delivery: "immediate" | "timer" | "compaction";
   delegateMode?: string | undefined;
   reason?: string | undefined;
   traceparent?: string | undefined;
@@ -758,10 +766,13 @@ export function emitContinuationDisabledSpan(args: {
  *    helper no-ops gracefully (logs + returns) if `undefined` slips
  *    through anyway, so a future invariant break never crashes
  *    fire-emit.
- *  - `delegate.delivery: "timer"` is implicit — fire spans only emit on
- *    the timer-deferred path (immediate-delivery dispatches don't
- *    arm a timer, so there's no fire event for them). The helper sets
- *    the attr internally rather than taking it as an arg.
+ *  - `delegate.delivery` is implicit — fire spans only emit on deferred
+ *    paths (immediate-delivery dispatches have no fire event). It is
+ *    `"timer"`, or `"compaction"` for a post-compaction delegate, whose
+ *    deferral ends when a compaction releases it; `fire.deferred_ms` is then
+ *    the hold from staging to fire, and `compactionId` joins the fire to that
+ *    release's `continuation.compaction.released` span. The helper sets the
+ *    attr internally rather than taking it as an arg.
  *  - This is instrumentation-only: the helper does NOT
  *    re-evaluate any cap (`cap.chain | cap.cost | cap.delegates_per_turn`)
  *    at fire-time. Fire-time gating is a future-policy seam.
@@ -781,9 +792,11 @@ export function emitContinuationDisabledSpan(args: {
 export function emitContinuationDelegateFireSpan(args: {
   chainId: string;
   chainStepRemainingAtDispatch: number;
-  delegateMode: "normal" | "silent" | "silent-wake";
+  delegateMode: "normal" | "silent" | "silent-wake" | "post-compaction";
   delayMs: number;
   fireDeferredMs: number;
+  /** The releasing compaction of a post-compaction delegate. */
+  compactionId?: number | undefined;
   reason?: string | undefined;
   traceparent?: string | undefined;
   log?: (message: string) => void;
@@ -805,8 +818,9 @@ export function emitContinuationDelegateFireSpan(args: {
       "chain.step.remaining": Math.max(0, args.chainStepRemainingAtDispatch),
       "delay.ms": Math.round(args.delayMs),
       "fire.deferred_ms": Math.max(0, Math.floor(args.fireDeferredMs)),
-      "delegate.delivery": "timer",
+      "delegate.delivery": args.delegateMode === "post-compaction" ? "compaction" : "timer",
       "delegate.mode": args.delegateMode,
+      ...(args.compactionId !== undefined ? { "compaction.id": args.compactionId } : {}),
       ...continuationReasonAttributes(args.reason),
     };
     const span = getContinuationTracer().startSpan("continuation.delegate.fire", {
@@ -982,8 +996,7 @@ export function emitContinuationFanoutSpan(args: {
  * Emit a `continuation.compaction.released` span at the agent-runner
  * post-compaction-delegate dispatch seam. Fired
  * once per `autoCompactionCount > 0` branch, after
- * `dispatchPostCompactionDelegates` returns, with the released-count
- * snapshotted before the dispatch call.
+ * `dispatchPostCompactionDelegates` returns, with the count it queued.
  *
  * Mirrors `emitContinuationQueueDrainSpan` shape. Integer hygiene
  * (`Math.max(0, Math.floor(...))`) keeps the invariant local even though

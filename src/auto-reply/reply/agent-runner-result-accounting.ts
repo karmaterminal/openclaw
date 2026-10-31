@@ -652,8 +652,7 @@ export async function accountFollowupTurn(params: {
       });
     }
     if (sessionKey) {
-      const releasedCount = refreshed?.pendingPostCompactionDelegates?.length ?? 0;
-      await dispatchPostCompactionDelegates({
+      const { queuedDelegates } = await dispatchPostCompactionDelegates({
         cfg: turn.config,
         compactionCount: count,
         continuationSignalKind: accounting.effectiveContinuationSignal?.kind,
@@ -666,7 +665,7 @@ export async function accountFollowupTurn(params: {
         storePath,
       });
       emitContinuationCompactionReleasedSpan({
-        releasedCount,
+        releasedCount: queuedDelegates,
         compactionId: count,
         traceparent: settled.compactionTraceparent,
         log: (message) => defaultRuntime.log(message),

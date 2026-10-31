@@ -475,3 +475,47 @@ it("releases staged delegates before scheduling same-turn post-compaction work",
     log: expect.any(Function),
   });
 });
+
+it("reports the custody-staged delegates the release queued as compaction.released", async () => {
+  const turn = createContinuationTurn();
+  // Lifeboats staged through custody never enter the entry's legacy pending list.
+  delete turn.session.current()?.pendingPostCompactionDelegates;
+  state.dispatchPostCompactionDelegates.mockResolvedValue({
+    queuedDelegates: 2,
+    droppedDelegates: 0,
+  });
+
+  await accountFollowupTurnAndSchedule({
+    turn,
+    defaults: {
+      typing: {} as FollowupRunnerParams["typing"],
+      typingMode: "never",
+      defaultModel: "anthropic/claude",
+      opts: {},
+    },
+    execution: createExecution({
+      autoCompactionCount: 1,
+      compaction: {
+        count: 1,
+        durable: [
+          {
+            kind: "durable",
+            count: 1,
+            currentContextSnapshot: { tokens: 100 },
+            target: {
+              agentId: "agent",
+              sessionId: "session-1",
+              sessionKey: "main",
+              storePath: "/tmp/sessions.json",
+            },
+          },
+        ],
+      },
+      compactionTraceparent: "00-trace",
+    }),
+  });
+
+  expect(state.emitContinuationCompactionReleasedSpan).toHaveBeenCalledWith(
+    expect.objectContaining({ releasedCount: 2, compactionId: 7 }),
+  );
+});

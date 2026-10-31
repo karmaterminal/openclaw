@@ -41,6 +41,11 @@ vi.mock("../reply/get-reply.js", async (importOriginal) => ({
   getReplyFromConfig: (...args: unknown[]) => getReplyFromConfigMock(...args),
 }));
 
+import {
+  noopTracer,
+  resetContinuationTracer,
+  setContinuationTracer,
+} from "../../infra/continuation-tracer.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { captureContinuationQueueContext } from "./queue-context.js";
 
@@ -791,6 +796,32 @@ describe("RFC §5.4.2 / §9.2.2 item 4: post-compaction release and queue insert
       });
     },
   );
+
+  it("tool form: a released delegate fires once across a crash inside the drain's spawn and a restart (#1497)", async () => {
+    // The tracer registry is process-wide, so it outlives the module graph a restart replaces.
+    const fires: unknown[] = [];
+    setContinuationTracer({
+      startSpan: (name, options) => {
+        if (name === "continuation.delegate.fire") {
+          fires.push(options?.attributes?.["delegate.mode"]);
+        }
+        return noopTracer.startSpan(name, options);
+      },
+    });
+    try {
+      await withGateway(async (gateway) => {
+        await releaseAndCrashInsideDrain(gateway, "tool");
+        expect(fires).toEqual(["post-compaction"]);
+
+        const restarted = await restartGateway();
+        await restarted.runStartupRecovery();
+        expect(spawnedTasks()).toHaveLength(1);
+        expect(fires).toEqual(["post-compaction"]);
+      });
+    } finally {
+      resetContinuationTracer();
+    }
+  });
 });
 
 describe("RFC §5.4.4 reset at any boundary", () => {

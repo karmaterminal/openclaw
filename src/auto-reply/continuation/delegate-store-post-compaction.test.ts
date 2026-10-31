@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { setRuntimeConfigSnapshot } from "../../config/config.js";
 
 // Logger mock for corrupt-payload breadcrumb assertions.
@@ -33,6 +34,8 @@ vi.mock("../../logging/subsystem.js", async (importOriginal) => {
   };
 });
 
+import { enqueuePostCompactionDelegateDelivery } from "../../infra/session-delivery-queue-storage.js";
+import { readSessionQueueRow } from "../../infra/session-delivery-queue.storage.test-support.js";
 import { createContinuationRecord, updateContinuationRecords } from "./custody/custody-store.js";
 import type { ContinuationRecord, ContinuationRecordPatch } from "./custody/custody-store.types.js";
 import {
@@ -59,6 +62,7 @@ import {
   resetDelegateStoreForTests,
   revalidatePendingDelegateForSpawn,
 } from "./delegate-store.js";
+import { captureContinuationQueueContext } from "./queue-context.js";
 import { cancelSessionContinuations } from "./session-reset.js";
 import type { PendingContinuationDelegate } from "./types.js";
 
@@ -518,6 +522,56 @@ describe("session post-compaction delegate contract", () => {
         sequence: 1,
       }),
     ).toMatchObject({ released: true });
+  });
+
+  it("writes queue entries the previous build's strict reader accepts, so a rollback never dead-letters one", async () => {
+    // The strict postCompactionDelegate reader of the build this one ships on
+    // (f15237ec92) dead-letters a row carrying any other key as an invalid shape.
+    const previousBuildReader = z
+      .object(
+        Object.fromEntries(
+          `kind sessionKey sourceSessionId sourceLifecycleRevision task createdAt firstArmedAt silent
+          silentWake targetSessionKey targetSessionKeys fanoutMode recipientAuthorityBinding model
+          attachments attachAs sourceFlowId sourceExpectedRevision childRunId deliveryContext
+          idempotencyKey traceparent traceparentProvenance maxRetries completionRetention id
+          enqueuedAt retryCount agentRunAttempt lastChargedAgentRunAttempt lastAttemptAt lastError
+          deliveryStartedAt acknowledgedAt settlementOutcome availableAt`
+            .split(/\s+/)
+            .map((key) => [key, z.unknown().optional()]),
+        ),
+      )
+      .strict();
+    const sessionKey = "agent:main:rollback-reader";
+    await stageSessionPostCompactionDelegate(sessionKey, { task: "carry on", createdAt: 100 });
+    const claimed = expectDefined(
+      (await consumeSessionPostCompactionDelegates(sessionKey)).at(0),
+      "claimed delegate",
+    );
+    const released = await releaseStagedPostCompactionDelegateToQueue({
+      sessionKey,
+      delegate: claimed,
+      sequence: 0,
+      compactionCount: 3,
+    });
+    if (!released.released) {
+      throw new Error(`expected the claim to release: ${released.reason}`);
+    }
+    // The sibling writer: a session-entry delegate with no custody record.
+    const enqueuedId = await enqueuePostCompactionDelegateDelivery(
+      {
+        sessionKey,
+        delegate: { task: "carry the notes", createdAt: 200 },
+        sequence: 1,
+        compactionCount: 3,
+      },
+      captureContinuationQueueContext(),
+    );
+
+    const issues = [released.entryId, enqueuedId].map((id) => {
+      const row = expectDefined(readSessionQueueRow(custody.stateDir(), id), "queue row");
+      return previousBuildReader.safeParse(JSON.parse(row.entry_json)).error?.issues;
+    });
+    expect(issues).toEqual([undefined, undefined]);
   });
 });
 
