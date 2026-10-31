@@ -1,62 +1,368 @@
 {
-  "shape": "cael",
-  "warnings": [],
-  "scopeWitness": "Migration changed undeclared tables:\nsession_nodes: content changed",
-  "migratedUserVersion": 40,
-  "migratedVersusPredecessor": [
-    "schema_meta: content changed",
-    "session_nodes: content changed",
-    "session_recipient_authority: content changed"
-  ],
-  "authorityAfterMigration": [
-    {
-      "rowid": "1",
-      "session_key": "agent:main:main",
-      "epoch": "11111111-2222-4333-8444-555555555555",
-      "created_at": "1793400000000",
-      "updated_at": "1793400000010"
+  "cael": {
+    "warnings": [],
+    "scopeWitness": "Migration changed undeclared tables:\nsession_nodes: content changed",
+    "migratedUserVersion": 40,
+    "migratedVersusPredecessor": [
+      "schema_meta: content changed",
+      "session_nodes: content changed",
+      "session_recipient_authority: content changed"
+    ],
+    "authorityAfterMigration": [
+      {
+        "rowid": "1",
+        "session_key": "agent:main:main",
+        "epoch": "11111111-2222-4333-8444-555555555555",
+        "created_at": "1793400000000",
+        "updated_at": "1793400000010"
+      },
+      {
+        "rowid": "2",
+        "session_key": "agent:main:discord:channel:rehearsal",
+        "epoch": "66666666-7777-4888-9999-aaaaaaaaaaaa",
+        "created_at": "1793400000001",
+        "updated_at": "1793400000011"
+      },
+      {
+        "rowid": "3",
+        "session_key": "agent:main:subagent:rehearsal",
+        "epoch": "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+        "created_at": "1793470983880",
+        "updated_at": "1793470983880"
+      }
+    ],
+    "restoredUserVersion": 38,
+    "restoredVersusPredecessor": {
+      "schema": [],
+      "tables": [
+        "session_nodes: content changed"
+      ]
     },
-    {
-      "rowid": "2",
-      "session_key": "agent:main:discord:channel:rehearsal",
-      "epoch": "66666666-7777-4888-9999-aaaaaaaaaaaa",
-      "created_at": "1793400000001",
-      "updated_at": "1793400000011"
+    "childEntryJson": {
+      "predecessor": "{\"sessionId\":\"sess-child\",\"updatedAt\":1793400000000,\"recipientAuthorityEpoch\":\"bbbbbbbb-cccc-4ddd-8eee-ffffffffffff\"}",
+      "migrated": "{\"sessionId\":\"sess-child\",\"updatedAt\":1793400000000}",
+      "restored": "{\"sessionId\":\"sess-child\",\"updatedAt\":1793400000000}"
     },
-    {
-      "rowid": "3",
-      "session_key": "agent:main:subagent:rehearsal",
-      "epoch": "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
-      "created_at": "1793469029564",
-      "updated_at": "1793469029564"
-    }
-  ],
-  "restoredUserVersion": 38,
-  "restoredVersusPredecessor": {
-    "schema": [],
-    "tables": [
-      "session_nodes: content changed"
+    "authorityAfterRestore": [
+      {
+        "rowid": "1",
+        "session_key": "agent:main:main",
+        "epoch": "11111111-2222-4333-8444-555555555555",
+        "created_at": "1793400000000",
+        "updated_at": "1793400000010"
+      },
+      {
+        "rowid": "2",
+        "session_key": "agent:main:discord:channel:rehearsal",
+        "epoch": "66666666-7777-4888-9999-aaaaaaaaaaaa",
+        "created_at": "1793400000001",
+        "updated_at": "1793400000011"
+      }
     ]
   },
-  "childEntryJson": {
-    "predecessor": "{\"sessionId\":\"sess-child\",\"updatedAt\":1793400000000,\"recipientAuthorityEpoch\":\"bbbbbbbb-cccc-4ddd-8eee-ffffffffffff\"}",
-    "migrated": "{\"sessionId\":\"sess-child\",\"updatedAt\":1793400000000}",
-    "restored": "{\"sessionId\":\"sess-child\",\"updatedAt\":1793400000000}"
-  },
-  "authorityAfterRestore": [
-    {
-      "rowid": "1",
-      "session_key": "agent:main:main",
-      "epoch": "11111111-2222-4333-8444-555555555555",
-      "created_at": "1793400000000",
-      "updated_at": "1793400000010"
+  "elliott": {
+    "warnings": [],
+    "scopeWitness": "Migration changed undeclared tables:\nsession_nodes: content changed",
+    "migratedUserVersion": 40,
+    "migratedVersusPredecessor": [
+      "schema_meta: content changed",
+      "session_nodes: content changed",
+      "session_recipient_authority: content changed"
+    ],
+    "authorityAfterMigration": [
+      {
+        "rowid": "1",
+        "session_key": "agent:main:main",
+        "epoch": "11111111-2222-4333-8444-555555555555",
+        "created_at": "1793400000000",
+        "updated_at": "1793400000010"
+      },
+      {
+        "rowid": "2",
+        "session_key": "agent:main:discord:channel:rehearsal",
+        "epoch": "66666666-7777-4888-9999-aaaaaaaaaaaa",
+        "created_at": "1793400000001",
+        "updated_at": "1793400000011"
+      },
+      {
+        "rowid": "3",
+        "session_key": "agent:main:subagent:rehearsal",
+        "epoch": "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+        "created_at": "1793470985670",
+        "updated_at": "1793470985670"
+      }
+    ],
+    "restoredUserVersion": 38,
+    "restoredVersusPredecessor": {
+      "schema": [],
+      "tables": [
+        "session_nodes: content changed"
+      ]
     },
-    {
-      "rowid": "2",
-      "session_key": "agent:main:discord:channel:rehearsal",
-      "epoch": "66666666-7777-4888-9999-aaaaaaaaaaaa",
-      "created_at": "1793400000001",
-      "updated_at": "1793400000011"
-    }
-  ]
+    "childEntryJson": {
+      "predecessor": "{\"sessionId\":\"sess-child\",\"updatedAt\":1793400000000,\"recipientAuthorityEpoch\":\"bbbbbbbb-cccc-4ddd-8eee-ffffffffffff\"}",
+      "migrated": "{\"sessionId\":\"sess-child\",\"updatedAt\":1793400000000}",
+      "restored": "{\"sessionId\":\"sess-child\",\"updatedAt\":1793400000000}"
+    },
+    "authorityAfterRestore": [
+      {
+        "rowid": "1",
+        "session_key": "agent:main:main",
+        "epoch": "11111111-2222-4333-8444-555555555555",
+        "created_at": "1793400000000",
+        "updated_at": "1793400000010"
+      },
+      {
+        "rowid": "2",
+        "session_key": "agent:main:discord:channel:rehearsal",
+        "epoch": "66666666-7777-4888-9999-aaaaaaaaaaaa",
+        "created_at": "1793400000001",
+        "updated_at": "1793400000011"
+      }
+    ]
+  },
+  "x-037f7c86eedf": {
+    "warnings": [],
+    "scopeWitness": "Migration changed undeclared tables:\nsession_nodes: content changed",
+    "migratedUserVersion": 40,
+    "migratedVersusPredecessor": [
+      "schema_meta: content changed",
+      "session_nodes: content changed",
+      "session_recipient_authority: content changed"
+    ],
+    "authorityAfterMigration": [
+      {
+        "rowid": "1",
+        "session_key": "agent:main:main",
+        "epoch": "11111111-2222-4333-8444-555555555555",
+        "created_at": "1793400000000",
+        "updated_at": "1793400000010"
+      },
+      {
+        "rowid": "2",
+        "session_key": "agent:main:discord:channel:rehearsal",
+        "epoch": "66666666-7777-4888-9999-aaaaaaaaaaaa",
+        "created_at": "1793400000001",
+        "updated_at": "1793400000011"
+      },
+      {
+        "rowid": "3",
+        "session_key": "agent:main:subagent:rehearsal",
+        "epoch": "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+        "created_at": "1793470987468",
+        "updated_at": "1793470987468"
+      }
+    ],
+    "restoredUserVersion": 38,
+    "restoredVersusPredecessor": {
+      "schema": [],
+      "tables": [
+        "session_nodes: content changed"
+      ]
+    },
+    "childEntryJson": {
+      "predecessor": "{\"sessionId\":\"sess-child\",\"updatedAt\":1793400000000,\"recipientAuthorityEpoch\":\"bbbbbbbb-cccc-4ddd-8eee-ffffffffffff\"}",
+      "migrated": "{\"sessionId\":\"sess-child\",\"updatedAt\":1793400000000}",
+      "restored": "{\"sessionId\":\"sess-child\",\"updatedAt\":1793400000000}"
+    },
+    "authorityAfterRestore": [
+      {
+        "rowid": "1",
+        "session_key": "agent:main:main",
+        "epoch": "11111111-2222-4333-8444-555555555555",
+        "created_at": "1793400000000",
+        "updated_at": "1793400000010"
+      },
+      {
+        "rowid": "2",
+        "session_key": "agent:main:discord:channel:rehearsal",
+        "epoch": "66666666-7777-4888-9999-aaaaaaaaaaaa",
+        "created_at": "1793400000001",
+        "updated_at": "1793400000011"
+      }
+    ]
+  },
+  "x-1c2dd97228c8": {
+    "warnings": [],
+    "scopeWitness": "Migration changed undeclared tables:\nsession_nodes: content changed",
+    "migratedUserVersion": 40,
+    "migratedVersusPredecessor": [
+      "schema_meta: content changed",
+      "session_nodes: content changed",
+      "session_recipient_authority: content changed"
+    ],
+    "authorityAfterMigration": [
+      {
+        "rowid": "1",
+        "session_key": "agent:main:main",
+        "epoch": "11111111-2222-4333-8444-555555555555",
+        "created_at": "1793400000000",
+        "updated_at": "1793400000010"
+      },
+      {
+        "rowid": "2",
+        "session_key": "agent:main:discord:channel:rehearsal",
+        "epoch": "66666666-7777-4888-9999-aaaaaaaaaaaa",
+        "created_at": "1793400000001",
+        "updated_at": "1793400000011"
+      },
+      {
+        "rowid": "3",
+        "session_key": "agent:main:subagent:rehearsal",
+        "epoch": "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+        "created_at": "1793470989261",
+        "updated_at": "1793470989261"
+      }
+    ],
+    "restoredUserVersion": 38,
+    "restoredVersusPredecessor": {
+      "schema": [],
+      "tables": [
+        "session_nodes: content changed"
+      ]
+    },
+    "childEntryJson": {
+      "predecessor": "{\"sessionId\":\"sess-child\",\"updatedAt\":1793400000000,\"recipientAuthorityEpoch\":\"bbbbbbbb-cccc-4ddd-8eee-ffffffffffff\"}",
+      "migrated": "{\"sessionId\":\"sess-child\",\"updatedAt\":1793400000000}",
+      "restored": "{\"sessionId\":\"sess-child\",\"updatedAt\":1793400000000}"
+    },
+    "authorityAfterRestore": [
+      {
+        "rowid": "1",
+        "session_key": "agent:main:main",
+        "epoch": "11111111-2222-4333-8444-555555555555",
+        "created_at": "1793400000000",
+        "updated_at": "1793400000010"
+      },
+      {
+        "rowid": "2",
+        "session_key": "agent:main:discord:channel:rehearsal",
+        "epoch": "66666666-7777-4888-9999-aaaaaaaaaaaa",
+        "created_at": "1793400000001",
+        "updated_at": "1793400000011"
+      }
+    ]
+  },
+  "x-37b222965ab5": {
+    "warnings": [],
+    "scopeWitness": "Migration changed undeclared tables:\nsession_nodes: content changed",
+    "migratedUserVersion": 40,
+    "migratedVersusPredecessor": [
+      "schema_meta: content changed",
+      "session_nodes: content changed",
+      "session_recipient_authority: content changed"
+    ],
+    "authorityAfterMigration": [
+      {
+        "rowid": "1",
+        "session_key": "agent:main:main",
+        "epoch": "11111111-2222-4333-8444-555555555555",
+        "created_at": "1793400000000",
+        "updated_at": "1793400000010"
+      },
+      {
+        "rowid": "2",
+        "session_key": "agent:main:discord:channel:rehearsal",
+        "epoch": "66666666-7777-4888-9999-aaaaaaaaaaaa",
+        "created_at": "1793400000001",
+        "updated_at": "1793400000011"
+      },
+      {
+        "rowid": "3",
+        "session_key": "agent:main:subagent:rehearsal",
+        "epoch": "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+        "created_at": "1793470991081",
+        "updated_at": "1793470991081"
+      }
+    ],
+    "restoredUserVersion": 38,
+    "restoredVersusPredecessor": {
+      "schema": [],
+      "tables": [
+        "session_nodes: content changed"
+      ]
+    },
+    "childEntryJson": {
+      "predecessor": "{\"sessionId\":\"sess-child\",\"updatedAt\":1793400000000,\"recipientAuthorityEpoch\":\"bbbbbbbb-cccc-4ddd-8eee-ffffffffffff\"}",
+      "migrated": "{\"sessionId\":\"sess-child\",\"updatedAt\":1793400000000}",
+      "restored": "{\"sessionId\":\"sess-child\",\"updatedAt\":1793400000000}"
+    },
+    "authorityAfterRestore": [
+      {
+        "rowid": "1",
+        "session_key": "agent:main:main",
+        "epoch": "11111111-2222-4333-8444-555555555555",
+        "created_at": "1793400000000",
+        "updated_at": "1793400000010"
+      },
+      {
+        "rowid": "2",
+        "session_key": "agent:main:discord:channel:rehearsal",
+        "epoch": "66666666-7777-4888-9999-aaaaaaaaaaaa",
+        "created_at": "1793400000001",
+        "updated_at": "1793400000011"
+      }
+    ]
+  },
+  "x-420d0a605448": {
+    "warnings": [],
+    "scopeWitness": "Migration changed undeclared tables:\nsession_nodes: content changed",
+    "migratedUserVersion": 40,
+    "migratedVersusPredecessor": [
+      "schema_meta: content changed",
+      "session_nodes: content changed",
+      "session_recipient_authority: content changed"
+    ],
+    "authorityAfterMigration": [
+      {
+        "rowid": "1",
+        "session_key": "agent:main:main",
+        "epoch": "11111111-2222-4333-8444-555555555555",
+        "created_at": "1793400000000",
+        "updated_at": "1793400000010"
+      },
+      {
+        "rowid": "2",
+        "session_key": "agent:main:discord:channel:rehearsal",
+        "epoch": "66666666-7777-4888-9999-aaaaaaaaaaaa",
+        "created_at": "1793400000001",
+        "updated_at": "1793400000011"
+      },
+      {
+        "rowid": "3",
+        "session_key": "agent:main:subagent:rehearsal",
+        "epoch": "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+        "created_at": "1793470992912",
+        "updated_at": "1793470992912"
+      }
+    ],
+    "restoredUserVersion": 38,
+    "restoredVersusPredecessor": {
+      "schema": [],
+      "tables": [
+        "session_nodes: content changed"
+      ]
+    },
+    "childEntryJson": {
+      "predecessor": "{\"sessionId\":\"sess-child\",\"updatedAt\":1793400000000,\"recipientAuthorityEpoch\":\"bbbbbbbb-cccc-4ddd-8eee-ffffffffffff\"}",
+      "migrated": "{\"sessionId\":\"sess-child\",\"updatedAt\":1793400000000}",
+      "restored": "{\"sessionId\":\"sess-child\",\"updatedAt\":1793400000000}"
+    },
+    "authorityAfterRestore": [
+      {
+        "rowid": "1",
+        "session_key": "agent:main:main",
+        "epoch": "11111111-2222-4333-8444-555555555555",
+        "created_at": "1793400000000",
+        "updated_at": "1793400000010"
+      },
+      {
+        "rowid": "2",
+        "session_key": "agent:main:discord:channel:rehearsal",
+        "epoch": "66666666-7777-4888-9999-aaaaaaaaaaaa",
+        "created_at": "1793400000001",
+        "updated_at": "1793400000011"
+      }
+    ]
+  }
 }
