@@ -1,7 +1,12 @@
 import { expectDefined, stableStringify } from "@openclaw/normalization-core";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
-import { resolveRequesterPrincipalKey } from "../../../agents/requester-origin.js";
+import {
+  captureRequesterOrigin,
+  resolveRequesterPrincipalKey,
+} from "../../../agents/requester-origin.js";
+import { resolveRequesterConversationToolPolicy } from "../../../agents/requester-tool-policy.js";
 import { withSandboxRuntimeStatusesInWorker } from "../../../agents/sandbox/runtime-status.js";
+import { resolveSenderToolPolicy } from "../../../agents/sender-tool-policy.js";
 import { withPreparedSessionCapabilityRead } from "../../../agents/subagents/spawn/subagent-session-store.js";
 import { readToolAllowlistIntersection } from "../../../agents/tool-policy.js";
 import { normalizeChatType } from "../../../channels/chat-type.js";
@@ -15,6 +20,7 @@ import {
   resolveReplyPersonalToolTargets,
   resolveReplyToolAuthorityContext,
 } from "../reply-tool-authority.js";
+import { isRoomAggregatePluginSurfaceAudited } from "./room-aggregate-plugin-gate.js";
 import {
   FollowupRunDeferredError,
   isFollowupRunAborted,
@@ -55,7 +61,8 @@ function resolveTurnAdoptionLifecycleDeliveryKey(run: FollowupRun): string {
   // Frond (karmaterminal, #1415): so do exclusive room-event lifecycles. The collected
   // claim still adopts and settles each source lifecycle once. Accepted edge case: a
   // member losing ingress custody after a sibling committed refuses the turn without
-  // replaying the committed siblings; ingress retries the lost member.
+  // replaying the committed siblings, which in a cross-sender aggregate belong to other
+  // senders; ingress retries the lost member.
   if (!hasExclusiveTurnAdmission(lifecycle) || run.currentInboundEventKind === "room_event") {
     return explicitOwnerKey;
   }
@@ -100,6 +107,121 @@ export function resolveFollowupAuthorizationKey(run: FollowupRun): string {
   ]);
 }
 
+// Frond (karmaterminal, #1415): what a cross-sender room aggregate runs as. It keeps the room's
+// route, session and conversation facts and drops every sender fact (principal, names, roles,
+// linked human, channel sender context), with sender-scoped authority at the senderless baseline.
+// Exec overrides stay: they are in the batch key, so every member carries the same ones.
+export function resolveRoomAggregateExecution(execution: FollowupRun["run"]): FollowupRun["run"] {
+  const origin = execution.requesterOrigin;
+  return {
+    ...execution,
+    requesterOrigin:
+      origin &&
+      captureRequesterOrigin({
+        sessionKey: origin.sessionKey,
+        messageProvider: origin.messageProvider,
+        agentAccountId: origin.accountId,
+        chatType: origin.chatType,
+        conversationId: origin.conversationId,
+        messageThreadId: origin.messageThreadId,
+        groupId: origin.groupId,
+        groupChannel: origin.groupChannel,
+        groupSpace: origin.groupSpace,
+      }),
+    channelContext: execution.channelContext?.chat
+      ? { chat: execution.channelContext.chat }
+      : undefined,
+    senderId: undefined,
+    senderName: undefined,
+    senderUsername: undefined,
+    senderE164: undefined,
+    memberRoleIds: undefined,
+    gitContributorProfileId: undefined,
+    senderIsOwner: false,
+    traceAuthorized: false,
+    ownerNumbers: [],
+    operatorProfileId: undefined,
+    conversationToolPolicy: undefined,
+    runtimePluginToolGrant: undefined,
+    bashElevated: execution.bashElevated && { ...execution.bashElevated, allowed: false },
+    approvalReviewerDeviceId: undefined,
+    gatewayUiCommandTarget: undefined,
+  };
+}
+
+// Frond (karmaterminal, #1415): toolsBySender resolves group and sender tool policy from the
+// sender at run time. An unreadable policy keeps the member out of the aggregate.
+function resolveSenderScopedToolPolicyKey(execution: FollowupRun["run"]): string | undefined {
+  const requester = execution.requesterOrigin ?? execution;
+  try {
+    return stableStringify([
+      resolveRequesterConversationToolPolicy({ ...execution, accountId: execution.agentAccountId }),
+      resolveSenderToolPolicy({
+        ...requester,
+        config: execution.config,
+        agentId: execution.agentId,
+      }),
+    ]);
+  } catch {
+    return undefined;
+  }
+}
+
+// Frond (karmaterminal, #1415): a room event joins a cross-sender aggregate only when its own
+// authority already equals the senderless baseline, so the aggregate never grants a member
+// authority it lacks or lifts a member's restriction. It does lose sender-derived context
+// (roles, requester-scoped connections); returns that baseline source. A spawned session stays
+// out: there a senderless requester resolves its tool policy through the persisted child
+// envelope instead of the current request.
+function resolveRoomAggregateSource(source: FollowupRun): FollowupRun | undefined {
+  const execution = source.run;
+  if (
+    source.currentInboundEventKind !== "room_event" ||
+    source.operatorAuthority ||
+    source.createChannelCronAuthority ||
+    source.memoryAudienceSenderIsOwner === true ||
+    source.explicitSkillSelections?.length ||
+    execution.senderIsOwner === true ||
+    execution.traceAuthorized === true ||
+    execution.operatorProfileId ||
+    execution.requesterOrigin?.operatorProfileId ||
+    execution.conversationToolPolicy ||
+    execution.runtimePluginToolGrant ||
+    execution.approvalReviewerDeviceId ||
+    execution.gatewayUiCommandTarget ||
+    execution.spawnedBy ||
+    execution.bashElevated?.allowed === true ||
+    !isRoomAggregatePluginSurfaceAudited(execution)
+  ) {
+    return undefined;
+  }
+  const baseline = { ...source, run: resolveRoomAggregateExecution(execution) };
+  const policy = resolveSenderScopedToolPolicyKey(execution);
+  return policy !== undefined && policy === resolveSenderScopedToolPolicyKey(baseline.run)
+    ? baseline
+    : undefined;
+}
+
+function resolveRoomAggregateBatchKey(run: FollowupRun): string | undefined {
+  const baseline = resolveRoomAggregateSource(run);
+  return (
+    baseline && JSON.stringify(["room-aggregate", resolveFollowupDeliveryStorageKey(baseline)])
+  );
+}
+
+// Frond (karmaterminal, #1415): the batch identity. A room event with baseline authority keys by
+// the room baseline so senders share one collect; everything else keeps its storage key.
+export function resolveFollowupBatchKey(run: FollowupRun): string {
+  return resolveRoomAggregateBatchKey(run) ?? resolveFollowupDeliveryStorageKey(run);
+}
+
+// Frond (karmaterminal, #1415): whether a claim may run as the senderless room baseline: every
+// member is aggregate-eligible under one room-aggregate key.
+export function isRoomAggregateBatch(sources: readonly FollowupRun[]): boolean {
+  const keys = new Set(sources.map(resolveRoomAggregateBatchKey));
+  return keys.size === 1 && !keys.has(undefined);
+}
+
 /** Storage grouping is policy-independent; drain prepares current screen/theme authority. */
 export function resolveFollowupDeliveryStorageKey(run: FollowupRun): string {
   const execution = run.run;
@@ -119,6 +241,10 @@ export function resolveFollowupDeliveryStorageKey(run: FollowupRun): string {
     run.originatingReplyToMode ?? "",
     normalizeChatType(run.originatingChatType) ?? "",
     resolveFollowupAuthorizationKey(run),
+    // Frond (karmaterminal, #1415): the session permission mode an attempt narrowed this run's
+    // shared exec overrides to. Kept out of the authorization key, which also hands a stalled
+    // turn to its sender's queued request.
+    execution.execOverrides?.mode ?? "",
     run.turnAdoptionLifecycle?.ownerKey ?? "",
     normalizeOptionalString(execution.runtimePolicySessionKey ?? execution.sessionKey) ?? "",
     execution.provider,
@@ -221,7 +347,8 @@ export async function prepareNextDeliveryGroup(
               undefined,
               expectDefined(statuses[index], "prepared sandbox status"),
             ).capabilityProfile;
-      const storageKey = resolveFollowupDeliveryStorageKey(item);
+      // Frond (karmaterminal, #1415): the same batch identity the mailbox selected by.
+      const storageKey = resolveFollowupBatchKey(item);
       const personalTargets = profile ? resolveReplyPersonalToolTargets(item, profile) : undefined;
       const key = JSON.stringify([
         storageKey,

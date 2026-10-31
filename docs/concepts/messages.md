@@ -138,7 +138,7 @@ Messages with separate durable ingress admission, including Discord and Telegram
 
 <!-- Frond (karmaterminal, #1415): unaddressed room events collect. -->
 
-[Ambient room events](/channels/ambient-room-events) are the exception: under `collect`, consecutive room events with the same sender, route, and reply target combine into one followup turn, and each message's admission still settles once. Room events still never steer or interrupt.
+[Ambient room events](/channels/ambient-room-events) are the exception: under `collect`, consecutive room events with the same route and reply target combine into one followup turn, and each message's admission still settles once. Room events from different senders also combine. A message with sender-scoped authority keeps its own turn, in order: an owner or operator message, an elevated grant, a sender-specific tool policy entry, or exec settings the other messages don't share. Messages in a spawned session never combine across senders. The combined turn, and any overflow summary of it, names each sender but runs with no sender identity or sender-scoped authority. Room events still never steer or interrupt.
 
 The queue uses a built-in 500ms debounce for steer, followup, and collect batching. `messages.queue.cap` defaults to 20 queued messages, and `messages.queue.drop` defaults to `summarize` (`old` and `new` are also available). Configure per-channel overrides via `messages.queue.byChannel` and `messages.queue.debounceMsByChannel`.
 

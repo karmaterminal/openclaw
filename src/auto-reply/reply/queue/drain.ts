@@ -24,7 +24,13 @@ import type { SessionControllerEntry } from "../../../sessions/session-controlle
 import { createUserTurnTranscriptRecorder } from "../../../sessions/user-turn-transcript.js";
 import { AgentDatabaseExecutionAdmissionClosedError } from "../../../state/agent-database-admission-error.js";
 import { buildCollectPrompt, previewQueueSummaryPrompt } from "../../../utils/queue-helpers.js";
-import { collectRuntimeMetadata, resolveFollowupReplyAnchor } from "./delivery-context.js";
+import {
+  collectRuntimeMetadata,
+  isRoomAggregateBatch,
+  resolveFollowupDeliveryStorageKey,
+  resolveFollowupReplyAnchor,
+  resolveRoomAggregateExecution,
+} from "./delivery-context.js";
 import { runOutsideAdmittedGenerationScopes } from "./drain-admission-scope.js";
 import {
   buildCollectTranscriptInput,
@@ -33,6 +39,7 @@ import {
   createCollectUserTurnTranscriptRecorder,
   renderCollectItem,
   resolveAggregateOwner,
+  resolveCollectSenderLabel,
   resolveFollowupTranscriptTarget,
   resolveOriginRoutingMetadata,
 } from "./envelope.js";
@@ -43,6 +50,7 @@ import {
   retireFollowupRunCancellation,
   updateFollowupRetryHeartbeats,
 } from "./lifecycle.js";
+import { deferRoomAggregateForUnauditedPlugins } from "./room-aggregate-plugin-gate.js";
 import { followupQueueSources, followupSourceRunners } from "./state.js";
 import { isFollowupRunAborted, type FollowupRun } from "./types.js";
 
@@ -115,7 +123,14 @@ function buildOverflowTranscriptIdempotencyKey(source: FollowupRun, prompt: stri
   return `followup-overflow:${source.run.sessionId}:${routeHash}:${source.messageId ?? source.enqueuedAt}:${promptHash}`;
 }
 
-function resolveCollectedRun(items: readonly FollowupRun[], source: FollowupRun["run"]) {
+function resolveCollectedRun(
+  items: readonly FollowupRun[],
+  source: FollowupRun["run"],
+  crossSender: boolean,
+) {
+  if (crossSender) {
+    return resolveRoomAggregateExecution(source);
+  }
   const participantComparison = compareChannelAdmissionParticipants(
     items.map((item) => item.channelAdmissionEvidence),
   );
@@ -180,7 +195,17 @@ async function executeClaim(
       queue.activeSummarySources.add(item);
     }
   }
-  const summaryLines = sources.map((item) => {
+  // Frond (karmaterminal, #1415): differing per-sender identities only batch through the room
+  // aggregate key; that turn runs as the senderless room baseline, never as any one member, so
+  // each summary line names its sender.
+  const mixedSenders =
+    sources.length > 1 && new Set(sources.map(resolveFollowupDeliveryStorageKey)).size > 1;
+  const crossSender = mixedSenders && isRoomAggregateBatch(sources);
+  // Frond (karmaterminal, #1415): any other mixed claim breaks the selection invariant. It fails
+  // closed before execution, refused like a pre-execution rejection: each member retries alone,
+  // or is released unadopted when the claim can no longer be deferred.
+  const refuseMixedClaim = mixedSenders && !crossSender;
+  const readSummaryLine = (item: FollowupRun) => {
     const index = queue.summarySources.indexOf(item);
     if (index >= 0) {
       return queue.summaryLines[index] ?? "";
@@ -192,6 +217,11 @@ async function executeClaim(
       }
     }
     return item.summaryLine ?? item.prompt;
+  };
+  const summaryLines = sources.map((item) => {
+    const line = readSummaryLine(item);
+    const sender = crossSender ? resolveCollectSenderLabel(item) : undefined;
+    return sender ? `(from ${sender}) ${line}` : line;
   });
   const prompt = claim.summary
     ? (previewQueueSummaryPrompt({
@@ -210,14 +240,16 @@ async function executeClaim(
     await Promise.all(sources.flatMap((item) => item.controllerInput?.custody.settling ?? []));
   };
   let run = source;
-  if (claim.summary || sources.length > 1) {
+  if (!refuseMixedClaim && (claim.summary || sources.length > 1)) {
+    const execution = resolveCollectedRun(sources, source.run, crossSender);
+    // Frond (karmaterminal, #1415): the transcript turn records the authority the turn runs as.
     const recorder = claim.summary
       ? createUserTurnTranscriptRecorder({
           input: {
             text: prompt,
             idempotencyKey: buildOverflowTranscriptIdempotencyKey(source, prompt),
-            senderIsOwner: source.run.senderIsOwner,
-            requesterOrigin: source.run.requesterOrigin,
+            senderIsOwner: execution.senderIsOwner,
+            requesterOrigin: execution.requesterOrigin,
             provenance: source.run.inputProvenance,
           },
           pendingInputSources: sources.flatMap((item) => item.userTurnTranscriptRecorder ?? []),
@@ -225,7 +257,7 @@ async function executeClaim(
           beforeMessageWrite: runAgentHarnessBeforeMessageWriteHook,
           errorContext: "mailbox overflow transcript",
         })
-      : createCollectUserTurnTranscriptRecorder(sources);
+      : createCollectUserTurnTranscriptRecorder(sources, execution);
     run = {
       ...source,
       ...resolveOriginRoutingMetadata(sources),
@@ -235,7 +267,7 @@ async function executeClaim(
       prompt,
       transcriptPrompt: claim.summary ? prompt : buildCollectTranscriptInput(sources).text,
       userTurnTranscriptRecorder: recorder,
-      run: resolveCollectedRun(sources, source.run),
+      run: execution,
       controllerInput: source.controllerInput,
       controllerClaim: claim,
       turnAdoptionLifecycle: {
@@ -253,6 +285,21 @@ async function executeClaim(
   let waitForFreshKick = false;
   let executionThrew = false;
   try {
+    if (refuseMixedClaim) {
+      for (const item of sources) {
+        item.disableCollectBatching = true;
+      }
+      const retry = deferSessionControllerClaimBeforeExecution(claim);
+      defaultRuntime.error?.(
+        `mailbox refused a mixed claim for ${queue.key}: not every member may run as the room ` +
+          `baseline; ${sources.length} members ${retry ? "retry alone" : "released unadopted"}`,
+      );
+      return;
+    }
+    // Frond (karmaterminal, #1415): a plugin activated since selection splits the room again.
+    if (crossSender && deferRoomAggregateForUnauditedPlugins(claim, source.run)) {
+      return;
+    }
     if (admissionSessionRebind && run.run.sessionId === admissionSessionRebind.from) {
       run = { ...run, admissionSessionId: admissionSessionRebind.to };
     }
