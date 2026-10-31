@@ -5,10 +5,12 @@
 // provider delivery nor that the model attended to or acted on the input.
 //
 // Acceptance is the dispatch owner's fact, reported through markUserTurnInputDispatched. In
-// process, the provider stream function resolved with its stream, so a rate-limit, auth or abort
-// gate that rejects the request never stamps. A cloud worker takes the input when its launch is
-// dispatched or, on the admission protocol, when the launched worker's admission allows it; the
-// provider request is then the worker's own, so a worker that later fails it still reads consumed.
+// process, the provider stream function resolved with its stream: a pre-dispatch gate that rejects
+// the request (rate-limit admission, auth authority, abort) never stamps, while a failure the
+// provider reports inside the accepted stream, such as an HTTP 429 or 401, comes after acceptance.
+// A cloud worker takes the input when the launch carrying it is dispatched to the worker or, on
+// the admission protocol, when the launched worker's admission allows it; the provider request is
+// then the worker's own, so a worker that later fails it still reads consumed.
 //
 // The input is staged before its run exists, and accepted input commits its staged bytes
 // verbatim, so the run is stamped on the committed row at that boundary: a correlation-only

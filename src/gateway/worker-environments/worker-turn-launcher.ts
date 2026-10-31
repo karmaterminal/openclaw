@@ -430,10 +430,14 @@ export function createWorkerSessionTurnPlacementProvider(options: WorkerTurnLaun
                 environments: options.environments,
                 onHandoff: (custody?: { requiresTerminalReceipt: true }) => {
                   handedOff = true;
-                  // Continuation (karmaterminal): a legacy launch carries an input already sent, so
-                  // the worker taking it consumed it. Admission and remote exec send it later and
-                  // report their own acceptance; for them this is a no-op.
-                  markUserTurnInputDispatched(turn.userTurnTranscriptRecorder);
+                  // Continuation (karmaterminal): a legacy worker launch carries the input it just
+                  // marked sent, so the worker taking it consumed it. The admission protocol sends
+                  // it after handoff (nothing is sent yet here) and remote exec from its local run;
+                  // both report their own acceptance. A remote-exec handoff never reports: an
+                  // earlier refused candidate can leave the input marked sent.
+                  if (!remoteExec) {
+                    markUserTurnInputDispatched(turn.userTurnTranscriptRecorder);
+                  }
                   terminalReceiptRequired = custody?.requiresTerminalReceipt === true;
                   activeWorkerTurn?.beginExecution();
                   if (!admissionReported) {
