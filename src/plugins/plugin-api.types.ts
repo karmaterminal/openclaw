@@ -126,22 +126,24 @@ export type PluginActiveRunSteerResult =
   | { steered: false; reason: string };
 
 type OpenClawPluginSessionWorkflowApi = {
+  /** Present when state query, settlement notice, and withdrawal are available. */
+  readonly apiVersion?: 2;
   /** Queue one plugin-owned context injection for the next agent turn in a session. */
   enqueueNextTurnInjection: (
     injection: PluginNextTurnInjection,
   ) => Promise<PluginNextTurnInjectionEnqueueResult>;
-  getNextTurnInjectionState: (params: {
+  getNextTurnInjectionState?: (params: {
     sessionKey: string;
     agentId?: string;
     idempotencyKey: string;
   }) => Promise<PluginNextTurnInjectionStateResult>;
   /** Register a metadata-only settlement notice handler. Notifications may be missed; query for truth. */
-  onNextTurnInjectionSettled: (
+  onNextTurnInjectionSettled?: (
     handler: (
       event: import("./host-hook-turn-types.js").PluginNextTurnInjectionSettlement,
     ) => void | Promise<void>,
   ) => void;
-  withdrawNextTurnInjection: (params: {
+  withdrawNextTurnInjection?: (params: {
     sessionKey: string;
     agentId?: string;
     idempotencyKey: string;
@@ -181,6 +183,17 @@ type OpenClawPluginSessionWorkflowApi = {
     params: PluginSessionTurnUnscheduleByTagParams,
   ) => Promise<PluginSessionTurnUnscheduleByTagResult>;
 };
+
+type OpenClawPluginSessionWorkflowApiV2 = OpenClawPluginSessionWorkflowApi &
+  Required<
+    Pick<
+      OpenClawPluginSessionWorkflowApi,
+      | "apiVersion"
+      | "getNextTurnInjectionState"
+      | "onNextTurnInjectionSettled"
+      | "withdrawNextTurnInjection"
+    >
+  >;
 
 type OpenClawPluginSessionControlsApi = {
   /** Register a typed session action that clients can dispatch through the Gateway. */
@@ -426,9 +439,9 @@ export type OpenClawPluginApi = {
    * @deprecated Use `api.session.workflow.enqueueNextTurnInjection(...)`.
    */
   enqueueNextTurnInjection: OpenClawPluginSessionWorkflowApi["enqueueNextTurnInjection"];
-  getNextTurnInjectionState: OpenClawPluginSessionWorkflowApi["getNextTurnInjectionState"];
-  withdrawNextTurnInjection: OpenClawPluginSessionWorkflowApi["withdrawNextTurnInjection"];
-  onNextTurnInjectionSettled: OpenClawPluginSessionWorkflowApi["onNextTurnInjectionSettled"];
+  getNextTurnInjectionState?: OpenClawPluginSessionWorkflowApi["getNextTurnInjectionState"];
+  withdrawNextTurnInjection?: OpenClawPluginSessionWorkflowApi["withdrawNextTurnInjection"];
+  onNextTurnInjectionSettled?: OpenClawPluginSessionWorkflowApi["onNextTurnInjectionSettled"];
   /**
    * Register a trusted pre-tool policy. Installed plugins must declare the
    * policy id in `contracts.trustedToolPolicies`.
@@ -480,4 +493,12 @@ export type OpenClawPluginApi = {
     handler: PluginHookHandlerMap[K],
     opts?: PluginHookRegistrationOptions<K>,
   ) => void;
+};
+
+/** Opt-in workflow-v2 contract with required state, settlement, and withdrawal capabilities. */
+export type OpenClawPluginApiV2 = OpenClawPluginApi & {
+  session: OpenClawPluginApi["session"] & { workflow: OpenClawPluginSessionWorkflowApiV2 };
+  getNextTurnInjectionState: OpenClawPluginSessionWorkflowApiV2["getNextTurnInjectionState"];
+  onNextTurnInjectionSettled: OpenClawPluginSessionWorkflowApiV2["onNextTurnInjectionSettled"];
+  withdrawNextTurnInjection: OpenClawPluginSessionWorkflowApiV2["withdrawNextTurnInjection"];
 };

@@ -149,6 +149,14 @@ describe("plugin host cleanup session stores", () => {
             idempotencyKey: "pending",
             createdAt: now,
           },
+          {
+            id: "prototype",
+            pluginId: "cleanup",
+            text: "prototype",
+            placement: "append_context",
+            idempotencyKey: "__proto__",
+            createdAt: now,
+          },
         ],
       },
       pluginNextTurnInjectionOutcomes: {
@@ -161,6 +169,8 @@ describe("plugin host cleanup session stores", () => {
     const outcomes = preserveResetPluginInjectionOutcomes(original, now);
     expect(outcomes?.cleanup?.old?.state).toBe("consumed");
     expect(outcomes?.cleanup?.pending?.state).toBe("discarded");
+    expect(Object.hasOwn(outcomes?.cleanup ?? {}, "__proto__")).toBe(true);
+    expect(outcomes?.cleanup?.["__proto__"]?.state).toBe("discarded");
     expect(outcomes?.cleanup?.stale).toBeUndefined();
     expect(original.pluginNextTurnInjectionOutcomes?.cleanup?.pending).toBeUndefined();
   });

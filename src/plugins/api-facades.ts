@@ -57,6 +57,7 @@ export function attachPluginApiFacades(api: OpenClawPluginApiWithoutFacades): Op
     session: {
       state: { registerSessionExtension: api.registerSessionExtension },
       workflow: {
+        apiVersion: 2,
         enqueueNextTurnInjection: api.enqueueNextTurnInjection,
         getNextTurnInjectionState: api.getNextTurnInjectionState,
         withdrawNextTurnInjection: api.withdrawNextTurnInjection,

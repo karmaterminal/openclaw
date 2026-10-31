@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { observeHostDataSql } from "../../../test/helpers/sqlite-statement-execution-counter.js";
 import { resolvePromptBuildHookResult } from "../../agents/embedded-agent-runner/run/attempt-prompt-helpers.js";
 import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
@@ -12,17 +12,29 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { openOpenClawAgentDatabase } from "../../state/openclaw-agent-db.js";
 import { createOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { normalizeSessionDeliveryState as deliveryState } from "../../utils/delivery-context.shared.js";
+import { dispatchSettlements } from "../host-hook-settlement-dispatch.js";
 import {
   drainPluginNextTurnInjectionContext as drain,
   enqueuePluginNextTurnInjection,
   getPluginNextTurnInjectionState,
   withdrawPluginNextTurnInjection,
 } from "../host-hook-state.js";
+import type { OpenClawPluginApi, OpenClawPluginApiV2 } from "../plugin-api.types.js";
 import { createEmptyPluginRegistry } from "../registry-empty.js";
 import { clearActivePluginRegistry, setActivePluginRegistry } from "../runtime.js";
 import { createPluginRecord } from "../status.test-helpers.js";
 
 describe("next-turn injection identity", () => {
+  it("keeps workflow v2 optional on the legacy API and required on the versioned API", () => {
+    type Optional<T, K extends keyof T> = {} extends Pick<T, K> ? true : false;
+    type Legacy = OpenClawPluginApi["session"]["workflow"];
+    type V2 = OpenClawPluginApiV2["session"]["workflow"];
+    expectTypeOf<Optional<Legacy, "getNextTurnInjectionState">>().toEqualTypeOf<true>();
+    expectTypeOf<Optional<Legacy, "onNextTurnInjectionSettled">>().toEqualTypeOf<true>();
+    expectTypeOf<Optional<Legacy, "withdrawNextTurnInjection">>().toEqualTypeOf<true>();
+    expectTypeOf<Optional<V2, "getNextTurnInjectionState">>().toEqualTypeOf<false>();
+    expectTypeOf<V2["apiVersion"]>().toEqualTypeOf<2>();
+  });
   let state: Awaited<ReturnType<typeof createOpenClawTestState>>;
   function sessionScope(cfg: OpenClawConfig, agentId: string, sessionKey: string) {
     const storePath = resolveSessionStorePathCore(cfg.session?.store, { agentId, env: state.env });
@@ -151,6 +163,179 @@ describe("next-turn injection identity", () => {
     expect(
       readEntry(scope)?.pluginNextTurnInjectionOutcomes?.["owner-fixture"]?.stalled?.state,
     ).toBe("consumed");
+  });
+
+  it("bounds stalled settlement delivery to one call per registration", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:bounded-notice");
+    await writeEntry(scope, { sessionId: "bounded-notice", updatedAt: 1 });
+    const registry = createEmptyPluginRegistry();
+    registry.plugins.push(createPluginRecord({ id: "owner-fixture", status: "loaded" }));
+    const handler = vi.fn(() => new Promise<void>(() => {}));
+    registry.nextTurnInjectionSettlementHandlers.push({
+      pluginId: "owner-fixture",
+      source: "fixture",
+      handler,
+    });
+    setActivePluginRegistry(registry);
+    for (const key of ["first", "second", "third"]) {
+      await enqueuePluginNextTurnInjection({
+        cfg,
+        pluginId: "owner-fixture",
+        injection: { ...scope, text: key, idempotencyKey: key },
+      });
+      await drain({ cfg, ...scope });
+    }
+    await vi.waitFor(() => expect(handler).toHaveBeenCalledTimes(1));
+  });
+
+  it("rejects a retired settlement registration before callback invocation", async () => {
+    const registry = createEmptyPluginRegistry();
+    const record = createPluginRecord({ id: "owner-fixture", status: "loaded" });
+    registry.plugins.push(record);
+    const handler = vi.fn();
+    registry.nextTurnInjectionSettlementHandlers.push({
+      pluginId: "owner-fixture",
+      source: "fixture",
+      handler,
+    });
+    setActivePluginRegistry(registry);
+    dispatchSettlements(
+      [
+        {
+          pluginId: "owner-fixture",
+          event: { sessionKey: "", idempotencyKey: "key", state: "consumed", settledAt: 1 },
+        },
+      ],
+      "agent:main:retired-notice",
+    );
+    record.status = "disabled";
+    await Promise.resolve();
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("delivers one settled notice to multiple live handlers", async () => {
+    const registry = createEmptyPluginRegistry();
+    registry.plugins.push(createPluginRecord({ id: "owner-fixture", status: "loaded" }));
+    const first = vi.fn();
+    const second = vi.fn();
+    for (const handler of [first, second]) {
+      registry.nextTurnInjectionSettlementHandlers.push({
+        pluginId: "owner-fixture",
+        source: "fixture",
+        handler,
+      });
+    }
+    setActivePluginRegistry(registry);
+    dispatchSettlements(
+      [
+        {
+          pluginId: "owner-fixture",
+          event: { sessionKey: "", idempotencyKey: "key", state: "consumed", settledAt: 1 },
+        },
+      ],
+      "agent:main:live-notice",
+    );
+    await vi.waitFor(() => {
+      expect(first).toHaveBeenCalledOnce();
+      expect(second).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("checks absolute expiry again before rendering", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:expiry-boundary");
+    const base = Date.now();
+    let clock = base;
+    const dateSpy = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    try {
+      await writeEntry(scope, { sessionId: "expiry-boundary", updatedAt: 1 });
+      const registry = createEmptyPluginRegistry();
+      registry.plugins.push(createPluginRecord({ id: "owner-fixture", status: "loaded" }));
+      registry.nextTurnInjectionSettlementHandlers.push({
+        pluginId: "owner-fixture",
+        source: "fixture",
+        handler: () => {
+          clock = base + 2_000;
+        },
+      });
+      setActivePluginRegistry(registry);
+      await enqueuePluginNextTurnInjection({
+        cfg,
+        pluginId: "owner-fixture",
+        injection: {
+          ...scope,
+          text: "deadline",
+          idempotencyKey: "deadline",
+          expiresAt: base + 1_000,
+        },
+      });
+      const result = await drain({ cfg, ...scope });
+      expect(result.queuedInjections).toEqual([]);
+      expect(result.prependContext).toBeUndefined();
+    } finally {
+      dateSpy.mockRestore();
+    }
+  });
+
+  it("normalizes lookup keys and persists __proto__ as an own tombstone", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:proto-key");
+    await writeEntry(scope, { sessionId: "proto-key", updatedAt: 1 });
+    await enqueuePluginNextTurnInjection({
+      cfg,
+      pluginId: "owner-fixture",
+      injection: { ...scope, text: "prototype", idempotencyKey: " __proto__ " },
+    });
+    await expect(
+      getPluginNextTurnInjectionState({
+        cfg,
+        pluginId: "owner-fixture",
+        ...scope,
+        idempotencyKey: " __proto__ ",
+      }),
+    ).resolves.toMatchObject({ state: "pending", idempotencyKey: "__proto__" });
+    await expect(
+      withdrawPluginNextTurnInjection({
+        cfg,
+        pluginId: "owner-fixture",
+        ...scope,
+        idempotencyKey: " __proto__ ",
+      }),
+    ).resolves.toMatchObject({ state: "withdrawn", idempotencyKey: "__proto__" });
+    const outcomes = readEntry(scope)?.pluginNextTurnInjectionOutcomes?.["owner-fixture"];
+    expect(Object.hasOwn(outcomes ?? {}, "__proto__")).toBe(true);
+    expect(outcomes?.["__proto__"]?.state).toBe("withdrawn");
+  });
+
+  it("retains the byte-budget suffix in FIFO order", async () => {
+    const cfg: OpenClawConfig = {
+      agents: { entries: { main: {} } },
+      plugins: {
+        entries: { "owner-fixture": { hooks: { nextTurnInjectionDrainMaxBytes: 40_000 } } },
+      },
+    };
+    const scope = sessionScope(cfg, "main", "agent:main:fifo-bytes");
+    await writeEntry(scope, {
+      sessionId: "fifo-bytes",
+      updatedAt: 1,
+      pluginNextTurnInjections: {
+        "owner-fixture": [25_000, 25_000, 5_000].map((size, index) => ({
+          id: String(index),
+          pluginId: "owner-fixture",
+          text: "x".repeat(size),
+          placement: "prepend_context" as const,
+          createdAt: index,
+        })),
+      },
+    });
+    expect((await drain({ cfg, ...scope })).queuedInjections.map((record) => record.id)).toEqual([
+      "0",
+    ]);
+    expect((await drain({ cfg, ...scope })).queuedInjections.map((record) => record.id)).toEqual([
+      "1",
+      "2",
+    ]);
   });
 
   it("treats malformed persisted queues as unknown and withdraws safely", async () => {

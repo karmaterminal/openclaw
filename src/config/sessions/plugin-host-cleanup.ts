@@ -123,16 +123,32 @@ function settlePendingPluginInjections(entry: SessionEntry, now: number, pluginI
         continue;
       }
       const outcomes = (entry.pluginNextTurnInjectionOutcomes ??= {});
-      const owned = (outcomes[owner] ??= {});
-      owned[record.idempotencyKey] ??= {
-        state:
-          (typeof record.expiresAt === "number" && now >= record.expiresAt) ||
-          (typeof record.ttlMs === "number" && now - record.createdAt > record.ttlMs)
-            ? "expired"
-            : "discarded",
-        settledAt: now,
-        retainUntil: Math.max(now, record.expiresAt ?? 0, record.outcomeRetainUntil ?? 0) + 5_000,
-      };
+      if (!Object.hasOwn(outcomes, owner)) {
+        Object.defineProperty(outcomes, owner, {
+          value: {},
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+      }
+      const owned = outcomes[owner]!;
+      if (Object.hasOwn(owned, record.idempotencyKey)) {
+        continue;
+      }
+      Object.defineProperty(owned, record.idempotencyKey, {
+        enumerable: true,
+        writable: true,
+        configurable: true,
+        value: {
+          state:
+            (typeof record.expiresAt === "number" && now >= record.expiresAt) ||
+            (typeof record.ttlMs === "number" && now - record.createdAt > record.ttlMs)
+              ? "expired"
+              : "discarded",
+          settledAt: now,
+          retainUntil: Math.max(now, record.expiresAt ?? 0, record.outcomeRetainUntil ?? 0) + 5_000,
+        },
+      });
     }
   }
 }

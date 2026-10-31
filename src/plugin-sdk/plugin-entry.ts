@@ -43,6 +43,7 @@ export type {
   OpenClawGatewayDiscoveryAdvertiseContext,
   OpenClawGatewayDiscoveryService,
   OpenClawPluginApi,
+  OpenClawPluginApiV2,
   OpenClawPluginCommandDefinition,
   OpenClawPluginConfigSchema,
   OpenClawPluginDefinition,

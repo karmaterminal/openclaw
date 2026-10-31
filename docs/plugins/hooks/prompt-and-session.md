@@ -374,6 +374,10 @@ durable context queued for the next prompt build (the top-level
 behavior). OpenClaw drains queued injections before prompt hooks on embedded and supported CLI paths,
 even when no prompt hooks are registered. Codex and Copilot sessions do not drain
 these entries; enqueue refuses them with `reason: "harness_does_not_drain"`.
+Workflow API v2 advertises `api.session.workflow.apiVersion === 2` and adds
+state query, settlement notices, and withdrawal. These methods remain optional
+on the legacy `OpenClawPluginApi` type; use `OpenClawPluginApiV2` when requiring
+them from a pinned compatible host.
 Entries with absolute `expiresAt` are never rendered after expiry. A `notBefore`
 time is checked at drain. Pending entries may be conditionally superseded by
 `supersedeKey` and `expectedSupersededKey`, or withdrawn by idempotency key.
