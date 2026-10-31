@@ -1,6 +1,7 @@
 // Frond (karmaterminal, #1415): room events queued mid-turn over durable ingress collect into one turn.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
+import type { InboundEventKind } from "../../channels/inbound-event/kind.js";
 import {
   bindIngressLifecycleToReplyOptions,
   type ChannelIngressDispatchLifecycle,
@@ -14,7 +15,6 @@ import {
 import type { SessionEntry } from "../../config/sessions.js";
 import { createReplyOperation } from "../../sessions/session-controller.js";
 import { testing as controllerTesting } from "../../sessions/session-controller.test-support.js";
-import type { InboundEventKind } from "../get-reply-options.types.js";
 import { parseInlineSessionDirectives } from "./directive-handling.parse.js";
 import { prepareReplyRunAdmission } from "./get-reply-run-admission.js";
 import { prepareReplyRunContext } from "./get-reply-run-context.js";
@@ -64,8 +64,7 @@ afterEach(() => controllerTesting.resetSessionControllerForTest());
 const COLLECT_TITLE = "[Queued messages while agent was busy]";
 const ROOM_LANE = "discord:channel:room";
 
-type RowKind = Extract<InboundEventKind, "room_event" | "user_request">;
-type Row = { id: string; kind?: RowKind };
+type Row = { id: string; kind?: InboundEventKind };
 type Harness = Awaited<ReturnType<typeof openRoomIngress>>;
 
 function textOf(row: Row): string {
