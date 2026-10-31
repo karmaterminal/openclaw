@@ -136,6 +136,10 @@ When a run is already active, inbound messages steer into it by default. `messag
 
 Messages with separate durable ingress admission, including Discord and Telegram messages, stay in separate followup turns even in `collect` mode. Compatible Gateway `chat.send` inputs can still combine.
 
+<!-- Frond (karmaterminal, #1415): unaddressed room events collect. -->
+
+[Ambient room events](/channels/ambient-room-events) are the exception: under `collect`, consecutive room events with the same sender, route, and reply target combine into one followup turn, and each message's admission still settles once. Room events still never steer or interrupt.
+
 The queue uses a built-in 500ms debounce for steer, followup, and collect batching. `messages.queue.cap` defaults to 20 queued messages, and `messages.queue.drop` defaults to `summarize` (`old` and `new` are also available). Configure per-channel overrides via `messages.queue.byChannel` and `messages.queue.debounceMsByChannel`.
 
 Details: [Command queue](/concepts/queue) and [Steering queue](/concepts/queue-steering).
