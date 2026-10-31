@@ -1,0 +1,2666 @@
+{
+  "inventory": {
+    "shapes": 16,
+    "agentDatabases": 56
+  },
+  "structuralClasses": [
+    {
+      "class": 1,
+      "members": [
+        "cael",
+        "ronan",
+        "emeric",
+        "x-86d3e6ac5209"
+      ],
+      "agentDatabases": 6,
+      "edgeProbe": "cael"
+    },
+    {
+      "class": 2,
+      "members": [
+        "elliott"
+      ],
+      "agentDatabases": 1,
+      "edgeProbe": "elliott"
+    },
+    {
+      "class": 3,
+      "members": [
+        "x-037f7c86eedf",
+        "x-2170ae4d642d",
+        "x-3076322a956c",
+        "x-69f5aaa04421",
+        "x-6e53d6abeac4"
+      ],
+      "agentDatabases": 41,
+      "edgeProbe": "x-037f7c86eedf"
+    },
+    {
+      "class": 4,
+      "members": [
+        "x-1c2dd97228c8",
+        "x-978ba7aa6715",
+        "x-d3d8365f2501"
+      ],
+      "agentDatabases": 4,
+      "edgeProbe": "x-1c2dd97228c8"
+    },
+    {
+      "class": 5,
+      "members": [
+        "x-37b222965ab5"
+      ],
+      "agentDatabases": 1,
+      "edgeProbe": "x-37b222965ab5"
+    },
+    {
+      "class": 6,
+      "members": [
+        "x-420d0a605448",
+        "x-eea500a249ff"
+      ],
+      "agentDatabases": 3,
+      "edgeProbe": "x-420d0a605448"
+    }
+  ],
+  "memorySearchObjects": [
+    "table memory_index_chunks_fts",
+    "table memory_index_chunks_fts_config",
+    "table memory_index_chunks_fts_content",
+    "table memory_index_chunks_fts_data",
+    "table memory_index_chunks_fts_docsize",
+    "table memory_index_chunks_fts_idx",
+    "table memory_index_chunks_vec",
+    "table memory_index_chunks_vec_chunks",
+    "table memory_index_chunks_vec_info",
+    "table memory_index_chunks_vec_rowids",
+    "table memory_index_chunks_vec_vector_chunks00",
+    "table memory_index_paths_fts",
+    "table memory_index_paths_fts_config",
+    "table memory_index_paths_fts_content",
+    "table memory_index_paths_fts_data",
+    "table memory_index_paths_fts_docsize",
+    "table memory_index_paths_fts_idx",
+    "trigger memory_index_chunks_fts_after_delete",
+    "trigger memory_index_chunks_fts_after_insert",
+    "trigger memory_index_chunks_fts_after_update",
+    "trigger memory_index_paths_fts_after_delete",
+    "trigger memory_index_paths_fts_after_insert",
+    "trigger memory_index_paths_fts_after_update"
+  ],
+  "structurallyDifferingObjects": [
+    "index idx_memory_index_chunks_path",
+    "table conversations",
+    "table memory_index_chunks_fts",
+    "table memory_index_chunks_fts_config",
+    "table memory_index_chunks_fts_content",
+    "table memory_index_chunks_fts_data",
+    "table memory_index_chunks_fts_docsize",
+    "table memory_index_chunks_fts_idx",
+    "table memory_index_chunks_vec",
+    "table memory_index_chunks_vec_chunks",
+    "table memory_index_chunks_vec_info",
+    "table memory_index_chunks_vec_rowids",
+    "table memory_index_chunks_vec_vector_chunks00",
+    "table memory_index_paths_fts",
+    "table memory_index_paths_fts_config",
+    "table memory_index_paths_fts_content",
+    "table memory_index_paths_fts_data",
+    "table memory_index_paths_fts_docsize",
+    "table memory_index_paths_fts_idx",
+    "table session_conversations",
+    "table session_nodes",
+    "trigger memory_index_chunks_fts_after_delete",
+    "trigger memory_index_chunks_fts_after_insert",
+    "trigger memory_index_chunks_fts_after_update",
+    "trigger memory_index_paths_fts_after_delete",
+    "trigger memory_index_paths_fts_after_insert",
+    "trigger memory_index_paths_fts_after_update"
+  ],
+  "declaredScope": {
+    "schema_meta": {
+      "structures": 1,
+      "storedTexts": 2
+    },
+    "session_recipient_authority": {
+      "structures": 1,
+      "storedTexts": 1
+    },
+    "transcript_events": {
+      "structures": 1,
+      "storedTexts": 1
+    }
+  },
+  "shapes": {
+    "cael": {
+      "inventoryHash": "f13316752f48",
+      "agentDatabases": [
+        "cael/main"
+      ],
+      "objects": 139,
+      "virtualTables": [
+        "memory_index_chunks_fts (fts5)",
+        "memory_index_chunks_vec (vec0)",
+        "memory_index_paths_fts (fts5)",
+        "session_transcript_fts (fts5)",
+        "standing_intents_fts (fts5)"
+      ],
+      "schemaMetaKeys": [
+        "primary",
+        "historical-transcript-directives-v1",
+        "media-transcript-archive-verification-v1"
+      ],
+      "structuralClass": 1,
+      "classification": "textual only vs ronan, emeric",
+      "versusMainShapes": {
+        "ronan": {
+          "structural": [],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending"
+          ]
+        },
+        "elliott": {
+          "structural": [
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL DEFAULT ''`, reference `TEXT NOT NULL`",
+            "table session_nodes: missing columns owner_actor_type, owner_actor_id, owner_assigned_by_type, owner_assigned_by_id, owner_assigned_at",
+            "table session_nodes: column order differs"
+          ],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending",
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table board_tabs",
+            "table board_widgets",
+            "table cache_entries",
+            "table heartbeat_outcomes",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_conversations",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities",
+            "table transcript_rewrite_watermarks"
+          ]
+        },
+        "emeric": {
+          "structural": [],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending",
+            "table conversations",
+            "table memory_index_sources",
+            "table session_conversations",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities"
+          ]
+        }
+      }
+    },
+    "ronan": {
+      "inventoryHash": "84722fa357fc",
+      "agentDatabases": [
+        "ronan/main",
+        "silas/main"
+      ],
+      "objects": 139,
+      "virtualTables": [
+        "memory_index_chunks_fts (fts5)",
+        "memory_index_chunks_vec (vec0)",
+        "memory_index_paths_fts (fts5)",
+        "session_transcript_fts (fts5)",
+        "standing_intents_fts (fts5)"
+      ],
+      "schemaMetaKeys": [
+        "primary",
+        "historical-transcript-directives-v1",
+        "media-transcript-archive-verification-v1"
+      ],
+      "structuralClass": 1,
+      "classification": "textual only vs cael, emeric",
+      "versusMainShapes": {
+        "cael": {
+          "structural": [],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending"
+          ]
+        },
+        "elliott": {
+          "structural": [
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL DEFAULT ''`, reference `TEXT NOT NULL`",
+            "table session_nodes: missing columns owner_actor_type, owner_actor_id, owner_assigned_by_type, owner_assigned_by_id, owner_assigned_at",
+            "table session_nodes: column order differs"
+          ],
+          "textOnly": [
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table board_tabs",
+            "table board_widgets",
+            "table cache_entries",
+            "table heartbeat_outcomes",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_conversations",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities",
+            "table transcript_rewrite_watermarks"
+          ]
+        },
+        "emeric": {
+          "structural": [],
+          "textOnly": [
+            "table conversations",
+            "table memory_index_sources",
+            "table session_conversations",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities"
+          ]
+        }
+      }
+    },
+    "elliott": {
+      "inventoryHash": "f924f99eaacc",
+      "agentDatabases": [
+        "elliott/main"
+      ],
+      "objects": 139,
+      "virtualTables": [
+        "memory_index_chunks_fts (fts5)",
+        "memory_index_chunks_vec (vec0)",
+        "memory_index_paths_fts (fts5)",
+        "session_transcript_fts (fts5)",
+        "standing_intents_fts (fts5)"
+      ],
+      "schemaMetaKeys": [
+        "primary",
+        "historical-transcript-directives-v1",
+        "media-transcript-archive-verification-v1"
+      ],
+      "structuralClass": 2,
+      "classification": "structural",
+      "versusMainShapes": {
+        "cael": {
+          "structural": [
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL`, reference `TEXT NOT NULL DEFAULT ''`",
+            "table session_nodes: extra columns owner_actor_type, owner_actor_id, owner_assigned_by_type, owner_assigned_by_id, owner_assigned_at",
+            "table session_nodes: column order differs"
+          ],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending",
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table board_tabs",
+            "table board_widgets",
+            "table cache_entries",
+            "table heartbeat_outcomes",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_conversations",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities",
+            "table transcript_rewrite_watermarks"
+          ]
+        },
+        "ronan": {
+          "structural": [
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL`, reference `TEXT NOT NULL DEFAULT ''`",
+            "table session_nodes: extra columns owner_actor_type, owner_actor_id, owner_assigned_by_type, owner_assigned_by_id, owner_assigned_at",
+            "table session_nodes: column order differs"
+          ],
+          "textOnly": [
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table board_tabs",
+            "table board_widgets",
+            "table cache_entries",
+            "table heartbeat_outcomes",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_conversations",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities",
+            "table transcript_rewrite_watermarks"
+          ]
+        },
+        "emeric": {
+          "structural": [
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL`, reference `TEXT NOT NULL DEFAULT ''`",
+            "table session_nodes: extra columns owner_actor_type, owner_actor_id, owner_assigned_by_type, owner_assigned_by_id, owner_assigned_at",
+            "table session_nodes: column order differs"
+          ],
+          "textOnly": [
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table board_tabs",
+            "table board_widgets",
+            "table cache_entries",
+            "table heartbeat_outcomes",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table transcript_rewrite_watermarks"
+          ]
+        }
+      }
+    },
+    "emeric": {
+      "inventoryHash": "ba075713d34e",
+      "agentDatabases": [
+        "emeric/main",
+        "rune/main"
+      ],
+      "objects": 139,
+      "virtualTables": [
+        "memory_index_chunks_fts (fts5)",
+        "memory_index_chunks_vec (vec0)",
+        "memory_index_paths_fts (fts5)",
+        "session_transcript_fts (fts5)",
+        "standing_intents_fts (fts5)"
+      ],
+      "schemaMetaKeys": [
+        "primary",
+        "historical-transcript-directives-v1",
+        "media-transcript-archive-verification-v1"
+      ],
+      "structuralClass": 1,
+      "classification": "textual only vs cael, ronan",
+      "versusMainShapes": {
+        "cael": {
+          "structural": [],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending",
+            "table conversations",
+            "table memory_index_sources",
+            "table session_conversations",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities"
+          ]
+        },
+        "ronan": {
+          "structural": [],
+          "textOnly": [
+            "table conversations",
+            "table memory_index_sources",
+            "table session_conversations",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities"
+          ]
+        },
+        "elliott": {
+          "structural": [
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL DEFAULT ''`, reference `TEXT NOT NULL`",
+            "table session_nodes: missing columns owner_actor_type, owner_actor_id, owner_assigned_by_type, owner_assigned_by_id, owner_assigned_at",
+            "table session_nodes: column order differs"
+          ],
+          "textOnly": [
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table board_tabs",
+            "table board_widgets",
+            "table cache_entries",
+            "table heartbeat_outcomes",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table transcript_rewrite_watermarks"
+          ]
+        }
+      }
+    },
+    "x-037f7c86eedf": {
+      "inventoryHash": "037f7c86eedf",
+      "agentDatabases": [
+        "elliott/claude",
+        "elliott/codex",
+        "elliott/copilot",
+        "elliott/default",
+        "elliott/research",
+        "elliott/router-balanced",
+        "elliott/router-complex",
+        "elliott/router-quick",
+        "ronan/agent",
+        "ronan/bot-alpha",
+        "ronan/claude",
+        "ronan/claude-code",
+        "ronan/codex",
+        "ronan/codex-acp",
+        "ronan/copilot",
+        "ronan/default",
+        "ronan/research",
+        "ronan/test",
+        "ronan/work",
+        "silas/agent",
+        "silas/codex",
+        "silas/copilot",
+        "silas/default"
+      ],
+      "objects": 117,
+      "virtualTables": [
+        "session_transcript_fts (fts5)",
+        "standing_intents_fts (fts5)"
+      ],
+      "schemaMetaKeys": [
+        "primary",
+        "historical-transcript-directives-v1"
+      ],
+      "structuralClass": 3,
+      "classification": "structural",
+      "versusMainShapes": {
+        "cael": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending",
+            "table memory_entry_origins",
+            "table session_participants"
+          ]
+        },
+        "ronan": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table memory_entry_origins",
+            "table session_participants"
+          ]
+        },
+        "elliott": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL DEFAULT ''`, reference `TEXT NOT NULL`",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "table session_nodes: missing columns owner_actor_type, owner_actor_id, owner_assigned_by_type, owner_assigned_by_id, owner_assigned_at",
+            "table session_nodes: column order differs",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table board_tabs",
+            "table board_widgets",
+            "table cache_entries",
+            "table heartbeat_outcomes",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_conversations",
+            "table session_participants",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities",
+            "table transcript_rewrite_watermarks"
+          ]
+        },
+        "emeric": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table conversations",
+            "table memory_entry_origins",
+            "table memory_index_sources",
+            "table session_conversations",
+            "table session_participants",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities"
+          ]
+        }
+      }
+    },
+    "x-1c2dd97228c8": {
+      "inventoryHash": "1c2dd97228c8",
+      "agentDatabases": [
+        "cael/agent"
+      ],
+      "objects": 117,
+      "virtualTables": [
+        "session_transcript_fts (fts5)",
+        "standing_intents_fts (fts5)"
+      ],
+      "schemaMetaKeys": [
+        "primary",
+        "historical-transcript-directives-v1"
+      ],
+      "structuralClass": 4,
+      "classification": "structural",
+      "versusMainShapes": {
+        "cael": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL`, reference `TEXT NOT NULL DEFAULT ''`",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table cache_entries",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_conversations",
+            "table session_participants",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities"
+          ]
+        },
+        "ronan": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL`, reference `TEXT NOT NULL DEFAULT ''`",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending",
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table cache_entries",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_conversations",
+            "table session_participants",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities"
+          ]
+        },
+        "elliott": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "table session_nodes: missing columns owner_actor_type, owner_actor_id, owner_assigned_by_type, owner_assigned_by_id, owner_assigned_at",
+            "table session_nodes: column order differs",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending",
+            "table board_tabs",
+            "table board_widgets",
+            "table heartbeat_outcomes",
+            "table memory_entry_origins",
+            "table session_participants",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table transcript_rewrite_watermarks"
+          ]
+        },
+        "emeric": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL`, reference `TEXT NOT NULL DEFAULT ''`",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending",
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table cache_entries",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_participants"
+          ]
+        }
+      }
+    },
+    "x-2170ae4d642d": {
+      "inventoryHash": "2170ae4d642d",
+      "agentDatabases": [
+        "emeric/codex",
+        "emeric/research",
+        "rune/codex"
+      ],
+      "objects": 117,
+      "virtualTables": [
+        "session_transcript_fts (fts5)",
+        "standing_intents_fts (fts5)"
+      ],
+      "schemaMetaKeys": [
+        "primary",
+        "historical-transcript-directives-v1"
+      ],
+      "structuralClass": 3,
+      "classification": "structural",
+      "versusMainShapes": {
+        "cael": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending",
+            "table conversations",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table session_conversations",
+            "table session_participants",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities"
+          ]
+        },
+        "ronan": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table conversations",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table session_conversations",
+            "table session_participants",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities"
+          ]
+        },
+        "elliott": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL DEFAULT ''`, reference `TEXT NOT NULL`",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "table session_nodes: missing columns owner_actor_type, owner_actor_id, owner_assigned_by_type, owner_assigned_by_id, owner_assigned_at",
+            "table session_nodes: column order differs",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table board_tabs",
+            "table board_widgets",
+            "table cache_entries",
+            "table heartbeat_outcomes",
+            "table memory_entry_origins",
+            "table schema_meta",
+            "table session_participants",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table transcript_rewrite_watermarks"
+          ]
+        },
+        "emeric": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table session_participants"
+          ]
+        }
+      }
+    },
+    "x-3076322a956c": {
+      "inventoryHash": "3076322a956c",
+      "agentDatabases": [
+        "elliott/openclaw",
+        "emeric/agent",
+        "emeric/claude",
+        "emeric/copilot",
+        "emeric/default",
+        "rune/agent",
+        "rune/default",
+        "silas/openclaw"
+      ],
+      "objects": 117,
+      "virtualTables": [
+        "session_transcript_fts (fts5)",
+        "standing_intents_fts (fts5)"
+      ],
+      "schemaMetaKeys": [
+        "primary",
+        "historical-transcript-directives-v1"
+      ],
+      "structuralClass": 3,
+      "classification": "structural",
+      "versusMainShapes": {
+        "cael": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending",
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table cache_entries",
+            "table conversations",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_conversations",
+            "table session_participants",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities"
+          ]
+        },
+        "ronan": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table cache_entries",
+            "table conversations",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_conversations",
+            "table session_participants",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities"
+          ]
+        },
+        "elliott": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL DEFAULT ''`, reference `TEXT NOT NULL`",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "table session_nodes: missing columns owner_actor_type, owner_actor_id, owner_assigned_by_type, owner_assigned_by_id, owner_assigned_at",
+            "table session_nodes: column order differs",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table board_tabs",
+            "table board_widgets",
+            "table heartbeat_outcomes",
+            "table memory_entry_origins",
+            "table session_participants",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table transcript_rewrite_watermarks"
+          ]
+        },
+        "emeric": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table cache_entries",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_participants"
+          ]
+        }
+      }
+    },
+    "x-37b222965ab5": {
+      "inventoryHash": "37b222965ab5",
+      "agentDatabases": [
+        "silas/claude"
+      ],
+      "objects": 117,
+      "virtualTables": [
+        "session_transcript_fts (fts5)",
+        "standing_intents_fts (fts5)"
+      ],
+      "schemaMetaKeys": [
+        "primary",
+        "historical-transcript-directives-v1"
+      ],
+      "structuralClass": 5,
+      "classification": "structural",
+      "versusMainShapes": {
+        "cael": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL`, reference `TEXT NOT NULL DEFAULT ''`",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "table session_nodes: column order differs",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending",
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table board_tabs",
+            "table board_widgets",
+            "table cache_entries",
+            "table heartbeat_outcomes",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_conversations",
+            "table session_participants",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities",
+            "table transcript_rewrite_watermarks"
+          ]
+        },
+        "ronan": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL`, reference `TEXT NOT NULL DEFAULT ''`",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "table session_nodes: column order differs",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table board_tabs",
+            "table board_widgets",
+            "table cache_entries",
+            "table heartbeat_outcomes",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_conversations",
+            "table session_participants",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities",
+            "table transcript_rewrite_watermarks"
+          ]
+        },
+        "elliott": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "table session_nodes: missing columns owner_actor_type, owner_actor_id, owner_assigned_by_type, owner_assigned_by_id, owner_assigned_at",
+            "table session_nodes: column order differs",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table memory_entry_origins",
+            "table session_participants"
+          ]
+        },
+        "emeric": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL`, reference `TEXT NOT NULL DEFAULT ''`",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "table session_nodes: column order differs",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table board_tabs",
+            "table board_widgets",
+            "table cache_entries",
+            "table heartbeat_outcomes",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_participants",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table transcript_rewrite_watermarks"
+          ]
+        }
+      }
+    },
+    "x-420d0a605448": {
+      "inventoryHash": "420d0a605448",
+      "agentDatabases": [
+        "emeric/openclaw"
+      ],
+      "objects": 117,
+      "virtualTables": [
+        "session_transcript_fts (fts5)",
+        "standing_intents_fts (fts5)"
+      ],
+      "schemaMetaKeys": [
+        "primary",
+        "historical-transcript-directives-v1"
+      ],
+      "structuralClass": 6,
+      "classification": "structural",
+      "versusMainShapes": {
+        "cael": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL`, reference `TEXT NOT NULL DEFAULT ''`",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "table session_conversations: column order differs",
+            "table session_nodes: extra columns owner_actor_type, owner_actor_id, owner_assigned_by_type, owner_assigned_by_id, owner_assigned_at",
+            "table session_nodes: column order differs",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending",
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table board_tabs",
+            "table board_widgets",
+            "table cache_entries",
+            "table heartbeat_outcomes",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities",
+            "table transcript_rewrite_watermarks",
+            "trigger session_conversations_route_context_invalidate_after_update"
+          ]
+        },
+        "ronan": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL`, reference `TEXT NOT NULL DEFAULT ''`",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "table session_conversations: column order differs",
+            "table session_nodes: extra columns owner_actor_type, owner_actor_id, owner_assigned_by_type, owner_assigned_by_id, owner_assigned_at",
+            "table session_nodes: column order differs",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table board_tabs",
+            "table board_widgets",
+            "table cache_entries",
+            "table heartbeat_outcomes",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities",
+            "table transcript_rewrite_watermarks",
+            "trigger session_conversations_route_context_invalidate_after_update"
+          ]
+        },
+        "elliott": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "table session_conversations: column order differs",
+            "table session_nodes: column order differs",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table memory_entry_origins",
+            "trigger session_conversations_route_context_invalidate_after_update"
+          ]
+        },
+        "emeric": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL`, reference `TEXT NOT NULL DEFAULT ''`",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "table session_conversations: column order differs",
+            "table session_nodes: extra columns owner_actor_type, owner_actor_id, owner_assigned_by_type, owner_assigned_by_id, owner_assigned_at",
+            "table session_nodes: column order differs",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table board_tabs",
+            "table board_widgets",
+            "table cache_entries",
+            "table heartbeat_outcomes",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table transcript_rewrite_watermarks",
+            "trigger session_conversations_route_context_invalidate_after_update"
+          ]
+        }
+      }
+    },
+    "x-69f5aaa04421": {
+      "inventoryHash": "69f5aaa04421",
+      "agentDatabases": [
+        "cael/claude",
+        "cael/codex",
+        "cael/codex-acp",
+        "cael/copilot",
+        "cael/default",
+        "cael/research"
+      ],
+      "objects": 117,
+      "virtualTables": [
+        "session_transcript_fts (fts5)",
+        "standing_intents_fts (fts5)"
+      ],
+      "schemaMetaKeys": [
+        "primary",
+        "historical-transcript-directives-v1",
+        "media-transcript-archive-verification-v1"
+      ],
+      "structuralClass": 3,
+      "classification": "structural",
+      "versusMainShapes": {
+        "cael": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table memory_entry_origins",
+            "table session_participants"
+          ]
+        },
+        "ronan": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending",
+            "table memory_entry_origins",
+            "table session_participants"
+          ]
+        },
+        "elliott": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL DEFAULT ''`, reference `TEXT NOT NULL`",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "table session_nodes: missing columns owner_actor_type, owner_actor_id, owner_assigned_by_type, owner_assigned_by_id, owner_assigned_at",
+            "table session_nodes: column order differs",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending",
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table board_tabs",
+            "table board_widgets",
+            "table cache_entries",
+            "table heartbeat_outcomes",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_conversations",
+            "table session_participants",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities",
+            "table transcript_rewrite_watermarks"
+          ]
+        },
+        "emeric": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending",
+            "table conversations",
+            "table memory_entry_origins",
+            "table memory_index_sources",
+            "table session_conversations",
+            "table session_participants",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities"
+          ]
+        }
+      }
+    },
+    "x-6e53d6abeac4": {
+      "inventoryHash": "6e53d6abeac4",
+      "agentDatabases": [
+        "cael/openclaw"
+      ],
+      "objects": 117,
+      "virtualTables": [
+        "session_transcript_fts (fts5)",
+        "standing_intents_fts (fts5)"
+      ],
+      "schemaMetaKeys": [
+        "primary",
+        "historical-transcript-directives-v1"
+      ],
+      "structuralClass": 3,
+      "classification": "structural",
+      "versusMainShapes": {
+        "cael": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table cache_entries",
+            "table conversations",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_conversations",
+            "table session_participants",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities"
+          ]
+        },
+        "ronan": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending",
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table cache_entries",
+            "table conversations",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_conversations",
+            "table session_participants",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities"
+          ]
+        },
+        "elliott": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL DEFAULT ''`, reference `TEXT NOT NULL`",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "table session_nodes: missing columns owner_actor_type, owner_actor_id, owner_assigned_by_type, owner_assigned_by_id, owner_assigned_at",
+            "table session_nodes: column order differs",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending",
+            "table board_tabs",
+            "table board_widgets",
+            "table heartbeat_outcomes",
+            "table memory_entry_origins",
+            "table session_participants",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table transcript_rewrite_watermarks"
+          ]
+        },
+        "emeric": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending",
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table cache_entries",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_participants"
+          ]
+        }
+      }
+    },
+    "x-86d3e6ac5209": {
+      "inventoryHash": "86d3e6ac5209",
+      "agentDatabases": [
+        "ronan/local-nemotron"
+      ],
+      "objects": 139,
+      "virtualTables": [
+        "memory_index_chunks_fts (fts5)",
+        "memory_index_chunks_vec (vec0)",
+        "memory_index_paths_fts (fts5)",
+        "session_transcript_fts (fts5)",
+        "standing_intents_fts (fts5)"
+      ],
+      "schemaMetaKeys": [
+        "primary",
+        "historical-transcript-directives-v1"
+      ],
+      "structuralClass": 1,
+      "classification": "textual only vs cael, ronan, emeric",
+      "versusMainShapes": {
+        "cael": {
+          "structural": [],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending",
+            "table memory_entry_origins",
+            "table session_participants"
+          ]
+        },
+        "ronan": {
+          "structural": [],
+          "textOnly": [
+            "table memory_entry_origins",
+            "table session_participants"
+          ]
+        },
+        "elliott": {
+          "structural": [
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL DEFAULT ''`, reference `TEXT NOT NULL`",
+            "table session_nodes: missing columns owner_actor_type, owner_actor_id, owner_assigned_by_type, owner_assigned_by_id, owner_assigned_at",
+            "table session_nodes: column order differs"
+          ],
+          "textOnly": [
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table board_tabs",
+            "table board_widgets",
+            "table cache_entries",
+            "table heartbeat_outcomes",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_conversations",
+            "table session_participants",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities",
+            "table transcript_rewrite_watermarks"
+          ]
+        },
+        "emeric": {
+          "structural": [],
+          "textOnly": [
+            "table conversations",
+            "table memory_entry_origins",
+            "table memory_index_sources",
+            "table session_conversations",
+            "table session_participants",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities"
+          ]
+        }
+      }
+    },
+    "x-978ba7aa6715": {
+      "inventoryHash": "978ba7aa6715",
+      "agentDatabases": [
+        "elliott/agent",
+        "rune/openclaw"
+      ],
+      "objects": 117,
+      "virtualTables": [
+        "session_transcript_fts (fts5)",
+        "standing_intents_fts (fts5)"
+      ],
+      "schemaMetaKeys": [
+        "primary",
+        "historical-transcript-directives-v1"
+      ],
+      "structuralClass": 4,
+      "classification": "structural",
+      "versusMainShapes": {
+        "cael": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL`, reference `TEXT NOT NULL DEFAULT ''`",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending",
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table cache_entries",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_conversations",
+            "table session_participants",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities"
+          ]
+        },
+        "ronan": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL`, reference `TEXT NOT NULL DEFAULT ''`",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table cache_entries",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_conversations",
+            "table session_participants",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities"
+          ]
+        },
+        "elliott": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "table session_nodes: missing columns owner_actor_type, owner_actor_id, owner_assigned_by_type, owner_assigned_by_id, owner_assigned_at",
+            "table session_nodes: column order differs",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table board_tabs",
+            "table board_widgets",
+            "table heartbeat_outcomes",
+            "table memory_entry_origins",
+            "table session_participants",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table transcript_rewrite_watermarks"
+          ]
+        },
+        "emeric": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL`, reference `TEXT NOT NULL DEFAULT ''`",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table cache_entries",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_participants"
+          ]
+        }
+      }
+    },
+    "x-d3d8365f2501": {
+      "inventoryHash": "d3d8365f2501",
+      "agentDatabases": [
+        "rune/copilot"
+      ],
+      "objects": 117,
+      "virtualTables": [
+        "session_transcript_fts (fts5)",
+        "standing_intents_fts (fts5)"
+      ],
+      "schemaMetaKeys": [
+        "primary",
+        "historical-transcript-directives-v1"
+      ],
+      "structuralClass": 4,
+      "classification": "structural",
+      "versusMainShapes": {
+        "cael": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL`, reference `TEXT NOT NULL DEFAULT ''`",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending",
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table board_widgets",
+            "table cache_entries",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_conversations",
+            "table session_participants",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities"
+          ]
+        },
+        "ronan": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL`, reference `TEXT NOT NULL DEFAULT ''`",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table board_widgets",
+            "table cache_entries",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_conversations",
+            "table session_participants",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities"
+          ]
+        },
+        "elliott": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "table session_nodes: missing columns owner_actor_type, owner_actor_id, owner_assigned_by_type, owner_assigned_by_id, owner_assigned_at",
+            "table session_nodes: column order differs",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table board_tabs",
+            "table heartbeat_outcomes",
+            "table memory_entry_origins",
+            "table session_participants",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table transcript_rewrite_watermarks"
+          ]
+        },
+        "emeric": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL`, reference `TEXT NOT NULL DEFAULT ''`",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table board_widgets",
+            "table cache_entries",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_participants"
+          ]
+        }
+      }
+    },
+    "x-eea500a249ff": {
+      "inventoryHash": "eea500a249ff",
+      "agentDatabases": [
+        "ronan/openclaw",
+        "rune/claude"
+      ],
+      "objects": 117,
+      "virtualTables": [
+        "session_transcript_fts (fts5)",
+        "standing_intents_fts (fts5)"
+      ],
+      "schemaMetaKeys": [
+        "primary",
+        "historical-transcript-directives-v1"
+      ],
+      "structuralClass": 6,
+      "classification": "structural",
+      "versusMainShapes": {
+        "cael": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL`, reference `TEXT NOT NULL DEFAULT ''`",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "table session_conversations: column order differs",
+            "table session_nodes: extra columns owner_actor_type, owner_actor_id, owner_assigned_by_type, owner_assigned_by_id, owner_assigned_at",
+            "table session_nodes: column order differs",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "index idx_agent_session_nodes_entry_valid_pending",
+            "index idx_agent_session_windows_session_key",
+            "index idx_agent_transcript_context_pending",
+            "index idx_agent_transcript_event_identity_sequence",
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table board_tabs",
+            "table board_widgets",
+            "table cache_entries",
+            "table heartbeat_outcomes",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_participants",
+            "table session_transcript_active_events",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities",
+            "table transcript_rewrite_watermarks",
+            "trigger session_conversations_route_context_invalidate_after_update"
+          ]
+        },
+        "ronan": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL`, reference `TEXT NOT NULL DEFAULT ''`",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "table session_conversations: column order differs",
+            "table session_nodes: extra columns owner_actor_type, owner_actor_id, owner_assigned_by_type, owner_assigned_by_id, owner_assigned_at",
+            "table session_nodes: column order differs",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "index idx_agent_session_windows_session_key",
+            "index idx_agent_transcript_context_pending",
+            "index idx_agent_transcript_event_identity_sequence",
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table board_tabs",
+            "table board_widgets",
+            "table cache_entries",
+            "table heartbeat_outcomes",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_participants",
+            "table session_transcript_active_events",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table trajectory_runtime_events",
+            "table transcript_event_identities",
+            "table transcript_rewrite_watermarks",
+            "trigger session_conversations_route_context_invalidate_after_update"
+          ]
+        },
+        "elliott": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "table session_conversations: column order differs",
+            "table session_nodes: column order differs",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "index idx_agent_session_windows_session_key",
+            "index idx_agent_transcript_context_pending",
+            "index idx_agent_transcript_event_identity_sequence",
+            "table memory_entry_origins",
+            "table session_participants",
+            "table session_transcript_active_events",
+            "trigger session_conversations_route_context_invalidate_after_update"
+          ]
+        },
+        "emeric": {
+          "structural": [
+            "index idx_memory_index_chunks_path: only in this shape",
+            "table conversations: column order differs",
+            "table conversations: column delivery_target is `TEXT NOT NULL`, reference `TEXT NOT NULL DEFAULT ''`",
+            "table memory_index_chunks_fts: missing",
+            "table memory_index_chunks_fts_config: missing",
+            "table memory_index_chunks_fts_content: missing",
+            "table memory_index_chunks_fts_data: missing",
+            "table memory_index_chunks_fts_docsize: missing",
+            "table memory_index_chunks_fts_idx: missing",
+            "table memory_index_chunks_vec: missing",
+            "table memory_index_chunks_vec_chunks: missing",
+            "table memory_index_chunks_vec_info: missing",
+            "table memory_index_chunks_vec_rowids: missing",
+            "table memory_index_chunks_vec_vector_chunks00: missing",
+            "table memory_index_paths_fts: missing",
+            "table memory_index_paths_fts_config: missing",
+            "table memory_index_paths_fts_content: missing",
+            "table memory_index_paths_fts_data: missing",
+            "table memory_index_paths_fts_docsize: missing",
+            "table memory_index_paths_fts_idx: missing",
+            "table session_conversations: column order differs",
+            "table session_nodes: extra columns owner_actor_type, owner_actor_id, owner_assigned_by_type, owner_assigned_by_id, owner_assigned_at",
+            "table session_nodes: column order differs",
+            "trigger memory_index_chunks_fts_after_delete: missing",
+            "trigger memory_index_chunks_fts_after_insert: missing",
+            "trigger memory_index_chunks_fts_after_update: missing",
+            "trigger memory_index_paths_fts_after_delete: missing",
+            "trigger memory_index_paths_fts_after_insert: missing",
+            "trigger memory_index_paths_fts_after_update: missing"
+          ],
+          "textOnly": [
+            "index idx_agent_session_windows_session_key",
+            "index idx_agent_transcript_context_pending",
+            "index idx_agent_transcript_event_identity_sequence",
+            "table auth_profile_state",
+            "table auth_profile_store",
+            "table board_tabs",
+            "table board_widgets",
+            "table cache_entries",
+            "table heartbeat_outcomes",
+            "table memory_entry_origins",
+            "table memory_index_meta",
+            "table memory_index_sources",
+            "table memory_index_state",
+            "table schema_meta",
+            "table session_participants",
+            "table session_transcript_active_events",
+            "table session_transcript_index_state",
+            "table session_windows",
+            "table transcript_rewrite_watermarks",
+            "trigger session_conversations_route_context_invalidate_after_update"
+          ]
+        }
+      }
+    }
+  }
+}

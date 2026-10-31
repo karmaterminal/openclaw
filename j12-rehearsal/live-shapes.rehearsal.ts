@@ -1,7 +1,9 @@
 // Jump-12 rehearsal (karmaterminal/openclaw-bootstrap#1727): the agent-database migration
-// 38 -> 39 -> 40 and Doctor's scoped backup -> restore, on the four textual schema shapes the
-// fleet's live agent databases hold (quoted vs bare identifiers, whitespace left by past table
-// rebuilds). The inputs are schema text only; every row written here is synthetic.
+// 38 -> 39 -> 40 and Doctor's scoped backup -> restore, on all sixteen schema shapes the fleet's 56
+// live agent databases hold: the four main-agent shapes and twelve more (quoted vs bare
+// identifiers, whitespace and column order left by past table rebuilds and additive columns, and
+// memory-search objects that only exist once memory search initialized). The inputs are schema
+// text only; every row written here is synthetic.
 //
 // Each shape is built byte for byte from its sqlite_schema dump, seeded, copied into an isolated
 // OpenClaw state directory, and migrated through Doctor's own preflight and version phase (the
@@ -33,6 +35,7 @@ import {
   extractSqliteTableSchema,
   normalizeSqlWhitespace,
   quoteSqliteIdentifier as quote,
+  readSqlToken,
 } from "../src/infra/sqlite-schema-sql.js";
 import { migrateLegacyMediaPersistence } from "../src/infra/state-migrations.media-persistence.js";
 import { withoutAgentColdNavigation } from "../src/state/openclaw-agent-cold-navigation-schema.js";
@@ -132,7 +135,17 @@ vi.mock("../src/state/openclaw-agent-fork39-bridge.js", async (importOriginal) =
 
 const SHAPES_DIR =
   process.env.J12_SHAPES_DIR ?? "/home/figs/.local/state/frond-scribe/j12-live-schema-shapes";
-const SHAPE_NAMES = ["cael", "ronan", "elliott", "emeric"] as const;
+// Each seat's main agent database; the remaining shapes are named by their inventory hash.
+const MAIN_SHAPES = ["cael", "ronan", "elliott", "emeric"];
+// The first shape of each structural class (see the classification case), in SHAPE_NAMES order.
+const EDGE_PROBE_SHAPES = [
+  "cael",
+  "elliott",
+  "x-037f7c86eedf",
+  "x-1c2dd97228c8",
+  "x-37b222965ab5",
+  "x-420d0a605448",
+];
 const RECEIPTS_DIR = fileURLToPath(new URL("./receipts/", import.meta.url));
 // Migrated copies stay here for the U12 refusal check when J12_WORK_DIR names a directory.
 const KEEP_WORK = process.env.J12_WORK_DIR !== undefined;
@@ -160,6 +173,7 @@ type Shape = {
   name: string;
   file: string;
   sha256: string;
+  inventoryHash: string;
   userVersion: number;
   schemaMeta: Array<{ key: string; schemaVersion: number }>;
   objects: ShapeObject[];
@@ -203,6 +217,42 @@ function readBookkeepingKeys(): Array<{ key: string; schemaVersion: number }> {
       const match = /^(\S+) \(schema_version=(\d+)\)$/u.exec(line);
       return match ? [{ key: match[1]!, schemaVersion: Number(match[2]) }] : [];
     });
+}
+
+/** ALL-AGENT-DB-SHAPES.txt: `<shape hash> <seat> <agent id>`, one line per live agent database. */
+function readInventory(): Map<string, string[]> {
+  const inventory = new Map<string, string[]>();
+  for (const line of fs
+    .readFileSync(path.join(SHAPES_DIR, "ALL-AGENT-DB-SHAPES.txt"), "utf8")
+    .split("\n")) {
+    if (line === "") {
+      continue;
+    }
+    const match = /^([0-9a-f]{12}) (\S+) (\S+)$/u.exec(line);
+    if (!match) {
+      throw new Error(`ALL-AGENT-DB-SHAPES.txt: unreadable line ${JSON.stringify(line)}`);
+    }
+    inventory.set(match[1]!, [...(inventory.get(match[1]!) ?? []), `${match[2]}/${match[3]}`]);
+  }
+  return inventory;
+}
+
+/**
+ * The inventory's shape hash: the first 12 hex digits of the sha256 of the dump without its `--`
+ * header lines (`grep -v '^--' <file> | sha256sum`). The schema_meta header is therefore not part
+ * of a shape's identity.
+ */
+function inventoryHash(text: string): string {
+  const lines = text.split("\n");
+  if (lines.pop() !== "") {
+    throw new Error("shape dump does not end with a newline");
+  }
+  return sha256(
+    lines
+      .filter((line) => !line.startsWith("--"))
+      .map((line) => `${line}\n`)
+      .join(""),
+  ).slice(0, 12);
 }
 
 function parseShape(name: string): Shape {
@@ -293,7 +343,15 @@ function parseShape(name: string): Shape {
       object.shadowOf = owner.name;
     }
   }
-  return { name, file, sha256: sha256(bytes), userVersion, schemaMeta, objects };
+  return {
+    name,
+    file,
+    sha256: sha256(bytes),
+    inventoryHash: inventoryHash(text),
+    userVersion,
+    schemaMeta,
+    objects,
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -448,6 +506,155 @@ function describeRows(capture: TableCapture) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Structural classification: which differences between two shapes are text only (identifier
+// quoting, whitespace) and which change what SQLite stores (objects, columns, column order,
+// declared types, defaults, constraints, keys, index and trigger definitions).
+
+type StructureMap = Map<string, Record<string, unknown>>;
+
+/** Whitespace-normalized DDL with plain double-quoted identifiers unquoted; literals keep bytes. */
+function normalizeDdl(sql: string): string {
+  return normalizeSqlWhitespace(sql).replace(
+    /'(?:[^']|'')*'|"([A-Za-z_][A-Za-z0-9_]*)"/gu,
+    (match, identifier: string | undefined) => identifier ?? match,
+  );
+}
+
+/** Builds the shape in memory and reads each object's structure back from SQLite. */
+async function captureShapeStructure(shape: Shape): Promise<StructureMap> {
+  using db = new DatabaseSync(":memory:", { allowExtension: true });
+  expect((await loadSqliteVecExtension({ db })).ok).toBe(true);
+  executeShapeObjects(db, shape);
+  const structure: StructureMap = new Map();
+  for (const object of shape.objects) {
+    const key = `${object.type} ${object.name}`;
+    if (object.type !== "table") {
+      structure.set(key, { definition: normalizeDdl(object.sql) });
+      continue;
+    }
+    const table = db
+      .prepare("SELECT type, wr, strict FROM pragma_table_list WHERE schema = 'main' AND name = ?")
+      .get(object.name) as { type: string; wr: number; strict: number };
+    const columns = db
+      .prepare(
+        `SELECT name, type, "notnull", dflt_value, pk, hidden FROM pragma_table_xinfo(?) ORDER BY cid`,
+      )
+      .all(object.name)
+      .map((column) => ({ ...column }));
+    const foreignKeys = db
+      .prepare("SELECT * FROM pragma_foreign_key_list(?) ORDER BY id, seq")
+      .all(object.name)
+      .map((key) => ({ ...key }));
+    if (object.virtualModule) {
+      structure.set(key, { kind: table.type, columns, definition: normalizeDdl(object.sql) });
+      continue;
+    }
+    // Per-column definitions without the column's own name token catch COLLATE, CHECK and
+    // REFERENCES clauses that the pragmas do not report.
+    const parsed = parseSqliteTableDefinition(object.sql, object.name);
+    structure.set(key, {
+      kind: table.type,
+      strict: table.strict,
+      withoutRowid: table.wr,
+      columns,
+      definitions: Object.fromEntries(
+        [...parsed.columns].map(([name, definition]) => [
+          name,
+          normalizeDdl(definition.slice(readSqlToken(definition, 0)!.end)),
+        ]),
+      ),
+      constraints: parsed.constraints.map(normalizeDdl).toSorted(),
+      foreignKeys,
+    });
+  }
+  return structure;
+}
+
+/** Structural differences of `shape` against `reference`, one readable line each. */
+function diffStructure(shape: StructureMap, reference: StructureMap): string[] {
+  const out: string[] = [];
+  for (const key of [...new Set([...shape.keys(), ...reference.keys()])].toSorted()) {
+    const [mine, theirs] = [shape.get(key), reference.get(key)];
+    if (!theirs) {
+      out.push(`${key}: only in this shape`);
+      continue;
+    }
+    if (!mine) {
+      out.push(`${key}: missing`);
+      continue;
+    }
+    if (JSON.stringify(mine) === JSON.stringify(theirs)) {
+      continue;
+    }
+    if (!Array.isArray(mine.columns) || !Array.isArray(theirs.columns)) {
+      out.push(`${key}: definition differs`);
+      continue;
+    }
+    type Column = { name: string };
+    const names = (mine.columns as Column[]).map((column) => column.name);
+    const referenceNames = (theirs.columns as Column[]).map((column) => column.name);
+    const extra = names.filter((name) => !referenceNames.includes(name));
+    const missing = referenceNames.filter((name) => !names.includes(name));
+    if (extra.length > 0) {
+      out.push(`${key}: extra columns ${extra.join(", ")}`);
+    }
+    if (missing.length > 0) {
+      out.push(`${key}: missing columns ${missing.join(", ")}`);
+    }
+    const shared = names.filter((name) => referenceNames.includes(name));
+    if (shared.join() !== referenceNames.filter((name) => names.includes(name)).join()) {
+      out.push(`${key}: column order differs`);
+    }
+    const definitions = (mine.definitions ?? {}) as Record<string, string>;
+    const referenceDefinitions = (theirs.definitions ?? {}) as Record<string, string>;
+    for (const name of shared) {
+      const column = (mine.columns as Column[]).find((entry) => entry.name === name);
+      const referenceColumn = (theirs.columns as Column[]).find((entry) => entry.name === name);
+      if (
+        JSON.stringify(column) !== JSON.stringify(referenceColumn) ||
+        definitions[name] !== referenceDefinitions[name]
+      ) {
+        out.push(
+          `${key}: column ${name} is \`${definitions[name]}\`, reference \`${referenceDefinitions[name]}\``,
+        );
+      }
+    }
+    for (const field of ["kind", "strict", "withoutRowid", "constraints", "foreignKeys"]) {
+      if (JSON.stringify(mine[field]) !== JSON.stringify(theirs[field])) {
+        out.push(`${key}: ${field} differs`);
+      }
+    }
+    if (mine.definition !== theirs.definition) {
+      out.push(`${key}: definition differs`);
+    }
+  }
+  return out;
+}
+
+/** Objects both shapes hold whose stored SQL text differs while their structure is equal. */
+function textOnlyDifferences(
+  shape: Shape,
+  reference: Shape,
+  structure: StructureMap,
+  referenceStructure: StructureMap,
+): string[] {
+  const referenceSql = new Map(
+    reference.objects.map((object) => [`${object.type} ${object.name}`, object.sql]),
+  );
+  return shape.objects
+    .flatMap((object) => {
+      const key = `${object.type} ${object.name}`;
+      const sql = referenceSql.get(key);
+      return sql !== undefined &&
+        sql !== object.sql &&
+        JSON.stringify(structure.get(key)) === JSON.stringify(referenceStructure.get(key))
+        ? [key]
+        : [];
+    })
+    .toSorted();
+}
+
+// ---------------------------------------------------------------------------------------------
 // Build and seed.
 
 /**
@@ -481,6 +688,21 @@ type BuildFacts = {
   vecExtension: string;
 };
 
+/** Executes every non-shadow object; the virtual-table modules create their own shadow tables. */
+function executeShapeObjects(db: DatabaseSync, shape: Shape): void {
+  const executable = shape.objects.filter((object) => !object.shadowOf);
+  const ordered = [
+    ...executable.filter((object) => object.type === "table" && !object.virtualModule),
+    ...executable.filter((object) => object.virtualModule),
+    ...executable.filter((object) => object.type === "index"),
+    ...executable.filter((object) => object.type === "trigger"),
+    ...executable.filter((object) => object.type === "view"),
+  ];
+  for (const object of ordered) {
+    db.exec(object.sql);
+  }
+}
+
 async function buildShapeDatabase(shape: Shape, pathname: string, legacyEpoch = false) {
   const db = new DatabaseSync(pathname, { allowExtension: true });
   try {
@@ -495,27 +717,16 @@ async function buildShapeDatabase(shape: Shape, pathname: string, legacyEpoch = 
       vecVersion: String(db.prepare("SELECT vec_version() AS v").get()!.v),
       vecExtension: path.basename(path.dirname(vec.extensionPath ?? "")),
     };
-    const executable = shape.objects.filter((object) => !object.shadowOf);
-    const ordered = [
-      ...executable.filter((object) => object.type === "table" && !object.virtualModule),
-      ...executable.filter((object) => object.virtualModule),
-      ...executable.filter((object) => object.type === "index"),
-      ...executable.filter((object) => object.type === "trigger"),
-      ...executable.filter((object) => object.type === "view"),
-    ];
     db.exec("BEGIN IMMEDIATE");
-    for (const object of ordered) {
-      db.exec(object.sql);
-    }
+    executeShapeObjects(db, shape);
     db.exec(`PRAGMA user_version = ${shape.userVersion}`);
     const insertMeta = db.prepare(
       `INSERT INTO schema_meta (meta_key, role, schema_version, agent_id, app_version, created_at, updated_at)
        VALUES (?, 'agent', ?, ?, ?, ?, ?)`,
     );
     insertMeta.run("primary", shape.userVersion, AGENT_ID, APP_VERSION_38, T0, T0);
-    for (const { key, schemaVersion } of readBookkeepingKeys().filter(
-      ({ key }) => key !== "primary",
-    )) {
+    // The bookkeeping rows each shape's own header names; not every store has run every migration.
+    for (const { key, schemaVersion } of shape.schemaMeta.filter(({ key }) => key !== "primary")) {
       insertMeta.run(
         key,
         schemaVersion,
@@ -777,10 +988,14 @@ function seedSyntheticRows(db: DatabaseSync, legacyEpoch: boolean): void {
     embedding,
     T0,
   );
-  run(
-    "INSERT INTO memory_index_chunks_vec (id, embedding) VALUES ('chunk-rehearsal', ?)",
-    embedding,
-  );
+  // Memory search creates its FTS5 and vec0 tables on first initialization; stores where it never
+  // ran hold neither (the 117-object shapes), and their chunk row writes no FTS row either.
+  if (db.prepare("SELECT 1 FROM sqlite_schema WHERE name = 'memory_index_chunks_vec'").get()) {
+    run(
+      "INSERT INTO memory_index_chunks_vec (id, embedding) VALUES ('chunk-rehearsal', ?)",
+      embedding,
+    );
+  }
   run(
     `INSERT INTO standing_intents (intent_key, id, description, trigger_keywords, status,
        expires_at, max_fires, created_at)
@@ -973,6 +1188,24 @@ const receipts: Record<string, Record<string, unknown>> = {};
 const pristineFiles = new Map<string, string>();
 const shapes = new Map<string, Shape>();
 const sums = readShapeSums();
+const inventory = readInventory();
+// Every verified input: the main shapes first, then the hash-named shapes in file order.
+const INPUT_SHAPES = [...sums.keys()].map((file) => {
+  const match = /^fleet38-shape-([a-z0-9-]+)\.sql$/u.exec(file);
+  if (!match) {
+    throw new Error(`SHA256SUMS lists an unexpected input: ${file}`);
+  }
+  return match[1]!;
+});
+if (MAIN_SHAPES.some((name) => !INPUT_SHAPES.includes(name))) {
+  throw new Error("SHA256SUMS is missing a main-agent shape");
+}
+const SHAPE_NAMES = [
+  ...MAIN_SHAPES,
+  ...INPUT_SHAPES.filter((name) => !MAIN_SHAPES.includes(name)).toSorted(),
+];
+const byPrimaryThenKey = (left: { key: string }, right: { key: string }) =>
+  left.key === "primary" ? -1 : right.key === "primary" ? 1 : left.key.localeCompare(right.key);
 
 afterEach(async () => {
   await closeOpenClawAgentDatabasesAsync();
@@ -1004,15 +1237,21 @@ describe.each(SHAPE_NAMES)("fleet schema-38 shape %s", (shapeName) => {
           file: path.basename(shape.file),
           sha256: shape.sha256,
           sha256Expected: sums.get(path.basename(shape.file)),
+          inventoryHash: shape.inventoryHash,
+          agentDatabases: inventory.get(shape.inventoryHash) ?? [],
+          schemaMetaKeys: shape.schemaMeta,
         },
       };
       receipts[shapeName] = receipt;
       expect(shape.sha256).toBe(sums.get(path.basename(shape.file)));
+      expect(inventory.get(shape.inventoryHash)?.length).toBeGreaterThan(0);
       expect(shape.userVersion).toBe(38);
+      // Each header names a subset of the fleet's bookkeeping keys, primary (38) first.
+      expect(shape.schemaMeta[0]).toEqual({ key: "primary", schemaVersion: 38 });
       expect(shape.schemaMeta).toEqual(
-        readBookkeepingKeys().toSorted((a, b) =>
-          a.key === "primary" ? -1 : b.key === "primary" ? 1 : a.key.localeCompare(b.key),
-        ),
+        readBookkeepingKeys()
+          .filter(({ key }) => shape.schemaMeta.some((entry) => entry.key === key))
+          .toSorted(byPrimaryThenKey),
       );
 
       const pristine = path.join(WORK_DIR, `${shapeName}-pristine-38.sqlite`);
@@ -1534,14 +1773,184 @@ describe.each(SHAPE_NAMES)("fleet schema-38 shape %s", (shapeName) => {
   );
 });
 
+// Which shapes differ only in text from the main-agent shapes and which differ in structure, and
+// that the sixteen shapes cover every agent database in the fleet inventory. Builds each shape in
+// memory on its own, so it holds for any subset of the shape cases above.
+it(
+  "covers every inventoried agent database and classifies each shape against the main shapes",
+  async () => {
+    const all = new Map(SHAPE_NAMES.map((name) => [name, shapes.get(name) ?? parseShape(name)]));
+    const structures = new Map<string, StructureMap>();
+    for (const [name, shape] of all) {
+      structures.set(name, await captureShapeStructure(shape));
+    }
+
+    const hashes = [...all.values()].map((shape) => shape.inventoryHash);
+    const databases = [...inventory.values()].flat();
+    expect(new Set(hashes).size).toBe(hashes.length);
+    expect(hashes.toSorted()).toEqual([...inventory.keys()].toSorted());
+    expect(new Set(databases).size).toBe(databases.length);
+
+    const fingerprints = new Map<string, string[]>();
+    for (const [name, structure] of structures) {
+      const fingerprint = JSON.stringify(
+        [...structure].toSorted(([left], [right]) => left.localeCompare(right)),
+      );
+      fingerprints.set(fingerprint, [...(fingerprints.get(fingerprint) ?? []), name]);
+    }
+    const classes = [...fingerprints.values()];
+
+    // What memory search adds on first initialization; the shapes without it keep the historical
+    // path index that initialization drops (packages/memory-host-sdk/src/host/memory-schema.ts).
+    const withoutMemorySearch = structures.get("x-037f7c86eedf")!;
+    const memorySearchObjects = [...structures.get("cael")!.keys()]
+      .filter((key) => !withoutMemorySearch.has(key))
+      .toSorted();
+
+    const perShape = Object.fromEntries(
+      [...all].map(([name, shape]) => {
+        const structure = structures.get(name)!;
+        const versusMainShapes = Object.fromEntries(
+          MAIN_SHAPES.filter((main) => main !== name).map((main) => [
+            main,
+            {
+              structural: diffStructure(structure, structures.get(main)!),
+              textOnly: textOnlyDifferences(
+                shape,
+                all.get(main)!,
+                structure,
+                structures.get(main)!,
+              ),
+            },
+          ]),
+        );
+        const textualVersus = Object.entries(versusMainShapes)
+          .filter(([, versus]) => versus.structural.length === 0)
+          .map(([main]) => main);
+        return [
+          name,
+          {
+            inventoryHash: shape.inventoryHash,
+            agentDatabases: inventory.get(shape.inventoryHash)!,
+            objects: shape.objects.length,
+            virtualTables: shape.objects
+              .filter((object) => object.virtualModule)
+              .map((object) => `${object.name} (${object.virtualModule})`),
+            schemaMetaKeys: shape.schemaMeta.map((entry) => entry.key),
+            structuralClass: classes.findIndex((members) => members.includes(name)) + 1,
+            classification:
+              textualVersus.length > 0
+                ? `textual only vs ${textualVersus.join(", ")}`
+                : "structural",
+            versusMainShapes,
+          },
+        ];
+      }),
+    );
+    const structuralObjects = [
+      ...new Set(
+        Object.values(perShape).flatMap((entry) =>
+          Object.values(entry.versusMainShapes).flatMap((versus) =>
+            versus.structural.map((line) => line.slice(0, line.indexOf(":"))),
+          ),
+        ),
+      ),
+    ].toSorted();
+    // The tables the version phase rewrites or backs up hold one structure across the fleet; the
+    // CHECK it widens sits in transcript_events, whose stored text is byte-identical everywhere.
+    const declaredScope = Object.fromEntries(
+      DECLARED_SCOPE.map((table) => [
+        table,
+        {
+          structures: new Set(
+            [...structures.values()].map((structure) =>
+              JSON.stringify(structure.get(`table ${table}`)),
+            ),
+          ).size,
+          storedTexts: new Set(
+            [...all.values()].map(
+              (shape) =>
+                shape.objects.find((object) => object.type === "table" && object.name === table)!
+                  .sql,
+            ),
+          ).size,
+        },
+      ]),
+    );
+
+    receipts.classification = {
+      inventory: { shapes: hashes.length, agentDatabases: databases.length },
+      structuralClasses: classes.map((members, index) => ({
+        class: index + 1,
+        members,
+        agentDatabases: members.reduce(
+          (count, name) => count + inventory.get(all.get(name)!.inventoryHash)!.length,
+          0,
+        ),
+        edgeProbe: members[0],
+      })),
+      memorySearchObjects,
+      structurallyDifferingObjects: structuralObjects,
+      declaredScope,
+      shapes: perShape,
+    };
+
+    expect(hashes).toHaveLength(16);
+    expect(databases).toHaveLength(56);
+    expect(classes).toEqual([
+      ["cael", "ronan", "emeric", "x-86d3e6ac5209"],
+      ["elliott"],
+      ["x-037f7c86eedf", "x-2170ae4d642d", "x-3076322a956c", "x-69f5aaa04421", "x-6e53d6abeac4"],
+      ["x-1c2dd97228c8", "x-978ba7aa6715", "x-d3d8365f2501"],
+      ["x-37b222965ab5"],
+      ["x-420d0a605448", "x-eea500a249ff"],
+    ]);
+    expect(classes.map((members) => members[0])).toEqual(EDGE_PROBE_SHAPES);
+    expect(memorySearchObjects).toHaveLength(23);
+    for (const key of memorySearchObjects) {
+      expect(key).toMatch(/^(table|trigger) memory_index_(chunks|paths)_(fts|vec)(_[a-z0-9_]+)?$/u);
+    }
+    for (const [name, structure] of structures) {
+      const holdsMemorySearch = structure.has("table memory_index_chunks_vec");
+      expect(all.get(name)!.objects).toHaveLength(holdsMemorySearch ? 139 : 117);
+      const objectChanges = diffStructure(structure, structures.get("cael")!).filter(
+        (line) => line.endsWith(": missing") || line.endsWith(": only in this shape"),
+      );
+      expect(objectChanges).toEqual(
+        holdsMemorySearch
+          ? []
+          : [
+              "index idx_memory_index_chunks_path: only in this shape",
+              ...memorySearchObjects.map((key) => `${key}: missing`),
+            ].toSorted(),
+      );
+    }
+    // Beyond memory search, structure differs only in three tables' columns.
+    expect(structuralObjects.filter((key) => !memorySearchObjects.includes(key))).toEqual([
+      "index idx_memory_index_chunks_path",
+      "table conversations",
+      "table session_conversations",
+      "table session_nodes",
+    ]);
+    expect(perShape["x-86d3e6ac5209"]!.classification).toBe("textual only vs cael, ronan, emeric");
+    for (const table of DECLARED_SCOPE) {
+      expect(declaredScope[table]!.structures).toBe(1);
+    }
+    expect(declaredScope.transcript_events!.storedTexts).toBe(1);
+  },
+  TIMEOUT_MS,
+);
+
 // An entry-local recipient epoch (the unshipped pre-table form) is moved by the schema-40 step out
 // of session_nodes, a table outside the declared backup scope. No current writer produces one; this
-// probe records what a scoped restore does if a live store still held one.
-it(
-  "edge probe: a legacy entry-local recipient epoch under the scoped backup",
-  async () => {
-    const shape = shapes.get("cael") ?? parseShape("cael");
-    const pristine = path.join(WORK_DIR, "cael-legacy-epoch-38.sqlite");
+// probe records what a scoped restore does if a live store still held one, on the first shape of
+// each structural class (session_nodes itself takes three column layouts across them).
+const edgeReceipts: Record<string, unknown> = {};
+it.each(EDGE_PROBE_SHAPES)(
+  "edge probe (%s): a legacy entry-local recipient epoch under the scoped backup",
+  async (shapeName) => {
+    const shape = shapes.get(shapeName) ?? parseShape(shapeName);
+    const pristine = path.join(WORK_DIR, `${shapeName}-legacy-epoch-38.sqlite`);
     fs.rmSync(pristine, { force: true });
     await buildShapeDatabase(shape, pristine, true);
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
@@ -1576,8 +1985,8 @@ it(
         describeRows(capture.tables.get("session_nodes")!).find(
           (row) => row.session_key === SESSIONS.child.key,
         )?.entry_json;
-      receipts["edge-legacy-epoch"] = {
-        shape: "cael",
+      receipts["edge-legacy-epoch"] = edgeReceipts;
+      edgeReceipts[shapeName] = {
         warnings: doctor?.result?.warnings,
         scopeWitness,
         migratedUserVersion: migrated.userVersion,
