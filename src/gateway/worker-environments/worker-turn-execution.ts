@@ -17,6 +17,7 @@ import { createLibrarySkillWorkshopTool } from "../../agents/tools/skill-worksho
 import { registerAgentRunDelegatedAuthorityClosedHandler } from "../../infra/agent-run-registry.js";
 import { logInfo } from "../../logger.js";
 import { withPluginRuntimeGenerationScope } from "../../plugins/runtime/generation-scope.js";
+import { markUserTurnInputDispatched } from "../../sessions/user-turn-transcript-input-run.js";
 import { prepareSkillResourceDelivery } from "../../skills/runtime/resources.js";
 import { parseWorkerLaunchPlan } from "../../worker/launch-descriptor.js";
 import { WORKER_PROVIDER_REPLAY_LOCAL_RETRY_MESSAGE } from "../../worker/transcript-message.js";
@@ -641,6 +642,10 @@ export async function executeWorkerTurn(
         return;
       }
       dispatchReady = true;
+      // Continuation (karmaterminal): the worker took the launch carrying the sent input.
+      if (!workerAdmission) {
+        markUserTurnInputDispatched(recorder);
+      }
       params.onHandoff(
         environment.nodeDeviceId && environment.sshEndpoint === null
           ? { requiresTerminalReceipt: true }

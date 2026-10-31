@@ -47,6 +47,7 @@ import {
   restoreActivePluginRegistrySnapshot,
   setActivePluginRegistry,
 } from "../../plugins/runtime.js";
+import { markUserTurnInputDispatched } from "../../sessions/user-turn-transcript-input-run.js";
 import { createUserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
 import { resolveOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
 import { openOpenClawStateDatabase } from "../../state/openclaw-state-db.js";
@@ -201,10 +202,14 @@ function silentTerminal(): EmbeddedAgentRunResult {
   return { payloads: [], meta: { durationMs: 1, terminalReply: { disposition: "silent" } } };
 }
 
-/** Runs the turn in the runner's order: its input commits, then its provider request is sent. */
+/**
+ * Runs the turn in the runner's order: its input commits, its request is sent, and the provider
+ * accepts it. The accepted-dispatch boundary itself is proven at the attempt and worker owners.
+ */
 async function admitWokenTurn(params: RunEmbeddedAgentParams) {
   await admitModelTurn(params);
   params.userTurnTranscriptRecorder?.markSentToProvider?.();
+  markUserTurnInputDispatched(params.userTurnTranscriptRecorder);
   await params.userTurnTranscriptRecorder?.waitForRuntimePersistence();
 }
 
@@ -896,11 +901,7 @@ it.for([
       failingAcks.add(row);
       runEmbeddedAgentMock.mockImplementationOnce(async (params: RunEmbeddedAgentParams) => {
         prompts.push(params.prompt);
-        await admitModelTurn(params);
-        if (dispatched) {
-          params.userTurnTranscriptRecorder?.markSentToProvider?.();
-          await params.userTurnTranscriptRecorder?.waitForRuntimePersistence();
-        }
+        await (dispatched ? admitWokenTurn(params) : admitModelTurn(params));
         throw new Error("synthetic process death");
       });
       await withinTest(settleContinuationWakesForTest(), signal);

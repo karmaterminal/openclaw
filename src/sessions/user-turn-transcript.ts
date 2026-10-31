@@ -28,7 +28,10 @@ import {
   registerUserTurnTranscriptAdmissionOwner,
   inheritUserTurnPromptReactionSource,
 } from "./user-turn-transcript-admission.js";
-import { scheduleUserTurnInputRunIdStamp } from "./user-turn-transcript-input-run.js";
+import {
+  registerUserTurnInputDispatch,
+  scheduleUserTurnInputRunIdStamp,
+} from "./user-turn-transcript-input-run.js";
 import { persistUserTurnInput, stageUserTurnPendingInput } from "./user-turn-transcript-media.js";
 import { createUserTurnProcessingCompletion } from "./user-turn-transcript-processing.js";
 import {
@@ -654,12 +657,6 @@ export function createUserTurnTranscriptRecorder(
     },
     markSentToProvider: () => {
       sentToProvider = true;
-      // Continuation (karmaterminal): the run handing this input to its provider consumed it.
-      inputRunStamp ??= scheduleUserTurnInputRunIdStamp(
-        recorder,
-        admissionWrite,
-        handlePersistenceError,
-      );
     },
     markRuntimePersistencePending: (pending) => {
       runtimePersistencePromise = pending;
@@ -721,6 +718,16 @@ export function createUserTurnTranscriptRecorder(
   });
   registerUserTurnInputActor(recorder, (binding) => {
     inputActorBinding = binding;
+  });
+  // Continuation (karmaterminal): a run consumed this input once its sent request was accepted.
+  registerUserTurnInputDispatch(recorder, () => {
+    if (sentToProvider) {
+      inputRunStamp ??= scheduleUserTurnInputRunIdStamp(
+        recorder,
+        admissionWrite,
+        handlePersistenceError,
+      );
+    }
   });
   registerUserTurnTranscriptAdmissionOwner(recorder, {
     requesterOrigin: () =>

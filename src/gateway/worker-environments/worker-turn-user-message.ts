@@ -27,6 +27,7 @@ import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import type { PluginHookBeforeAgentRunEvent } from "../../plugins/hook-types.js";
 import { withPluginRuntimeGenerationScope } from "../../plugins/runtime/generation-scope.js";
 import { readSessionTranscriptRunId } from "../../sessions/transcript-events.js";
+import { markUserTurnInputDispatched } from "../../sessions/user-turn-transcript-input-run.js";
 import { buildPersistedUserTurnMessage } from "../../sessions/user-turn-transcript.js";
 import type { prepareWorkerTurnMedia } from "./worker-turn-media.js";
 import { resolveWorkerTurnTranscriptTarget } from "./worker-turn-transcript-target.js";
@@ -192,6 +193,8 @@ export function createWorkerTurnInputAdmission(
           const baseLeafId = await params.persist();
           assertCurrent();
           params.turn.userTurnTranscriptRecorder?.markSentToProvider?.();
+          // Continuation (karmaterminal): the launched worker took the admitted input.
+          markUserTurnInputDispatched(params.turn.userTurnTranscriptRecorder);
           return { outcome: "allow", baseLeafId };
         },
       );
