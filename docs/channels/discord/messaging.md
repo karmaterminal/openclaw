@@ -28,7 +28,7 @@ Messages in the same channel continue reaching the [reply queue](/concepts/queue
 
 <!-- Frond (karmaterminal, #1415): unaddressed room events collect. -->
 
-[Ambient room events](/channels/ambient-room-events) are the exception: under `collect`, consecutive room events with the same route and reply target combine into one followup turn, and each message's admission still settles once. Room events from different senders combine only when none carries sender-scoped authority (owner, operator, elevated or exec grants, or a per-sender tool policy). That turn keeps each sender's name and message but runs with no sender identity or sender-scoped authority. Owner messages keep their own turns. Room events still never steer or interrupt.
+[Ambient room events](/channels/ambient-room-events) are the exception: under `collect`, consecutive room events with the same route and reply target combine into one followup turn, and each message's admission still settles once. Room events from different senders also combine. A message with sender-scoped authority keeps its own turn, in order: an owner or operator message, an elevated grant, a sender-specific tool policy entry, or exec settings the other messages don't share. Messages in a spawned session never combine across senders. The combined turn, and any overflow summary of it, names each sender but runs with no sender identity or sender-scoped authority. Room events still never steer or interrupt.
 
 ## Message behavior
 

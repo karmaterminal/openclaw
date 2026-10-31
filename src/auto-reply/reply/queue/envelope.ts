@@ -69,9 +69,13 @@ function resolveCollectedSourceText(
     : fallback;
 }
 
+/** The sender a collected or summarized item is attributed to, when it has one. */
+export function resolveCollectSenderLabel(item: FollowupRun): string | undefined {
+  return item.run.senderName ?? item.run.senderUsername ?? item.run.senderId ?? item.run.senderE164;
+}
+
 function buildCollectItemPrefix(item: FollowupRun, idx: number): string {
-  const senderLabel =
-    item.run.senderName ?? item.run.senderUsername ?? item.run.senderId ?? item.run.senderE164;
+  const senderLabel = resolveCollectSenderLabel(item);
   const senderSuffix = senderLabel ? ` (from ${senderLabel})` : "";
   return `---\nQueued #${idx + 1}${senderSuffix}\n`;
 }

@@ -60,7 +60,8 @@ function resolveTurnAdoptionLifecycleDeliveryKey(run: FollowupRun): string {
   // Frond (karmaterminal, #1415): so do exclusive room-event lifecycles. The collected
   // claim still adopts and settles each source lifecycle once. Accepted edge case: a
   // member losing ingress custody after a sibling committed refuses the turn without
-  // replaying the committed siblings; ingress retries the lost member.
+  // replaying the committed siblings, which in a cross-sender aggregate belong to other
+  // senders; ingress retries the lost member.
   if (!hasExclusiveTurnAdmission(lifecycle) || run.currentInboundEventKind === "room_event") {
     return explicitOwnerKey;
   }
@@ -108,6 +109,7 @@ export function resolveFollowupAuthorizationKey(run: FollowupRun): string {
 // Frond (karmaterminal, #1415): what a cross-sender room aggregate runs as. It keeps the room's
 // route, session and conversation facts and drops every sender fact (principal, names, roles,
 // linked human, channel sender context), with sender-scoped authority at the senderless baseline.
+// Exec overrides stay: they are in the batch key, so every member carries the same ones.
 export function resolveRoomAggregateExecution(execution: FollowupRun["run"]): FollowupRun["run"] {
   const origin = execution.requesterOrigin;
   return {
@@ -140,7 +142,6 @@ export function resolveRoomAggregateExecution(execution: FollowupRun["run"]): Fo
     operatorProfileId: undefined,
     conversationToolPolicy: undefined,
     runtimePluginToolGrant: undefined,
-    execOverrides: undefined,
     bashElevated: execution.bashElevated && { ...execution.bashElevated, allowed: false },
     approvalReviewerDeviceId: undefined,
     gatewayUiCommandTarget: undefined,
@@ -166,11 +167,13 @@ function resolveSenderScopedToolPolicyKey(execution: FollowupRun["run"]): string
 }
 
 // Frond (karmaterminal, #1415): a room event joins a cross-sender aggregate only when its own
-// authority already equals the senderless baseline, so the aggregate never widens or narrows
-// anyone; returns that baseline source.
+// authority already equals the senderless baseline, so the aggregate never grants a member
+// authority it lacks or lifts a member's restriction. It does lose sender-derived context
+// (roles, requester-scoped connections); returns that baseline source. A spawned session stays
+// out: there a senderless requester resolves its tool policy through the persisted child
+// envelope instead of the current request.
 function resolveRoomAggregateSource(source: FollowupRun): FollowupRun | undefined {
   const execution = source.run;
-  const exec = execution.execOverrides;
   if (
     source.currentInboundEventKind !== "room_event" ||
     source.operatorAuthority ||
@@ -185,11 +188,7 @@ function resolveRoomAggregateSource(source: FollowupRun): FollowupRun | undefine
     execution.runtimePluginToolGrant ||
     execution.approvalReviewerDeviceId ||
     execution.gatewayUiCommandTarget ||
-    exec?.host ||
-    exec?.security ||
-    exec?.ask ||
-    exec?.node ||
-    exec?.nodeCwd ||
+    execution.spawnedBy ||
     execution.bashElevated?.allowed === true
   ) {
     return undefined;

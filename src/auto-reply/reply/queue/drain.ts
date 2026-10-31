@@ -38,6 +38,7 @@ import {
   createCollectUserTurnTranscriptRecorder,
   renderCollectItem,
   resolveAggregateOwner,
+  resolveCollectSenderLabel,
   resolveFollowupTranscriptTarget,
   resolveOriginRoutingMetadata,
 } from "./envelope.js";
@@ -120,10 +121,12 @@ function buildOverflowTranscriptIdempotencyKey(source: FollowupRun, prompt: stri
   return `followup-overflow:${source.run.sessionId}:${routeHash}:${source.messageId ?? source.enqueuedAt}:${promptHash}`;
 }
 
-function resolveCollectedRun(items: readonly FollowupRun[], source: FollowupRun["run"]) {
-  // Frond (karmaterminal, #1415): differing per-sender identities only batch through the room
-  // aggregate key; that turn runs as the senderless room baseline, never as any one member.
-  if (new Set(items.map(resolveFollowupDeliveryStorageKey)).size > 1) {
+function resolveCollectedRun(
+  items: readonly FollowupRun[],
+  source: FollowupRun["run"],
+  crossSender: boolean,
+) {
+  if (crossSender) {
     return resolveRoomAggregateExecution(source);
   }
   const participantComparison = compareChannelAdmissionParticipants(
@@ -190,7 +193,11 @@ async function executeClaim(
       queue.activeSummarySources.add(item);
     }
   }
-  const summaryLines = sources.map((item) => {
+  // Frond (karmaterminal, #1415): differing per-sender identities only batch through the room
+  // aggregate key; that turn runs as the senderless room baseline, never as any one member, so
+  // each summary line names its sender.
+  const crossSender = new Set(sources.map(resolveFollowupDeliveryStorageKey)).size > 1;
+  const readSummaryLine = (item: FollowupRun) => {
     const index = queue.summarySources.indexOf(item);
     if (index >= 0) {
       return queue.summaryLines[index] ?? "";
@@ -202,6 +209,11 @@ async function executeClaim(
       }
     }
     return item.summaryLine ?? item.prompt;
+  };
+  const summaryLines = sources.map((item) => {
+    const line = readSummaryLine(item);
+    const sender = crossSender ? resolveCollectSenderLabel(item) : undefined;
+    return sender ? `(from ${sender}) ${line}` : line;
   });
   const prompt = claim.summary
     ? (previewQueueSummaryPrompt({
@@ -221,7 +233,7 @@ async function executeClaim(
   };
   let run = source;
   if (claim.summary || sources.length > 1) {
-    const execution = resolveCollectedRun(sources, source.run);
+    const execution = resolveCollectedRun(sources, source.run, crossSender);
     // Frond (karmaterminal, #1415): the transcript turn records the authority the turn runs as.
     const recorder = claim.summary
       ? createUserTurnTranscriptRecorder({

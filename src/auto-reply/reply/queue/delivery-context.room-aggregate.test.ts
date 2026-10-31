@@ -25,9 +25,7 @@ const config = {
     toolsBySender: { "id:grantee": { alsoAllow: ["exec"] }, "id:restricted": { deny: ["exec"] } },
   },
   agents: {
-    list: [
-      { id: "agent", tools: { toolsBySender: { "id:agent-restricted": { deny: ["exec"] } } } },
-    ],
+    entries: { agent: { tools: { toolsBySender: { "id:agent-restricted": { deny: ["exec"] } } } } },
   },
   channels: {
     telegram: {

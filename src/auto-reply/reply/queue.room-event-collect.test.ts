@@ -908,7 +908,10 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
     const execOverrides = resolveReplyExecOverrides({
       agentExecDefaults: { host: "gateway", security: "full" },
     });
-    const rows = breakfast.map((row) => ({ ...row, from: { ...row.from, execOverrides } }));
+    const rows: Row[] = ["alice", "bob", "carol", "peer-agent"].map((id, index) => ({
+      id: `x${index + 1}`,
+      from: sender(id, { execOverrides }),
+    }));
     await withRoomIngress(rows, async (harness) => {
       await harness.dispatchRows();
       await harness.endActiveTurn();
