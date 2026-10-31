@@ -81,8 +81,8 @@ export function createPluginGenerationReload(generationOverlap: boolean) {
   setActivePluginRegistry(previous.registry);
   // The production admission: a retained invocation exists only for opted-in plugins.
   const turn = acquirePreparedModelRuntimeSnapshotInvocation({ pluginRegistry: previous.registry });
-  const label = (registry: PluginRegistry | null | undefined) =>
-    [previous, current].find((generation) => generation.registry === registry)?.label;
+  const generationOf = (registry: PluginRegistry | null | undefined) =>
+    [previous, current].find((generation) => generation.registry === registry);
   return {
     /** Runs inside the predecessor's reply turn, composed as get-reply-run composes it. */
     armInPredecessorTurn<T>(arm: () => T): T {
@@ -103,18 +103,17 @@ export function createPluginGenerationReload(generationOverlap: boolean) {
     },
     /** What a re-entry admits on: its registry, inherited pins, and the plugin it reaches. */
     observe(): ObservedPluginGeneration {
-      const registry = getPluginRegistryForContext();
-      const tool = [previous, current].find((generation) => generation.registry === registry)?.tool;
+      const resolved = generationOf(getPluginRegistryForContext());
       let plugin: string | undefined;
       try {
-        plugin = tool?.();
+        plugin = resolved?.tool();
       } catch (error) {
         plugin = error instanceof Error ? error.message : String(error);
       }
       const prepared = getPreparedModelRuntimePluginGeneration();
       return {
-        registry: label(registry),
-        generationRegistry: label(getPluginRuntimeGenerationRegistry()),
+        registry: resolved?.label,
+        generationRegistry: generationOf(getPluginRuntimeGenerationRegistry())?.label,
         preparedGeneration: prepared === preparedGeneration ? "previous" : prepared && "unknown",
         plugin,
       };
