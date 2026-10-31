@@ -24,7 +24,12 @@ import type { SessionControllerEntry } from "../../../sessions/session-controlle
 import { createUserTurnTranscriptRecorder } from "../../../sessions/user-turn-transcript.js";
 import { AgentDatabaseExecutionAdmissionClosedError } from "../../../state/agent-database-admission-error.js";
 import { buildCollectPrompt, previewQueueSummaryPrompt } from "../../../utils/queue-helpers.js";
-import { collectRuntimeMetadata, resolveFollowupReplyAnchor } from "./delivery-context.js";
+import {
+  collectRuntimeMetadata,
+  resolveFollowupDeliveryStorageKey,
+  resolveFollowupReplyAnchor,
+  resolveRoomAggregateExecution,
+} from "./delivery-context.js";
 import { runOutsideAdmittedGenerationScopes } from "./drain-admission-scope.js";
 import {
   buildCollectTranscriptInput,
@@ -116,6 +121,11 @@ function buildOverflowTranscriptIdempotencyKey(source: FollowupRun, prompt: stri
 }
 
 function resolveCollectedRun(items: readonly FollowupRun[], source: FollowupRun["run"]) {
+  // Frond (karmaterminal, #1415): differing per-sender identities only batch through the room
+  // aggregate key; that turn runs as the senderless room baseline, never as any one member.
+  if (new Set(items.map(resolveFollowupDeliveryStorageKey)).size > 1) {
+    return resolveRoomAggregateExecution(source);
+  }
   const participantComparison = compareChannelAdmissionParticipants(
     items.map((item) => item.channelAdmissionEvidence),
   );
@@ -211,13 +221,15 @@ async function executeClaim(
   };
   let run = source;
   if (claim.summary || sources.length > 1) {
+    const execution = resolveCollectedRun(sources, source.run);
+    // Frond (karmaterminal, #1415): the transcript turn records the authority the turn runs as.
     const recorder = claim.summary
       ? createUserTurnTranscriptRecorder({
           input: {
             text: prompt,
             idempotencyKey: buildOverflowTranscriptIdempotencyKey(source, prompt),
-            senderIsOwner: source.run.senderIsOwner,
-            requesterOrigin: source.run.requesterOrigin,
+            senderIsOwner: execution.senderIsOwner,
+            requesterOrigin: execution.requesterOrigin,
             provenance: source.run.inputProvenance,
           },
           pendingInputSources: sources.flatMap((item) => item.userTurnTranscriptRecorder ?? []),
@@ -225,7 +237,7 @@ async function executeClaim(
           beforeMessageWrite: runAgentHarnessBeforeMessageWriteHook,
           errorContext: "mailbox overflow transcript",
         })
-      : createCollectUserTurnTranscriptRecorder(sources);
+      : createCollectUserTurnTranscriptRecorder(sources, execution);
     run = {
       ...source,
       ...resolveOriginRoutingMetadata(sources),
@@ -235,7 +247,7 @@ async function executeClaim(
       prompt,
       transcriptPrompt: claim.summary ? prompt : buildCollectTranscriptInput(sources).text,
       userTurnTranscriptRecorder: recorder,
-      run: resolveCollectedRun(sources, source.run),
+      run: execution,
       controllerInput: source.controllerInput,
       controllerClaim: claim,
       turnAdoptionLifecycle: {

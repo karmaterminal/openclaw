@@ -293,6 +293,11 @@ function aggregated(run: FollowupRun | undefined, rows: readonly Row[]) {
   for (const [index, row] of rows.entries()) {
     expect(run?.prompt).toContain(`Queued #${index + 1} (from ${row.from?.senderName})`);
   }
+  expectRoomBaseline(run);
+}
+
+/** The turn runs as the senderless room: no principal, owner bit or sender-scoped authority. */
+function expectRoomBaseline(run: FollowupRun | undefined) {
   expect(run?.currentInboundEventKind).toBe("room_event");
   expect(run?.operatorAuthority).toBeUndefined();
   expect(run?.createChannelCronAuthority).toBeUndefined();
@@ -799,6 +804,32 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
         );
       },
       { transcripts: true },
+    );
+  });
+
+  it("summarizes a multi-sender overflow as the room baseline before the aggregate", async () => {
+    const rows: Row[] = ["alice", "bob", "carol", "dave", "peer-agent"].map((id, index) => ({
+      id: `s${index + 1}`,
+      from: sender(id),
+    }));
+    await withRoomIngress(
+      rows,
+      async (harness) => {
+        await harness.dispatchRows();
+        await harness.endActiveTurn();
+        expect(harness.calls).toHaveLength(2);
+        expect(harness.calls[0]?.prompt).toContain("Dropped 2 messages due to cap");
+        expectRoomBaseline(harness.calls[0]);
+        aggregated(harness.calls[1], rows.slice(2));
+        for (const call of harness.calls) {
+          expect(readUserTurnRequesterOrigin(call.userTurnTranscriptRecorder)).toEqual(ROOM_ORIGIN);
+        }
+        await expectSettledOnce(
+          harness,
+          rows.map((row) => row.id),
+        );
+      },
+      { settings: { cap: 3, dropPolicy: "summarize" }, transcripts: true },
     );
   });
 

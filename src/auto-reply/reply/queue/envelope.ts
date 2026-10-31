@@ -187,7 +187,10 @@ export async function resolveFollowupTranscriptTarget(source: FollowupRun) {
   };
 }
 
-export function createCollectUserTurnTranscriptRecorder(items: FollowupRun[]) {
+export function createCollectUserTurnTranscriptRecorder(
+  items: FollowupRun[],
+  execution: Pick<FollowupRun["run"], "senderIsOwner" | "requesterOrigin">,
+) {
   const transcriptSources = items.filter((item) => item.userTurnTranscriptRecorder);
   const source = transcriptSources.at(-1);
   if (!source) {
@@ -222,8 +225,8 @@ export function createCollectUserTurnTranscriptRecorder(items: FollowupRun[]) {
       .digest("hex");
     return {
       ...transcriptInput,
-      senderIsOwner: source.run.senderIsOwner,
-      requesterOrigin: source.run.requesterOrigin,
+      senderIsOwner: execution.senderIsOwner,
+      requesterOrigin: execution.requesterOrigin,
       provenance: source.run.inputProvenance,
       idempotencyKey: `followup-collect:${source.run.sessionId}:${identityHash}`,
       ...(timestamp === undefined ? {} : { timestamp }),
@@ -234,8 +237,8 @@ export function createCollectUserTurnTranscriptRecorder(items: FollowupRun[]) {
   return createUserTurnTranscriptRecorder({
     input: {
       ...initialTranscriptInput,
-      senderIsOwner: source.run.senderIsOwner,
-      requesterOrigin: source.run.requesterOrigin,
+      senderIsOwner: execution.senderIsOwner,
+      requesterOrigin: execution.requesterOrigin,
       provenance: source.run.inputProvenance,
     },
     resolveInput: buildInput,

@@ -1,7 +1,12 @@
 import { expectDefined, stableStringify } from "@openclaw/normalization-core";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
-import { resolveRequesterPrincipalKey } from "../../../agents/requester-origin.js";
+import {
+  captureRequesterOrigin,
+  resolveRequesterPrincipalKey,
+} from "../../../agents/requester-origin.js";
+import { resolveRequesterConversationToolPolicy } from "../../../agents/requester-tool-policy.js";
 import { withSandboxRuntimeStatusesInWorker } from "../../../agents/sandbox/runtime-status.js";
+import { resolveSenderToolPolicy } from "../../../agents/sender-tool-policy.js";
 import { withPreparedSessionCapabilityRead } from "../../../agents/subagents/spawn/subagent-session-store.js";
 import { readToolAllowlistIntersection } from "../../../agents/tool-policy.js";
 import { normalizeChatType } from "../../../channels/chat-type.js";
@@ -98,6 +103,111 @@ export function resolveFollowupAuthorizationKey(run: FollowupRun): string {
     execution.bashElevated?.defaultLevel ?? "",
     execution.approvalReviewerDeviceId ?? "",
   ]);
+}
+
+// Frond (karmaterminal, #1415): what a cross-sender room aggregate runs as. It keeps the room's
+// route, session and conversation facts and drops every sender fact (principal, names, roles,
+// linked human, channel sender context), with sender-scoped authority at the senderless baseline.
+export function resolveRoomAggregateExecution(execution: FollowupRun["run"]): FollowupRun["run"] {
+  const origin = execution.requesterOrigin;
+  return {
+    ...execution,
+    requesterOrigin:
+      origin &&
+      captureRequesterOrigin({
+        sessionKey: origin.sessionKey,
+        messageProvider: origin.messageProvider,
+        agentAccountId: origin.accountId,
+        chatType: origin.chatType,
+        conversationId: origin.conversationId,
+        messageThreadId: origin.messageThreadId,
+        groupId: origin.groupId,
+        groupChannel: origin.groupChannel,
+        groupSpace: origin.groupSpace,
+      }),
+    channelContext: execution.channelContext?.chat
+      ? { chat: execution.channelContext.chat }
+      : undefined,
+    senderId: undefined,
+    senderName: undefined,
+    senderUsername: undefined,
+    senderE164: undefined,
+    memberRoleIds: undefined,
+    gitContributorProfileId: undefined,
+    senderIsOwner: false,
+    traceAuthorized: false,
+    ownerNumbers: [],
+    operatorProfileId: undefined,
+    conversationToolPolicy: undefined,
+    runtimePluginToolGrant: undefined,
+    execOverrides: undefined,
+    bashElevated: execution.bashElevated && { ...execution.bashElevated, allowed: false },
+    approvalReviewerDeviceId: undefined,
+    gatewayUiCommandTarget: undefined,
+  };
+}
+
+// Frond (karmaterminal, #1415): toolsBySender resolves group and sender tool policy from the
+// sender at run time. An unreadable policy keeps the member out of the aggregate.
+function resolveSenderScopedToolPolicyKey(execution: FollowupRun["run"]): string | undefined {
+  const requester = execution.requesterOrigin ?? execution;
+  try {
+    return stableStringify([
+      resolveRequesterConversationToolPolicy({ ...execution, accountId: execution.agentAccountId }),
+      resolveSenderToolPolicy({
+        ...requester,
+        config: execution.config,
+        agentId: execution.agentId,
+      }),
+    ]);
+  } catch {
+    return undefined;
+  }
+}
+
+// Frond (karmaterminal, #1415): a room event joins a cross-sender aggregate only when its own
+// authority already equals the senderless baseline, so the aggregate never widens or narrows
+// anyone; returns that baseline source.
+function resolveRoomAggregateSource(source: FollowupRun): FollowupRun | undefined {
+  const execution = source.run;
+  const exec = execution.execOverrides;
+  if (
+    source.currentInboundEventKind !== "room_event" ||
+    source.operatorAuthority ||
+    source.createChannelCronAuthority ||
+    source.memoryAudienceSenderIsOwner === true ||
+    source.explicitSkillSelections?.length ||
+    execution.senderIsOwner === true ||
+    execution.traceAuthorized === true ||
+    execution.operatorProfileId ||
+    execution.requesterOrigin?.operatorProfileId ||
+    execution.conversationToolPolicy ||
+    execution.runtimePluginToolGrant ||
+    execution.approvalReviewerDeviceId ||
+    execution.gatewayUiCommandTarget ||
+    exec?.host ||
+    exec?.security ||
+    exec?.ask ||
+    exec?.node ||
+    exec?.nodeCwd ||
+    execution.bashElevated?.allowed === true
+  ) {
+    return undefined;
+  }
+  const baseline = { ...source, run: resolveRoomAggregateExecution(execution) };
+  const policy = resolveSenderScopedToolPolicyKey(execution);
+  return policy !== undefined && policy === resolveSenderScopedToolPolicyKey(baseline.run)
+    ? baseline
+    : undefined;
+}
+
+// Frond (karmaterminal, #1415): the batch identity. A room event with baseline authority keys by
+// the room baseline so senders share one collect; everything else keeps its storage key.
+export function resolveFollowupBatchKey(run: FollowupRun): string {
+  const baseline = resolveRoomAggregateSource(run);
+  return baseline
+    ? JSON.stringify(["room-aggregate", resolveFollowupDeliveryStorageKey(baseline)])
+    : resolveFollowupDeliveryStorageKey(run);
 }
 
 /** Storage grouping is policy-independent; drain prepares current screen/theme authority. */
@@ -221,7 +331,8 @@ export async function prepareNextDeliveryGroup(
               undefined,
               expectDefined(statuses[index], "prepared sandbox status"),
             ).capabilityProfile;
-      const storageKey = resolveFollowupDeliveryStorageKey(item);
+      // Frond (karmaterminal, #1415): the same batch identity the mailbox selected by.
+      const storageKey = resolveFollowupBatchKey(item);
       const personalTargets = profile ? resolveReplyPersonalToolTargets(item, profile) : undefined;
       const key = JSON.stringify([
         storageKey,
