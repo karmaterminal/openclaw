@@ -263,7 +263,8 @@ export function requiresIndividualCollectDrain(item: FollowupRun): boolean {
     item.userTurnTranscriptRecorder?.hasPersisted() === true ||
     item.disableCollectBatching === true ||
     item.run.skillLibraryAuthoring !== undefined ||
-    item.currentInboundEventKind === "room_event" ||
+    // Frond (karmaterminal, #1415): room events collect. Their kind is part of the
+    // delivery key, so they never share a turn with addressed input.
     item.currentInboundAudio === true
   );
 }

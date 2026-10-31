@@ -526,34 +526,38 @@ describe("mid-turn room events over durable ingress (#1415)", () => {
   it("settles every member once when one member's ingress custody is lost during adoption", async () => {
     // Named edge case: r2 loses custody while r1/r3 commit. The turn is refused without
     // replaying r1/r3; supersede tombstones r2 and its replacement runs as a later turn.
-    await withRoomIngress(burst, async (harness) => {
-      await harness.dispatchRows();
-      const lostMember = harness.runs.get("r2")!.turnAdoptionLifecycle!;
-      const adoptLostMember = lostMember.onAdopted;
-      lostMember.onAdopted = async () => {
-        await harness.addRow({ id: "r2-edit" });
-        expect(await harness.drain.drainOnce()).toEqual({ started: 1 });
-        await adoptLostMember();
-      };
-      const lost: unknown[] = [];
-      await harness.endActiveTurn(async (run) => {
-        harness.calls.push(run);
-        try {
-          await admitFollowupRunLifecycle(run);
-        } catch (error) {
-          // Execution already accepted the input; it surfaces a terminal failure, no replay.
-          if (!isIngressAdoptionLostError(error)) {
-            throw error;
+    await withRoomIngress(
+      burst,
+      async (harness) => {
+        await harness.dispatchRows();
+        const lostMember = harness.runs.get("r2")!.turnAdoptionLifecycle!;
+        const adoptLostMember = lostMember.onAdopted;
+        lostMember.onAdopted = async () => {
+          await harness.addRow({ id: "r2-edit" });
+          expect(await harness.drain.drainOnce()).toEqual({ started: 1 });
+          await adoptLostMember();
+        };
+        const lost: unknown[] = [];
+        await harness.endActiveTurn(async (run) => {
+          harness.calls.push(run);
+          try {
+            await admitFollowupRunLifecycle(run);
+          } catch (error) {
+            // Execution already accepted the input; it surfaces a terminal failure, no replay.
+            if (!isIngressAdoptionLostError(error)) {
+              throw error;
+            }
+            lost.push(error);
           }
-          lost.push(error);
-        }
-      });
-      expect(lost).toEqual([expect.objectContaining({ code: "superseded" })]);
-      expect(harness.calls).toHaveLength(2);
-      collected(harness.calls[0], burst);
-      expect(harness.calls[1]?.prompt).toBe(textOf({ id: "r2-edit" }));
-      await expectSettledOnce(harness, ["r1", "r2", "r3", "r2-edit"]);
-    });
+        });
+        expect(lost).toEqual([expect.objectContaining({ code: "superseded" })]);
+        expect(harness.calls).toHaveLength(2);
+        collected(harness.calls[0], burst);
+        expect(harness.calls[1]?.prompt).toBe(textOf({ id: "r2-edit" }));
+        await expectSettledOnce(harness, ["r1", "r2", "r3", "r2-edit"]);
+      },
+      { supersedes: (candidate, pending) => candidate === "r2-edit" && pending === "r2" },
+    );
   });
 
   it.each(["before", "after"] as const)(

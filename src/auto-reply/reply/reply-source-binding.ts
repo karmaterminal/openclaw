@@ -24,7 +24,8 @@ import { resolveCommandTurnTargetSessionKey } from "../command-turn-context.js";
 import type { TurnAdoptionLifecycle } from "../get-reply-options.types.js";
 import type { MsgContext } from "../templating.js";
 import type { InternalGetReplyOptions } from "./get-reply.types.js";
-import { resolveQueueSettingsCore } from "./queue/settings.js";
+// Frond (karmaterminal, #1415): shared room-event queue-mode rule.
+import { resolveQueueSettingsCore, resolveRoomEventQueueMode } from "./queue/settings.js";
 import type { FollowupRun } from "./queue/types.js";
 import { replySource, type ReplySourceBinding } from "./reply-source-binding.types.js";
 import { readChannelSourceTurnId } from "./source-turn-id.js";
@@ -158,7 +159,8 @@ export async function prepareReplySourceInput(
   // Ambient events may not preempt a user turn. Full directive
   // resolution refines policy on this same input before queue publication.
   if (ctx.InboundEventKind === "room_event") {
-    policy.mode = "followup";
+    // Frond (karmaterminal, #1415): configured collect still batches room events.
+    policy.mode = resolveRoomEventQueueMode(policy.mode);
   }
   const signals = [options?.abortSignal, options?.turnAdoptionLifecycle?.abortSignal].filter(
     (signal): signal is AbortSignal => signal !== undefined,
