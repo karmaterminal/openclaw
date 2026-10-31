@@ -13,7 +13,7 @@ import { assertOpenClawAgentSchemaContains } from "./openclaw-agent-db-schema-he
 import { readCapturedAgentSchema } from "./openclaw-agent-db.schema-bridge.test-support.js";
 import {
   getAgentFork39MigrationSchema,
-  isAgentFork39Database,
+  readAgentFork39HistoricalSchema,
   withAgentFork39BackupCrossing,
 } from "./openclaw-agent-fork39-bridge.js";
 import {
@@ -124,7 +124,9 @@ afterEach(() => {
 it("recognizes the captured fleet 39 as the bridge's historical schema, not upstream's 39", () => {
   using database = openNodeSqliteDatabase(":memory:");
   database.exec(SCHEMA_39.fleet);
-  expect(isAgentFork39Database(database, "fleet")).toBe(true);
+  expect(readAgentFork39HistoricalSchema(database, "fleet", 39)).toBe(
+    getAgentFork39MigrationSchema(),
+  );
   expect(() =>
     assertOpenClawAgentSchemaContains(database, "fleet", getAgentFork39MigrationSchema()),
   ).not.toThrow();
@@ -133,7 +135,7 @@ it("recognizes the captured fleet 39 as the bridge's historical schema, not upst
   ).toThrow(/constraints differ for transcript_events/u);
   using upstream = openNodeSqliteDatabase(":memory:");
   upstream.exec(SCHEMA_39.upstream);
-  expect(isAgentFork39Database(upstream, "upstream")).toBe(false);
+  expect(readAgentFork39HistoricalSchema(upstream, "upstream", 39)).toBeUndefined();
 });
 
 it("takes upstream's 38 through upstream's 39 to 40", async () => {

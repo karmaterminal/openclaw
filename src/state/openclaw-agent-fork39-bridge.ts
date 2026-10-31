@@ -63,7 +63,7 @@ function isFork39Shape(markers: Schema39Markers): boolean {
 }
 
 /** Classifies a schema-39 database; anything but upstream's 39 or the fleet's 39 is refused. */
-export function isAgentFork39Database(db: DatabaseSync, pathname: string): boolean {
+function isAgentFork39Database(db: DatabaseSync, pathname: string): boolean {
   const markers = readSchema39Markers(db);
   if (isFork39Shape(markers)) {
     return true;
