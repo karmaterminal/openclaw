@@ -52,7 +52,7 @@ Messages from channels using durable ingress admission, including Discord and Te
 
 <!-- Frond (karmaterminal, #1415): unaddressed room events collect. -->
 
-[Ambient room events](/channels/ambient-room-events) are the exception: under `collect`, consecutive room events with the same sender, route, and reply target combine into one followup turn, and each message's admission still settles once. Room events still never steer or interrupt.
+[Ambient room events](/channels/ambient-room-events) are the exception: under `collect`, consecutive room events with the same route and reply target combine into one followup turn, and each message's admission still settles once. Room events from different senders combine only when none carries sender-scoped authority (owner, operator, elevated or exec grants, or a per-sender tool policy). That turn keeps each sender's name and message but runs with no sender identity or sender-scoped authority. Owner messages keep their own turns. Room events still never steer or interrupt.
 
 For runtime-specific timing and dependency behavior, see [Steering queue](/concepts/queue-steering). For the explicit `/steer <message>` command, see [Steer](/tools/steer).
 
