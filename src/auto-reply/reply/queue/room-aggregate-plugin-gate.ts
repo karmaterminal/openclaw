@@ -16,15 +16,15 @@ import { deferSessionControllerClaimBeforeExecution } from "../../../sessions/se
 import type { SessionControllerMailboxClaim } from "../../../sessions/session-controller.mailbox.js";
 
 /**
- * Bundled plugins whose turn-time surfaces deny an absent sender or never read one. Admitted only
- * at bundled origin: discovery assigns it from physical containment in this build's bundled plugin
- * roots, and duplicate-id resolution keeps the winner's origin, so a third-party package reusing
- * one of these ids stays unaudited.
+ * Bundled plugins whose turn-time surfaces deny an absent sender or never read one, cited relative
+ * to extensions/<id>/. Admitted only at bundled origin: discovery assigns it from physical
+ * containment in this build's bundled plugin roots, and duplicate-id resolution keeps the winner's
+ * origin, so a third-party package reusing one of these ids stays unaudited.
  */
 const AUDITED_BUNDLED_PLUGIN_IDS: ReadonlySet<string> = new Set([
   // Guild-admin and moderation actions require a trusted sender (src/channel-actions.ts:198,
-  // enforced in src/channels/plugins/message-action-dispatch.ts:634); its sender-scoped group tool
-  // policy is already held to member == baseline by resolveSenderScopedToolPolicyKey.
+  // enforced at core src/channels/plugins/message-action-dispatch.ts:634). Its sender-scoped group
+  // tool policy is already held to member == baseline by resolveSenderScopedToolPolicyKey.
   "discord",
   // Global enable/disable requires the owner bit (session-policy.ts:160).
   "active-memory",
@@ -32,11 +32,12 @@ const AUDITED_BUNDLED_PLUGIN_IDS: ReadonlySet<string> = new Set([
   // src/supervision-tools.ts:706).
   "codex",
   // Standing-intent creation refuses without a sender (src/standing-intents-tool.ts:106); recall
-  // only narrows to sender-scoped intents when one is present (src/standing-intents-model.ts:217).
+  // adds sender-scoped intents only when one is present (src/standing-intents-model.ts:217).
   "memory-core",
   // Persistent voice changes require the owner bit or operator.admin (index.ts:170).
   "talk-voice",
-  // These read no sender identity.
+  // No source outside tests reads a sender field (senderId, senderIsOwner, requesterSenderId,
+  // sender names, roleIds).
   "acpx",
   "browser",
   "canvas",

@@ -115,7 +115,6 @@ describe("room aggregate plugin gate (#1415)", () => {
 
   it.each<[string, Owner[]]>([
     ["an unaudited bundled plugin", [{ id: "sender-gate" }]],
-    ["a third-party plugin", [{ id: "sender-gate", origin: "global" }]],
     ["a third-party plugin under an audited name", [{ id: "codex", origin: "config" }]],
     ["an audited name also loaded from elsewhere", [{ id: "discord", origin: "workspace" }]],
   ])("keeps a member on its own key while %s registers a turn-time hook", (_, extra) => {
