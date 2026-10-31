@@ -34,18 +34,21 @@ import {
   normalizeSqlWhitespace,
   quoteSqliteIdentifier as quote,
 } from "../src/infra/sqlite-schema-sql.js";
+import { migrateLegacyMediaPersistence } from "../src/infra/state-migrations.media-persistence.js";
 import { withoutAgentColdNavigation } from "../src/state/openclaw-agent-cold-navigation-schema.js";
 import { OPENCLAW_AGENT_SCHEMA_VERSION } from "../src/state/openclaw-agent-db-contract.js";
 import { withAgentDatabaseMaintenanceLease } from "../src/state/openclaw-agent-db-maintenance-lease.js";
 import { ensureOpenClawAgentDatabaseSchema } from "../src/state/openclaw-agent-db-schema.js";
 import {
   closeOpenClawAgentDatabasesAsync,
+  listOpenClawRegisteredAgentDatabases,
   openOpenClawAgentDatabase,
 } from "../src/state/openclaw-agent-db.js";
 import { OPENCLAW_AGENT_SCHEMA_SQL } from "../src/state/openclaw-agent-schema.js";
 import {
   closeOpenClawStateDatabaseForTest,
   openOpenClawStateDatabase,
+  prepareOpenClawStateDatabaseSchema,
 } from "../src/state/openclaw-state-db.js";
 import { resolveSchemaMigrationBackupTables } from "../src/state/schema-migration-backup-scope.js";
 import { assertSqliteMigrationScopePreserved } from "../src/state/sqlite-migration-scope.test-support.js";
@@ -447,6 +450,31 @@ function describeRows(capture: TableCapture) {
 // ---------------------------------------------------------------------------------------------
 // Build and seed.
 
+/**
+ * Re-serializes a database in the input dump's own format. Equal bytes (and sha256) to the input
+ * file mean the build reproduces every object, shadow tables and header facts included, without
+ * trusting this file's parser.
+ */
+function dumpShapeText(db: DatabaseSync): string {
+  const meta = db
+    .prepare(
+      "SELECT meta_key, schema_version FROM schema_meta ORDER BY meta_key = 'primary' DESC, meta_key",
+    )
+    .all() as Array<{ meta_key: string; schema_version: number }>;
+  const lines = [
+    `-- user_version=${String(db.prepare("PRAGMA user_version").get()!.user_version)}`,
+    ...meta.map((row) => `-- schema_meta ${row.meta_key} schema_version=${row.schema_version}`),
+  ];
+  for (const row of db
+    .prepare(
+      "SELECT type, name, sql FROM main.sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name",
+    )
+    .all() as Array<{ type: string; name: string; sql: string }>) {
+    lines.push(`${row.type} ${row.name}`, `${row.sql};`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
 type BuildFacts = {
   sqliteVersion: string;
   vecVersion: string;
@@ -501,8 +529,9 @@ async function buildShapeDatabase(shape: Shape, pathname: string, legacyEpoch = 
     }
     db.exec("COMMIT");
     const built = readSchema(db);
+    const dump = dumpShapeText(db);
     seedSyntheticRows(db, legacyEpoch);
-    return { facts, built, seededSchema: readSchema(db) };
+    return { facts, built, dump, seededSchema: readSchema(db), seededDump: dumpShapeText(db) };
   } finally {
     db.close();
   }
@@ -776,30 +805,36 @@ function seedSyntheticRows(db: DatabaseSync, legacyEpoch: boolean): void {
   );
   db.exec("COMMIT;");
   expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  // Long-lived stores carry planner statistics (refreshSqlitePlannerStatistics); this is its
+  // explicit form, so the scoped restore's undeclared-statistics path runs too.
+  db.exec("PRAGMA analysis_limit=1000; ANALYZE main;");
+  expect(Number(db.prepare("SELECT count(*) AS n FROM sqlite_stat1").get()!.n)).toBeGreaterThan(0);
 }
 
 // ---------------------------------------------------------------------------------------------
-// Doctor runs, as systemd activation drives them: preflight under maintenance, then the declared
-// version phase (scoped backup, migration, backup completion) for every discovered target.
+// Doctor runs as systemd activation drives them (src/cli/gateway-cli/systemd-activation.ts): under
+// one maintenance scope, preflight; the declared version phase (scoped backup, migration, backup
+// completion) for every discovered target; then, with `tail`, the shared-state preparation and
+// media persistence migration that activation runs next on the same discovery.
 
-async function runDoctorVersionPhase(env: NodeJS.ProcessEnv) {
+type DoctorActivationOptions = {
+  /** Holds the version phase alone to the product's undeclared-table witness. */
+  witness?: DatabaseSync;
+  /** Runs inside the maintenance scope between the version phase and the tail. */
+  afterVersionPhase?: () => void;
+  tail?: boolean;
+};
+
+async function runDoctorActivation(env: NodeJS.ProcessEnv, options: DoctorActivationOptions = {}) {
   recorded.plans.length = 0;
   recorded.bridges.length = 0;
   recorded.backupCrossings.length = 0;
   return withMaintenance(async () => {
     const preflight = await prepareDoctorDatabasePreflight();
-    const targets = preflight.agentDatabaseMigrationDiscovery?.discovery.schemaTargets ?? [];
+    const discovery = preflight.agentDatabaseMigrationDiscovery;
+    const targets = discovery?.discovery.schemaTargets ?? [];
     const pendingMigrations = preflight.pendingMigrations ?? [];
-    const result = pendingMigrations.length
-      ? await prepareDoctorDatabaseMigrations({
-          env,
-          databasePaths: targets.map((target) => target.path),
-          agentDatabaseTargets: targets,
-          pendingDatabasePaths: pendingMigrations.map((entry) => entry.path),
-          pendingMigrations,
-        })
-      : undefined;
-    return {
+    const facts = {
       preflight: {
         incompatible: preflight.incompatible,
         indeterminate: preflight.indeterminate,
@@ -811,10 +846,60 @@ async function runDoctorVersionPhase(env: NodeJS.ProcessEnv) {
           source,
         })),
       },
-      result,
+    };
+    // Activation returns before maintenance when nothing is pending.
+    if (pendingMigrations.length === 0) {
+      return { ...facts, result: undefined, plans: [], bridges: [], backupCrossings: [] };
+    }
+    const versionPhase = () =>
+      prepareDoctorDatabaseMigrations({
+        env,
+        databasePaths: targets.map((target) => target.path),
+        agentDatabaseTargets: targets,
+        pendingDatabasePaths: pendingMigrations.map((entry) => entry.path),
+        pendingMigrations,
+      });
+    const result = options.witness
+      ? await assertSqliteMigrationScopePreserved(options.witness, DECLARED_SCOPE, versionPhase)
+      : await versionPhase();
+    const decisions = {
       plans: [...recorded.plans],
       bridges: [...recorded.bridges],
       backupCrossings: [...recorded.backupCrossings],
+    };
+    if (discovery) {
+      discovery.versionMigrations = result.versionMigrations;
+    }
+    options.afterVersionPhase?.();
+    if (!options.tail) {
+      return { ...facts, result, ...decisions };
+    }
+    const registeredBefore = listOpenClawRegisteredAgentDatabases({ env }).map(
+      ({ agentId, path: pathname }) => ({ agentId, path: pathname }),
+    );
+    const stateSchema = await prepareOpenClawStateDatabaseSchema({ env }, "doctor");
+    const mediaPersistence = await migrateLegacyMediaPersistence({
+      env,
+      preparedDiscovery: discovery,
+    });
+    return {
+      ...facts,
+      result,
+      ...decisions,
+      tail: {
+        // The tail's own schema-owner pass over the migrated store, and its registration.
+        plans: recorded.plans.slice(decisions.plans.length),
+        registeredBefore,
+        registeredAfter: listOpenClawRegisteredAgentDatabases({ env }).map(
+          ({ agentId, path: pathname }) => ({ agentId, path: pathname }),
+        ),
+        stateSchema: { changes: stateSchema.changes, warnings: stateSchema.warnings },
+        mediaPersistence: {
+          changes: mediaPersistence.changes,
+          warnings: mediaPersistence.warnings,
+          notices: mediaPersistence.notices ?? [],
+        },
+      },
     };
   });
 }
@@ -842,13 +927,36 @@ const WIDENED_CHECK = parseSqliteTableDefinition(
 ).constraints.find((constraint) => constraint.includes("event_zstd IS NOT NULL"))!;
 const PRIOR_CHECK = withoutAgentColdNavigation(WIDENED_CHECK);
 
-function payloadCheck(sql: string | null | undefined): "widened" | "prior" | "unknown" {
+/** Neither form is a substring of the other, so a table holding both reads as "both". */
+function payloadCheck(sql: string | null | undefined): "widened" | "prior" | "both" | "unknown" {
   const definition = normalizeSqlWhitespace(sql ?? "");
-  return definition.includes(WIDENED_CHECK)
-    ? "widened"
-    : definition.includes(PRIOR_CHECK)
-      ? "prior"
-      : "unknown";
+  const widened = definition.includes(WIDENED_CHECK);
+  const prior = definition.includes(PRIOR_CHECK);
+  return widened && prior ? "both" : widened ? "widened" : prior ? "prior" : "unknown";
+}
+
+/**
+ * Whether SQLite admits upstream 39's new payload form (no inline or zstd payload, navigation
+ * only), tried on a scratch copy inside a rolled-back savepoint.
+ */
+function admitsNavigationOnlyPayload(source: string, scratch: string): string {
+  fs.copyFileSync(source, scratch);
+  using db = new DatabaseSync(scratch);
+  const navigation = db
+    .prepare("SELECT navigation_json FROM transcript_events WHERE event_zstd IS NOT NULL LIMIT 1")
+    .get()!.navigation_json;
+  db.exec("SAVEPOINT probe");
+  try {
+    db.prepare(
+      `INSERT INTO transcript_events (session_id, seq, event_utf8_bytes, navigation_json, created_at)
+       VALUES (?, 99, 123, ?, ?)`,
+    ).run(SESSIONS.main.id, navigation as string, T0);
+    return "accepted";
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  } finally {
+    db.exec("ROLLBACK TO probe; RELEASE probe;");
+  }
 }
 
 function schemaMetaRows(capture: Capture) {
@@ -909,7 +1017,10 @@ describe.each(SHAPE_NAMES)("fleet schema-38 shape %s", (shapeName) => {
 
       const pristine = path.join(WORK_DIR, `${shapeName}-pristine-38.sqlite`);
       fs.rmSync(pristine, { force: true });
-      const { facts, built, seededSchema } = await buildShapeDatabase(shape, pristine);
+      const { facts, built, dump, seededSchema, seededDump } = await buildShapeDatabase(
+        shape,
+        pristine,
+      );
       pristineFiles.set(shapeName, pristine);
 
       const expected = shape.objects.filter((object) => !object.shadowOf);
@@ -957,7 +1068,14 @@ describe.each(SHAPE_NAMES)("fleet schema-38 shape %s", (shapeName) => {
         shadowTablesUnequal: shadows.filter((entry) => !entry.equal),
         unexpectedObjects: unexpected,
         seedingChangedSchema: diffSchema(built, seededSchema),
+        regeneratedDump: {
+          sha256: sha256(dump),
+          equalsInputFile: dump === fs.readFileSync(shape.file, "utf8"),
+          afterSeedingSha256: sha256(seededDump),
+        },
       };
+      expect(sha256(dump)).toBe(shape.sha256);
+      expect(sha256(seededDump)).toBe(shape.sha256);
       expect(perObject.filter((entry) => !entry.equal)).toEqual([]);
       expect(unexpected).toEqual([]);
       expect(actual.length).toBe(shape.objects.length);
@@ -989,6 +1107,7 @@ describe.each(SHAPE_NAMES)("fleet schema-38 shape %s", (shapeName) => {
             "standing_intents",
             "session_transcript_fts_rows",
             "cache_entries",
+            "sqlite_stat1",
           ].map((name) => [name, describeRows(seeded.tables.get(name)!)]),
         ),
       };
@@ -1000,7 +1119,7 @@ describe.each(SHAPE_NAMES)("fleet schema-38 shape %s", (shapeName) => {
   );
 
   it(
-    "migrates 38 -> 40 through Doctor's version phase, keeps every row, and reopens at 40",
+    "migrates 38 -> 40 through Doctor's activation sequence, keeps every row, and reopens at 40",
     async () => {
       const pristine = pristineFiles.get(shapeName);
       expect(pristine).toBeDefined();
@@ -1019,19 +1138,27 @@ describe.each(SHAPE_NAMES)("fleet schema-38 shape %s", (shapeName) => {
         expect(tables).toEqual(DECLARED_SCOPE);
 
         // The witness reads every undeclared table, the vec0 table included, so it loads sqlite-vec
-        // on its own handle. Doctor's handles never load it, as on a seat.
+        // on its own handle and closes before the activation tail. Doctor never loads sqlite-vec.
         const witness = new DatabaseSync(agentPath, { allowExtension: true });
-        let doctor: Awaited<ReturnType<typeof runDoctorVersionPhase>>;
+        let migrated: Capture | undefined;
+        let doctor: Awaited<ReturnType<typeof runDoctorActivation>>;
         try {
-          const vec = await loadSqliteVecExtension({ db: witness });
-          expect(vec.ok).toBe(true);
-          doctor = await assertSqliteMigrationScopePreserved(witness, tables, () =>
-            runDoctorVersionPhase(state.env),
-          );
+          expect((await loadSqliteVecExtension({ db: witness })).ok).toBe(true);
+          doctor = await runDoctorActivation(state.env, {
+            witness,
+            afterVersionPhase: () => {
+              witness.close();
+              migrated = captureFile(agentPath);
+            },
+            tail: true,
+          });
         } finally {
-          witness.close();
+          if (witness.isOpen) {
+            witness.close();
+          }
         }
         await closeOpenClawAgentDatabasesAsync();
+        const activated = captureFile(agentPath);
 
         expect(doctor.preflight).toMatchObject({
           incompatible: [],
@@ -1048,7 +1175,8 @@ describe.each(SHAPE_NAMES)("fleet schema-38 shape %s", (shapeName) => {
         ]);
         expect(fs.realpathSync(doctor.preflight.pendingMigrations[0]!.path)).toBe(realPath);
         expect(doctor.result?.warnings).toEqual([]);
-        // The ordinary 38 history: no fork-39 bridge, crossing upstream's 39 and the authority 40.
+        // The ordinary 38 history, crossing upstream's 39 and the authority step 40. The bridge only
+        // considers a database at 39, so "not bridged" is structural here; it is the real call's answer.
         expect(doctor.plans).toEqual([
           { previousVersion: 38, targetVersion: 40, shapeVersion: 38, crosses: [39, 40] },
         ]);
@@ -1063,52 +1191,17 @@ describe.each(SHAPE_NAMES)("fleet schema-38 shape %s", (shapeName) => {
         );
         expect(backupTables).toEqual(DECLARED_SCOPE);
 
-        const migrated = captureFile(agentPath);
-        const transcriptSql = migrated.schema.find(
+        // The version phase alone.
+        expect(migrated).toBeDefined();
+        const versioned = migrated!;
+        const transcriptSql = versioned.schema.find(
           (row) => row.type === "table" && row.name === "transcript_events",
         )?.sql;
-        using plain = new DatabaseSync(agentPath, { readOnly: true });
-        const integrity = plain.prepare("PRAGMA integrity_check").all();
-        const foreignKeys = plain.prepare("PRAGMA foreign_key_check").all();
-        const primary = plain
-          .prepare("SELECT schema_version, app_version FROM schema_meta WHERE meta_key = 'primary'")
-          .get();
-        plain.close();
-        const schemaChanges = diffSchema(before.schema, migrated.schema);
-        const tableChanges = diffTables(before, migrated);
+        const schemaChanges = diffSchema(before.schema, versioned.schema);
+        const tableChanges = diffTables(before, versioned);
         const metaBefore = schemaMetaRows(before);
-        const metaAfter = schemaMetaRows(migrated);
-
-        receipt.migration = {
-          doctor: redactRoot(
-            {
-              preflight: doctor.preflight,
-              changes: doctor.result?.changes,
-              warnings: doctor.result?.warnings,
-            },
-            state.root,
-          ),
-          plan: doctor.plans,
-          fork39Bridge: doctor.bridges,
-          backupCrossing: doctor.backupCrossings,
-          declaredBackupScope: tables,
-          backupArchiveTables: backupTables,
-          undeclaredTablesPreserved: true,
-          userVersion: migrated.userVersion,
-          schemaMetaPrimary: primary,
-          integrityCheck: integrity,
-          foreignKeyCheck: foreignKeys,
-          transcriptPayloadCheck: { before: "prior", after: payloadCheck(transcriptSql) },
-          transcriptEventsSqlAfter: transcriptSql,
-          schemaObjectsChanged: schemaChanges,
-          tablesChanged: tableChanges,
-          schemaMetaBefore: metaBefore,
-          schemaMetaAfter: metaAfter,
-        };
-        expect(migrated.userVersion).toBe(40);
-        expect(primary).toEqual({ schema_version: 40, app_version: VERSION });
-        expect(integrity).toEqual([{ integrity_check: "ok" }]);
-        expect(foreignKeys).toEqual([]);
+        const metaAfter = schemaMetaRows(versioned);
+        expect(versioned.userVersion).toBe(40);
         expect(payloadCheck(transcriptSql)).toBe("widened");
         // Only the payload constraint's catalog entry changes; every other object keeps its bytes.
         expect(schemaChanges).toEqual(["table transcript_events: sql changed"]);
@@ -1124,17 +1217,101 @@ describe.each(SHAPE_NAMES)("fleet schema-38 shape %s", (shapeName) => {
           app_version: VERSION,
           created_at: String(T0),
         });
-        expect(describeRows(migrated.tables.get("session_recipient_authority")!)).toEqual(
+        expect(describeRows(versioned.tables.get("session_recipient_authority")!)).toEqual(
           describeRows(before.tables.get("session_recipient_authority")!),
         );
 
-        // Doctor again: nothing is pending, so the version phase does not run.
-        const rerun = await runDoctorVersionPhase(state.env);
+        // The activation tail: shared-state preparation and the media persistence migration.
+        const tailSchema = diffSchema(versioned.schema, activated.schema);
+        const tailTables = diffTables(versioned, activated);
+
+        using plain = new DatabaseSync(agentPath, { readOnly: true });
+        const integrity = plain.prepare("PRAGMA integrity_check").all();
+        const foreignKeys = plain.prepare("PRAGMA foreign_key_check").all();
+        const primary = plain
+          .prepare("SELECT schema_version, app_version FROM schema_meta WHERE meta_key = 'primary'")
+          .get();
+        plain.close();
+        const checkProbe = {
+          predecessor38: admitsNavigationOnlyPayload(
+            pristine!,
+            path.join(WORK_DIR, `${shapeName}-check-probe-38.sqlite`),
+          ),
+          migrated40: admitsNavigationOnlyPayload(
+            agentPath,
+            path.join(WORK_DIR, `${shapeName}-check-probe-40.sqlite`),
+          ),
+        };
+
+        receipt.migration = {
+          doctor: redactRoot(
+            {
+              preflight: doctor.preflight,
+              changes: doctor.result?.changes,
+              warnings: doctor.result?.warnings,
+            },
+            state.root,
+          ),
+          plan: doctor.plans,
+          fork39Bridge: doctor.bridges,
+          backupCrossing: doctor.backupCrossings,
+          declaredBackupScope: tables,
+          backupArchiveTables: backupTables,
+          undeclaredTablesPreservedByVersionPhase: true,
+          userVersion: versioned.userVersion,
+          transcriptPayloadCheck: { before: "prior", after: payloadCheck(transcriptSql) },
+          transcriptEventsSqlAfter: transcriptSql,
+          navigationOnlyPayloadInsert: checkProbe,
+          schemaObjectsChanged: schemaChanges,
+          tablesChanged: tableChanges,
+          schemaMetaBefore: metaBefore,
+          schemaMetaAfter: metaAfter,
+        };
+        receipt.activationTail = {
+          doctor: redactRoot(doctor.tail, state.root),
+          schemaObjectsChanged: tailSchema,
+          tablesChanged: tailTables,
+          changedRows: Object.fromEntries(
+            tailTables
+              .map((entry) => entry.split(":")[0]!)
+              .filter((name) => activated.tables.has(name) && versioned.tables.has(name))
+              .map((name) => [
+                name,
+                {
+                  afterVersionPhase: describeRows(versioned.tables.get(name)!),
+                  afterActivation: describeRows(activated.tables.get(name)!),
+                },
+              ]),
+          ),
+          userVersion: activated.userVersion,
+          schemaMetaPrimary: primary,
+          integrityCheck: integrity,
+          foreignKeyCheck: foreignKeys,
+        };
+        expect(doctor.tail?.stateSchema.warnings).toEqual([]);
+        expect(doctor.tail?.mediaPersistence.warnings).toEqual([]);
+        // The tail reached the migrated store: one same-version schema-owner pass at 40.
+        expect(doctor.tail?.plans).toEqual([
+          { previousVersion: 40, targetVersion: 40, shapeVersion: 40, crosses: [] },
+        ]);
+        expect(doctor.tail?.registeredAfter.map((entry) => fs.realpathSync(entry.path))).toContain(
+          realPath,
+        );
+        expect(tailSchema).toEqual([]);
+        expect(activated.userVersion).toBe(40);
+        expect(primary).toEqual({ schema_version: 40, app_version: VERSION });
+        expect(integrity).toEqual([{ integrity_check: "ok" }]);
+        expect(foreignKeys).toEqual([]);
+        expect(checkProbe.migrated40).toBe("accepted");
+        expect(checkProbe.predecessor38).toMatch(/CHECK constraint failed/u);
+
+        // Doctor again: nothing is pending, so activation does not enter maintenance work.
+        const rerun = await runDoctorActivation(state.env, { tail: true });
         expect(rerun.preflight.pendingMigrations).toEqual([]);
         expect(rerun.result).toBeUndefined();
         const afterRerun = captureFile(agentPath);
-        expect(diffSchema(migrated.schema, afterRerun.schema)).toEqual([]);
-        expect(diffTables(migrated, afterRerun)).toEqual([]);
+        expect(diffSchema(activated.schema, afterRerun.schema)).toEqual([]);
+        expect(diffTables(activated, afterRerun)).toEqual([]);
 
         // The full schema owner (Doctor's later admission pass), twice.
         const ownerRuns: Array<{ schema: string[]; tables: string[] }> = [];
@@ -1189,7 +1366,7 @@ describe.each(SHAPE_NAMES)("fleet schema-38 shape %s", (shapeName) => {
           previous = current;
         }
         const final = previous;
-        receipt.afterMigration = {
+        receipt.afterActivation = {
           doctorRerun: {
             pendingMigrations: rerun.preflight.pendingMigrations,
             versionPhaseRan: false,
@@ -1200,32 +1377,27 @@ describe.each(SHAPE_NAMES)("fleet schema-38 shape %s", (shapeName) => {
             schema: diffSchema(before.schema, final.schema),
             tables: diffTables(before, final),
           },
-          finalChangedRows: Object.fromEntries(
-            diffTables(migrated, final)
-              .map((entry) => entry.split(":")[0]!)
-              .filter((name) => final.tables.has(name) && migrated.tables.has(name))
-              .map((name) => [
-                name,
-                {
-                  afterVersionPhase: describeRows(migrated.tables.get(name)!),
-                  final: describeRows(final.tables.get(name)!),
-                },
-              ]),
-          ),
         };
-        for (const open of opens) {
-          expect(open.userVersion).toBe(40);
-        }
+        // Neither the schema owner nor the Gateway's open changes anything after activation.
+        expect(ownerRuns).toEqual([
+          { schema: [], tables: [] },
+          { schema: [], tables: [] },
+        ]);
+        expect(opens).toEqual([
+          { userVersion: 40, schema: [], tables: [] },
+          { userVersion: 40, schema: [], tables: [] },
+        ]);
 
         if (KEEP_WORK) {
-          for (const suffix of ["", "-wal", "-shm"]) {
-            if (fs.existsSync(`${agentPath}${suffix}`)) {
-              fs.copyFileSync(
-                `${agentPath}${suffix}`,
-                path.join(WORK_DIR, `${shapeName}-migrated-40.sqlite${suffix}`),
-              );
-            }
-          }
+          expect(
+            [`${agentPath}-wal`, `${agentPath}-shm`].filter((file) => fs.existsSync(file)),
+          ).toEqual([]);
+          const copy = path.join(WORK_DIR, `${shapeName}-migrated-40.sqlite`);
+          fs.copyFileSync(agentPath, copy);
+          receipt.migratedCopy = {
+            file: path.basename(copy),
+            sha256: sha256(fs.readFileSync(copy)),
+          };
         }
       });
     },
@@ -1243,7 +1415,7 @@ describe.each(SHAPE_NAMES)("fleet schema-38 shape %s", (shapeName) => {
         const agentPath = stageInState(state, pristine!);
         const original = captureFile(agentPath);
 
-        const doctor = await runDoctorVersionPhase(state.env);
+        const doctor = await runDoctorActivation(state.env);
         await closeOpenClawAgentDatabasesAsync();
         expect(doctor.result?.warnings).toEqual([]);
         const migrated = captureFile(agentPath);
@@ -1264,7 +1436,7 @@ describe.each(SHAPE_NAMES)("fleet schema-38 shape %s", (shapeName) => {
         const tableDiff = diffTables(original, restored);
 
         // The restored 38 is migratable again: Doctor's repeatable step after a rollback.
-        const remigration = await runDoctorVersionPhase(state.env);
+        const remigration = await runDoctorActivation(state.env);
         await closeOpenClawAgentDatabasesAsync();
         const remigrated = captureFile(agentPath);
 
@@ -1306,6 +1478,60 @@ describe.each(SHAPE_NAMES)("fleet schema-38 shape %s", (shapeName) => {
     },
     TIMEOUT_MS,
   );
+
+  // A seat rolls back after the whole activation sequence, not after the version phase alone, so
+  // anything the tail writes outside the declared scope stays behind a scoped restore.
+  it(
+    "restores from the scoped backup after the full activation sequence",
+    async () => {
+      const pristine = pristineFiles.get(shapeName);
+      expect(pristine).toBeDefined();
+      const receipt = receipts[shapeName]!;
+      await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+        openOpenClawStateDatabase({ env: state.env });
+        const agentPath = stageInState(state, pristine!);
+        const original = captureFile(agentPath);
+        const doctor = await runDoctorActivation(state.env, { tail: true });
+        await closeOpenClawAgentDatabasesAsync();
+        expect(doctor.result?.warnings).toEqual([]);
+        expect(doctor.tail?.mediaPersistence.warnings).toEqual([]);
+        const activated = captureFile(agentPath);
+        expect(activated.userVersion).toBe(40);
+        const backupPath = findScopedBackup(agentPath);
+        await restoreDoctorMigrationBackup({ sourcePath: agentPath, backupPath, env: state.env });
+        const restored = captureFile(agentPath);
+        using plain = new DatabaseSync(agentPath, { readOnly: true });
+        const integrity = plain.prepare("PRAGMA integrity_check").all();
+        const foreignKeys = plain.prepare("PRAGMA foreign_key_check").all();
+        plain.close();
+        const schemaDiff = diffSchema(original.schema, restored.schema);
+        const tableDiff = diffTables(original, restored);
+        receipt.backupRestoreAfterActivation = {
+          restoredUserVersion: restored.userVersion,
+          restoredVersusPredecessor: { schema: schemaDiff, tables: tableDiff },
+          changedRows: Object.fromEntries(
+            tableDiff
+              .map((entry) => entry.split(":")[0]!)
+              .filter((name) => original.tables.has(name) && restored.tables.has(name))
+              .map((name) => [
+                name,
+                {
+                  predecessor: describeRows(original.tables.get(name)!),
+                  restored: describeRows(restored.tables.get(name)!),
+                },
+              ]),
+          ),
+          integrityCheck: integrity,
+          foreignKeyCheck: foreignKeys,
+        };
+        expect(restored.userVersion).toBe(38);
+        expect(schemaDiff).toEqual([]);
+        expect(integrity).toEqual([{ integrity_check: "ok" }]);
+        expect(foreignKeys).toEqual([]);
+      });
+    },
+    TIMEOUT_MS,
+  );
 });
 
 // An entry-local recipient epoch (the unshipped pre-table form) is moved by the schema-40 step out
@@ -1322,8 +1548,26 @@ it(
       openOpenClawStateDatabase({ env: state.env });
       const agentPath = stageInState(state, pristine);
       const original = captureFile(agentPath);
-      const doctor = await runDoctorVersionPhase(state.env);
+      // The same product scope witness that stays silent on the ordinary shapes; here it must fire
+      // after Doctor commits, which is also the negative control for those silent runs.
+      let doctor: Awaited<ReturnType<typeof runDoctorActivation>> | undefined;
+      let scopeWitness = "";
+      const witness = new DatabaseSync(agentPath, { allowExtension: true });
+      try {
+        expect((await loadSqliteVecExtension({ db: witness })).ok).toBe(true);
+        await assertSqliteMigrationScopePreserved(witness, DECLARED_SCOPE, async () => {
+          doctor = await runDoctorActivation(state.env);
+        });
+      } catch (error) {
+        scopeWitness = error instanceof Error ? error.message : String(error);
+      } finally {
+        witness.close();
+      }
       await closeOpenClawAgentDatabasesAsync();
+      expect(doctor?.result?.warnings).toEqual([]);
+      expect(scopeWitness).toBe(
+        "Migration changed undeclared tables:\nsession_nodes: content changed",
+      );
       const migrated = captureFile(agentPath);
       const backupPath = findScopedBackup(agentPath);
       await restoreDoctorMigrationBackup({ sourcePath: agentPath, backupPath, env: state.env });
@@ -1334,7 +1578,8 @@ it(
         )?.entry_json;
       receipts["edge-legacy-epoch"] = {
         shape: "cael",
-        warnings: doctor.result?.warnings,
+        warnings: doctor?.result?.warnings,
+        scopeWitness,
         migratedUserVersion: migrated.userVersion,
         migratedVersusPredecessor: diffTables(original, migrated),
         authorityAfterMigration: describeRows(migrated.tables.get("session_recipient_authority")!),
@@ -1352,6 +1597,14 @@ it(
       };
       expect(migrated.userVersion).toBe(40);
       expect(restored.userVersion).toBe(38);
+      // The scoped restore returns the authority rows but not session_nodes: the epoch is gone.
+      expect(diffTables(original, restored)).toEqual(["session_nodes: content changed"]);
+      expect(childEntry(restored)).toBe(childEntry(migrated));
+      expect(
+        describeRows(restored.tables.get("session_recipient_authority")!).map(
+          (row) => row.session_key,
+        ),
+      ).not.toContain(SESSIONS.child.key);
     });
   },
   TIMEOUT_MS,

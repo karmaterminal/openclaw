@@ -1,6 +1,7 @@
 {
   "shape": "cael",
   "warnings": [],
+  "scopeWitness": "Migration changed undeclared tables:\nsession_nodes: content changed",
   "migratedUserVersion": 40,
   "migratedVersusPredecessor": [
     "schema_meta: content changed",
@@ -26,8 +27,8 @@
       "rowid": "3",
       "session_key": "agent:main:subagent:rehearsal",
       "epoch": "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
-      "created_at": "1793467670056",
-      "updated_at": "1793467670056"
+      "created_at": "1793469029564",
+      "updated_at": "1793469029564"
     }
   ],
   "restoredUserVersion": 38,

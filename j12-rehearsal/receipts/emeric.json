@@ -45,7 +45,14 @@
     "shadowTablesEqual": 23,
     "shadowTablesUnequal": [],
     "unexpectedObjects": [],
-    "seedingChangedSchema": []
+    "seedingChangedSchema": [
+      "table sqlite_stat1: added"
+    ],
+    "regeneratedDump": {
+      "sha256": "e063b87391b6dc1c471afd59226c1386a8861746a73630a7d82b55c8a7110019",
+      "equalsInputFile": true,
+      "afterSeedingSha256": "e063b87391b6dc1c471afd59226c1386a8861746a73630a7d82b55c8a7110019"
+    }
   },
   "seeded": {
     "userVersion": 38,
@@ -329,6 +336,10 @@
       "sqlite_sequence": {
         "rows": 2,
         "sha256": "201bb3d739f24962c90b214656be75e32c4ed309044d0270879ba235359407b5"
+      },
+      "sqlite_stat1": {
+        "rows": 76,
+        "sha256": "2c085462e4ee8d1c90b76b0f14c1aff7ca0900b4c7d90aca30dd7b2abe4d3080"
       },
       "standing_intents": {
         "rows": 1,
@@ -840,6 +851,464 @@
           "expires_at": null,
           "updated_at": "1793400000000"
         }
+      ],
+      "sqlite_stat1": [
+        {
+          "rowid": "1",
+          "tbl": "standing_intents_fts_docsize",
+          "idx": null,
+          "stat": "1"
+        },
+        {
+          "rowid": "2",
+          "tbl": "standing_intents_fts_data",
+          "idx": null,
+          "stat": "3"
+        },
+        {
+          "rowid": "3",
+          "tbl": "session_transcript_fts_content",
+          "idx": null,
+          "stat": "1"
+        },
+        {
+          "rowid": "4",
+          "tbl": "standing_intents_fts_config",
+          "idx": "standing_intents_fts_config",
+          "stat": "1 1"
+        },
+        {
+          "rowid": "5",
+          "tbl": "session_transcript_fts_idx",
+          "idx": "session_transcript_fts_idx",
+          "stat": "1 1 1"
+        },
+        {
+          "rowid": "6",
+          "tbl": "memory_index_paths_fts_config",
+          "idx": "memory_index_paths_fts_config",
+          "stat": "1 1"
+        },
+        {
+          "rowid": "7",
+          "tbl": "memory_index_paths_fts_docsize",
+          "idx": null,
+          "stat": "1"
+        },
+        {
+          "rowid": "8",
+          "tbl": "memory_index_paths_fts_content",
+          "idx": null,
+          "stat": "1"
+        },
+        {
+          "rowid": "9",
+          "tbl": "memory_index_paths_fts_idx",
+          "idx": "memory_index_paths_fts_idx",
+          "stat": "1 1 1"
+        },
+        {
+          "rowid": "10",
+          "tbl": "memory_index_chunks_vec_vector_chunks00",
+          "idx": "sqlite_autoindex_memory_index_chunks_vec_vector_chunks00_1",
+          "stat": "1 1"
+        },
+        {
+          "rowid": "11",
+          "tbl": "memory_index_chunks_vec_rowids",
+          "idx": "sqlite_autoindex_memory_index_chunks_vec_rowids_1",
+          "stat": "1 1"
+        },
+        {
+          "rowid": "12",
+          "tbl": "memory_index_chunks_fts_data",
+          "idx": null,
+          "stat": "3"
+        },
+        {
+          "rowid": "13",
+          "tbl": "memory_index_chunks_fts_config",
+          "idx": "memory_index_chunks_fts_config",
+          "stat": "1 1"
+        },
+        {
+          "rowid": "14",
+          "tbl": "transcript_event_identities",
+          "idx": "idx_agent_transcript_message_idempotency",
+          "stat": "1 1 1"
+        },
+        {
+          "rowid": "15",
+          "tbl": "transcript_event_identities",
+          "idx": "idx_agent_transcript_event_sequence",
+          "stat": "3 3 3 1"
+        },
+        {
+          "rowid": "16",
+          "tbl": "transcript_event_identities",
+          "idx": "idx_agent_transcript_event_identity_sequence",
+          "stat": "3 3 1"
+        },
+        {
+          "rowid": "17",
+          "tbl": "transcript_event_identities",
+          "idx": "sqlite_autoindex_transcript_event_identities_1",
+          "stat": "3 3 1"
+        },
+        {
+          "rowid": "18",
+          "tbl": "standing_intents",
+          "idx": "idx_standing_intents_scope",
+          "stat": "1 1 1 1"
+        },
+        {
+          "rowid": "19",
+          "tbl": "standing_intents",
+          "idx": "idx_standing_intents_lifecycle",
+          "stat": "1 1 1 1"
+        },
+        {
+          "rowid": "20",
+          "tbl": "standing_intents",
+          "idx": "sqlite_autoindex_standing_intents_1",
+          "stat": "1 1"
+        },
+        {
+          "rowid": "21",
+          "tbl": "session_windows",
+          "idx": "idx_agent_session_windows_updated_at",
+          "stat": "4 4 1"
+        },
+        {
+          "rowid": "22",
+          "tbl": "session_windows",
+          "idx": "idx_agent_session_windows_session_key",
+          "stat": "4 2 2 1"
+        },
+        {
+          "rowid": "23",
+          "tbl": "session_windows",
+          "idx": "idx_agent_session_windows_created_at",
+          "stat": "4 4 1"
+        },
+        {
+          "rowid": "24",
+          "tbl": "session_windows",
+          "idx": "idx_agent_session_windows_conversation",
+          "stat": "1 1"
+        },
+        {
+          "rowid": "25",
+          "tbl": "session_windows",
+          "idx": "sqlite_autoindex_session_windows_1",
+          "stat": "4 1"
+        },
+        {
+          "rowid": "26",
+          "tbl": "session_transcript_fts_rows",
+          "idx": "idx_session_transcript_fts_rows_session_message",
+          "stat": "1 1 1"
+        },
+        {
+          "rowid": "27",
+          "tbl": "standing_intents_fts_idx",
+          "idx": "standing_intents_fts_idx",
+          "stat": "1 1 1"
+        },
+        {
+          "rowid": "28",
+          "tbl": "session_transcript_active_events",
+          "idx": "idx_agent_transcript_context_pending",
+          "stat": "0 0"
+        },
+        {
+          "rowid": "29",
+          "tbl": "session_transcript_active_events",
+          "idx": "idx_agent_transcript_active_messages",
+          "stat": "3 3 1"
+        },
+        {
+          "rowid": "30",
+          "tbl": "session_transcript_active_events",
+          "idx": "idx_agent_transcript_active_event_seq",
+          "stat": "3 3 1"
+        },
+        {
+          "rowid": "31",
+          "tbl": "session_transcript_active_events",
+          "idx": "sqlite_autoindex_session_transcript_active_events_1",
+          "stat": "3 3 1"
+        },
+        {
+          "rowid": "32",
+          "tbl": "memory_index_chunks_fts_idx",
+          "idx": "memory_index_chunks_fts_idx",
+          "stat": "1 1 1"
+        },
+        {
+          "rowid": "33",
+          "tbl": "session_transcript_cold_archives",
+          "idx": "sqlite_autoindex_session_transcript_cold_archives_2",
+          "stat": "1 1"
+        },
+        {
+          "rowid": "34",
+          "tbl": "session_transcript_cold_archives",
+          "idx": "sqlite_autoindex_session_transcript_cold_archives_1",
+          "stat": "1 1"
+        },
+        {
+          "rowid": "35",
+          "tbl": "memory_index_chunks_fts_docsize",
+          "idx": null,
+          "stat": "1"
+        },
+        {
+          "rowid": "36",
+          "tbl": "session_transcript_fts_config",
+          "idx": "session_transcript_fts_config",
+          "stat": "1 1"
+        },
+        {
+          "rowid": "37",
+          "tbl": "transcript_events",
+          "idx": "sqlite_autoindex_transcript_events_1",
+          "stat": "3 3 1"
+        },
+        {
+          "rowid": "38",
+          "tbl": "session_recipient_authority",
+          "idx": "sqlite_autoindex_session_recipient_authority_1",
+          "stat": "2 1"
+        },
+        {
+          "rowid": "39",
+          "tbl": "cache_entries",
+          "idx": "idx_agent_voice_session_open_updated",
+          "stat": "0 0 0"
+        },
+        {
+          "rowid": "40",
+          "tbl": "cache_entries",
+          "idx": "idx_agent_voice_session_open_scope",
+          "stat": "0 0 0 0"
+        },
+        {
+          "rowid": "41",
+          "tbl": "cache_entries",
+          "idx": "idx_agent_cache_updated",
+          "stat": "1 1 1 1"
+        },
+        {
+          "rowid": "42",
+          "tbl": "cache_entries",
+          "idx": "idx_agent_cache_expiry",
+          "stat": "0 0 0 0"
+        },
+        {
+          "rowid": "43",
+          "tbl": "cache_entries",
+          "idx": "sqlite_autoindex_cache_entries_1",
+          "stat": "1 1 1"
+        },
+        {
+          "rowid": "44",
+          "tbl": "memory_index_paths_fts_data",
+          "idx": null,
+          "stat": "3"
+        },
+        {
+          "rowid": "45",
+          "tbl": "session_transcript_fts_docsize",
+          "idx": null,
+          "stat": "1"
+        },
+        {
+          "rowid": "46",
+          "tbl": "session_key_contract",
+          "idx": null,
+          "stat": "1"
+        },
+        {
+          "rowid": "47",
+          "tbl": "session_transcript_fts_data",
+          "idx": null,
+          "stat": "3"
+        },
+        {
+          "rowid": "48",
+          "tbl": "conversations",
+          "idx": "idx_agent_conversations_updated",
+          "stat": "1 1 1"
+        },
+        {
+          "rowid": "49",
+          "tbl": "conversations",
+          "idx": "idx_agent_conversations_lookup",
+          "stat": "1 1 1 1 1 1"
+        },
+        {
+          "rowid": "50",
+          "tbl": "conversations",
+          "idx": "idx_agent_conversations_identity",
+          "stat": "1 1 1 1 1 1 1"
+        },
+        {
+          "rowid": "51",
+          "tbl": "conversations",
+          "idx": "sqlite_autoindex_conversations_1",
+          "stat": "1 1"
+        },
+        {
+          "rowid": "52",
+          "tbl": "session_transcript_cold_archive_chunks",
+          "idx": "session_transcript_cold_archive_chunks",
+          "stat": "1 1 1"
+        },
+        {
+          "rowid": "53",
+          "tbl": "session_transcript_cold_archive_chunks",
+          "idx": "sqlite_autoindex_session_transcript_cold_archive_chunks_1",
+          "stat": "1 1"
+        },
+        {
+          "rowid": "54",
+          "tbl": "memory_index_chunks_vec_chunks",
+          "idx": null,
+          "stat": "1"
+        },
+        {
+          "rowid": "55",
+          "tbl": "memory_index_chunks_vec_info",
+          "idx": "sqlite_autoindex_memory_index_chunks_vec_info_1",
+          "stat": "4 1"
+        },
+        {
+          "rowid": "56",
+          "tbl": "memory_index_sources",
+          "idx": "idx_memory_index_sources_source",
+          "stat": "1 1"
+        },
+        {
+          "rowid": "57",
+          "tbl": "memory_index_sources",
+          "idx": "sqlite_autoindex_memory_index_sources_1",
+          "stat": "1 1 1"
+        },
+        {
+          "rowid": "58",
+          "tbl": "schema_meta",
+          "idx": "sqlite_autoindex_schema_meta_1",
+          "stat": "3 1"
+        },
+        {
+          "rowid": "59",
+          "tbl": "memory_index_chunks",
+          "idx": "idx_memory_index_chunks_source",
+          "stat": "1 1"
+        },
+        {
+          "rowid": "60",
+          "tbl": "memory_index_chunks",
+          "idx": "idx_memory_index_chunks_path_source",
+          "stat": "1 1 1"
+        },
+        {
+          "rowid": "61",
+          "tbl": "memory_index_chunks",
+          "idx": "sqlite_autoindex_memory_index_chunks_1",
+          "stat": "1 1"
+        },
+        {
+          "rowid": "62",
+          "tbl": "conversation_deliveries",
+          "idx": "idx_agent_conversation_deliveries_reply",
+          "stat": "0 0 0 0"
+        },
+        {
+          "rowid": "63",
+          "tbl": "memory_index_chunks_fts_content",
+          "idx": null,
+          "stat": "1"
+        },
+        {
+          "rowid": "64",
+          "tbl": "session_transcript_archives",
+          "idx": "idx_agent_session_transcript_archives_pending",
+          "stat": "0 0 0 0"
+        },
+        {
+          "rowid": "65",
+          "tbl": "session_conversations",
+          "idx": "idx_agent_session_conversations_primary",
+          "stat": "0 0"
+        },
+        {
+          "rowid": "66",
+          "tbl": "session_nodes",
+          "idx": "idx_agent_session_nodes_updated_at",
+          "stat": "3 1 1"
+        },
+        {
+          "rowid": "67",
+          "tbl": "session_nodes",
+          "idx": "idx_agent_session_nodes_status",
+          "stat": "1 1 1"
+        },
+        {
+          "rowid": "68",
+          "tbl": "session_nodes",
+          "idx": "idx_agent_session_nodes_spawned_by",
+          "stat": "3 2 1"
+        },
+        {
+          "rowid": "69",
+          "tbl": "session_nodes",
+          "idx": "idx_agent_session_nodes_parent_session_key",
+          "stat": "3 2 1"
+        },
+        {
+          "rowid": "70",
+          "tbl": "session_nodes",
+          "idx": "idx_agent_session_nodes_label",
+          "stat": "1 1 1"
+        },
+        {
+          "rowid": "71",
+          "tbl": "session_nodes",
+          "idx": "idx_agent_session_nodes_entry_valid_pending",
+          "stat": "0 0"
+        },
+        {
+          "rowid": "72",
+          "tbl": "session_nodes",
+          "idx": "idx_agent_session_nodes_entry_not_valid",
+          "stat": "0 0"
+        },
+        {
+          "rowid": "73",
+          "tbl": "session_nodes",
+          "idx": "idx_agent_session_nodes_current_session_id",
+          "stat": "3 1"
+        },
+        {
+          "rowid": "74",
+          "tbl": "session_nodes",
+          "idx": "idx_agent_session_nodes_archived_at",
+          "stat": "0 0 0"
+        },
+        {
+          "rowid": "75",
+          "tbl": "session_nodes",
+          "idx": "idx_agent_session_nodes_active",
+          "stat": "3 1"
+        },
+        {
+          "rowid": "76",
+          "tbl": "session_nodes",
+          "idx": "sqlite_autoindex_session_nodes_1",
+          "stat": "3 1"
+        }
       ]
     }
   },
@@ -867,8 +1336,8 @@
         ]
       },
       "changes": [
-        "Saved pre-migration SQLite backup: <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite.pre-startup-migration-7c479cfe-2a27-8d53-8369-2c21c2bc053d.scoped.bak",
-        "Saved pre-migration SQLite backup: <state-root>/home/.openclaw/state/openclaw.sqlite.pre-startup-migration-7c479cfe-2a27-8d53-8369-2c21c2bc053d.bak",
+        "Saved pre-migration SQLite backup: <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite.pre-startup-migration-e94648ce-218a-850a-8ef1-de2f30561675.scoped.bak",
+        "Saved pre-migration SQLite backup: <state-root>/home/.openclaw/state/openclaw.sqlite.pre-startup-migration-e94648ce-218a-850a-8ef1-de2f30561675.bak",
         "Upgraded agent database schema in <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite: v38 -> v40."
       ],
       "warnings": []
@@ -907,23 +1376,17 @@
       "session_recipient_authority",
       "transcript_events"
     ],
-    "undeclaredTablesPreserved": true,
+    "undeclaredTablesPreservedByVersionPhase": true,
     "userVersion": 40,
-    "schemaMetaPrimary": {
-      "schema_version": 40,
-      "app_version": "2026.10.9"
-    },
-    "integrityCheck": [
-      {
-        "integrity_check": "ok"
-      }
-    ],
-    "foreignKeyCheck": [],
     "transcriptPayloadCheck": {
       "before": "prior",
       "after": "widened"
     },
     "transcriptEventsSqlAfter": "CREATE TABLE \"transcript_events\" ( session_id TEXT NOT NULL, seq INTEGER NOT NULL, event_json TEXT, created_at INTEGER NOT NULL, event_zstd BLOB, event_utf8_bytes INTEGER CHECK (event_utf8_bytes IS NULL OR event_utf8_bytes >= 0), navigation_json TEXT, navigation_type TEXT, navigation_custom_type TEXT, navigation_display INTEGER NOT NULL DEFAULT 0, message_role TEXT, navigation_last_type TEXT, navigation_last_custom_type TEXT, navigation_valid INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (session_id, seq), FOREIGN KEY (session_id) REFERENCES \"session_windows\"(session_id) ON DELETE CASCADE, CHECK ( (event_json IS NOT NULL AND event_zstd IS NULL) OR ( event_json IS NULL AND event_zstd IS NOT NULL AND event_utf8_bytes IS NOT NULL AND event_utf8_bytes BETWEEN 1 AND 4194304 AND length(event_zstd) BETWEEN 1 AND 4194304 AND navigation_json IS NOT NULL ) OR ( event_json IS NULL AND event_zstd IS NULL AND event_utf8_bytes IS NOT NULL AND event_utf8_bytes BETWEEN 1 AND 4194304 AND navigation_json IS NOT NULL ) ), CHECK ( navigation_json IS NULL OR CASE WHEN json_valid(navigation_json) THEN coalesce( octet_length(navigation_json) <= 16384 AND json_type(navigation_json, '$.version') = 'integer' AND json_extract(navigation_json, '$.version') = 1 AND json_type(navigation_json, '$.report') = 'object' AND json_extract(navigation_json, '$.report.kind') IN ('canonical', 'leaf', 'link', 'ignored') AND json_type(navigation_json, '$.navigation') = 'object' AND json_type(navigation_json, '$.reset') = 'object' AND json_type(navigation_json, '$.model') = 'object' AND json_type(navigation_json, '$.modelBytes') = 'integer' AND json_extract(navigation_json, '$.modelBytes') BETWEEN 0 AND 4194304 AND json_type(navigation_json, '$.modelWithoutCheckpointBytes') = 'integer' AND json_extract(navigation_json, '$.modelWithoutCheckpointBytes') BETWEEN 0 AND 4194304 AND json_type(navigation_json, '$.withoutCustomDataBytes') = 'integer' AND json_extract(navigation_json, '$.withoutCustomDataBytes') BETWEEN 0 AND 4194304, 0) ELSE 0 END ) ) STRICT",
+    "navigationOnlyPayloadInsert": {
+      "predecessor38": "CHECK constraint failed: (event_json IS NOT NULL AND event_zstd IS NULL)\n    OR (\n      event_json IS NULL AND event_zstd IS NOT NULL\n      AND event_utf8_bytes IS NOT NULL\n      AND event_utf8_bytes BETWEEN 1 AND 4194304\n      AND length(event_zstd) BETWEEN 1 AND 4194304\n      AND navigation_json IS NOT NULL\n    )",
+      "migrated40": "accepted"
+    },
     "schemaObjectsChanged": [
       "table transcript_events: sql changed"
     ],
@@ -971,7 +1434,7 @@
         "agent_id": "main",
         "app_version": "2026.10.9",
         "created_at": "1793400000000",
-        "updated_at": "1793467664327"
+        "updated_at": "1793469020276"
       },
       {
         "rowid": "2",
@@ -995,7 +1458,49 @@
       }
     ]
   },
-  "afterMigration": {
+  "activationTail": {
+    "doctor": {
+      "plans": [
+        {
+          "previousVersion": 40,
+          "targetVersion": 40,
+          "shapeVersion": 40,
+          "crosses": []
+        }
+      ],
+      "registeredBefore": [],
+      "registeredAfter": [
+        {
+          "agentId": "main",
+          "path": "<state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite"
+        }
+      ],
+      "stateSchema": {
+        "changes": [],
+        "warnings": []
+      },
+      "mediaPersistence": {
+        "changes": [],
+        "warnings": [],
+        "notices": []
+      }
+    },
+    "schemaObjectsChanged": [],
+    "tablesChanged": [],
+    "changedRows": {},
+    "userVersion": 40,
+    "schemaMetaPrimary": {
+      "schema_version": 40,
+      "app_version": "2026.10.9"
+    },
+    "integrityCheck": [
+      {
+        "integrity_check": "ok"
+      }
+    ],
+    "foreignKeyCheck": []
+  },
+  "afterActivation": {
     "doctorRerun": {
       "pendingMigrations": [],
       "versionPhaseRan": false
@@ -1029,19 +1534,22 @@
       "tables": [
         "schema_meta: content changed"
       ]
-    },
-    "finalChangedRows": {}
+    }
+  },
+  "migratedCopy": {
+    "file": "emeric-migrated-40.sqlite",
+    "sha256": "626f46e5b49df1d8339c1e60e703988bfa86ea5ac6a840d72e6a39e54550558c"
   },
   "backupRestore": {
     "doctor": {
       "changes": [
-        "Saved pre-migration SQLite backup: <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite.pre-startup-migration-de1131c3-57e2-8c58-8d72-d68e576f8e57.scoped.bak",
-        "Saved pre-migration SQLite backup: <state-root>/home/.openclaw/state/openclaw.sqlite.pre-startup-migration-de1131c3-57e2-8c58-8d72-d68e576f8e57.bak",
+        "Saved pre-migration SQLite backup: <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite.pre-startup-migration-e5c7654b-e49a-8a9b-8c78-0829e5d4e9e7.scoped.bak",
+        "Saved pre-migration SQLite backup: <state-root>/home/.openclaw/state/openclaw.sqlite.pre-startup-migration-e5c7654b-e49a-8a9b-8c78-0829e5d4e9e7.bak",
         "Upgraded agent database schema in <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite: v38 -> v40."
       ],
       "warnings": []
     },
-    "backupArchive": "openclaw-agent.sqlite.pre-startup-migration-de1131c3-57e2-8c58-8d72-d68e576f8e57.scoped.bak",
+    "backupArchive": "openclaw-agent.sqlite.pre-startup-migration-e5c7654b-e49a-8a9b-8c78-0829e5d4e9e7.scoped.bak",
     "backupArchiveTables": [
       "schema_meta",
       "session_recipient_authority",
@@ -1053,8 +1561,8 @@
       "schema": [],
       "tables": []
     },
-    "schemaObjectsCompared": 187,
-    "tablesCompared": 71,
+    "schemaObjectsCompared": 188,
+    "tablesCompared": 72,
     "integrityCheck": [
       {
         "integrity_check": "ok"
@@ -1072,8 +1580,8 @@
         }
       ],
       "changes": [
-        "Reused pre-migration SQLite backup: <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite.pre-startup-migration-de1131c3-57e2-8c58-8d72-d68e576f8e57.scoped.bak",
-        "Reused pre-migration SQLite backup: <state-root>/home/.openclaw/state/openclaw.sqlite.pre-startup-migration-de1131c3-57e2-8c58-8d72-d68e576f8e57.bak",
+        "Reused pre-migration SQLite backup: <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite.pre-startup-migration-e5c7654b-e49a-8a9b-8c78-0829e5d4e9e7.scoped.bak",
+        "Reused pre-migration SQLite backup: <state-root>/home/.openclaw/state/openclaw.sqlite.pre-startup-migration-e5c7654b-e49a-8a9b-8c78-0829e5d4e9e7.bak",
         "Upgraded agent database schema in <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite: v38 -> v40."
       ],
       "warnings": [],
@@ -1085,5 +1593,19 @@
         ]
       }
     }
+  },
+  "backupRestoreAfterActivation": {
+    "restoredUserVersion": 38,
+    "restoredVersusPredecessor": {
+      "schema": [],
+      "tables": []
+    },
+    "changedRows": {},
+    "integrityCheck": [
+      {
+        "integrity_check": "ok"
+      }
+    ],
+    "foreignKeyCheck": []
   }
 }
