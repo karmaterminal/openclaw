@@ -97,7 +97,6 @@ import {
   ensureSessionEntryValidityProjection,
   migrateConversationDeliveryTargetColumn,
   migrateSessionCreatorNamespaces,
-  migrateSessionRecipientAuthorityInTransaction,
   migrateSessionTranscriptActiveProjection,
   migrateSessionTranscriptGenerations,
 } from "./openclaw-agent-db-session-migrations.js";
@@ -107,14 +106,12 @@ import {
   resolveOpenClawAgentSqlitePath,
 } from "./openclaw-agent-db.paths.js";
 import { planAgentFleetSchemaHistory } from "./openclaw-agent-fleet-schema-history.js";
-import { planAgentFork39Bridge } from "./openclaw-agent-fork39-bridge.js";
 import { AGENT_INDEX_RETIREMENT_SQL } from "./openclaw-agent-index-retirement-migration.js";
 import { migrateAgentJsonPredicatesInTransaction } from "./openclaw-agent-json-predicate-schema.js";
 import { AGENT_MEMORY_REVISION_SQL } from "./openclaw-agent-memory-revision-migration.js";
 import { migrateOutboxEnqueueSequenceInTransaction } from "./openclaw-agent-outbox-sequence-migration.js";
 import { migrateSessionParticipantsSchema } from "./openclaw-agent-participants-migration.js";
 import { interruptHistoricalPendingInputs } from "./openclaw-agent-pending-inputs-schema.js";
-import { withoutSessionRecipientAuthoritySchema } from "./openclaw-agent-recipient-authority-schema.js";
 import { OPENCLAW_AGENT_SCHEMA_SQL } from "./openclaw-agent-schema.js";
 import { migrateSessionEntrySnapshotsInTransaction } from "./openclaw-agent-session-snapshots-migration.js";
 import {
@@ -360,28 +357,18 @@ function ensureAgentSchema(
         created = true;
         return;
       }
-      const crossesVersion = (version: number) =>
-        !isEmptyDatabase && previousVersion < version && targetVersion >= version;
+      // Continuation: steps are crossed from the physical shape of the fleet's own histories.
       const fleet = planAgentFleetSchemaHistory(db, pathname, previousVersion, targetVersion);
-      // Frond (karmaterminal): fork-39 bridge.
-      const fork39 = planAgentFork39Bridge(db, pathname, previousVersion, targetVersion);
-      const requiresCanonicalWriterMigration =
-        crossesVersion(CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION) ||
-        (!isEmptyDatabase && fleet.fleetSchema25);
+      const crossesVersion = (version: number) => !isEmptyDatabase && fleet.crosses(version);
+      const requiresCanonicalWriterMigration = crossesVersion(
+        CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION,
+      );
       const requiresStorageMigration = crossesVersion(AGENT_STORAGE_SCHEMA_VERSION);
       const requiresSnapshotMigration = crossesVersion(SESSION_ENTRY_SNAPSHOTS_SCHEMA_VERSION);
-      const requiresJsonPredicateMigration =
-        crossesVersion(AGENT_JSON_PREDICATE_SCHEMA_VERSION) ||
-        (!isEmptyDatabase && fleet.fleetSchema26);
-      // Idempotent: the fleet's schemas 25 and 26 keep their existing authority rows.
-      const requiresRecipientAuthorityMigration = !isEmptyDatabase && fleet.addsRecipientAuthority;
-      const recipientAuthoritySchemaSql = requiresRecipientAuthorityMigration
-        ? withoutSessionRecipientAuthoritySchema(schemaSql)
-        : schemaSql;
       const requiresTrajectoryMigration = crossesVersion(AGENT_TRAJECTORY_STORAGE_SCHEMA_VERSION);
       const trajectorySchemaSql = requiresTrajectoryMigration
-        ? withoutTrajectoryPayloadColumns(recipientAuthoritySchemaSql)
-        : recipientAuthoritySchemaSql;
+        ? withoutTrajectoryPayloadColumns(fleet.withoutAddedAuthority(schemaSql))
+        : fleet.withoutAddedAuthority(schemaSql);
       const storageSchemaSql = requiresSnapshotMigration
         ? withoutSessionEntrySnapshotsSchema(trajectorySchemaSql)
         : trajectorySchemaSql;
@@ -398,7 +385,7 @@ function ensureAgentSchema(
         if (requiresCanonicalWriterMigration) {
           migrateCanonicalSessionWriterValidation(db);
         }
-        if (requiresJsonPredicateMigration) {
+        if (crossesVersion(AGENT_JSON_PREDICATE_SCHEMA_VERSION)) {
           migrateAgentJsonPredicatesInTransaction(db);
         }
         if (
@@ -432,13 +419,7 @@ function ensureAgentSchema(
         if (crossesVersion(AGENT_COLD_NAVIGATION_SCHEMA_VERSION)) {
           migrateAgentColdNavigationInTransaction(db);
         }
-        // Frond (karmaterminal): fork-39 bridge. The fleet's 39 still needs upstream's 39 step.
-        if (fork39) {
-          migrateAgentColdNavigationInTransaction(db);
-        }
-        if (requiresRecipientAuthorityMigration) {
-          migrateSessionRecipientAuthorityInTransaction(db);
-        }
+        fleet.migrateInTransaction(db);
         // Historical rebuilds also converge indexes. Later version steps own
         // only their declared tables; additive index repair stays at admission.
         if (previousVersion < CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION) {
@@ -465,17 +446,14 @@ function ensureAgentSchema(
         );
       };
       if (
-        previousVersion >= CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION &&
-        !fleet.fleetSchema25 &&
+        fleet.shapeVersion >= CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION &&
         previousVersion < targetVersion
       ) {
-        // A schema-26 database of either history is checked against its own shape.
+        // A database of either history is checked against its own shape.
         assertAgentSchemaVersion(
           db,
           { agentId, pathname, version: previousVersion },
-          fork39?.migrationSchema ??
-            fleet.schema26MigrationSchema ??
-            getOpenClawAgentMigrationSchema(previousVersion),
+          fleet.previousSchema(),
         );
         // Schema-25 writers predate later startup columns; read-only session
         // readers refuse a migrated database that still lacks them.
@@ -488,8 +466,7 @@ function ensureAgentSchema(
       if (
         previousVersion < targetVersion &&
         previousVersion >= CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION - 1 &&
-        (previousVersion < CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION ||
-          fleet.fleetSchema25) &&
+        fleet.shapeVersion < CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION &&
         targetVersion >= CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION
       ) {
         if (previousVersion >= CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION) {
@@ -504,8 +481,7 @@ function ensureAgentSchema(
             migrateMemoryChunkMetadataSchema(db);
           }
         }
-        const previousSchema =
-          fleet.schema25MigrationSchema ?? getOpenClawAgentMigrationSchema(previousVersion);
+        const previousSchema = fleet.previousSchema();
         repairCanonicalSqliteIndexes(db, pathname, previousSchema, {
           verifyPhysicalIntegrity: false,
           integrity,

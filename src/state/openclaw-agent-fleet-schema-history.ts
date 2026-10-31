@@ -11,11 +11,16 @@ import {
   readOpenClawAgentSchema25Shape,
   readOpenClawAgentSchema26Shape,
 } from "./openclaw-agent-db-schema-helpers.js";
-import { readSqliteTableColumns } from "./openclaw-agent-db-session-migrations.js";
+import {
+  migrateSessionRecipientAuthorityInTransaction,
+  readSqliteTableColumns,
+} from "./openclaw-agent-db-session-migrations.js";
+import { planAgentFork39Bridge } from "./openclaw-agent-fork39-bridge.js";
 import { AGENT_JSON_PREDICATE_COLUMNS } from "./openclaw-agent-json-predicate-schema.js";
 import {
   AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
   RECIPIENT_AUTHORITY_TABLE,
+  withoutSessionRecipientAuthoritySchema,
 } from "./openclaw-agent-recipient-authority-schema.js";
 
 /**
@@ -25,19 +30,19 @@ import {
  * have the authority table.
  */
 type AgentFleetSchemaHistoryPlan = {
-  /** The database is the fleet's schema 25. */
-  fleetSchema25: boolean;
-  /** The database is the fleet's schema 26. */
-  fleetSchema26: boolean;
-  /** For the fleet's schema 25, the schema to repair and assert instead of upstream's 25. */
-  schema25MigrationSchema: string | undefined;
-  /** For a schema-26 database of either history, the schema it must contain before migrating. */
-  schema26MigrationSchema: string | undefined;
-  /** This migration reaches the recipient-authority schema from below it. */
-  addsRecipientAuthority: boolean;
+  /** The upstream schema the database physically holds; every step above it still runs. */
+  shapeVersion: number;
+  /** Whether this migration crosses a version step, measured from the physical shape. */
+  crosses: (version: number) => boolean;
+  /** The schema the database must contain before migrating, by its physical history. */
+  previousSchema: () => string;
+  /** Historical migration DDL leaves the authority table to the authority step. */
+  withoutAddedAuthority: (schemaSql: string) => string;
+  /** The idempotent authority step, after upstream's steps; existing rows are kept. */
+  migrateInTransaction: (db: DatabaseSync) => void;
 };
 
-/** Reads which history a database at schema 25 or 26 follows; mixed shapes are refused. */
+/** Reads which history a database at schema 25, 26 or 39 follows; mixed shapes are refused. */
 export function planAgentFleetSchemaHistory(
   db: DatabaseSync,
   pathname: string,
@@ -49,24 +54,34 @@ export function planAgentFleetSchemaHistory(
     reachesAuthority &&
     previousVersion === CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION &&
     readOpenClawAgentSchema25Shape(db, pathname) === "recipient-authority";
-  const schema26 = reachesAuthority && previousVersion === AGENT_JSON_PREDICATE_SCHEMA_VERSION;
   const fleetSchema26 =
-    schema26 && readOpenClawAgentSchema26Shape(db, pathname) === "recipient-authority";
-  let schema26MigrationSchema: string | undefined;
-  if (schema26) {
-    schema26MigrationSchema = fleetSchema26
-      ? getOpenClawAgentFleetSchema26MigrationSchema()
-      : getOpenClawAgentMigrationSchema(previousVersion);
-  }
+    reachesAuthority &&
+    previousVersion === AGENT_JSON_PREDICATE_SCHEMA_VERSION &&
+    readOpenClawAgentSchema26Shape(db, pathname) === "recipient-authority";
+  // Frond (karmaterminal): fork-39 bridge.
+  const fork39 = planAgentFork39Bridge(db, pathname, previousVersion, targetVersion);
+  const shapeVersion =
+    fork39?.shapeVersion ??
+    (fleetSchema25 || fleetSchema26 ? previousVersion - 1 : previousVersion);
+  const addsRecipientAuthority =
+    reachesAuthority && previousVersion < AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION;
   return {
-    fleetSchema25,
-    fleetSchema26,
-    schema25MigrationSchema: fleetSchema25
-      ? getOpenClawAgentFleetSchema25MigrationSchema()
-      : undefined,
-    schema26MigrationSchema,
-    addsRecipientAuthority:
-      reachesAuthority && previousVersion < AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
+    shapeVersion,
+    crosses: (version) => shapeVersion < version && targetVersion >= version,
+    previousSchema: () =>
+      fork39?.migrationSchema ??
+      (fleetSchema25
+        ? getOpenClawAgentFleetSchema25MigrationSchema()
+        : fleetSchema26
+          ? getOpenClawAgentFleetSchema26MigrationSchema()
+          : getOpenClawAgentMigrationSchema(previousVersion)),
+    withoutAddedAuthority: (schemaSql) =>
+      addsRecipientAuthority ? withoutSessionRecipientAuthoritySchema(schemaSql) : schemaSql,
+    migrateInTransaction: (database) => {
+      if (addsRecipientAuthority) {
+        migrateSessionRecipientAuthorityInTransaction(database);
+      }
+    },
   };
 }
 

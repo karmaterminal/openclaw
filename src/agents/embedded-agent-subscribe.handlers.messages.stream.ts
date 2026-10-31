@@ -488,10 +488,10 @@ export function createStreamingReplyResolver(): StreamingReplyResolver {
     ) {
       // The visible text grew by exactly the reported delta and the new bytes cannot start or
       // complete a directive, so every directive the cleaned prefix already removed stays removed.
-      const appended = settledDirectiveText + params.appendDelta;
+      const settledAppend = settledDirectiveText + params.appendDelta;
       // Continuation: an append the display strip would change belongs to the canonical parse.
-      if (stripContinuationSignalFromDisplayText(appended) === appended) {
-        text = appended;
+      if (stripContinuationSignalFromDisplayText(settledAppend) === settledAppend) {
+        text = settledAppend;
         delta = params.appendDelta;
         isAppend = true;
       }

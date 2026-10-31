@@ -87,11 +87,12 @@ export function planAgentFork39Bridge(
   pathname: string,
   previousVersion: number,
   targetVersion: number,
-): { migrationSchema: string } | undefined {
+): { migrationSchema: string; shapeVersion: number } | undefined {
+  // The fleet's 39 physically holds upstream's 38, so upstream's 39 step still runs.
   return previousVersion === FORK_39 &&
     targetVersion >= AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION &&
     isAgentFork39Database(db, pathname)
-    ? { migrationSchema: getAgentFork39MigrationSchema() }
+    ? { migrationSchema: getAgentFork39MigrationSchema(), shapeVersion: FORK_39 - 1 }
     : undefined;
 }
 

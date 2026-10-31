@@ -96,11 +96,23 @@ function composeManagedDeliveryTurnLifecycle(params: {
   };
 }
 
-/** Transcript ack ids for the managed deliveries a user turn adopts, when it carries any. */
-export function resolveManagedDeliveryAckInput(
+/**
+ * Continuation's user-turn input: transcript ack ids for the managed deliveries the turn adopts,
+ * and the returns a host-issued event turn consumes. Only the host names those; plugins cannot.
+ */
+export function resolveContinuationTurnInput(
   deliveries: ReadonlyMap<string, PreparedManagedSystemEventDelivery>,
-): { sessionDeliveryAckIds?: readonly string[] } {
-  return deliveries.size > 0 ? { sessionDeliveryAckIds: [...deliveries.keys()] } : {};
+  opts: InternalGetReplyOptions | undefined,
+): {
+  sessionDeliveryAckIds?: readonly string[];
+  inputDeliveries?: InternalGetReplyOptions["continuationInputDeliveries"];
+} {
+  return {
+    ...(deliveries.size > 0 ? { sessionDeliveryAckIds: [...deliveries.keys()] } : {}),
+    ...(opts?.internalEventExecution && opts.continuationInputDeliveries?.length
+      ? { inputDeliveries: opts.continuationInputDeliveries }
+      : {}),
+  };
 }
 
 /**
