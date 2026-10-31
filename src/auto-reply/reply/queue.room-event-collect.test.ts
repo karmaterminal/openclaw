@@ -81,7 +81,6 @@ async function openRoomIngress(
   options: {
     settings?: Partial<QueueSettings>;
     supersedes?: (candidateId: string, pendingId: string) => boolean;
-    adoptionStallTimeoutMs?: number;
     now?: () => number;
     claimLeaseMs?: number;
     enqueue?: (
@@ -102,15 +101,20 @@ async function openRoomIngress(
   const byId = new Map(rows.map((row) => [row.id, row]));
   // Durable commit and dead-letter writes, counted at the queue owner.
   const writes = { complete: new Map<string, number>(), fail: new Map<string, number>() };
-  for (const method of ["complete", "fail"] as const) {
-    const write = queue[method];
-    queue[method] = (async (...args: Parameters<typeof write>) => {
-      const ref = args[0];
-      const id = typeof ref === "string" ? ref : ref.id;
-      writes[method].set(id, (writes[method].get(id) ?? 0) + 1);
-      return await (write as (...a: typeof args) => Promise<boolean>).apply(queue, args);
-    }) as typeof write;
-  }
+  const record = (counts: Map<string, number>, ref: string | { id: string }) => {
+    const id = typeof ref === "string" ? ref : ref.id;
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  };
+  const complete = queue.complete.bind(queue);
+  queue.complete = async (...args: Parameters<typeof complete>) => {
+    record(writes.complete, args[0]);
+    return await complete(...args);
+  };
+  const fail = queue.fail.bind(queue);
+  queue.fail = async (...args: Parameters<typeof fail>) => {
+    record(writes.fail, args[0]);
+    return await fail(...args);
+  };
   const addRow = async (row: Row) => {
     byId.set(row.id, row);
     await queue.enqueue(row.id, { text: textOf(row) }, { laneKey: ROOM_LANE });
@@ -118,7 +122,6 @@ async function openRoomIngress(
   for (const row of rows) {
     await addRow(row);
   }
-  const lifecycles = new Map<string, ChannelIngressDispatchLifecycle>();
   const runs = new Map<string, FollowupRun>();
   let dispatched = createDeferred();
   const enqueueRoomRun = (row: Row, lifecycle: ChannelIngressDispatchLifecycle) => {
@@ -146,9 +149,6 @@ async function openRoomIngress(
     deferredLaneOccupancy: "release",
     retryPolicy: { baseMs: 1, maxMs: 1 },
     ...(options.now ? { now: options.now } : {}),
-    ...(options.adoptionStallTimeoutMs
-      ? { adoptionStallTimeoutMs: options.adoptionStallTimeoutMs }
-      : {}),
     ...(options.claimLeaseMs ? { claimLeaseMs: options.claimLeaseMs } : {}),
     ...(options.supersedes
       ? {
@@ -158,7 +158,6 @@ async function openRoomIngress(
       : {}),
     dispatchClaimedEvent: async (event, lifecycle) => {
       const row = byId.get(event.id) ?? { id: event.id };
-      lifecycles.set(row.id, lifecycle);
       runs.set(row.id, await (options.enqueue ?? enqueueRoomRun)(row, lifecycle));
       dispatched.resolve();
       dispatched = createDeferred();
@@ -195,7 +194,6 @@ async function openRoomIngress(
     drain,
     addRow,
     writes,
-    lifecycles,
     runs,
     calls,
     dispatchRows,
@@ -415,6 +413,8 @@ describe("mid-turn room events over durable ingress (#1415)", () => {
             expect(harness.calls).toHaveLength(turns);
             if (turns === 1) {
               collected(harness.calls[0], burst);
+              // The collected turn keeps room-event semantics (optional reply, no steering).
+              expect(harness.calls[0]?.currentInboundEventKind).toBe("room_event");
             } else {
               expect(harness.calls.map((call) => call.prompt)).toEqual(burst.map(textOf));
             }
@@ -427,17 +427,6 @@ describe("mid-turn room events over durable ingress (#1415)", () => {
         });
       },
     );
-  });
-
-  it("collects a burst into one turn and adopts every ingress row once", async () => {
-    await withRoomIngress(burst, async (harness) => {
-      await harness.dispatchRows();
-      await harness.endActiveTurn();
-      expect(harness.calls).toHaveLength(1);
-      collected(harness.calls[0], burst);
-      expect(harness.calls[0]?.currentInboundEventKind).toBe("room_event");
-      await expectSettledOnce(harness, ["r1", "r2", "r3"]);
-    });
   });
 
   it("never merges room events with an addressed request and keeps addressed isolation", async () => {
