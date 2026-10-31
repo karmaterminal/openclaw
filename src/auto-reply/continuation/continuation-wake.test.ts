@@ -242,6 +242,34 @@ async function produceReturn(
   return expectDefined(outcome.deliveryIds[0], "durable return row");
 }
 
+/** The first turn holds the session busy until released; every turn ends silently. */
+function holdFirstTurn(prompts: string[]) {
+  const started = createDeferred();
+  const released = createDeferred();
+  runEmbeddedAgentMock.mockImplementation(async (params: RunEmbeddedAgentParams) => {
+    prompts.push(params.prompt);
+    await admitWokenTurn(params);
+    if (prompts.length === 1) {
+      started.resolve();
+      await released.promise;
+    }
+    return silentTerminal();
+  });
+  return { started: started.promise, release: () => released.resolve() };
+}
+
+/** Resolves once the row's queued event is handed to a turn (owned, not yet adopted). */
+function handedOff(sessionKey: string, row: string) {
+  const queueKey = resolveSystemEventQueueKey(sessionKey, AGENT_ID);
+  return vi.waitFor(() =>
+    expect(
+      peekSystemEventEntries(queueKey).some(
+        (event) => event.sessionDeliveryAckId === row && isSystemEventTurnOwned(queueKey, event),
+      ),
+    ).toBe(true),
+  );
+}
+
 async function rowPending(id: string) {
   return (await loadPendingSessionDelivery(id, captureOpenClawStateWorkerContext())) !== null;
 }
@@ -475,42 +503,23 @@ it("waits behind a busy session and acknowledges only once its turn is adopted",
   signal,
 }) => {
   await withWakeFixture("busy", async ({ sessionKey, prompts }) => {
-    const firstStarted = createDeferred();
-    const releaseFirst = createDeferred();
-    runEmbeddedAgentMock.mockImplementation(async (params: RunEmbeddedAgentParams) => {
-      prompts.push(params.prompt);
-      await admitWokenTurn(params);
-      if (prompts.length === 1) {
-        firstStarted.resolve();
-        await releaseFirst.promise;
-      }
-      return silentTerminal();
-    });
+    const firstTurn = holdFirstTurn(prompts);
     const busy = enqueueSessionEventForHost("unrelated work in progress", {
       agentId: AGENT_ID,
       sessionKey,
       source: "task",
       deliver: false,
     });
-    await withinTest(firstStarted.promise, signal);
+    await withinTest(firstTurn.started, signal);
     const row = await produceReturn(sessionKey, "delegate behind busy turn");
 
     const wakes = settleContinuationWakesForTest();
-    await withinTest(
-      vi.waitFor(() =>
-        expect(
-          peekSystemEventEntries(resolveSystemEventQueueKey(sessionKey, AGENT_ID)).some((event) =>
-            isSystemEventTurnOwned(resolveSystemEventQueueKey(sessionKey, AGENT_ID), event),
-          ),
-        ).toBe(true),
-      ),
-      signal,
-    );
+    await withinTest(handedOff(sessionKey, row), signal);
     // Deferred behind the active run: handed off, not yet adopted, row still pending.
     expect(prompts).toHaveLength(1);
     expect(await rowPending(row)).toBe(true);
 
-    releaseFirst.resolve();
+    firstTurn.release();
     await withinTest(busy.settled, signal);
     await withinTest(wakes, signal);
 
@@ -769,37 +778,16 @@ it("maps each coalesced return to the run that adopted it, not a run it queued b
   signal,
 }) => {
   await withWakeFixture("consumed-coalesced", async ({ sessionKey, prompts }) => {
-    const firstStarted = createDeferred();
-    const releaseFirst = createDeferred();
-    runEmbeddedAgentMock.mockImplementation(async (params: RunEmbeddedAgentParams) => {
-      prompts.push(params.prompt);
-      await admitWokenTurn(params);
-      if (prompts.length === 1) {
-        firstStarted.resolve();
-        await releaseFirst.promise;
-      }
-      return silentTerminal();
-    });
+    const firstTurn = holdFirstTurn(prompts);
     const first = await produceReturn(sessionKey, "delegate one finished");
     const second = await produceReturn(sessionKey, "delegate two finished");
     const coalescedWake = settleContinuationWakesForTest();
-    await withinTest(firstStarted.promise, signal);
+    await withinTest(firstTurn.started, signal);
     // A third return lands while the coalesced turn runs; its own wake queues behind that turn.
     const third = await produceReturn(sessionKey, "delegate three finished");
     const laterWake = settleContinuationWakesForTest();
-    const queueKey = resolveSystemEventQueueKey(sessionKey, AGENT_ID);
-    await withinTest(
-      vi.waitFor(() =>
-        expect(
-          peekSystemEventEntries(queueKey).some(
-            (event) =>
-              event.sessionDeliveryAckId === third && isSystemEventTurnOwned(queueKey, event),
-          ),
-        ).toBe(true),
-      ),
-      signal,
-    );
-    releaseFirst.resolve();
+    await withinTest(handedOff(sessionKey, third), signal);
+    firstTurn.release();
     await withinTest(Promise.all([coalescedWake, laterWake]), signal);
 
     // Each credited run's model input carried exactly the returns it is credited with.
