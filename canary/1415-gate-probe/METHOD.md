@@ -198,6 +198,13 @@ For `plugins.load.paths`:
 
 - **Exit 1 (unset):** step 3a creates it and step 5b unsets it. Unsetting leaves an empty
   `plugins.load: {}` object, which has no effect.
+- **Exit 0, authored `[]`:** the key is authored and empty. This is emeric's case: 🕯 read it
+  live on 2026-10-31, and `jq -c '.plugins.load.paths' "$(openclaw config file)"` prints `[]`.
+  Take neither the unset branch nor the append branch. Step 3a sets `["$PROBE_DIR"]`, and step 5b
+  sets `[]` back. **Never `unset`**: that would leave the key absent, where the seat authored it.
+  The file readback after step 5b must print `[]`. `config set` replaces an array value whole
+  (`collectReplacePaths`, `src/cli/config-cli-owner-patch.ts:18-32`), so setting `[]` restores
+  exactly.
 - **Exit 0 (has entries):** `config get` prints runtime-materialized values: `~` expanded and
   `${VAR}` substituted. Read the authored array from the file instead, for example
   `jq -c '.plugins.load.paths' "$(openclaw config file)"` when the file is plain JSON. Append to
@@ -282,7 +289,7 @@ Discovery refuses a world-writable path or one not owned by the seat user or roo
 **3a. Add the load path.** The probe is discovered but not loaded; the gate is unchanged.
 
 ```bash
-# plugins.load.paths was unset (exit=1 in step 0):
+# plugins.load.paths was unset (exit=1 in step 0), or authored as [] (emeric):
 openclaw config set plugins.load.paths "[\"$PROBE_DIR\"]" --strict-json
 # plugins.load.paths had entries: append to the AUTHORED array (plain-JSON config file)
 #   openclaw config set plugins.load.paths "$(jq -c --arg p "$PROBE_DIR" '.plugins.load.paths + [$p]' "$(openclaw config file)")" --strict-json
@@ -351,17 +358,190 @@ openclaw gateway call plugins.list --json | jq -c "$PROBE_ROW"
 **5b. Remove the load path.**
 
 ```bash
+# plugins.load.paths was authored as [] in step 0 (emeric): set it back, never unset
+openclaw config set plugins.load.paths '[]' --strict-json
+jq -c '.plugins.load.paths' "$(openclaw config file)"
+# expect: []
 # plugins.load.paths was unset in step 0:
-openclaw config unset plugins.load.paths
+#   openclaw config unset plugins.load.paths
 # otherwise restore the authored array from step 0:
 #   openclaw config set plugins.load.paths '<authored array>' --strict-json
 openclaw gateway call plugins.list --json | jq -c '[.plugins[] | select(.id=="frond-1415-gate-probe")] | length'
 # expect: 0
+openclaw config get "plugins.entries.$PROBE_ID" --json; echo "entry exit=$?"   # expect exit=1, as in step 0
 ```
 
-Then, optionally, remove the staged files: `rm -r "$PROBE_DIR"`. Finally, repeat the direction A
-burst. It must aggregate again; in the off-seat proof, the turn is byte-identical to the
-baseline turn.
+**Send no restore burst until both readbacks pass:** `plugins.list` shows 0 probe rows, and
+`plugins.load.paths` reads back as recorded in step 0. A restore burst taken while the probe is
+still loaded would prove nothing. Then, optionally, remove the staged files:
+`rm -r "$PROBE_DIR"`. Finally, repeat the direction A burst. It must aggregate again; in the
+off-seat proof, the turn is byte-identical to the baseline turn.
+
+## Canary cut on emeric: prechecks, backup, deploy, failure rollback
+
+This is the order for the single-seat canary. 🌊 and 🕯 approve the canary for emeric only, not
+for the fleet. Steps 0–5 above run between C3 and C5. Every seat command runs over
+`ssh emeric bash -s` as the seat's user, in the Gateway service's environment (see "Live seat
+method"). Nothing read here leaves the seat except SHAs, digests, counts and statuses.
+
+### C0. Fresh prechecks, immediately before dispatching (🌊)
+
+Don't reuse an earlier reading. 🌊's condition: do not assume `22f49a43a1` is still live.
+
+```bash
+B=$HOME/flesh_beast_tmp/openclaw
+ROLLBACK_SHA=$(jq -r .commit "$B/dist/build-info.json"); echo "ROLLBACK_SHA=$ROLLBACK_SHA"   # the actual live SHA: the rollback target
+git -C "$B" merge-base --is-ancestor "$ROLLBACK_SHA" 3d3364ddc5a88282b9d1cc71d8a529e83c18f0b0; echo "forward exit=$?"   # must be 0
+git -C "$B" status --porcelain | grep -v '^??' | wc -l     # must be 0 (deploy failure 7)
+systemctl --user show openclaw-gateway -p ActiveState -p SubState -p MainPID -p NRestarts -p ActiveEnterTimestamp
+openclaw gateway call health --json | jq -c '{ok}'
+openclaw gateway call sessions.describe --params '{"key":"agent:main:discord:channel:1466192485440164011"}' \
+  | jq -c '{status: .session.status, restartRecoveryStatus: .session.restartRecoveryStatus}'   # not tombstoned, no recovery status
+# plugin surfaces: no enabled unaudited plugin may own a turn-time surface (step 1's list)
+openclaw gateway call plugins.list --json | jq -c '[.plugins[] | select(.enabled)] | length'
+```
+
+**Stop and repost** if any of these hold:
+
+- `ROLLBACK_SHA` is not a 40-character SHA.
+- The forward check exits non-zero. Never use `allow_non_forward_cutover` on the forward cut.
+- The install directory has tracked changes.
+- The unit is not `active/running`.
+- The room session is tombstoned.
+- An enabled plugin outside the audited set has gained a turn-time surface since the
+  2026-10-31 reading: 47 loaded unaudited plugins, each with 0 typed hooks, custom hooks, tools
+  and MCP servers (`openclaw plugins inspect <id> --runtime --json`).
+
+**Idle:** 🕯 says in the room that he is idle and ready. A journal check is not enough. Dispatch
+only after he says so.
+
+### C1. Pre-cut backup (private, on the seat)
+
+```bash
+TS=$(date -u +%Y%m%dT%H%M%SZ)
+E=$HOME/.openclaw/evidence/1415-canary-$TS; install -d -m 0700 "$E"
+CFG=$(openclaw config file)
+install -m 0600 "$CFG" "$E/openclaw.json.pre-cut"
+# the same bytes as a deploy config stage, for C5 step 3 (deploy.sh requires dir 0700, file 0600)
+install -d -m 0700 "$HOME/.openclaw/deploy-config-staging"
+install -m 0600 "$CFG" "$HOME/.openclaw/deploy-config-staging/1415-canary-precut-$TS.json"
+sha256sum "$CFG" "$E/openclaw.json.pre-cut" "$HOME/.openclaw/deploy-config-staging/1415-canary-precut-$TS.json"   # all equal: PRECUT_CFG_SHA256
+S=$HOME/.openclaw/state/openclaw.sqlite; A=$HOME/.openclaw/agents/main/agent/openclaw-agent.sqlite
+sqlite3 "$S" ".backup '$E/openclaw.sqlite.pre-cut'"
+sqlite3 "$A" ".backup '$E/openclaw-agent.sqlite.pre-cut'"   # copied, never read
+sqlite3 -readonly "$E/openclaw.sqlite.pre-cut" 'PRAGMA quick_check'; sqlite3 -readonly "$E/openclaw-agent.sqlite.pre-cut" 'PRAGMA quick_check'
+# pending work, as counts only
+sqlite3 -readonly "$S" "SELECT status, count(*) FROM channel_ingress_events WHERE status IN ('pending','claimed') GROUP BY status"
+sqlite3 -readonly "$A" 'SELECT count(*) FROM session_pending_inputs'
+```
+
+Record `ROLLBACK_SHA`, `TS`, `PRECUT_CFG_SHA256`, the C0 unit line, the room session status and
+the pending counts on #1415. The config and databases stay on the seat, and only their digests
+are posted. deploy-gateway's own state-database snapshot (the #1585 `--undo` hook) comes on top
+of this backup; it does not replace it.
+
+### C2. Deploy the composite
+
+The composite is `22f49a43a1` plus #1517, so its `approved_base` is the composite it branched
+from. Dispatch a dry run first, then the real run, as `karmafeast` from the scribe seat:
+
+```bash
+GH_CONFIG_DIR=~/.config/gh-karmafeast gh workflow run deploy-gateway.yml --repo karmaterminal/openclaw-bootstrap \
+  -f target_prince=emeric \
+  -f approved_ref=3d3364ddc5a88282b9d1cc71d8a529e83c18f0b0 \
+  -f approved_base=22f49a43a118f86dfd8c95dd5b2850420aa8bcad \
+  -f dry_run_only=true \
+  -f reason='dry-run: #1415 single-seat canary, composite 3d3364ddc5 over live <ROLLBACK_SHA>'
+# then the same without dry_run_only, reason '#1415 single-seat canary (🌊+🕯 go); rollback target <ROLLBACK_SHA>'
+```
+
+Never cancel the run. If the deploy's own health gate rolls back, the Lifecycle line says
+`rollback invoked`. Then verify by receipt (`frond-fleet:seat-recovery-and-deploy-verify`), stop
+the canary and report. The config was not touched.
+
+### C3. Restart receipt
+
+```bash
+jq -r .commit "$B/dist/build-info.json"                          # 3d3364ddc5a88282b9d1cc71d8a529e83c18f0b0
+systemctl --user show openclaw-gateway -p ActiveState -p MainPID -p NRestarts -p ActiveEnterTimestamp
+openclaw gateway call health --json | jq -c '{ok}'
+openclaw gateway call sessions.describe --params '{"key":"agent:main:discord:channel:1466192485440164011"}' \
+  | jq -c '{status: .session.status, restartRecoveryStatus: .session.restartRecoveryStatus}'
+sqlite3 -readonly "$S" "SELECT status, count(*) FROM channel_ingress_events WHERE status IN ('pending','claimed') GROUP BY status"
+sqlite3 -readonly "$A" 'SELECT count(*) FROM session_pending_inputs'
+```
+
+Then the ordinary receipts: one normal delivered room turn from 🕯, one image turn and one
+heartbeat. A seat counts as up only after a delivered room turn. Health 200 is not enough.
+Pending work must be no larger than at C1, apart from messages that arrived since. A tombstoned
+room session, or pending work that vanished without being delivered, is a regression: go to C5.
+
+Then run steps 0–5 above. Step 1, direction A, comes first, and **if A fails, stop**: run no
+probe, and record what holds the gate closed.
+
+### C4. Normal close
+
+Steps 5a and 5b leave the probe config as C1 found it: `plugins.entries.frond-1415-gate-probe`
+absent, and `plugins.load.paths` reading back `[]`. Compare `sha256sum "$CFG"` to
+`PRECUT_CFG_SHA256`. The two may differ in formatting only. If anything else differs, report
+which paths differ, not their values. The seat stays on `3d3364ddc5`; no fleet cut follows
+without a further go.
+
+### C5. Failure rollback, in this order
+
+Use this on any regression after the cut: normal, image or heartbeat turns, the room session, a
+lost Discord connection, MCP reconnect storms, or anything 🕯 reports.
+
+1. **Clear the probe config first, where the Gateway answers:**
+   - `openclaw config unset "plugins.entries.$PROBE_ID"`, or on the allowlist branch restore the
+     recorded `plugins.allow`;
+   - `openclaw config set plugins.load.paths '[]' --strict-json`;
+   - verify: `plugins.list` shows 0 probe rows, the file reads back `[]`, and the entry lookup
+     exits 1.
+
+   This keeps the probe from riding into the rolled-back runtime.
+
+2. **Roll the code back** to the actual pre-cut SHA recorded at C0. It is an ancestor of the
+   installed composite, so this is an audited non-forward cutover on this one seat. The reason
+   names the installed SHA:
+
+   ```bash
+   GH_CONFIG_DIR=~/.config/gh-karmafeast gh workflow run deploy-gateway.yml --repo karmaterminal/openclaw-bootstrap \
+     -f target_prince=emeric -f approved_ref=<ROLLBACK_SHA> -f approved_base=<ROLLBACK_SHA> \
+     -f allow_non_forward_cutover=true \
+     -f reason='#1415 canary rollback: replaces installed 3d3364ddc5a88282b9d1cc71d8a529e83c18f0b0 with recorded pre-cut <ROLLBACK_SHA>'
+   ```
+
+3. **If step 1 is impossible**, carry the saved config with the old artifact. Step 1 is
+   impossible when:
+   - the Gateway does not answer `config.patch` (refused, timed out, or not listening);
+   - a write reports `requiresRestart: true`;
+   - reload mode is `off` or `restart`.
+
+   Do not hand-edit the live file under a running Gateway. Add the C1 stage to the step 2
+   dispatch:
+
+   ```bash
+   -f config_stage_key=1415-canary-precut-<TS>.json -f config_stage_sha256=<PRECUT_CFG_SHA256>
+   ```
+
+   deploy.sh checks the stage's owner, mode and digest, validates it against the old artifact
+   **before** stopping the Gateway, and promotes it only together with the runtime cutover. Its
+   config rollback is coupled to its runtime rollback (`deploy/lib/runtime-config-migration.sh`,
+   `deploy_config_prepare_private_stage`). The pre-cut config has no probe entries.
+
+   Before using the stage, compare the live config's digest with `PRECUT_CFG_SHA256` and the
+   probe paths. If the seat wrote another config change during the canary, the stage would undo
+   it. In that case stop, and ask 🕯 which config should stand.
+
+4. **Rollback receipt:** the C3 block again, with build-info expected to equal `<ROLLBACK_SHA>`.
+   The room session must not be tombstoned. If it is, recover it in place with `sessions.recover`
+   (mode `in-place`, with `sessionId` and `restartRecoveryCycleId` from `sessions.describe`).
+   Never use `sessions.reset`. Pending work is compared with C1, then a delivered room turn
+   follows. Post on #1415.
+
+The C1 database backups are restored only by a separately reviewed procedure. The composite
+changes no SQLite schema, so the code rollback alone does not need them.
 
 ## Evidence for each direction
 
@@ -394,6 +574,20 @@ sqlite3 -readonly "$HOME/.openclaw/state/openclaw.sqlite" \
 - **B (gated):** each member completes at its own turn. Consecutive `completed_at` values differ
   by at least a full turn's duration. The session gets **one user turn per member**, each with
   that member's own text and sender.
+
+**What a direction receipt needs (🌊, 2026-10-31).** Equal `completed_at` values alone prove
+nothing. Each direction's receipt joins three things over the same burst window:
+
+1. **Turn count.** Count the journal's agent-run starts in the window. A gets exactly one new run
+   after the running turn ends. B gets one run per member.
+2. **Turn input.** 🕯 reports the shape of each new turn's input from his own session. A has one
+   turn headed `[Queued messages while agent was busy]`, with one `Queued #N (from <sender>)` per
+   member. B has one turn per member, each with that member's own text. Turn input is 🕯's
+   session, so 🕯 reads and reports it. frond-scribe does not read his transcripts.
+3. **Ingress adoption.** The `channel_ingress_events` rows above: statuses, and `completed_at`
+   grouped one adoption per turn.
+
+If the three disagree, there is no receipt for that direction. Report the disagreement as found.
 
 **Log lines.**
 
