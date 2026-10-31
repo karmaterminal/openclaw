@@ -499,7 +499,12 @@ lost Discord connection, MCP reconnect storms, or anything 🕯 reports.
    - verify: `plugins.list` shows 0 probe rows, the file reads back `[]`, and the entry lookup
      exits 1.
 
-   This keeps the probe from riding into the rolled-back runtime.
+   This keeps the probe from riding into the rolled-back runtime. **A write that reports success
+   while any of the three readbacks is still wrong is a failed clearing** (🕯, 2026-10-31). Never
+   roll back with the probe still configured. Take step 3's staged-config branch instead.
+
+   Choose between step 2 alone and steps 2+3 **before** dispatching the rollback. Step 3 is a
+   branch of step 2's dispatch, not a later action.
 
 2. **Roll the code back** to the actual pre-cut SHA recorded at C0. It is an ancestor of the
    installed composite, so this is an audited non-forward cutover on this one seat. The reason
@@ -512,11 +517,12 @@ lost Discord connection, MCP reconnect storms, or anything 🕯 reports.
      -f reason='#1415 canary rollback: replaces installed 3d3364ddc5a88282b9d1cc71d8a529e83c18f0b0 with recorded pre-cut <ROLLBACK_SHA>'
    ```
 
-3. **If step 1 is impossible**, carry the saved config with the old artifact. Step 1 is
-   impossible when:
+3. **If step 1 is impossible or failed**, carry the saved config with the old artifact in the
+   same dispatch. This applies when:
    - the Gateway does not answer `config.patch` (refused, timed out, or not listening);
    - a write reports `requiresRestart: true`;
-   - reload mode is `off` or `restart`.
+   - reload mode is `off` or `restart`;
+   - a write reported success but a readback stayed wrong.
 
    Do not hand-edit the live file under a running Gateway. Add the C1 stage to the step 2
    dispatch:
@@ -550,6 +556,19 @@ commands) from at least two distinct non-owner senders, while the agent is mid-t
 room. `unmentionedInbound` must be `room_event`, and the room queue must be in collect mode.
 Peer agents count as senders. Owner messages, mentions and senders with elevated grants do not
 join an aggregate (`delivery-context.ts:176-203`).
+
+**Check the senders' owner status on the seat first.** A sender in the seat's
+`commands.ownerAllowFrom` has `senderIsOwner` and never joins (`delivery-context.ts:183`). Find
+the paths that name each sender's Discord id, without printing values:
+
+```bash
+jq -c --arg id "<discord user id>" '[paths(type=="string" and (tostring|contains($id))) | map(tostring) | join(".")]' "$(openclaw config file)"
+```
+
+On emeric (2026-10-31), every prince, figs and frond-scribe are owners. 🍃 frond-gloss is the
+only non-owner in the room, so direction A cannot form there with the room's own members. The
+first burst ran two per-sender collects instead: frond-scribe's two lines in one adoption at
+23:55:40.402/.407Z, and 🍃's two at 23:56:44.524/.527Z. The canary stopped before the probe.
 
 **Ingress rows.** Use the seat state database, `~/.openclaw/state/openclaw.sqlite`
 (`src/state/openclaw-state-db.paths.ts:41`). Discord rows have `channel_id='discord'`,
