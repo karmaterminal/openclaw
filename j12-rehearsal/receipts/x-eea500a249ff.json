@@ -1210,8 +1210,8 @@
         ]
       },
       "changes": [
-        "Saved pre-migration SQLite backup: <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite.pre-startup-migration-684770dd-d2b5-8836-884b-3f27d303f845.scoped.bak",
-        "Saved pre-migration SQLite backup: <state-root>/home/.openclaw/state/openclaw.sqlite.pre-startup-migration-684770dd-d2b5-8836-884b-3f27d303f845.bak",
+        "Saved pre-migration SQLite backup: <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite.pre-startup-migration-ce365967-1a37-8451-81e0-6b93f7ccb6cc.scoped.bak",
+        "Saved pre-migration SQLite backup: <state-root>/home/.openclaw/state/openclaw.sqlite.pre-startup-migration-ce365967-1a37-8451-81e0-6b93f7ccb6cc.bak",
         "Upgraded agent database schema in <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite: v38 -> v40."
       ],
       "warnings": []
@@ -1298,7 +1298,7 @@
         "agent_id": "main",
         "app_version": "2026.10.9",
         "created_at": "1793400000000",
-        "updated_at": "1793470974914"
+        "updated_at": "1793472860160"
       },
       {
         "rowid": "2",
@@ -1392,18 +1392,18 @@
   },
   "migratedCopy": {
     "file": "x-eea500a249ff-migrated-40.sqlite",
-    "sha256": "7956b39bb7eff8d20021cb686f28836d785815d4864282a13f1f2c3d1cc88510"
+    "sha256": "6fba9e82eb8729d385a8b37c69a1138a78b304f38b6817676de4af8b96397d21"
   },
   "backupRestore": {
     "doctor": {
       "changes": [
-        "Saved pre-migration SQLite backup: <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite.pre-startup-migration-0e88323a-461a-8436-8775-64fe87f1898c.scoped.bak",
-        "Saved pre-migration SQLite backup: <state-root>/home/.openclaw/state/openclaw.sqlite.pre-startup-migration-0e88323a-461a-8436-8775-64fe87f1898c.bak",
+        "Saved pre-migration SQLite backup: <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite.pre-startup-migration-3b3df0a2-709d-8145-811d-0e7865622d83.scoped.bak",
+        "Saved pre-migration SQLite backup: <state-root>/home/.openclaw/state/openclaw.sqlite.pre-startup-migration-3b3df0a2-709d-8145-811d-0e7865622d83.bak",
         "Upgraded agent database schema in <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite: v38 -> v40."
       ],
       "warnings": []
     },
-    "backupArchive": "openclaw-agent.sqlite.pre-startup-migration-0e88323a-461a-8436-8775-64fe87f1898c.scoped.bak",
+    "backupArchive": "openclaw-agent.sqlite.pre-startup-migration-3b3df0a2-709d-8145-811d-0e7865622d83.scoped.bak",
     "backupArchiveTables": [
       "schema_meta",
       "session_recipient_authority",
@@ -1434,8 +1434,8 @@
         }
       ],
       "changes": [
-        "Reused pre-migration SQLite backup: <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite.pre-startup-migration-0e88323a-461a-8436-8775-64fe87f1898c.scoped.bak",
-        "Reused pre-migration SQLite backup: <state-root>/home/.openclaw/state/openclaw.sqlite.pre-startup-migration-0e88323a-461a-8436-8775-64fe87f1898c.bak",
+        "Reused pre-migration SQLite backup: <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite.pre-startup-migration-3b3df0a2-709d-8145-811d-0e7865622d83.scoped.bak",
+        "Reused pre-migration SQLite backup: <state-root>/home/.openclaw/state/openclaw.sqlite.pre-startup-migration-3b3df0a2-709d-8145-811d-0e7865622d83.bak",
         "Upgraded agent database schema in <state-root>/home/.openclaw/agents/main/agent/openclaw-agent.sqlite: v38 -> v40."
       ],
       "warnings": [],
