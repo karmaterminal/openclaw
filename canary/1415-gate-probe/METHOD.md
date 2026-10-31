@@ -91,8 +91,12 @@ What is real:
 - The `plugins.list` RPC behind `openclaw gateway call plugins.list`.
 - The unmocked gate.
 - Durable ingress rows in the Gateway's own state database.
-- Mailbox selection, the drain and its execution-time re-check, source adoption, and ingress
-  completion.
+- Mailbox selection, the drain, source adoption, and ingress completion.
+
+The drain's execution-time re-check (`drain.ts:300`) is not exercised here, because the probe
+always loads before a burst. The existing unit case "falls back to per-sender turns when an
+unaudited plugin activates after the claim formed" in
+`src/auto-reply/reply/queue/room-aggregate-plugin-gate.test.ts` covers it.
 
 What is replaced:
 
@@ -132,8 +136,9 @@ Every patch reported `requiresRestart: false`, and the Gateway's recovery restar
   exactly `{plugins: 1, typedHooks: 1, diagnostics: 1}`, and every other owner's count is
   unchanged.
 - The global hook set gains only `model_call_started`.
-- The stand-in's plugin record and hook are the same objects before and after both probe reloads,
-  so an unchanged plugin is not re-registered.
+- In both cases, the stand-in's plugin record and hook are the same objects before and after the
+  probe reloads, including the `plugins.allow` writes, so an unchanged plugin is not
+  re-registered.
 - The inventory lists the probe with no `contracts`, so a turn's lazily loaded tool owners are
   unchanged.
 - Dispatching the probe's hook through the real runner completes and returns nothing. That shows
@@ -185,8 +190,9 @@ now:
   the probe's toggle (steps 3b and 5a below). The probe gets no provenance warning
   (`src/plugins/loader-provenance.ts:226`).
 - **Open branch.** `plugins.allow` exits 1 or prints `[]`. `plugins.entries.<id>.enabled` is the
-  toggle. Leave `plugins.allow` alone: setting it would disable every unlisted plugin, bundled
-  ones included (`src/plugins/config-activation-shared.ts:129-131`).
+  toggle. Leave `plugins.allow` alone. Setting it would disable every unlisted plugin, bundled
+  ones included, except slot-selected plugins and bundled channels enabled through channel
+  config (`src/plugins/config-activation-shared.ts:110-131`).
 
 For `plugins.load.paths`:
 
@@ -210,8 +216,8 @@ probe can show no toggle. The gate closes when any of these hold:
   (`room-aggregate-plugin-gate.ts:61-84`).
 - An enabled plugin that is not an audited bundled plugin declares tools, even if it is not
   loaded yet (`:116-120`).
-- The room's agent workspace differs from the Gateway's plugin workspace, which is the default
-  agent's (`:111-115`).
+- The room's agent workspace differs from the workspace the Gateway inventory was built for. That
+  is the first configured agent's workspace (`:111-115`; `src/config/io.plugin-metadata.ts:149-152`).
 - `unmentionedInbound` is not `room_event`.
 
 The audited bundled ids are `discord`, `active-memory`, `codex`, `memory-core`, `talk-voice`,
@@ -219,7 +225,7 @@ The audited bundled ids are `discord`, `active-memory`, `codex`, `memory-core`, 
 `llama-cpp`, `memory-lancedb`, `memory-wiki`, `ollama`, `teams-meetings`, `xai` and
 `zoom-meetings` (`:23-54`). The fleet's reference allowlist
 (openclaw-bootstrap `fleet-config/PLUGIN-DENY-LIST.md`) also names `openclaw-claude-code`, a
-path-loaded plugin, and the bundled `github-copilot`, `openai`, `voice-call` and `device-pair`.
+non-bundled plugin, and the bundled `github-copilot`, `openai`, `voice-call` and `device-pair`.
 None of these is audited. Check each one that is enabled:
 
 ```bash
@@ -278,8 +284,8 @@ Discovery refuses a world-writable path or one not owned by the seat user or roo
 ```bash
 # plugins.load.paths was unset (exit=1 in step 0):
 openclaw config set plugins.load.paths "[\"$PROBE_DIR\"]" --strict-json
-# plugins.load.paths had entries: append to the AUTHORED array read in step 0
-#   openclaw config set plugins.load.paths '<authored array + "'"$PROBE_DIR"'">' --strict-json
+# plugins.load.paths had entries: append to the AUTHORED array (plain-JSON config file)
+#   openclaw config set plugins.load.paths "$(jq -c --arg p "$PROBE_DIR" '.plugins.load.paths + [$p]' "$(openclaw config file)")" --strict-json
 openclaw gateway call plugins.list --json | jq -c "$PROBE_ROW"
 # expect, open branch:      {"id":"frond-1415-gate-probe","origin":"config","enabled":true,"runtime":{"state":"unloaded"}}
 # expect, allowlist branch: {"id":"frond-1415-gate-probe","origin":"config","enabled":false,"runtime":{"state":"unloaded"}}
@@ -291,7 +297,7 @@ openclaw gateway call plugins.list --json | jq -c "$PROBE_ROW"
 # open branch:
 openclaw config set "plugins.entries.$PROBE_ID.enabled" true --strict-json
 # allowlist branch (membership alone loads it; no entry needed):
-#   openclaw config set plugins.allow '<recorded array + "frond-1415-gate-probe">' --strict-json
+#   openclaw config set plugins.allow "$(jq -c --arg id "$PROBE_ID" '.plugins.allow + [$id]' "$(openclaw config file)")" --strict-json
 openclaw gateway call plugins.list --json | jq -c "$PROBE_ROW"
 # expect (both branches): {"id":"frond-1415-gate-probe","origin":"config","enabled":true,"runtime":{"state":"active"}}
 ```

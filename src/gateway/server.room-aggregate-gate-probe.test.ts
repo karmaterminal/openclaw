@@ -126,6 +126,8 @@ describe("room aggregate gate probe (#1415)", () => {
   let staged = "";
   let baseline: ReturnType<typeof registrations> = {};
   let baselineHooks: PluginHookName[] = [];
+  let auditedRecord: unknown;
+  let auditedHook: unknown;
   // A turn clock that advances only when a turn runs: members adopted by one turn share a
   // completion time, members run by separate turns do not.
   let turnClock = 1_000_000;
@@ -227,6 +229,8 @@ describe("room aggregate gate probe (#1415)", () => {
     expect(ownedBy(baseline, AUDITED)).toEqual({ plugins: 1, typedHooks: 1 });
     expect(active()?.plugins.find(({ id }) => id === AUDITED)?.origin).toBe("bundled");
     baselineHooks = hookedNames();
+    auditedRecord = active()?.plugins.find(({ id }) => id === AUDITED);
+    auditedHook = active()?.typedHooks.find(({ pluginId }) => pluginId === AUDITED);
   };
 
   afterEach(async () => {
@@ -406,6 +410,15 @@ describe("room aggregate gate probe (#1415)", () => {
     ]);
     expect(result.refusals).toEqual([]);
   };
+  /**
+   * An unchanged plugin keeps its registration objects across the probe's reloads. The reload's
+   * channel-restart decision compares entries by identity, so such a plugin's channel is not a
+   * restart target.
+   */
+  const expectRetained = () => {
+    expect(active()?.plugins.find(({ id }) => id === AUDITED)).toBe(auditedRecord);
+    expect(active()?.typedHooks.find(({ pluginId }) => pluginId === AUDITED)).toBe(auditedHook);
+  };
   const expectBaseline = () => {
     expect(registrations(active())).toEqual(baseline);
     expect(hookedNames()).toEqual(baselineHooks);
@@ -420,17 +433,10 @@ describe("room aggregate gate probe (#1415)", () => {
 
   it("with an open allowlist, the load path plus explicit enablement closes the gate, reversibly", async () => {
     await openGateway();
+    expect(await probeListing()).toBeUndefined();
     expectBaseline();
     const a = await burst("a");
     expectAggregated(a);
-    // An unchanged plugin keeps its registrations across the probe's reloads. The reload's
-    // channel-restart decision compares entries by identity, so a seat's channels stay up.
-    const auditedRecord = active()?.plugins.find(({ id }) => id === AUDITED);
-    const auditedHook = active()?.typedHooks.find(({ pluginId }) => pluginId === AUDITED);
-    const expectRetained = () => {
-      expect(active()?.plugins.find(({ id }) => id === AUDITED)).toBe(auditedRecord);
-      expect(active()?.typedHooks.find(({ pluginId }) => pluginId === AUDITED)).toBe(auditedHook);
-    };
 
     // METHOD.md step 3a: the load path alone discovers the probe but never loads it.
     await patch({ plugins: { load: { paths: [staged] } } }, ["plugins.load.paths"]);
@@ -491,6 +497,7 @@ describe("room aggregate gate probe (#1415)", () => {
     await openGateway();
     // A seat whose plugins.allow names its plugins (the fleet reference shape).
     await patch({ plugins: { allow: [AUDITED] } }, ["plugins.allow"]);
+    expect(await probeListing()).toBeUndefined();
     expectBaseline();
 
     // METHOD.md step 3a: the allowlist keeps the discovered probe disabled.
@@ -504,6 +511,7 @@ describe("room aggregate gate probe (#1415)", () => {
     await patch({ plugins: { allow: [AUDITED, PROBE] } }, ["plugins.allow"]);
     expect(await probeListing()).toEqual(loadedListing);
     expect(ownedBy(registrations(active()), PROBE)).toEqual({ plugins: 1, typedHooks: 1 });
+    expectRetained();
     expect(gateOpen()).toBe(false);
     expectPerSender(await burst("allow-b"), "allow-b");
 
@@ -516,6 +524,7 @@ describe("room aggregate gate probe (#1415)", () => {
     await patch({ plugins: { load: { paths: null } } }, ["plugins.load.paths"]);
     expect(await probeListing()).toBeUndefined();
     expectBaseline();
+    expectRetained();
     expectAggregated(await burst("allow-c"));
     expect(hotReloadRecovery).not.toHaveBeenCalled();
   });
