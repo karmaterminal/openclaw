@@ -20,6 +20,7 @@ import { readUserTurnRequesterOrigin } from "../../sessions/user-turn-transcript
 import { createUserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
 import { createTestUserTurnTranscriptTarget } from "../../sessions/user-turn-transcript.test-support.js";
 import { parseInlineSessionDirectives } from "./directive-handling.parse.js";
+import { resolveReplyExecOverrides } from "./get-reply-exec-overrides.js";
 import { prepareReplyRunAdmission } from "./get-reply-run-admission.js";
 import { prepareReplyRunContext } from "./get-reply-run-context.js";
 import { finalizeInboundContext } from "./inbound-context.js";
@@ -263,7 +264,11 @@ const burst: Row[] = [{ id: "r1" }, { id: "r2" }, { id: "r3" }];
 const ROOM_ORIGIN = {
   sessionKey: "agent:main:discord:channel:room",
   messageProvider: "discord",
+  accountId: "default",
   chatType: "channel",
+  conversationId: "channel:room",
+  groupId: "room",
+  groupChannel: "#room",
 } as const;
 
 /** A non-owner room participant as channel admission records it. */
@@ -274,7 +279,12 @@ function sender(id: string, extra: Partial<FollowupRun["run"]> = {}): Partial<Fo
     senderUsername: `${id}-handle`,
     senderIsOwner: false,
     memberRoleIds: [`role-${id}`],
-    requesterOrigin: { ...ROOM_ORIGIN, senderId: id, senderName: id },
+    requesterOrigin: {
+      ...ROOM_ORIGIN,
+      senderId: id,
+      senderName: id,
+      senderUsername: `${id}-handle`,
+    },
     ...extra,
   };
 }
@@ -287,17 +297,22 @@ const breakfast: Row[] = [
   { id: "b4", from: sender("peer-agent") },
 ];
 
+type Shared = Pick<FollowupRun["run"], "execOverrides">;
+
 /** One turn keeps every member's identity, order and content, and no member's authority. */
-function aggregated(run: FollowupRun | undefined, rows: readonly Row[]) {
+function aggregated(run: FollowupRun | undefined, rows: readonly Row[], shared: Shared = {}) {
   collected(run, rows);
   for (const [index, row] of rows.entries()) {
     expect(run?.prompt).toContain(`Queued #${index + 1} (from ${row.from?.senderName})`);
   }
-  expectRoomBaseline(run);
+  expectRoomBaseline(run, shared);
 }
 
-/** The turn runs as the senderless room: no principal, owner bit or sender-scoped authority. */
-function expectRoomBaseline(run: FollowupRun | undefined) {
+/**
+ * The turn runs as the senderless room: no principal, owner bit or sender-scoped authority.
+ * `shared` names authority every member carries identically, such as the agent's exec defaults.
+ */
+function expectRoomBaseline(run: FollowupRun | undefined, shared: Shared = {}) {
   expect(run?.currentInboundEventKind).toBe("room_event");
   expect(run?.operatorAuthority).toBeUndefined();
   expect(run?.createChannelCronAuthority).toBeUndefined();
@@ -316,7 +331,7 @@ function expectRoomBaseline(run: FollowupRun | undefined) {
     approvalReviewerDeviceId: execution.approvalReviewerDeviceId,
     conversationToolPolicy: execution.conversationToolPolicy,
     runtimePluginToolGrant: execution.runtimePluginToolGrant,
-  }).toEqual({ senderIsOwner: false, traceAuthorized: false });
+  }).toEqual({ senderIsOwner: false, traceAuthorized: false, ...shared });
   expect(execution.requesterOrigin).toEqual(ROOM_ORIGIN);
   expect(
     resolveRequesterPrincipalKey({ ...execution, messageChannel: run!.originatingChannel }),
@@ -889,6 +904,23 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
     });
   });
 
+  it("collects senders who share the agent's exec defaults, at those defaults", async () => {
+    const execOverrides = resolveReplyExecOverrides({
+      agentExecDefaults: { host: "gateway", security: "full" },
+    });
+    const rows = breakfast.map((row) => ({ ...row, from: { ...row.from, execOverrides } }));
+    await withRoomIngress(rows, async (harness) => {
+      await harness.dispatchRows();
+      await harness.endActiveTurn();
+      expect(harness.calls).toHaveLength(1);
+      aggregated(harness.calls[0], rows, { execOverrides });
+      await expectSettledOnce(
+        harness,
+        rows.map((row) => row.id),
+      );
+    });
+  });
+
   /** One room event from each of `count` distinct non-owner senders; ids sort in arrival order. */
   function crowd(count: number): Row[] {
     return Array.from({ length: count }, (_, index) => {
@@ -918,9 +950,9 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
           if (dropPolicy === "summarize") {
             const summary = harness.calls[0];
             expect(summary?.prompt).toContain("Dropped 50 messages due to cap");
-            // Every evicted member is a summary line, in arrival order.
+            // Every evicted member is a summary line naming its sender, in arrival order.
             expect(summary?.prompt.split("\n").filter((line) => line.startsWith("- "))).toEqual(
-              evicted.map((row) => `- ${textOf(row)}`),
+              evicted.map((row) => `- (from ${row.from?.senderName}) ${textOf(row)}`),
             );
             expectRoomBaseline(summary);
             await expectSettledOnce(
