@@ -1,0 +1,2 @@
+# karmaterminal/openclaw#1506 + #1507 + #1508 composed as the F″ candidate: #1507 (343) and #1508 (638) were each sized against F′'s 58 lines of slack, so the combined tree needs those 58 lines once. 🌊-approved composition adjustment (2026-10-31), not a blanket cap.
+58
