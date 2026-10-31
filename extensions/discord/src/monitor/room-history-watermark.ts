@@ -16,9 +16,15 @@
  * State is in memory, as in Matrix. After a restart no watermark exists and every message reads
  * new, which is the behaviour before watermarks. A session reset needs no extra handling:
  * recovered history starts at the session's start, after every older snapshot.
+ *
+ * Frond (karmaterminal, #1415): a turn the channel did not dispatch, such as the room session's
+ * scheduled heartbeat, reads the room through the same marks. Each room turn records how it read
+ * its channel; the scheduled read repeats that read for the newest window and marks it here. It
+ * begins no turn, so it never moves a watermark.
  */
 
 import { pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
+import { resolveGlobalMap } from "openclaw/plugin-sdk/global-singleton";
 import type { HistoryEntry } from "openclaw/plugin-sdk/reply-history";
 import type { GetReplyOptions } from "openclaw/plugin-sdk/reply-runtime";
 
@@ -42,8 +48,17 @@ type DiscordRoomHistoryTurn = {
   finishDispatch: (result: { deferredToActiveRun?: "steer" | "followup" } | null) => void;
 };
 
+/** Reads a room's newest history window the way this session's room turn read it. */
+export type DiscordRoomHistoryReread = (
+  signal?: AbortSignal,
+) => Promise<HistoryEntry[] | undefined>;
+
 type PendingTurn = { snapshot: bigint; ended: boolean };
-type ScopeState = { completed?: bigint; pending: Set<PendingTurn> };
+type ScopeState = {
+  completed?: bigint;
+  pending: Set<PendingTurn>;
+  reread?: DiscordRoomHistoryReread;
+};
 
 const UNTRACKED_TURN: DiscordRoomHistoryTurn = { replyOptions: {}, finishDispatch: () => {} };
 
@@ -64,7 +79,7 @@ export function createDiscordRoomHistoryWatermarks() {
     return state;
   };
 
-  return {
+  const watermarks = {
     /**
      * Marks recent history as already seen or new for this session's turn. Without a watermark
      * the entries are returned untouched: everything reads new, as before watermarks existed.
@@ -87,6 +102,23 @@ export function createDiscordRoomHistoryWatermarks() {
           ? entry
           : { ...entry, sender: `${id <= boundary ? SEEN_MARKER : NEW_MARKER} ${entry.sender}` };
       });
+    },
+
+    /** Keeps how this session's latest room turn read the channel, for scheduled reads. */
+    recordReread(scope: DiscordRoomHistoryScope, reread: DiscordRoomHistoryReread): void {
+      touch(keyOf(scope)).reread = reread;
+    },
+
+    /**
+     * The newest room history for a turn the channel did not dispatch, marked as a room turn's
+     * would be. Without a room turn in this session since start there is nothing to repeat.
+     */
+    async readScheduledHistory(
+      scope: DiscordRoomHistoryScope,
+      signal?: AbortSignal,
+    ): Promise<HistoryEntry[] | undefined> {
+      const entries = await scopes.get(keyOf(scope))?.reread?.(signal);
+      return entries && watermarks.markHistory(scope, entries);
     },
 
     /** Records a turn dispatched with the given triggering message as its snapshot. */
@@ -137,6 +169,32 @@ export function createDiscordRoomHistoryWatermarks() {
       };
     },
   };
+  return watermarks;
 }
 
 export type DiscordRoomHistoryWatermarks = ReturnType<typeof createDiscordRoomHistoryWatermarks>;
+
+// The channel adapter can load through a separate runtime path from the account monitor that
+// owns the watermarks; keep the publication process-global so both see the live instance.
+const publishedWatermarks = resolveGlobalMap<string, DiscordRoomHistoryWatermarks>(
+  Symbol.for("openclaw.discord.roomHistoryWatermarks"),
+);
+
+/** Publishes an account monitor's watermarks for scheduled reads until the release runs. */
+export function publishDiscordRoomHistoryWatermarks(
+  accountId: string,
+  watermarks: DiscordRoomHistoryWatermarks,
+): () => void {
+  publishedWatermarks.set(accountId, watermarks);
+  return () => {
+    if (publishedWatermarks.get(accountId) === watermarks) {
+      publishedWatermarks.delete(accountId);
+    }
+  };
+}
+
+export function getPublishedDiscordRoomHistoryWatermarks(
+  accountId: string,
+): DiscordRoomHistoryWatermarks | undefined {
+  return publishedWatermarks.get(accountId);
+}

@@ -1,11 +1,13 @@
 import { GATEWAY_OWNER_PROFILE_ID } from "../../../packages/gateway-protocol/src/schema/users.js";
 import { resolveConfiguredAgentId } from "../../agents/agent-scope-config.js";
+import { getLoadedChannelPluginById } from "../../channels/plugins/registry-loaded.js";
 import { getRuntimeConfigSnapshotMetadata } from "../../config/runtime-snapshot.js";
 import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { createCronExecutionId } from "../../cron/run-id.js";
 import { resolveCreatorSandbox } from "../../gateway/operator-role-policy.js";
 import { readExecRequestOwners } from "../../infra/exec-request-context.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { channelRouteTargetsMatchExact } from "../../plugin-sdk/channel-route.js";
 import { normalizeAgentId } from "../../routing/session-key.js";
 import { CRON_EXECUTION_SOURCE_TOOL } from "../../sessions/input-provenance.js";
@@ -13,6 +15,7 @@ import type { DeliveryContext } from "../../utils/delivery-context.types.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
 import { bindCommandOwnerAuthority } from "../command-owner-authority.js";
 import type { MsgContext } from "../templating.js";
+import type { HistoryEntry } from "./history.types.js";
 import type { SessionEventOptions, SessionEventTarget } from "./session-event-contract.js";
 import {
   getSessionEventRuntimeConfig,
@@ -21,6 +24,8 @@ import {
   resolveSessionEventKey,
 } from "./session-event-target.js";
 import { setChannelSourceTurnId } from "./source-turn-id.js";
+
+const log = createSubsystemLogger("session-events");
 
 /** Prepare immutable producer context before the receipt acquires occurrence custody. */
 export function prepareSessionEventInput(text: string, options: SessionEventOptions) {
@@ -61,7 +66,50 @@ export function resolveSessionEventExecRequestOwners(
     : readExecRequestOwners(options);
 }
 
-export function buildSessionEventContext(params: {
+// Frond (karmaterminal, #1415): a scheduled turn in a channel conversation's session sees that
+// room's recent history as the room's own turns mark it, so messages they already answered read
+// as handled. Best effort: without the channel's history the turn runs as it did before.
+async function readScheduledTurnRoomHistory(params: {
+  cfg: OpenClawConfig;
+  sessionKey: string;
+  target: SessionEventTarget;
+  signal?: AbortSignal;
+  assertCurrent: () => void;
+}): Promise<HistoryEntry[] | undefined> {
+  const room = params.target.deliveryContext;
+  const read = room?.channel
+    ? getLoadedChannelPluginById(room.channel)?.heartbeat?.readRoomHistory
+    : undefined;
+  if (!read || !room?.to) {
+    return undefined;
+  }
+  let entries: HistoryEntry[] | undefined;
+  try {
+    entries = await read({
+      cfg: params.cfg,
+      sessionKey: params.sessionKey,
+      to: room.to,
+      accountId: room.accountId,
+      threadId: room.threadId,
+      signal: params.signal,
+    });
+  } catch (error) {
+    log.warn("scheduled turn proceeds without room history", {
+      channel: room.channel,
+      error: String(error),
+    });
+  }
+  params.assertCurrent();
+  // Text only: a scheduled turn never attaches the room's history media as current input.
+  return entries?.map(({ sender, body, timestamp, messageId }) => ({
+    sender,
+    body,
+    timestamp,
+    messageId,
+  }));
+}
+
+export async function buildSessionEventContext(params: {
   cfg: OpenClawConfig;
   agentId: string;
   sessionKey: string;
@@ -74,14 +122,24 @@ export function buildSessionEventContext(params: {
     | "readmissionAttempt"
     | "scheduledAutomation"
     | "replyExpectation"
+    | "abortSignal"
   >;
   occurrenceId: string;
   deliveryContext?: DeliveryContext;
   target: SessionEventTarget;
   assertCurrent: () => void;
-}): MsgContext {
+}): Promise<MsgContext> {
   const { agentId, sessionKey, text, options, occurrenceId, deliveryContext, target } = params;
   const automation = options.scheduledAutomation;
+  const roomHistory = automation
+    ? await readScheduledTurnRoomHistory({
+        cfg: params.cfg,
+        sessionKey,
+        target,
+        signal: options.abortSignal,
+        assertCurrent: params.assertCurrent,
+      })
+    : undefined;
   const ctx: MsgContext = {
     AgentId: agentId,
     SessionKey: sessionKey,
@@ -118,6 +176,7 @@ export function buildSessionEventContext(params: {
     OriginatingTo: deliveryContext?.to,
     AccountId: deliveryContext?.accountId,
     MessageThreadId: deliveryContext?.threadId,
+    ...(roomHistory?.length ? { InboundHistory: roomHistory } : {}),
     // Inbound dedupe retains an adopted attempt's id; a policy re-admission is a new dispatch.
     MessageSid: options.readmissionAttempt
       ? `${occurrenceId}:readmission-${options.readmissionAttempt}`

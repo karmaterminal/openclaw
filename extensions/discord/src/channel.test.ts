@@ -17,6 +17,10 @@ import * as directoryLive from "./directory-live.js";
 import { RequestClient } from "./internal/rest.js";
 import { createDiscordLivePolicyReader } from "./monitor/live-policy.js";
 import type { MonitorDiscordOpts } from "./monitor/provider.js";
+import {
+  createDiscordRoomHistoryWatermarks,
+  publishDiscordRoomHistoryWatermarks,
+} from "./monitor/room-history-watermark.js";
 import * as sendModule from "./send.js";
 import { argAt, objectArgAt, recordField } from "./test-support/mock-calls.js";
 let discordPlugin: typeof import("./channel.js").discordPlugin;
@@ -421,6 +425,32 @@ describe("discordPlugin outbound", () => {
     } finally {
       resolveRest.mockRestore();
     }
+  });
+
+  // Frond (karmaterminal, #1415): a scheduled turn in a room session reads its room.
+  it("reads a room session's history from the live account monitor's watermarks", async () => {
+    const watermarks = createDiscordRoomHistoryWatermarks();
+    const room = { sessionKey: "agent:main:discord:channel:456", channelId: "456" };
+    const history = [{ sender: "figs", body: "q", messageId: "1" }];
+    watermarks.recordReread(room, async () => history);
+    const read = (params: { to?: string; accountId?: string; threadId?: string } = {}) =>
+      discordPlugin.heartbeat!.readRoomHistory!({
+        cfg: createCfg(),
+        sessionKey: room.sessionKey,
+        to: "channel:123",
+        threadId: "456",
+        ...params,
+      });
+    const release = publishDiscordRoomHistoryWatermarks("default", watermarks);
+    try {
+      await expect(read()).resolves.toEqual(history);
+      await expect(read({ to: "channel:456", threadId: undefined })).resolves.toEqual(history);
+      await expect(read({ to: "user:456", threadId: undefined })).resolves.toBeUndefined();
+      await expect(read({ accountId: "work" })).resolves.toBeUndefined();
+    } finally {
+      release();
+    }
+    await expect(read()).resolves.toBeUndefined();
   });
 
   it.each(["cancelled", "revoked"] as const)(

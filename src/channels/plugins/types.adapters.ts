@@ -1,4 +1,5 @@
 import type { ReplyPayload } from "../../auto-reply/reply-payload.js";
+import type { HistoryEntry } from "../../auto-reply/reply/history.types.js";
 import type { LegacyConfigRule } from "../../config/legacy.shared.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { AgentBinding } from "../../config/types.agents.js";
@@ -310,6 +311,20 @@ export type ChannelHeartbeatAdapter = {
     assertPlatformSendAuthorized: () => void;
   }) => Promise<void> | void;
   clearTyping?: NonNullable<ChannelHeartbeatAdapter["sendTyping"]>;
+  /**
+   * Frond (karmaterminal, #1415): the room history a scheduled turn in this conversation's
+   * session should see, marked the way the channel's own room turns mark it, so messages they
+   * already handled read as handled. Reading never counts as handling a message. Undefined
+   * when the conversation has no room history to follow.
+   */
+  readRoomHistory?: (params: {
+    cfg: OpenClawConfig;
+    sessionKey: string;
+    to: string;
+    accountId?: string | null;
+    threadId?: string | number | null;
+    signal?: AbortSignal;
+  }) => Promise<HistoryEntry[] | undefined>;
 };
 
 type ChannelDirectoryListParams = {

@@ -3,7 +3,9 @@ import { formatInboundMediaUnavailableText } from "openclaw/plugin-sdk/channel-i
 import { isRecentOutboundMessageIdentity } from "openclaw/plugin-sdk/channel-outbound";
 import type { ContextVisibilityMode } from "openclaw/plugin-sdk/config-contracts";
 import { parseDateStringTimestampMs } from "openclaw/plugin-sdk/number-runtime";
+import { buildInboundHistoryFromEntries } from "openclaw/plugin-sdk/reply-history";
 import { danger } from "openclaw/plugin-sdk/runtime-env";
+import { getSessionEntryAsync } from "openclaw/plugin-sdk/session-store-runtime";
 import { getGuildMember, Message, MessageType } from "../internal/discord.js";
 import {
   createDiscordHistorySenderProvenance,
@@ -18,6 +20,7 @@ import {
 import { resolveDiscordPreflightPluralKitInfo } from "./message-handler.preflight-pluralkit.js";
 import type { DiscordMessagePreflightContext } from "./message-handler.preflight.types.js";
 import { resolveDiscordMessageHistoryText } from "./message-text.js";
+import type { DiscordRoomHistoryReread } from "./room-history-watermark.js";
 import { resolveDiscordSenderIdentity } from "./sender-identity.js";
 
 type HistoryMessage = APIMessage & {
@@ -25,28 +28,129 @@ type HistoryMessage = APIMessage & {
   member?: Pick<APIGuildMember, "roles" | "nick">;
 };
 
+type IsSenderAllowed = Parameters<
+  typeof filterDiscordHistoryEntriesForContext
+>[0]["isSenderAllowed"];
+
+/** The channel facts a room turn resolved to read its history: no message, no turn handles. */
+type DiscordRoomHistorySource = Pick<
+  DiscordMessagePreflightContext,
+  | "accountId"
+  | "botUserId"
+  | "channelConfig"
+  | "client"
+  | "discordConfig"
+  | "guildHistories"
+  | "guildInfo"
+  | "historyLimit"
+  | "messageChannelId"
+  | "runtime"
+  | "threadBinding"
+  | "threadChannel"
+> & { guildId?: string };
+
+function selectDiscordRoomHistorySource(ctx: DiscordMessagePreflightContext) {
+  return {
+    accountId: ctx.accountId,
+    botUserId: ctx.botUserId,
+    channelConfig: ctx.channelConfig,
+    client: ctx.client,
+    discordConfig: ctx.discordConfig,
+    guildHistories: ctx.guildHistories,
+    guildInfo: ctx.guildInfo,
+    historyLimit: ctx.historyLimit,
+    messageChannelId: ctx.messageChannelId,
+    runtime: ctx.runtime,
+    threadBinding: ctx.threadBinding,
+    threadChannel: ctx.threadChannel,
+    guildId: ctx.data.guild?.id ?? ctx.data.guild_id,
+  } satisfies DiscordRoomHistorySource;
+}
+
 /** Fetch a physical recent window, never walking older pages to refill filtered rows. */
 export async function recoverDiscordChannelHistory(params: {
   ctx: DiscordMessagePreflightContext;
   sessionStartedAt?: number;
   isCurrent: () => boolean;
   mode: ContextVisibilityMode;
-  isSenderAllowed: Parameters<typeof filterDiscordHistoryEntriesForContext>[0]["isSenderAllowed"];
+  isSenderAllowed: IsSenderAllowed;
 }): Promise<DiscordHistoryEntry[]> {
-  const { ctx, isCurrent } = params;
+  const { ctx, ...read } = params;
+  return await readDiscordChannelHistory({
+    ...read,
+    source: selectDiscordRoomHistorySource(ctx),
+    trigger: {
+      id: ctx.message.id,
+      timestamp: parseDateStringTimestampMs(ctx.message.timestamp),
+      excludedIds: [
+        ctx.message.id,
+        ...(ctx.sourceMessageIds ?? []),
+        ...(ctx.canonicalMessageId ? [ctx.canonicalMessageId] : []),
+      ],
+    },
+    abortSignal: ctx.abortSignal,
+  });
+}
+
+// Frond (karmaterminal, #1415): a scheduled turn in the room session (its heartbeat) has no
+// triggering message, so it re-reads the newest window with the facts its room turn resolved.
+/**
+ * Reads the room's newest window as this session's room turn read it. Fails closed, reading
+ * nothing, once the policy those facts came from is replaced; the next room turn records anew.
+ */
+export function createDiscordRoomHistoryReread(params: {
+  ctx: DiscordMessagePreflightContext;
+  historySession: Parameters<typeof getSessionEntryAsync>[0];
+  mode: ContextVisibilityMode;
+  isSenderAllowed: IsSenderAllowed;
+}): DiscordRoomHistoryReread {
+  const { historySession, mode, isSenderAllowed } = params;
+  const isPolicyCurrent = params.ctx.isPolicyCurrent;
+  const source = selectDiscordRoomHistorySource(params.ctx);
+  return async (signal) => {
+    const isCurrent = () => !signal?.aborted && isPolicyCurrent?.() !== false;
+    if (!isCurrent()) {
+      return undefined;
+    }
+    const session = await getSessionEntryAsync(historySession);
+    const entries =
+      session?.updatedAt === 0
+        ? []
+        : await readDiscordChannelHistory({
+            source,
+            sessionStartedAt: session?.sessionStartedAt,
+            isCurrent,
+            abortSignal: signal,
+            mode,
+            isSenderAllowed,
+          });
+    return isCurrent()
+      ? buildInboundHistoryFromEntries({ entries, limit: source.historyLimit })
+      : undefined;
+  };
+}
+
+async function readDiscordChannelHistory(params: {
+  source: DiscordRoomHistorySource;
+  /** The triggering message and its batch: read only what precedes them. Omitted: the newest. */
+  trigger?: { id: string; timestamp?: number; excludedIds: readonly string[] };
+  sessionStartedAt?: number;
+  isCurrent: () => boolean;
+  abortSignal?: AbortSignal;
+  mode: ContextVisibilityMode;
+  isSenderAllowed: IsSenderAllowed;
+}): Promise<DiscordHistoryEntry[]> {
+  const { source: ctx, trigger, isCurrent } = params;
   if (ctx.historyLimit <= 0 || !isCurrent()) {
     return [];
   }
-  const excludedIds = new Set([ctx.message.id, ...(ctx.sourceMessageIds ?? [])]);
-  if (ctx.canonicalMessageId) {
-    excludedIds.add(ctx.canonicalMessageId);
-  }
+  const excludedIds = new Set(trigger?.excludedIds);
   // Batch originals already appear in the current body; budget their physical rows without
   // allowing policy exclusions to turn this into an unbounded search for matching senders.
-  let remaining = ctx.historyLimit + excludedIds.size - 1;
-  let before = ctx.message.id;
-  const triggerTimestamp = parseDateStringTimestampMs(ctx.message.timestamp);
-  const guildId = ctx.data.guild?.id ?? ctx.data.guild_id;
+  let remaining = ctx.historyLimit + Math.max(0, excludedIds.size - 1);
+  let before = trigger?.id;
+  const triggerTimestamp = trigger?.timestamp;
+  const guildId = ctx.guildId;
   const cachedMedia = new Map(
     (ctx.guildHistories.get(ctx.messageChannelId) ?? []).map((entry) => [entry.messageId, entry]),
   );
@@ -57,7 +161,7 @@ export async function recoverDiscordChannelHistory(params: {
     while (remaining > 0 && isCurrent()) {
       const limit = Math.min(100, remaining);
       const page = (await ctx.client.rest.get(Routes.channelMessages(ctx.messageChannelId), {
-        before,
+        ...(before ? { before } : {}),
         limit,
       })) as APIMessage[]; // SAFETY: Discord's list-messages route returns APIMessage[].
       if (!isCurrent()) {
@@ -72,9 +176,10 @@ export async function recoverDiscordChannelHistory(params: {
           row.channel_id !== ctx.messageChannelId ||
           (row.guild_id && row.guild_id !== guildId) ||
           excludedIds.has(row.id) ||
-          (/^\d+$/u.test(row.id) &&
-            /^\d+$/u.test(ctx.message.id) &&
-            BigInt(row.id) >= BigInt(ctx.message.id)) ||
+          (trigger !== undefined &&
+            /^\d+$/u.test(row.id) &&
+            /^\d+$/u.test(trigger.id) &&
+            BigInt(row.id) >= BigInt(trigger.id)) ||
           timestamp === undefined ||
           (triggerTimestamp !== undefined && timestamp > triggerTimestamp) ||
           (params.sessionStartedAt !== undefined && timestamp < params.sessionStartedAt) ||
@@ -117,7 +222,7 @@ export async function recoverDiscordChannelHistory(params: {
               message,
               webhookId: message.webhookId,
               config: ctx.discordConfig?.pluralkit,
-              abortSignal: ctx.abortSignal,
+              abortSignal: params.abortSignal,
             })
           : null;
         if (needsPluralKitLookup && !isCurrent()) {
@@ -179,7 +284,10 @@ export async function recoverDiscordChannelHistory(params: {
         window.length < limit ||
         !nextBefore ||
         nextBefore === before ||
-        (/^\d+$/u.test(nextBefore) && /^\d+$/u.test(before) && BigInt(nextBefore) >= BigInt(before))
+        (before !== undefined &&
+          /^\d+$/u.test(nextBefore) &&
+          /^\d+$/u.test(before) &&
+          BigInt(nextBefore) >= BigInt(before))
       ) {
         break;
       }

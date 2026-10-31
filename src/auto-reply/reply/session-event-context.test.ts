@@ -4,14 +4,14 @@ import { TEST_SCHEDULED_OCCURRENCE } from "../../cron/scheduled-occurrence.test-
 import { projectChatDisplayMessages } from "../../gateway/chat-display-projection.js";
 import { buildSessionEventContext } from "./session-event-context.js";
 
-it("retains scheduled execution provenance without projecting the prompt as a result", () => {
+it("retains scheduled execution provenance without projecting the prompt as a result", async () => {
   const sessionKey = "agent:main:scheduled-review";
   const job = makeCronJob({
     sessionTarget: `session:${sessionKey}`,
     state: { runningAtMs: 1_000 },
   });
   const text = "Check the review and continue the authorized task.";
-  const ctx = buildSessionEventContext({
+  const ctx = await buildSessionEventContext({
     cfg: {},
     agentId: "main",
     sessionKey,
