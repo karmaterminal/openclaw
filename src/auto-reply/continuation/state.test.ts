@@ -149,7 +149,7 @@ describe("continuation timer state", () => {
     clearTimeout(handle);
   });
 
-  it("clears tracked timers and asynchronously releases their refs", async () => {
+  it("clears tracked timers and releases their refs before returning", async () => {
     const sessionKey = "timer-clear";
     const first = setTimeout(() => undefined, 1_000);
     const second = setTimeout(() => undefined, 2_000);
@@ -160,9 +160,9 @@ describe("continuation timer state", () => {
     registerContinuationTimerHandle(sessionKey, second);
 
     clearTrackedContinuationTimers(sessionKey);
-    expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(true);
+    expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(false);
 
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(2_000);
     expect(hasLiveContinuationTimerRefs(sessionKey)).toBe(false);
   });
 });
