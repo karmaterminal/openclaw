@@ -72,7 +72,7 @@ function scriptedReply(context: string): string {
  * Runs the room-session heartbeat after a room turn answered `breakfast`. The room serves its
  * history marked as its room turns left it: handled through `breakfast`, anything later new.
  */
-async function runHeartbeat(params: { room: RoomMessage[]; prompt: string }) {
+async function runHeartbeat(params: { room: RoomMessage[]; prompt: string; readFails?: true }) {
   return await withOpenClawTestState({ label: "cron-room-history" }, async (state) => {
     const registry = captureActivePluginRegistrySnapshot();
     const cfg = completionConfig(state.workspaceDir);
@@ -82,14 +82,17 @@ async function runHeartbeat(params: { room: RoomMessage[]; prompt: string }) {
       channel: "roomchat",
       messageId: "announced",
     }));
-    const readRoomHistory = vi.fn(async (): Promise<HistoryEntry[]> =>
-      params.room.map((message) => ({
+    const readRoomHistory = vi.fn(async (): Promise<HistoryEntry[]> => {
+      if (params.readFails) {
+        throw new Error("room history unavailable");
+      }
+      return params.room.map((message) => ({
         messageId: message.id,
         sender: `${BigInt(message.id) <= BigInt(breakfast.id) ? "[already seen]" : "[new]"} ${message.sender}`,
         body: message.body,
         timestamp: startedAt + Number(message.id),
-      })),
-    );
+      }));
+    });
     const contexts: string[] = [];
     runEmbeddedAgentMock.mockImplementation(async (runParams) => {
       const transcript = await readRecentUserAssistantTextForSession({
@@ -228,4 +231,18 @@ it("shows the heartbeat a room message no room turn handled as new", async () =>
   expect(result.status, result.error).toBe("ok");
   expect(contexts[0]).toMatch(/#1002 .*\[new\] cael: the deploy is stuck/u);
   expect(announced).toEqual(["Answering #1002."]);
+});
+
+it("runs the heartbeat as before when the room's history cannot be read", async () => {
+  const { result, contexts, announced } = await runHeartbeat({
+    room: [breakfast],
+    prompt: "Heartbeat check. Reply HEARTBEAT_OK if nothing needs attention.",
+    readFails: true,
+  });
+
+  // Best effort: the turn still runs, on the unmarked transcript alone.
+  expect(result.status, result.error).toBe("ok");
+  expect(contexts).toHaveLength(1);
+  expect(contexts[0]).not.toContain("[already seen]");
+  expect(announced).toEqual(["Answering #1001."]);
 });
