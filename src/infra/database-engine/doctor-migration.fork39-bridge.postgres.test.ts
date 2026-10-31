@@ -1,6 +1,7 @@
-// Continuation (karmaterminal): Doctor's exact pre-migration PostgreSQL export of the jump-8
-// candidate's agent schema 38 (upstream's 37 plus the recipient-authority table, without
-// upstream's 38 text search), its exact restore, and the schema-38 shapes that stay refused.
+// Frond (karmaterminal): fork-39 bridge. Fork-only: Doctor's exact pre-migration PostgreSQL
+// export of the fleet's agent schema 39 (upstream's 38 plus the recipient-authority table), its
+// exact restore, its migration to 40 through step 40's alternate source, and the 39 shapes that
+// stay refused.
 import "./backup-worker.test-support.js";
 import { channel } from "node:diagnostics_channel";
 import fs from "node:fs";
@@ -9,7 +10,6 @@ import { getEnvironmentData } from "node:worker_threads";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { Client, type QueryResultRow } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { memoryTextSearchSchema } from "../../../packages/memory-host-sdk/src/host/memory-search-schema.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { backupDoctorPostgresMigration } from "../../commands/doctor-postgres-migration.js";
 import { prepareDoctorDatabaseMigrations } from "../../commands/doctor-schema-migrations.js";
@@ -19,6 +19,7 @@ import {
   readBackupEngine,
   verifyMatchedPostgresBackup,
 } from "../../snapshot/database-backup.js";
+import { withoutAgentPostgresColdNavigation } from "../../state/openclaw-agent-cold-navigation-schema.js";
 import { OPENCLAW_AGENT_SCHEMA_VERSION } from "../../state/openclaw-agent-db-contract.js";
 import { agentEngineSchema } from "../../state/openclaw-agent-db-engine.js";
 import {
@@ -41,9 +42,7 @@ import { stateBootstrapReadOperations } from "../../state/state-bootstrap-read.w
 import { acquireGatewayLock } from "../gateway-lock.js";
 import { inspectGatewayOwnerLease } from "../gateway-owner-lease.worker.js";
 import { openNodeSqliteDatabase } from "../node-sqlite.js";
-import type { EngineConnection } from "../sql-connection.js";
 import { publishSqliteDatabaseSchemaChange } from "../sqlite-database-admission.js";
-import { admitStoreSearch } from "./adapters.js";
 import { installDatabaseProcessRole, withEngineStoreAdmission } from "./admission-scope.js";
 import { rebuildAgentPortProjections } from "./agent-port-projections.js";
 import { installDatabaseEngineSelection } from "./context.js";
@@ -123,31 +122,27 @@ const historical = (from: Predecessor): StoreSchema => ({
   postgresVectorDecoderVersion: from.postgresVectorDecoderVersion,
   postgresVectorSearchVersion: from.postgresVectorSearchVersion,
   postgresTextSearchVersion: from.postgresTextSearchVersion,
-  version: 38,
+  version: 39,
   postgresMigrations: [],
 });
 const authorityTable = sessionRecipientAuthorityPostgresSql(agentEngineSchema.postgres!);
-// The jump-8 candidate's 38: upstream's 37 plus the authority table, generated text search.
-const jump8: Predecessor = {
-  postgres: agentEngineSchema.postgres!,
-  postgresVectorDecoderVersion: 2,
-  postgresVectorSearchVersion: 2,
+// The fleet's 39: upstream's 38 (its token split included) plus the authority table.
+const fleet39: Predecessor = {
+  ...step(AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION).fromSchema,
+  postgres: withoutAgentPostgresColdNavigation(agentEngineSchema.postgres!),
 };
-// Every other schema-38 shape carrying (or missing) the authority table is not an exact predecessor.
+// Every other schema-39 shape carrying (or missing) the authority table is not an exact predecessor.
 const ambiguous = [
   {
-    name: "upstream's text search with the authority table",
-    from: {
-      ...step(AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION).fromSchema,
-      postgres: jump8.postgres,
-    },
+    name: "upstream's 39 with the authority table",
+    from: { ...fleet39, postgres: agentEngineSchema.postgres! },
     authority: "full",
   },
   {
-    name: "jump-8 text search with a partial authority table",
+    name: "the fleet's 39 with a partial authority table",
     from: {
-      ...jump8,
-      postgres: jump8.postgres.replace(
+      ...fleet39,
+      postgres: fleet39.postgres.replace(
         authorityTable,
         authorityTable.replace('  "updated_at" bigint NOT NULL,\n', ""),
       ),
@@ -155,13 +150,13 @@ const ambiguous = [
     authority: "partial",
   },
   {
-    name: "upstream's 37 relabeled 38 without the authority table",
-    from: step(38).fromSchema,
+    name: "upstream's 38 relabeled 39 without the authority table",
+    from: step(39).fromSchema,
     authority: "none",
   },
 ] as const;
 
-describe.skipIf(!connection)("Doctor PostgreSQL export of recipient-authority schema 38", () => {
+describe.skipIf(!connection)("Doctor PostgreSQL export of the fleet's agent schema 39", () => {
   const client = new Client({ connectionString: connection });
   const namespaces = new Set<string>();
   const input = { connection: connection!, schemaPrefix: "authority_backup" };
@@ -173,12 +168,7 @@ describe.skipIf(!connection)("Doctor PostgreSQL export of recipient-authority sc
     (await client.query<T>(sql, values)).rows;
 
   /** Bootstrap and seal a layout the way the binary that owned it did. */
-  function install(
-    schema: StoreSchema,
-    anchorPath: string,
-    existingOnly = false,
-    use?: (db: EngineConnection) => void,
-  ) {
+  function install(schema: StoreSchema, anchorPath: string, existingOnly = false) {
     return withEngineStoreAdmission(() => {
       using anchor = openNodeSqliteDatabase(anchorPath);
       const db = openEngineStore({
@@ -193,7 +183,6 @@ describe.skipIf(!connection)("Doctor PostgreSQL export of recipient-authority sc
         existingOnly,
       });
       try {
-        use?.(db);
         const facts = getPostgresPhysicalFacts(db)!;
         namespaces.add(facts.namespace);
         return facts;
@@ -272,7 +261,7 @@ describe.skipIf(!connection)("Doctor PostgreSQL export of recipient-authority sc
         message: { role: "user", content: [{ type: "text", text }] },
       });
     await client.query(`
-      INSERT INTO "${namespace}".schema_meta VALUES ('primary', 'agent', 38, 'main', NULL, 1, 1);
+      INSERT INTO "${namespace}".schema_meta VALUES ('primary', 'agent', 39, 'main', NULL, 1, 1);
       INSERT INTO "${namespace}".session_key_contract (id, main_key, updated_at) VALUES (1, 'main', 0);
       INSERT INTO "${namespace}".memory_index_state (id, revision) VALUES (1, 0);
       INSERT INTO "${namespace}".session_nodes (session_key, current_session_id, entry_json, updated_at)
@@ -310,7 +299,13 @@ describe.skipIf(!connection)("Doctor PostgreSQL export of recipient-authority sc
     await client.query(`INSERT INTO "${namespace}".transcript_event_identities
       (session_id, event_id, seq, event_type, message_idempotency_key, created_at)
       VALUES ('session', 'first', 1, 'message', 'first', 1),
-        ('session', 'second', 2, 'message', 'second', 2)`);
+        ('session', 'second', 2, 'message', 'second', 2);
+      INSERT INTO "${namespace}".session_transcript_active_events
+        (session_id, active_position, event_seq, message_position, context_eligible)
+        VALUES ('session', 0, 1, 0, 1), ('session', 1, 2, 1, 1);
+      INSERT INTO "${namespace}".session_transcript_index_state (session_id, indexed_seq,
+        leaf_event_id, needs_rebuild, active_event_count, active_message_count, updated_at)
+        VALUES ('session', 2, 'second', 0, 2, 2, 1)`);
     if (authority === "full") {
       await client.query(`INSERT INTO "${namespace}".session_recipient_authority
         (session_key, epoch, created_at, updated_at)
@@ -334,7 +329,7 @@ describe.skipIf(!connection)("Doctor PostgreSQL export of recipient-authority sc
       runOpenClawStateWriteTransaction(
         ({ db }) => {
           db.prepare(`INSERT INTO agent_databases (agent_id, path, schema_version, last_seen_at)
-            VALUES ('main', ?, 38, 1)`).run(agentPath);
+            VALUES ('main', ?, 39, 1)`).run(agentPath);
         },
         { env },
       ),
@@ -364,7 +359,7 @@ describe.skipIf(!connection)("Doctor PostgreSQL export of recipient-authority sc
             {
               kind: "agent",
               path: agentPath,
-              foundVersion: 38,
+              foundVersion: 39,
               supportedVersion: OPENCLAW_AGENT_SCHEMA_VERSION,
             },
           ],
@@ -376,6 +371,17 @@ describe.skipIf(!connection)("Doctor PostgreSQL export of recipient-authority sc
     }
   }
 
+  // Upstream's 39 widens the transcript payload CHECK; the fleet's 39 still holds the prior one.
+  const widenedPayload = async (namespace: string) =>
+    (
+      await rows<{ widened: boolean }>(
+        `SELECT bool_or(pg_get_constraintdef(c.oid) LIKE '%(event_json IS NULL) AND (event_zstd IS NULL)%')
+           AS widened FROM pg_constraint c
+         JOIN pg_class r ON r.oid = c.conrelid JOIN pg_namespace n ON n.oid = r.relnamespace
+         WHERE n.nspname = $1 AND r.relname = 'transcript_events' AND c.contype = 'c'`,
+        [namespace],
+      )
+    )[0]!.widened;
   const backups = (agentPath: string) =>
     fs
       .readdirSync(path.dirname(agentPath))
@@ -440,17 +446,16 @@ describe.skipIf(!connection)("Doctor PostgreSQL export of recipient-authority sc
     await client.end();
   });
 
-  it("exports the jump-8 store losslessly, restores it exactly, and migrates it to 39", async () => {
-    const { agentPath, namespace } = await agentStore("jump8", jump8, "full");
+  it("exports the fleet's 39 losslessly, restores it exactly, and migrates it to 40", async () => {
+    const { agentPath, namespace } = await agentStore("fleet39", fleet39, "full");
     const before = await snapshot(namespace);
     expect(before.tables.session_recipient_authority).toContain('"epoch-7"');
-    // The jump-8 generated column keeps "server.py" whole.
-    expect(before.tables.session_transcript_fts).toContain("'server.py'");
+    expect(await widenedPayload(namespace)).toBe(false);
 
     const result = await runDoctor(agentPath);
     expect(result.warnings).toEqual([]);
     expect(result.changes).toContain(
-      `Upgraded agent database schema in ${agentPath}: v38 -> v${OPENCLAW_AGENT_SCHEMA_VERSION}.`,
+      `Upgraded agent database schema in ${agentPath}: v39 -> v${OPENCLAW_AGENT_SCHEMA_VERSION}.`,
     );
 
     // Lossless export: the exact image carries every authority row and the transcript search.
@@ -458,13 +463,13 @@ describe.skipIf(!connection)("Doctor PostgreSQL export of recipient-authority sc
     expect(extra).toEqual([]);
     expect(result.changes).toContain(`Saved pre-migration PostgreSQL backup: ${directory}`);
     const manifest = await verifyMatchedPostgresBackup(directory!, "exact");
-    expect(manifest.source).toMatchObject({ owner: "agent", schemaVersion: 38, namespace });
+    expect(manifest.source).toMatchObject({ owner: "agent", schemaVersion: 39, namespace });
     expect(manifest.verification.tables.session_recipient_authority?.rows).toBe(2);
     {
       using image = openNodeSqliteDatabase(path.join(directory!, "database.sqlite"), {
         readOnly: true,
       });
-      expect(image.prepare("PRAGMA user_version").get()).toEqual({ user_version: 38 });
+      expect(image.prepare("PRAGMA user_version").get()).toEqual({ user_version: 39 });
       expect(
         image.prepare("SELECT * FROM session_recipient_authority ORDER BY session_key").all(),
       ).toEqual([
@@ -480,19 +485,20 @@ describe.skipIf(!connection)("Doctor PostgreSQL export of recipient-authority sc
       ).toEqual([{ message_id: "first" }]);
     }
 
-    // Doctor then migrated the store in place: rows kept, upstream's token split applied.
+    // Doctor then migrated the store in place: rows kept, upstream's 39 constraint applied once.
     const after = await snapshot(namespace);
     expect(after.catalog).toEqual(referenceCatalog);
     expect(after.tables.session_recipient_authority).toBe(
       before.tables.session_recipient_authority,
     );
     expect(after.tables.transcript_events).toBe(before.tables.transcript_events);
-    expect(after.tables.session_transcript_fts).toMatch(/'py'.*'server'/u);
+    expect(after.tables.session_transcript_fts).toBe(before.tables.session_transcript_fts);
+    expect(await widenedPayload(namespace)).toBe(true);
     expect(await rows(`SELECT version FROM "${namespace}".openclaw_schema_meta`)).toEqual([
       { version: String(AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION) },
     ]);
 
-    // Exact restore: the export rebuilds the pre-Doctor jump-8 store.
+    // Exact restore: the export rebuilds the pre-Doctor fleet 39 store.
     const restoredPath = path.join(path.dirname(agentPath), "restored.sqlite");
     const restored = await preparePostgresRestore({
       directory: directory!,
@@ -507,67 +513,24 @@ describe.skipIf(!connection)("Doctor PostgreSQL export of recipient-authority sc
       await rows(
         `SELECT store, version, store_id FROM "${restored.namespace}".openclaw_schema_meta`,
       ),
-    ).toEqual([{ store: "agent", version: "38", store_id: manifest.source.storeId }]);
+    ).toEqual([{ store: "agent", version: "39", store_id: manifest.source.storeId }]);
     const copy = await snapshot(restored.namespace);
     expect(copy.catalog).toEqual(before.catalog);
-    const {
-      openclaw_schema_meta: _seal,
-      session_transcript_index_state: _index,
-      ...data
-    } = before.tables;
+    // Navigation rows (active events, index state) are copied exactly since upstream's 39.
+    const { openclaw_schema_meta: _seal, ...data } = before.tables;
     expect(copy.tables).toMatchObject(data);
     expect(Object.keys(copy.tables).toSorted()).toEqual(Object.keys(before.tables).toSorted());
-    // The projection's rebuild stamp is the only value the restore derives afresh.
-    const indexState = (json: string) =>
-      (JSON.parse(json) as Record<string, unknown>[]).map(
-        ({ updated_at: _rebuilt, ...state }) => state,
-      );
-    expect(indexState(copy.tables.session_transcript_index_state!)).toEqual(
-      indexState(before.tables.session_transcript_index_state!),
-    );
-    expect(indexState(before.tables.session_transcript_index_state!)).toHaveLength(1);
-    // The engine owner seals the restored copy as the exact jump-8 layout.
-    expect(install(historical(jump8), restoredPath, true)).toMatchObject({
+    expect(JSON.parse(before.tables.session_transcript_index_state!)).toHaveLength(1);
+    expect(await widenedPayload(restored.namespace)).toBe(false);
+    // The engine owner seals the restored copy as the exact fleet 39 layout.
+    expect(install(historical(fleet39), restoredPath, true)).toMatchObject({
       namespace: restored.namespace,
-      version: 38,
+      version: 39,
     });
-  });
-
-  // The jump-8 memory text extension kept the generated column too; the export checks it against
-  // that definition before omitting it, so the original text search must cover extensions.
-  it("exports a jump-8 store whose memory text search keeps the generated column", async () => {
-    const { agentPath, namespace } = await agentStore("jump8-memory", jump8, "full");
-    install(historical(jump8), agentPath, true, (db) =>
-      admitStoreSearch(db, memoryTextSearchSchema("unicode61"), { extension: "memory.text" }),
-    );
-    await client.query(`
-      INSERT INTO "${namespace}".memory_index_sources (path, source, hash, mtime, size)
-        VALUES ('memory/notes.md', 'memory', 'hash', 1, 1);
-      INSERT INTO "${namespace}".memory_index_chunks
-        (id, path, source, start_line, end_line, hash, model, text, embedding, updated_at)
-        VALUES ('chunk', 'memory/notes.md', 'memory', 1, 1, 'hash', 'fixture', 'see server.py', '\\x00', 1);
-    `);
-    expect(
-      await rows(
-        `SELECT a.attgenerated AS generated FROM pg_attribute a
-         JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace
-         WHERE n.nspname = $1 AND c.relname = 'memory_index_chunks' AND a.attname = 'openclaw_search'`,
-        [namespace],
-      ),
-    ).toEqual([{ generated: "s" }]);
-    const { changes } = await backupDoctorPostgresMigration(agentPath, input, {
-      assertAdmission() {},
-    });
-    const [directory, ...extra] = backups(agentPath);
-    expect(extra).toEqual([]);
-    expect(changes).toEqual([`Saved pre-migration PostgreSQL backup: ${directory}`]);
-    const manifest = await verifyMatchedPostgresBackup(directory!, "exact");
-    expect(manifest.verification.tables.memory_index_chunks?.rows).toBe(1);
-    expect(manifest.verification.tables.session_recipient_authority?.rows).toBe(2);
   });
 
   it("leaves the store unchanged and never starts the migration when its export fails", async () => {
-    const { agentPath, namespace } = await agentStore("jump8-failed-export", jump8, "full");
+    const { agentPath, namespace } = await agentStore("fleet39-failed-export", fleet39, "full");
     const anchorBytes = fs.readFileSync(agentPath);
     const before = await snapshot(namespace);
     const scratch = await scratchNamespaces();
@@ -619,10 +582,10 @@ describe.skipIf(!connection)("Doctor PostgreSQL export of recipient-authority sc
     expect(await scratchNamespaces()).toEqual(scratch);
   });
 
-  // The declared layout still serves upstream's own 38: no authority table, the token split.
-  it("still exports upstream's own schema-38 store with its declared layout", async () => {
+  // The declared layout still serves upstream's own 39: no authority table, the widened CHECK.
+  it("still exports upstream's own schema-39 store with its declared layout", async () => {
     const { agentPath, namespace } = await agentStore(
-      "upstream38",
+      "upstream39",
       step(AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION).fromSchema,
       "none",
     );
@@ -633,7 +596,7 @@ describe.skipIf(!connection)("Doctor PostgreSQL export of recipient-authority sc
     expect(extra).toEqual([]);
     expect(changes).toEqual([`Saved pre-migration PostgreSQL backup: ${directory}`]);
     const manifest = await verifyMatchedPostgresBackup(directory!, "exact");
-    expect(manifest.source).toMatchObject({ schemaVersion: 38, namespace });
+    expect(manifest.source).toMatchObject({ schemaVersion: 39, namespace });
     expect(manifest.verification.tables.session_recipient_authority).toBeUndefined();
     expect(manifest.verification.tables.transcript_events?.rows).toBe(2);
     const restored = await preparePostgresRestore({
