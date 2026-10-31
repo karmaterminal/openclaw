@@ -70,10 +70,11 @@ Use the phase-specific hooks for new plugins:
   It adds monitoring context without changing user-initiated turns. It does not
   run as a generic prompt-preparation hook or create a separate heartbeat turn.
 
-On embedded, CLI, and harness runtime prompt-preparation paths (including
-ACPX, Agents API, Codex, and Copilot), ordering is: drain queued injections →
-`agent_turn_prepare` → ordinary
+On embedded and supported CLI prompt-preparation paths, ordering is: drain queued
+injections → `agent_turn_prepare` → ordinary
 `before_prompt_build` → finalized tool policy → authorized prompt enrichment.
+On Codex and Copilot prompt-preparation paths, ordering starts with
+`agent_turn_prepare`; these harnesses do not drain queued injections.
 
 For multiple registrations, the first defined provider/model/fallback override and
 `systemPrompt` win. Context additions concatenate in priority order, and tool
@@ -370,7 +371,7 @@ the `api.session.state` namespace.
 Use `api.session.workflow.enqueueNextTurnInjection(...)` when a plugin needs
 durable context queued for the next prompt build (the top-level
 `api.enqueueNextTurnInjection(...)` is a deprecated alias with the same
-behavior). OpenClaw drains queued injections before prompt hooks on embedded and CLI paths,
+behavior). OpenClaw drains queued injections before prompt hooks on embedded and supported CLI paths,
 even when no prompt hooks are registered. Codex and Copilot sessions do not drain
 these entries; enqueue refuses them with `reason: "harness_does_not_drain"`.
 Entries with absolute `expiresAt` are never rendered after expiry. A `notBefore`

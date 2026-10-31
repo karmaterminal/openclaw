@@ -532,3 +532,37 @@ test("sessions.reset clears cli session bindings for parent-linked non-subagent 
     expect(nextEntry?.[key]).toBeUndefined();
   }
 });
+
+test("sessions.reset retains live injection tombstones and settles pending injections", async () => {
+  await createSessionStoreDir();
+  const now = Date.now();
+  await writeStoredSession("sess-injection-reset", {
+    content: "hello before reset",
+    pluginNextTurnInjections: {
+      fixture: [
+        {
+          id: "pending",
+          pluginId: "fixture",
+          text: "next turn",
+          placement: "append_context",
+          idempotencyKey: "pending",
+          createdAt: now,
+        },
+      ],
+    },
+    pluginNextTurnInjectionOutcomes: {
+      fixture: {
+        settled: { state: "consumed", settledAt: now, retainUntil: now + 60_000 },
+        stale: { state: "withdrawn", settledAt: now - 60_000, retainUntil: now - 1 },
+      },
+    },
+  });
+
+  await resetSession();
+
+  const nextEntry = readStoredSession("main");
+  expect(nextEntry?.pluginNextTurnInjections).toBeUndefined();
+  expect(nextEntry?.pluginNextTurnInjectionOutcomes?.fixture?.settled?.state).toBe("consumed");
+  expect(nextEntry?.pluginNextTurnInjectionOutcomes?.fixture?.pending?.state).toBe("discarded");
+  expect(nextEntry?.pluginNextTurnInjectionOutcomes?.fixture?.stale).toBeUndefined();
+});

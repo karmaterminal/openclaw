@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { preserveResetPluginInjectionOutcomes } from "../config/sessions/plugin-host-cleanup.js";
 import {
   loadSessionEntry,
   patchSessionEntryCore,
@@ -110,6 +111,59 @@ describe("plugin host cleanup session stores", () => {
       expect(read(key)?.pluginNextTurnInjectionOutcomes).toEqual({ other: { keep: outcome } });
     },
   );
+
+  it("keeps expired outcome on lifecycle cleanup", async () => {
+    const { clean, read, write } = store();
+    const key = "agent:main:expired-cleanup";
+    await write(key, "expired-cleanup", {
+      pluginNextTurnInjections: {
+        cleanup: [
+          {
+            id: "expired",
+            pluginId: "cleanup",
+            text: "expired",
+            placement: "append_context",
+            idempotencyKey: "expired",
+            createdAt: 1,
+            ttlMs: 1,
+          },
+        ],
+      },
+    });
+    await clean({ pluginId: "cleanup", reason: "disable", sessionKey: key });
+    expect(read(key)?.pluginNextTurnInjectionOutcomes?.cleanup?.expired?.state).toBe("expired");
+  });
+
+  it("carries and prunes tombstones in the reset entry builder", () => {
+    const now = Date.now();
+    const original: SessionEntry = {
+      sessionId: "before",
+      updatedAt: now,
+      pluginNextTurnInjections: {
+        cleanup: [
+          {
+            id: "pending",
+            pluginId: "cleanup",
+            text: "pending",
+            placement: "append_context",
+            idempotencyKey: "pending",
+            createdAt: now,
+          },
+        ],
+      },
+      pluginNextTurnInjectionOutcomes: {
+        cleanup: {
+          old: { state: "consumed", settledAt: now - 100, retainUntil: now + 1000 },
+          stale: { state: "withdrawn", settledAt: now - 100, retainUntil: now - 1 },
+        },
+      },
+    };
+    const outcomes = preserveResetPluginInjectionOutcomes(original, now);
+    expect(outcomes?.cleanup?.old?.state).toBe("consumed");
+    expect(outcomes?.cleanup?.pending?.state).toBe("discarded");
+    expect(outcomes?.cleanup?.stale).toBeUndefined();
+    expect(original.pluginNextTurnInjectionOutcomes?.cleanup?.pending).toBeUndefined();
+  });
 
   const harnessRegistration = (pluginId: string, id: string): Harness => ({
     pluginId,

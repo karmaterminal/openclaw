@@ -56,6 +56,15 @@ async function notifySettlements(notices: SettlementNotice[], sessionKey: string
   }
 }
 
+function dispatchSettlements(notices: SettlementNotice[], sessionKey: string): void {
+  if (notices.length > 0) {
+    // Settlement is durable; plugin callbacks must not stall prompt preparation.
+    void notifySettlements(notices, sessionKey).catch((error: unknown) => {
+      log.warn(`next-turn settlement notification failed: ${String(error)}`);
+    });
+  }
+}
+
 type MutableSessionEntry = SessionEntry & Record<string, unknown>;
 
 function isPluginNextTurnInjectionPlacement(
@@ -157,9 +166,13 @@ export async function getPluginNextTurnInjectionState(params: {
     agentId: params.agentId,
   });
   const now = Date.now();
-  const pending = entry?.pluginNextTurnInjections?.[params.pluginId]?.find(
-    (item) => item.idempotencyKey === params.idempotencyKey,
-  );
+  const queue = entry?.pluginNextTurnInjections?.[params.pluginId];
+  const pending = Array.isArray(queue)
+    ? queue.find(
+        (item) =>
+          isPluginNextTurnInjectionRecord(item) && item.idempotencyKey === params.idempotencyKey,
+      )
+    : undefined;
   const outcome =
     entry?.pluginNextTurnInjectionOutcomes?.[params.pluginId]?.[params.idempotencyKey];
   return {
@@ -183,15 +196,30 @@ export async function withdrawPluginNextTurnInjection(params: {
   sessionKey: string;
   agentId?: string;
   idempotencyKey: string;
+  shouldWithdraw?: () => boolean;
 }): Promise<PluginNextTurnInjectionStateResult> {
+  if (params.shouldWithdraw && !params.shouldWithdraw()) {
+    return {
+      sessionKey: params.sessionKey,
+      idempotencyKey: params.idempotencyKey,
+      state: "unknown",
+    };
+  }
   const now = Date.now();
   const notices: SettlementNotice[] = [];
   const updated = await updateResolvedSessionEntry(
     { cfg: params.cfg, sessionKey: params.sessionKey, agentId: params.agentId },
     (entry) => {
+      if (params.shouldWithdraw && !params.shouldWithdraw()) {
+        return { state: "unknown" as const, settledAt: undefined };
+      }
       pruneOutcomes(entry, params.pluginId, now);
-      const entries = entry.pluginNextTurnInjections?.[params.pluginId] ?? [];
-      const pending = entries.find((item) => item.idempotencyKey === params.idempotencyKey);
+      const queue = entry.pluginNextTurnInjections?.[params.pluginId];
+      const entries = Array.isArray(queue) ? queue : [];
+      const pending = entries.find(
+        (item) =>
+          isPluginNextTurnInjectionRecord(item) && item.idempotencyKey === params.idempotencyKey,
+      );
       if (pending) {
         settle(
           entry,
@@ -214,7 +242,7 @@ export async function withdrawPluginNextTurnInjection(params: {
       };
     },
   );
-  await notifySettlements(notices, updated.canonicalKey);
+  dispatchSettlements(notices, updated.canonicalKey);
   return {
     sessionKey: params.sessionKey,
     idempotencyKey: params.idempotencyKey,
@@ -392,7 +420,7 @@ export async function enqueuePluginNextTurnInjection(params: {
   if (!updated.found) {
     return { enqueued: false, id: "", sessionKey, reason: "missing_session" };
   }
-  await notifySettlements(notices, updated.canonicalKey);
+  dispatchSettlements(notices, updated.canonicalKey);
   return { ...updated.result, sessionKey: updated.canonicalKey };
 }
 
@@ -487,7 +515,7 @@ async function drainPluginNextTurnInjections(
     }
     return drained;
   });
-  await notifySettlements(notices, updated.canonicalKey);
+  dispatchSettlements(notices, updated.canonicalKey);
   return updated.found ? updated.result : [];
 }
 

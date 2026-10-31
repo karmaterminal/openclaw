@@ -90,6 +90,53 @@ function clearPromotedSessionEntrySlots(
   }
 }
 
+/** Preserve live tombstones and settle pending injections inside the reset entry transaction. */
+export function preserveResetPluginInjectionOutcomes(
+  entry: SessionEntry,
+  now: number,
+): SessionEntry["pluginNextTurnInjectionOutcomes"] {
+  const copy: SessionEntry = {
+    ...entry,
+    pluginNextTurnInjectionOutcomes: Object.fromEntries(
+      Object.entries(entry.pluginNextTurnInjectionOutcomes ?? {}).map(([owner, outcomes]) => [
+        owner,
+        Object.fromEntries(
+          Object.entries(outcomes).filter(([, outcome]) => outcome.retainUntil > now),
+        ),
+      ]),
+    ),
+  };
+  settlePendingPluginInjections(copy, now);
+  return copy.pluginNextTurnInjectionOutcomes;
+}
+
+function settlePendingPluginInjections(entry: SessionEntry, now: number, pluginId?: string): void {
+  for (const [owner, records] of Object.entries(entry.pluginNextTurnInjections ?? {})) {
+    if (pluginId && owner !== pluginId) {
+      continue;
+    }
+    if (!Array.isArray(records)) {
+      continue;
+    }
+    for (const record of records) {
+      if (typeof record?.idempotencyKey !== "string" || !record.idempotencyKey) {
+        continue;
+      }
+      const outcomes = (entry.pluginNextTurnInjectionOutcomes ??= {});
+      const owned = (outcomes[owner] ??= {});
+      owned[record.idempotencyKey] ??= {
+        state:
+          (typeof record.expiresAt === "number" && now >= record.expiresAt) ||
+          (typeof record.ttlMs === "number" && now - record.createdAt > record.ttlMs)
+            ? "expired"
+            : "discarded",
+        settledAt: now,
+        retainUntil: Math.max(now, record.expiresAt ?? 0, record.outcomeRetainUntil ?? 0) + 5_000,
+      };
+    }
+  }
+}
+
 /** Clears plugin-owned extension state from one session entry. */
 export function clearPluginOwnedSessionState(
   entry: SessionEntry,
@@ -99,27 +146,7 @@ export function clearPluginOwnedSessionState(
 ): void {
   clearPromotedSessionEntrySlots(entry, pluginId, sessionEntrySlotKeys);
   if (preserveInjectionOutcomes) {
-    const now = Date.now();
-    for (const [owner, records] of Object.entries(entry.pluginNextTurnInjections ?? {})) {
-      if (pluginId && owner !== pluginId) {
-        continue;
-      }
-      if (!Array.isArray(records)) {
-        continue;
-      }
-      for (const record of records) {
-        if (typeof record?.idempotencyKey !== "string" || !record.idempotencyKey) {
-          continue;
-        }
-        const outcomes = (entry.pluginNextTurnInjectionOutcomes ??= {});
-        const owned = (outcomes[owner] ??= {});
-        owned[record.idempotencyKey] ??= {
-          state: "discarded",
-          settledAt: now,
-          retainUntil: Math.max(now, record.expiresAt ?? 0, record.outcomeRetainUntil ?? 0) + 5_000,
-        };
-      }
-    }
+    settlePendingPluginInjections(entry, Date.now(), pluginId);
   }
   for (const field of [
     "pluginExtensions",

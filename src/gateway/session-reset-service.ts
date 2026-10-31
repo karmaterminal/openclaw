@@ -34,8 +34,8 @@ import {
 } from "../config/sessions.js";
 import { rebindCliSessionReseedReceiptsForReset } from "../config/sessions/cli-session-binding.js";
 import { formatSqliteSessionFileMarker } from "../config/sessions/legacy-sqlite-marker.js";
-import { preserveResetSessionPresentation } from "../config/sessions/reset-preserved-presentation.js";
 import { resolveResetPreservedSelection } from "../config/sessions/reset-preserved-selection.js";
+import { preserveResetSessionState } from "../config/sessions/reset-preserved-state.js";
 import { withSessionActorStorage } from "../config/sessions/session-actor-storage-acquisition.js";
 import { getSessionActorStorageBinding } from "../config/sessions/session-actor-storage-binding.js";
 import { createSessionDiffBaselineCaptureClaim } from "../config/sessions/session-diff-baseline-capture.js";
@@ -860,7 +860,7 @@ async function performPreparedGatewaySessionReset({
                   }
                 : {}),
               responseUsage: currentEntry?.responseUsage,
-              ...preserveResetSessionPresentation(currentEntry),
+              ...preserveResetSessionState(currentEntry, now),
               // Resets should keep the user's explicit selection, but clear any
               // temporary fallback model that was pinned during the previous run.
               ...resetPreservedSelection,

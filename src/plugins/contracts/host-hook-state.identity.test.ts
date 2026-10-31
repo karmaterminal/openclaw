@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { observeHostDataSql } from "../../../test/helpers/sqlite-statement-execution-counter.js";
 import { resolvePromptBuildHookResult } from "../../agents/embedded-agent-runner/run/attempt-prompt-helpers.js";
 import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
@@ -115,7 +115,9 @@ describe("next-turn injection identity", () => {
     });
     expect(notices).toHaveLength(0);
     await drain({ cfg, sessionKey: scope.sessionKey, agentId: "main" });
-    expect(notices).toMatchObject([{ idempotencyKey: "one", state: "consumed" }]);
+    await vi.waitFor(() => {
+      expect(notices).toMatchObject([{ idempotencyKey: "one", state: "consumed" }]);
+    });
     await withdrawPluginNextTurnInjection({
       cfg,
       pluginId: "owner-fixture",
@@ -124,6 +126,99 @@ describe("next-turn injection identity", () => {
       idempotencyKey: "one",
     });
     expect(notices).toHaveLength(1);
+  });
+
+  it("does not await a stalled settlement callback during drain", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:stalled-notice");
+    await writeEntry(scope, { sessionId: "stalled-notice", updatedAt: 1 });
+    const registry = createEmptyPluginRegistry();
+    registry.plugins.push(createPluginRecord({ id: "owner-fixture", status: "loaded" }));
+    registry.nextTurnInjectionSettlementHandlers.push({
+      pluginId: "owner-fixture",
+      source: "fixture",
+      handler: () => new Promise<void>(() => {}),
+    });
+    setActivePluginRegistry(registry);
+    await enqueuePluginNextTurnInjection({
+      cfg,
+      pluginId: "owner-fixture",
+      injection: { ...scope, text: "ready", idempotencyKey: "stalled" },
+    });
+    await expect(drain({ cfg, ...scope })).resolves.toMatchObject({
+      queuedInjections: [{ text: "ready" }],
+    });
+    expect(
+      readEntry(scope)?.pluginNextTurnInjectionOutcomes?.["owner-fixture"]?.stalled?.state,
+    ).toBe("consumed");
+  });
+
+  it("treats malformed persisted queues as unknown and withdraws safely", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:corrupt-queue");
+    await writeEntry(scope, {
+      sessionId: "corrupt-queue",
+      updatedAt: 1,
+      pluginNextTurnInjections: { "owner-fixture": [null, { idempotencyKey: "key" }] } as never,
+    });
+    await expect(
+      getPluginNextTurnInjectionState({
+        cfg,
+        pluginId: "owner-fixture",
+        ...scope,
+        idempotencyKey: "key",
+      }),
+    ).resolves.toMatchObject({ state: "unknown" });
+    await expect(
+      withdrawPluginNextTurnInjection({
+        cfg,
+        pluginId: "owner-fixture",
+        ...scope,
+        idempotencyKey: "key",
+      }),
+    ).resolves.toMatchObject({ state: "unknown" });
+    await writeEntry(scope, {
+      sessionId: "corrupt-queue",
+      updatedAt: 1,
+      pluginNextTurnInjections: { "owner-fixture": { broken: true } } as never,
+    });
+    await expect(
+      getPluginNextTurnInjectionState({
+        cfg,
+        pluginId: "owner-fixture",
+        ...scope,
+        idempotencyKey: "key",
+      }),
+    ).resolves.toMatchObject({ state: "unknown" });
+    await expect(
+      withdrawPluginNextTurnInjection({
+        cfg,
+        pluginId: "owner-fixture",
+        ...scope,
+        idempotencyKey: "key",
+      }),
+    ).resolves.toMatchObject({ state: "unknown" });
+  });
+
+  it("refuses withdrawal after lifecycle authority is lost", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:withdraw-generation");
+    await writeEntry(scope, { sessionId: "withdraw-generation", updatedAt: 1 });
+    await enqueuePluginNextTurnInjection({
+      cfg,
+      pluginId: "owner-fixture",
+      injection: { ...scope, text: "successor", idempotencyKey: "shared" },
+    });
+    await expect(
+      withdrawPluginNextTurnInjection({
+        cfg,
+        pluginId: "owner-fixture",
+        ...scope,
+        idempotencyKey: "shared",
+        shouldWithdraw: () => false,
+      }),
+    ).resolves.toMatchObject({ state: "unknown" });
+    expect(readEntry(scope)?.pluginNextTurnInjections?.["owner-fixture"]).toHaveLength(1);
   });
 
   it("settles conditional supersede and withdraw durably", async () => {

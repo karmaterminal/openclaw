@@ -360,11 +360,21 @@ export function createPluginRegistry(registryOptions: PluginRegistryParams) {
                 });
               },
               withdrawNextTurnInjection: async (input) => {
+                const shouldWithdraw = () =>
+                  registryParams.activateGlobalSideEffects !== false &&
+                  shouldCommitWorkflowSideEffect();
+                if (!shouldWithdraw()) {
+                  return { ...input, state: "unknown" };
+                }
                 const { withdrawPluginNextTurnInjection } = await loadHookState();
+                if (!shouldWithdraw()) {
+                  return { ...input, state: "unknown" };
+                }
                 return withdrawPluginNextTurnInjection({
                   cfg: registryParams.runtime.config.current() as OpenClawConfig,
                   pluginId: record.id,
                   ...input,
+                  shouldWithdraw,
                 });
               },
               steerActiveRun: async (input) => {
