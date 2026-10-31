@@ -9,9 +9,11 @@ import {
 import { readTranscriptPayload } from "../../config/sessions/transcript-payload.js";
 import { deriveTranscriptPredicateFields } from "../../config/sessions/transcript-predicate-fields.js";
 import { withoutAgentPostgresColdArchiveChunks } from "../../state/openclaw-agent-cold-archive-chunks-schema.js";
+import { withoutAgentPostgresColdNavigation } from "../../state/openclaw-agent-cold-navigation-schema.js";
 import { FIRST_USE_ADDITIVE_AGENT_COLUMN_DEFINITIONS } from "../../state/openclaw-agent-db-additive-columns.js";
 import {
   AGENT_COLD_ARCHIVE_CHUNKS_SCHEMA_VERSION,
+  AGENT_COLD_NAVIGATION_SCHEMA_VERSION,
   AGENT_MEMORY_REVISION_SCHEMA_VERSION,
   AGENT_VECTOR_DECODER_SCHEMA_VERSION,
   AGENT_TEXT_SEARCH_SCHEMA_VERSION,
@@ -62,6 +64,7 @@ import { LEGACY_USAGE_COST_PARTITION_SCOPE } from "../session-cost-usage-partiti
 import { admitSqliteSchema } from "../sqlite-schema-facts.js";
 import { normalizeSchemaSql } from "../sqlite-schema-sql.js";
 import { withEngineStoreAdmission } from "./admission-scope.js";
+import { loadAgentFork39PortDescriptor } from "./agent-port-fork39-bridge.js";
 import {
   AGENT_PORT_PROJECTION_TABLES,
   rebuildAgentPortProjections,
@@ -78,9 +81,8 @@ import { withLegacyPostgresIndexOrdering } from "./postgres-index-ordering.js";
 import { pgSearchName, postgresSearchSql } from "./postgres-search-schema.js";
 import { resolveDatabaseFamilyEngines } from "./registry.js";
 
-const agentSourceSearchPostData = async (
-  source: Parameters<NonNullable<PortDescriptor["postgresSourcePostData"]>>[0],
-  textSearchVersion?: 1 | 2,
+const agentSourceSearchPostData: NonNullable<PortDescriptor["postgresSourcePostData"]> = async (
+  source,
 ) => {
   const row = (
     await source.db.query<{ metadata: { version: number; search_extensions?: string | null } }>(
@@ -130,7 +132,7 @@ const agentSourceSearchPostData = async (
   if (!schemas.length) {
     return undefined;
   }
-  return (namespace: string) => {
+  return (namespace) => {
     const shared = { text: true, vector: false };
     return schemas
       .map((schema) => {
@@ -140,7 +142,7 @@ const agentSourceSearchPostData = async (
           shared,
           row!.metadata.version >= AGENT_VECTOR_DECODER_SCHEMA_VERSION ? 2 : 1,
           row!.metadata.version >= AGENT_VECTOR_SEARCH_SCHEMA_VERSION ? 2 : 1,
-          textSearchVersion ?? (row!.metadata.version >= AGENT_TEXT_SEARCH_SCHEMA_VERSION ? 2 : 1),
+          row!.metadata.version >= AGENT_TEXT_SEARCH_SCHEMA_VERSION ? 2 : 1,
         );
         shared.vector ||= Object.keys(schema.vector ?? {}).length > 0;
         return sql;
@@ -160,13 +162,13 @@ export async function loadAgentPortDescriptor(
       return backup;
     }
     // Schema 30 appends columns; 31–36 and 38 change only PostgreSQL search, triggers, or indexes.
-    // Schema 37 adds a cold archive companion table; schema 39 (continuation) adds the
-    // recipient-authority table, which older sources omit except the jump-8 candidate's 38.
+    // Schema 37 adds a cold archive companion table; 39 relaxes the transcript payload CHECK.
+    // Schema 40 (continuation) adds the recipient-authority table, which older sources omit.
     // Pin the remaining shared layout so future DDL gets its own descriptor.
     if (
       backup ||
-      OPENCLAW_AGENT_SCHEMA_VERSION !== 39 ||
-      ![27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38].includes(sourceVersion)
+      OPENCLAW_AGENT_SCHEMA_VERSION !== 40 ||
+      ![27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39].includes(sourceVersion)
     ) {
       throw new DatabasePortDataError(
         `Missing agent PostgreSQL backup descriptor for version ${sourceVersion}`,
@@ -433,6 +435,10 @@ export async function loadAgentPortDescriptor(
     : withoutSessionRecipientAuthorityPostgresSchema(descriptor.preData);
   const withoutLegacyColdArchive = (sql: string) =>
     legacyColdArchive ? withoutAgentPostgresColdArchiveChunks(sql) : sql;
+  const withoutLegacyColdNavigation = (sql: string) =>
+    sourceVersion < AGENT_COLD_NAVIGATION_SCHEMA_VERSION
+      ? withoutAgentPostgresColdNavigation(sql)
+      : sql;
   let postData = legacyRevision
     ? withLegacyAgentPostgresMemoryRevisionTriggers(descriptor.postData)
     : descriptor.postData;
@@ -472,8 +478,10 @@ export async function loadAgentPortDescriptor(
           }))
         : []),
     ],
-    preData: withoutLegacyColdArchive(
-      legacyTrajectory ? withLegacyAgentPostgresTrajectoryStorage(preData) : preData,
+    preData: withoutLegacyColdNavigation(
+      withoutLegacyColdArchive(
+        legacyTrajectory ? withLegacyAgentPostgresTrajectoryStorage(preData) : preData,
+      ),
     ),
     postData: withoutLegacyColdArchive(postData),
     expectedCatalog: catalog.map((fact) =>
@@ -496,25 +504,9 @@ export async function loadAgentPortDescriptor(
     inspectSqliteSource: undefined,
     migrateSqliteSource: undefined,
     admit: undefined,
-    ...(sourceVersion === AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION - 1 && {
-      alternates: [await loadJump8AgentPortDescriptor()],
+    // Frond (karmaterminal): fork-39 bridge.
+    ...(sourceVersion === AGENT_COLD_NAVIGATION_SCHEMA_VERSION && {
+      alternates: [await loadAgentFork39PortDescriptor(loadAgentPortDescriptor)],
     }),
-  };
-}
-
-// Continuation (karmaterminal): the jump-8 candidate numbered recipient authority 38, so its
-// PostgreSQL stores read 38 while holding upstream's 37 plus the authority table, without
-// upstream's 38 text search. That is this schema's layout with the original text search; step 39
-// admits it as an alternate source, and Doctor's exact export must first capture it whole.
-async function loadJump8AgentPortDescriptor(): Promise<PortDescriptor> {
-  return {
-    ...(await loadAgentPortDescriptor()),
-    version: AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION - 1,
-    postgresPostData: (namespace) =>
-      postgresSearchSql(agentTranscriptSearchSchema, namespace, {}, 1, 1, 1),
-    postgresSourcePostData: (source) => agentSourceSearchPostData(source, 1),
-    inspectSqliteSource: undefined,
-    migrateSqliteSource: undefined,
-    admit: undefined,
   };
 }

@@ -12,6 +12,7 @@ import { parseSqliteTableDefinition } from "../infra/sqlite-schema-contract-asse
 import { runSqliteReadSnapshotSync } from "../infra/sqlite-transaction.js";
 import { readSqliteUserVersion } from "../infra/sqlite-user-version.js";
 import { LEGACY_CANONICAL_VALIDATION_TRIGGER_NAMES } from "./openclaw-agent-canonical-validation-migration.js";
+import { withoutAgentColdNavigation } from "./openclaw-agent-cold-navigation-schema.js";
 import {
   AGENT_COLD_ARCHIVE_CHUNKS_SCHEMA_VERSION,
   AGENT_INDEX_RETIREMENT_SCHEMA_VERSION,
@@ -523,7 +524,9 @@ export function captureOpenClawMigrationWitness(
         const definition = parseSqliteTableDefinition(
           object.name === "context_engine_turn_outbox" && object.sql
             ? withoutOutboxEnqueueSequence(object.sql)
-            : object.sql,
+            : object.name === "transcript_events" && object.sql
+              ? withoutAgentColdNavigation(object.sql)
+              : object.sql,
           object.name,
         );
         for (const column of definition.columns.keys()) {

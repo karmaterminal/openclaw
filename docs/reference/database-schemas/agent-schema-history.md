@@ -55,7 +55,8 @@ backup and its matching build, not just reinstalling the older package.
 | 36      | Indexed PostgreSQL exact-path memory candidates with unchanged ranking; metadata-only SQLite advance                                                                                                                                                   | `Unreleased` |
 | 37      | Ordered cold transcript archive chunks with a 64 MiB uncompressed bound per file                                                                                                                                                                       | `Unreleased` |
 | 38      | PostgreSQL full-text search splits punctuation-joined tokens like SQLite FTS5 ([#183547](https://github.com/openclaw/openclaw/pull/183547)); metadata-only SQLite advance                                                                              | `Unreleased` |
-| 39      | Continuation: durable session-key recipient-authority generations for delayed named returns                                                                                                                                                            | `Unreleased` |
+| 39      | Retained cold transcript navigation for bounded history reads without restoration                                                                                                                                                                      | `Unreleased` |
+| 40      | Continuation: durable session-key recipient-authority generations for delayed named returns                                                                                                                                                            | `Unreleased` |
 
 Schema 1 first appeared in `v2026.5.30-beta.1` and was also written by the
 extended-stable `v2026.7.35`. Versions 2, 4, 5–6, and 7 were development-only
@@ -75,6 +76,53 @@ including shared agent registration. Run `openclaw doctor --fix` with OpenClaw
 be verified, follow the explicit agent-restoration instructions it reports, then
 rerun Doctor before upgrading the copy. Schema-8 and later session migrations
 remain supported.
+
+### Agent schema 39
+
+Schema 39 permits cold transcript payload references in `transcript_events`.
+Archival retains compact navigation, identities, active-path positions, and index
+state while the immutable archive remains the canonical payload. Bounded history
+pages and initial message subscriptions select through those rows and verify only
+the archive chunks containing their selected payloads. They do not restore the
+transcript or wait for writer admission. Branch, reset, visibility, and cursor
+rules remain with the existing history owner.
+
+Doctor backfills existing archives independently under maintenance custody,
+preserving one verified backup per database it changes in each invocation. Archive
+work shares a ten-minute budget across databases; backup time is separate. The
+deadline is checked between archives, so an in-flight archive finishes atomically
+even if it exceeds the budget. Interrupted or failed archives remain pending.
+Doctor and the update receipt report migrated and pending counts when the budget
+is exhausted, with a recoverable warning that navigation resumes on the next
+Doctor run. Pending archives keep their existing cold-restore behavior; this
+warning does not fail or roll back an update.
+
+Every update-time Doctor pass runs this repair even after the schema is current,
+skipping already-qualified archives, so subsequent updates continue the backfill.
+Run `openclaw doctor --fix` to continue sooner. Ordinary Gateway restarts do not
+schedule it; direct package replacements should run Doctor before startup.
+Resumed invocations keep the verified backup: the existing backup owner does not
+persist a verifiable association between a previous snapshot and this migration
+crossing, so finding an old backup directory alone is insufficient to reuse it.
+
+Backfill writes navigation directly without recompressing archived event bodies.
+Its maintenance connection reuses bounded prepared statements. Older archives
+with incomplete indexes still rebuild those indexes from their verified bodies
+within the same archive transaction.
+
+Retained navigation increases the working database's storage cost. Headers and
+exceptional imported envelopes whose native interpretation cannot be represented
+by bounded navigation keep their original inline bytes. Restoration still serves
+write-capable continuations, and full-history deletion removes both navigation
+and payload archives. No new retention setting or archive format is introduced.
+SQLite rewrites the table definition in place in `sqlite_schema`, widening only
+the payload CHECK without rewriting rows or rebuilding indexes and triggers.
+Existing rows already satisfy the stricter predecessor constraint. The backup
+still declares `transcript_events` for rollback, because older builds refuse
+schema 39; planner statistics remain unchanged. Pre-migration integrity
+verification covers schema facts only, because no rows move. PostgreSQL updates
+the equivalent constraint unchanged. Rollback needs the verified pre-upgrade
+database and archive backup with its matching binary.
 
 ### Agent schema 38
 
@@ -356,14 +404,14 @@ the existing [schema migration handoff](/reference/database-schemas/versioning#s
 
 ### Session recipient authority
 
-Agent schema **39** (continuation) adds `session_recipient_authority`, one durable
+Agent schema **40** (continuation) adds `session_recipient_authority`, one durable
 recipient-authority generation per canonical logical `sessionKey` for delayed named
-returns, on top of upstream's schema 38. The generation survives session materialization
+returns, on top of upstream's schema 39. The generation survives session materialization
 and deletion; the table has no `session_nodes` foreign key because deletion is one of
 its generation edges.
 
 The existing startup/Doctor schema owner creates the table in the same transaction
-that advances both schema markers. Some databases written before schema 39 already
+that advances both schema markers. Some databases written before schema 40 already
 carry the table; creation is idempotent and retains their rows. Some earlier
 databases also stored the epoch inside `session_nodes.entry_json`; the migration
 imports only valid UUID-v4 values and removes the field from valid JSON. Invalid
@@ -371,39 +419,46 @@ values never create authority, and malformed Doctor-owned session entries remain
 unchanged for Doctor repair. Transcript bytes, retention, and permissions are
 unchanged.
 
-Older builds refuse schema 39; rollback requires the pre-upgrade database backup and
+Older builds refuse schema 40; rollback requires the pre-upgrade database backup and
 matching build, not lower version markers. A continuation lane build briefly numbered
 this step 27; those unreleased databases are not recognised (upstream's schema 27 is
 the outbox sequence) and must be recreated or restored from their pre-upgrade backup.
-Earlier continuation candidates numbered this step 32, then 35, then 36, then 38;
-upstream's 32–36 and 38 now name PostgreSQL-only steps. On SQLite such a database is
+Earlier continuation candidates numbered this step 32, then 35, then 36, then 38, then
+39; upstream's 32–36 and 38 now name PostgreSQL-only steps, and upstream's 39 widens the
+transcript payload CHECK. On SQLite a database at one of the candidate numbers below 39 is
 upstream's same-numbered schema plus this table, because those upstream steps advance
 SQLite metadata only, so upstream's later steps run (below 37 the schema-37 step adds the
 empty cold-archive chunk table) and the idempotent authority step admits the database
-and keeps its rows. On PostgreSQL the schema 39 step also admits the 38 candidate
-(upstream's 37 plus this table, without upstream's 38 text search) by its exact
-catalog: it keeps the table and rows and applies only upstream's text-search split.
-Doctor's exact pre-migration export captures that candidate first with its own layout,
-chosen by the authority table and verified against its exact catalog, so the backup
-restores the candidate's store; any other schema-38 shape, such as upstream's text search
-with this table or a partial table, is refused before any write. A
-PostgreSQL agent database at the 35 or 36 candidate's number fails closed before
-upstream's next step; restore it from its pre-upgrade backup or re-port it from SQLite.
+and keeps its rows. A 39 candidate is upstream's 38 plus this table rather than upstream's
+39, and this step does not admit it. A PostgreSQL agent database at any candidate's number
+fails closed before upstream's next step; restore it from its pre-upgrade backup or
+re-port it from SQLite.
 
 Some fleet databases carry this table under earlier version markers, because the
 fleet received recipient authority as an unreleased schema 25 and then 26:
 
 - The fleet's schema 25 kept the legacy entry-validity and canonical-pending triggers
-  instead of upstream's schema 25. The schema 39 owner tells the two schema-25 shapes
+  instead of upstream's schema 25. The schema 40 owner tells the two schema-25 shapes
   apart by their physical schema (authority table plus legacy triggers, or neither).
   For the fleet shape it runs the canonical-writer validation, JSON predicate, upstream's
-  schema 27–38 steps, and the idempotent authority migration in one transaction.
+  schema 27–39 steps, and the idempotent authority migration in one transaction.
 - The fleet's schema 26 is upstream's schema 25 plus the authority table, without
   upstream's schema-26 JSON predicate columns. The owner tells the two schema-26 shapes
   apart by the authority table and the predicate columns on `session_nodes` and
   `transcript_events` (all or none). For the fleet shape it runs the JSON predicate
-  backfill and upstream's schema 27–38 steps and keeps the authority rows; for upstream's
+  backfill and upstream's schema 27–39 steps and keeps the authority rows; for upstream's
   shape it runs the same upstream steps and adds the table.
+
+<!-- Frond (karmaterminal): fork-39 bridge. Fork-only; omitted from the upstream presentation. -->
+
+The fleet's own schema 39 is upstream's schema 38 plus the authority table. A fork-only
+bridge admits a schema-39 database only when it carries the authority table and the prior
+transcript payload CHECK; upstream's 39 carries the widened CHECK and no authority table.
+For the fleet shape the owner runs upstream's schema-39 step and the idempotent authority
+step in one transaction and stamps 40, keeping the authority rows. Doctor backs up
+`transcript_events` and the authority table first. On PostgreSQL the schema 40 step
+admits the fleet's 39 by its exact catalog, and Doctor's exact export captures it with
+its own layout. A schema-39 database with both markers, or neither, is refused.
 
 Any other mixed shape is refused. Existing authority rows are kept. Rolling back means
 restoring the pre-migration backup with its matching build.

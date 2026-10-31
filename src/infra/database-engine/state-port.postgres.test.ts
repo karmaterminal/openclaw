@@ -93,7 +93,7 @@ describe.skipIf(!connection)("shared-state database port", () => {
       { sequence: "9007199254740993" },
     ]);
     // Continuation (karmaterminal): the first-use continuation_records custody table ports too.
-    expect(Object.keys(staged.tables)).toHaveLength(136);
+    expect(Object.keys(staged.tables)).toHaveLength(137);
     expect(Object.keys(staged.tables)).toContain("continuation_records");
     expect(await rows(`SELECT display_name, avatar FROM "${namespace}".user_profiles`)).toEqual([
       { display_name: "Café 🦞", avatar: Buffer.from([0, 255, 128]) },

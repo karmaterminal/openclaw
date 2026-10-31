@@ -52,6 +52,7 @@ import { OPENCLAW_AGENT_SCHEMA_VERSION } from "../state/openclaw-agent-db-contra
 import { agentEngineInput } from "../state/openclaw-agent-db-engine.js";
 import { invalidateOpenClawAgentDatabaseIntegrityBeforeMutation } from "../state/openclaw-agent-db-lease.js";
 import { isAgentFleetSchema26Migration } from "../state/openclaw-agent-fleet-schema-history.js";
+import { withAgentFork39BackupCrossing } from "../state/openclaw-agent-fork39-bridge.js";
 import type { OpenClawDatabaseSchemaPreflight } from "../state/openclaw-database-preflight.types.js";
 import { getOpenClawDatabaseMaintenanceScope } from "../state/openclaw-state-db-async-lifecycle.js";
 import {
@@ -262,7 +263,8 @@ export async function backupDoctorMigrationDatabases(params: {
       const tables =
         migration &&
         !isAgentFleetSchema26Migration(migration) &&
-        resolveSchemaMigrationBackupTables(migration);
+        // Frond (karmaterminal): fork-39 bridge.
+        resolveSchemaMigrationBackupTables(withAgentFork39BackupCrossing(migration));
       if (!tables) {
         migrationTables.clear();
         break;
@@ -572,6 +574,11 @@ export async function backupDoctorSqliteDatabases(params: {
   for (const { path: sourcePath } of inventory) {
     assertCapture();
     const targetPath = targetFor(sourcePath);
+    // Narrow source admission never weakens certification of the retained backup image.
+    const sourceIntegrity = params.integrityChecks?.get(sourcePath);
+    const backupIntegrity = sourceIntegrity?.schemaOnly
+      ? { check: sourceIntegrity.check, tables: sourceIntegrity.tables }
+      : sourceIntegrity;
     const existing = lstatSync(targetPath, { bigint: true, throwIfNoEntry: false });
     if (existing) {
       try {
@@ -590,7 +597,7 @@ export async function backupDoctorSqliteDatabases(params: {
           try {
             snapshot.exec("PRAGMA trusted_schema = OFF;");
             assertCapture();
-            assertSqliteIntegrity(snapshot, targetPath, params.integrityChecks?.get(sourcePath));
+            assertSqliteIntegrity(snapshot, targetPath, backupIntegrity);
             params.repair?.validate?.(snapshot);
           } finally {
             snapshot.close();
@@ -632,7 +639,7 @@ export async function backupDoctorSqliteDatabases(params: {
           sourcePath,
           targetPath,
           preserveRowIds: true,
-          integrity: params.integrityChecks?.get(sourcePath),
+          integrity: backupIntegrity,
           transform: sanitizeOpenClawStateLeaseRows,
           beforePublish: assertCapture,
           afterPublish: (guard) =>

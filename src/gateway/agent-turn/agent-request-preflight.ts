@@ -31,7 +31,7 @@ import {
   createAgentDatabaseAdmissionErrorShape,
   readAgentDatabaseAdmissionRefusal,
 } from "../../state/agent-database-admission.js";
-import { waitForAgentDatabaseWriteAdmission } from "../../state/agent-database-preparation-context.js";
+import { waitForAgentInputAdmission } from "../../state/agent-database-preparation-context.js";
 import { hasGatewayAdminScope } from "../operator-scopes.js";
 import { resolveExpectedExistingSessionConstraint } from "../server-methods/agent-expected-session.js";
 import type { AgentRunRequest } from "../server-methods/agent-request-types.js";
@@ -74,7 +74,8 @@ export async function prepareAgentRequestPreflight(params: {
     normalizeOptionalString(request.agentId) ??
     tryResolveSessionCompatibilityOwnerAgentId(cfg, requestSessionKey);
   if (preparingAgentId) {
-    await waitForAgentDatabaseWriteAdmission(preparingAgentId, {
+    await waitForAgentInputAdmission(preparingAgentId, {
+      cfg,
       owner: params.context.resolveGatewayContext?.()?.agentDatabaseStartup,
     });
   }

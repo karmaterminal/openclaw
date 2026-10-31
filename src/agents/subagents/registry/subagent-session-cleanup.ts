@@ -1,6 +1,7 @@
 import { GatewayClientRequestError } from "../../../../packages/gateway-client/src/request-error.js";
 import type { SessionsDeleteParams } from "../../../../packages/gateway-protocol/src/index.js";
-import { SESSION_LIFECYCLE_CHANGED_ERROR_REASON } from "../../../config/sessions/lifecycle.js";
+import { runOutsideAdmittedGenerationScopes } from "../../../auto-reply/reply/queue/drain-admission-scope.js";
+import { isSessionLifecycleChangedGatewayError } from "../../../config/sessions/lifecycle.js";
 import type { GatewayContextResolver } from "../../../gateway/server-methods/types.js";
 import { createSubsystemLogger } from "../../../logging/subsystem.js";
 import {
@@ -36,20 +37,6 @@ const DEFERRED_SESSION_CLEANUP_RETRY_MS = 5_000;
 const DEFAULT_SESSION_CLEANUP_DELETE_FAILURE_RETRIES = 3;
 const cleanupRetryTimers = new Map<string, NodeJS.Timeout>();
 const log = createSubsystemLogger("agents/subagent-session-cleanup");
-
-function isSessionLifecycleChangedGatewayError(error: unknown): boolean {
-  if (!(error instanceof Error) || error.name !== "GatewayClientRequestError") {
-    return false;
-  }
-  const requestError = error as Error & { gatewayCode?: unknown; details?: unknown };
-  const details = requestError.details;
-  return (
-    requestError.gatewayCode === "INVALID_REQUEST" &&
-    typeof details === "object" &&
-    details !== null &&
-    (details as { reason?: unknown }).reason === SESSION_LIFECYCLE_CHANGED_ERROR_REASON
-  );
-}
 
 type DeleteSubagentSessionForCleanupParams = {
   callGateway: CallGateway;
@@ -276,10 +263,15 @@ export async function deleteSubagentSessionForCleanup(
     };
     // Provisional cleanup already carries its admitted Gateway in the request scope.
     // Cleanup retains its captured Gateway and child authority, not the parent's cancelled turn.
-    await runWithSessionControllerCleanup(() =>
-      params.gatewayBinding
-        ? withPluginRuntimeGatewayContextResolver(params.gatewayBinding.resolveGatewayContext, run)
-        : run(),
+    await runOutsideAdmittedGenerationScopes(() =>
+      runWithSessionControllerCleanup(() =>
+        params.gatewayBinding
+          ? withPluginRuntimeGatewayContextResolver(
+              params.gatewayBinding.resolveGatewayContext,
+              run,
+            )
+          : run(),
+      ),
     );
     return "deleted";
   } catch (error) {

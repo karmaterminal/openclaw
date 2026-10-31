@@ -1,7 +1,11 @@
 import type { DatabaseSync } from "node:sqlite";
 import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeNullableString as migratedText } from "@openclaw/normalization-core/string-coerce";
-import { hasLegacyMemoryRecallMetadataColumns } from "../../packages/memory-host-sdk/src/host/memory-schema.js";
+import {
+  ensureMemoryChunkProvenance,
+  ensureMemoryRecallMetadataSchema,
+  hasLegacyMemoryRecallMetadataColumns,
+} from "../../packages/memory-host-sdk/src/host/memory-schema.js";
 import { repairCanonicalSqliteIndexes } from "../infra/sqlite-index-schema.js";
 import { assertSqliteTableIntegrity } from "../infra/sqlite-integrity.js";
 import { captureSqliteSchemaFacts } from "../infra/sqlite-schema-admission.js";
@@ -45,6 +49,7 @@ import {
   readSqliteTableColumns,
   ensureSessionEntryValidityProjection,
 } from "./openclaw-agent-db-session-migrations.js";
+import { readAgentFork39HistoricalSchema } from "./openclaw-agent-fork39-bridge.js";
 import { AGENT_JSON_PREDICATE_COLUMNS } from "./openclaw-agent-json-predicate-schema.js";
 import { LEGACY_PARTICIPANT_OPTIONAL_COLUMNS } from "./openclaw-agent-participants-migration.js";
 import {
@@ -390,6 +395,11 @@ export function readOpenClawAgentHistoricalSchema(
   pathname: string,
   schemaVersion: number,
 ): { schema: string; legacyValidationTriggers: boolean } {
+  // Frond (karmaterminal): fork-39 bridge.
+  const fork39 = readAgentFork39HistoricalSchema(db, pathname, schemaVersion);
+  if (fork39) {
+    return { schema: fork39, legacyValidationTriggers: false };
+  }
   if (
     schemaVersion === CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION &&
     readOpenClawAgentSchema25Shape(db, pathname) === "recipient-authority"
@@ -473,6 +483,11 @@ export function migratedEntryDisplayName(entry: Record<string, unknown>): string
     migratedText(entry.subject) ??
     migratedText(entry.groupId)
   );
+}
+
+export function migrateMemoryChunkMetadataSchema(db: DatabaseSync): void {
+  ensureMemoryRecallMetadataSchema(db);
+  ensureMemoryChunkProvenance(db);
 }
 
 function hasPendingSessionKeyContractSchemaMigration(db: DatabaseSync): boolean {

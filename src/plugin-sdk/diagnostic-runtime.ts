@@ -65,6 +65,7 @@ export {
   isValidDiagnosticSpanId,
   isValidDiagnosticTraceFlags,
   isValidDiagnosticTraceId,
+  normalizeDiagnosticTraceContext,
   parseDiagnosticTraceparent,
   runWithDiagnosticTraceContext,
 } from "../infra/diagnostic-trace-context.js";

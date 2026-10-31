@@ -17,13 +17,19 @@ import {
 } from "../infra/sql-connection.js";
 import { captureSqliteSchemaFacts } from "../infra/sqlite-schema-admission.js";
 import { admitSqliteSchema, getAdmittedSqliteSchemaFacts } from "../infra/sqlite-schema-facts.js";
+import { runSqliteImmediateTransactionSync } from "../infra/sqlite-transaction.js";
 import { VERSION } from "../version.js";
 import {
   agentColdArchiveChunksPostgresMigration,
   withoutAgentPostgresColdArchiveChunks,
 } from "./openclaw-agent-cold-archive-chunks-schema.js";
 import {
+  agentColdNavigationPostgresMigration,
+  withoutAgentPostgresColdNavigation,
+} from "./openclaw-agent-cold-navigation-schema.js";
+import {
   AGENT_COLD_ARCHIVE_CHUNKS_SCHEMA_VERSION,
+  AGENT_COLD_NAVIGATION_SCHEMA_VERSION,
   AGENT_INDEX_RETIREMENT_SCHEMA_VERSION,
   AGENT_MEMORY_REVISION_SCHEMA_VERSION,
   AGENT_VECTOR_DECODER_SCHEMA_VERSION,
@@ -39,6 +45,7 @@ import {
   readExistingAgentSchemaMeta,
 } from "./openclaw-agent-db-metadata.js";
 import { assertCurrentAgentSchemaMetadata } from "./openclaw-agent-db-schema-read.js";
+import { agentFork39PostgresSource } from "./openclaw-agent-fork39-bridge.js";
 import {
   AGENT_INDEX_RETIREMENT_SQL,
   withLegacyAgentPostgresIndexes,
@@ -104,10 +111,10 @@ export function admitAgentEngineSearchExtensions(
 }
 
 const agentPostgresSql = `${agentPostgresRuntime.sql}\n${agentSearchPostgresRuntime.sql}`;
-// Continuation's recipient authority (v39) sits above upstream's v38, which changes only text
-// search, so schemas 37 and 38 share this DDL without the authority table.
-const agentPostgresV37Sql = withoutSessionRecipientAuthorityPostgresSchema(agentPostgresSql);
-const agentPostgresV36Sql = withoutAgentPostgresColdArchiveChunks(agentPostgresV37Sql);
+// Continuation's recipient authority (v40) sits above upstream's v39, its cold transcript navigation.
+const agentPostgresV39Sql = withoutSessionRecipientAuthorityPostgresSchema(agentPostgresSql);
+const agentPostgresV38Sql = withoutAgentPostgresColdNavigation(agentPostgresV39Sql);
+const agentPostgresV36Sql = withoutAgentPostgresColdArchiveChunks(agentPostgresV38Sql);
 const agentPostgresV35Sql = withLegacyAgentPostgresMemoryPaths(agentPostgresV36Sql);
 const agentPostgresV34Sql = withLegacyPostgresIndexOrdering(
   agentPostgresV35Sql,
@@ -271,11 +278,11 @@ export const agentEngineSchema: StoreSchema = {
         postgresVectorSearchVersion: 2,
       },
       schema: {
-        postgres: agentPostgresV37Sql,
+        postgres: agentPostgresV38Sql,
         postgresVectorDecoderVersion: 2,
         postgresVectorSearchVersion: 2,
       },
-      sql: `${agentColdArchiveChunksPostgresMigration(agentPostgresSql)}
+      sql: `${agentColdArchiveChunksPostgresMigration(agentPostgresV38Sql)}
         UPDATE schema_meta
         SET schema_version = ${AGENT_COLD_ARCHIVE_CHUNKS_SCHEMA_VERSION},
           app_version = '${VERSION.replaceAll("'", "''")}',
@@ -285,12 +292,12 @@ export const agentEngineSchema: StoreSchema = {
     {
       version: AGENT_TEXT_SEARCH_SCHEMA_VERSION,
       fromSchema: {
-        postgres: agentPostgresV37Sql,
+        postgres: agentPostgresV38Sql,
         postgresVectorDecoderVersion: 2,
         postgresVectorSearchVersion: 2,
       },
       schema: {
-        postgres: agentPostgresV37Sql,
+        postgres: agentPostgresV38Sql,
         postgresVectorDecoderVersion: 2,
         postgresVectorSearchVersion: 2,
         postgresTextSearchVersion: 2,
@@ -303,9 +310,30 @@ export const agentEngineSchema: StoreSchema = {
         WHERE meta_key = 'primary';`,
     },
     {
+      version: AGENT_COLD_NAVIGATION_SCHEMA_VERSION,
+      fromSchema: {
+        postgres: agentPostgresV38Sql,
+        postgresVectorDecoderVersion: 2,
+        postgresVectorSearchVersion: 2,
+        postgresTextSearchVersion: 2,
+      },
+      schema: {
+        postgres: agentPostgresV39Sql,
+        postgresVectorDecoderVersion: 2,
+        postgresVectorSearchVersion: 2,
+        postgresTextSearchVersion: 2,
+      },
+      sql: `${agentColdNavigationPostgresMigration(agentPostgresSql)}
+        UPDATE schema_meta
+        SET schema_version = ${AGENT_COLD_NAVIGATION_SCHEMA_VERSION},
+          app_version = '${VERSION.replaceAll("'", "''")}',
+          updated_at = CAST(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP) * 1000 AS bigint)
+        WHERE meta_key = 'primary';`,
+    },
+    {
       version: AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
       fromSchema: {
-        postgres: agentPostgresV37Sql,
+        postgres: agentPostgresV39Sql,
         postgresVectorDecoderVersion: 2,
         postgresVectorSearchVersion: 2,
         postgresTextSearchVersion: 2,
@@ -318,20 +346,8 @@ export const agentEngineSchema: StoreSchema = {
       },
       sql: `${sessionRecipientAuthorityPostgresSql(agentPostgresSql)}
         ${recipientAuthorityMetaSql}`,
-      // The j8 candidate numbered this step 38: upstream's 37 plus the authority table, without
-      // upstream's 38 text search. It keeps its table and rows and gains only the token split.
-      // Its DDL is the current one; re-derive it like the predecessors when a later step changes it.
-      alternateSources: [
-        {
-          fromSchema: {
-            postgres: agentPostgresSql,
-            postgresVectorDecoderVersion: 2,
-            postgresVectorSearchVersion: 2,
-          },
-          sql: `${AGENT_TEXT_SEARCH_POSTGRES_SQL}
-            ${recipientAuthorityMetaSql}`,
-        },
-      ],
+      // Frond (karmaterminal): fork-39 bridge.
+      alternateSources: [agentFork39PostgresSource(agentPostgresSql, recipientAuthorityMetaSql)],
     },
   ],
 };
@@ -394,25 +410,34 @@ export function openAgentEngineStore(
   if (agentId === undefined && !existingOnly) {
     throw new Error("Creating an agent database requires an agent owner");
   }
-  return openEngineStore({
-    anchor,
-    schema: agentEngineSchema,
-    input: agentEngineInput(),
-    existingOnly,
-    reusePostgresConnection,
-    closeOnFailure,
-    assertMigrationCurrent: assertAgentDatabaseMaintenanceAuthority,
-    prepareAnchor: () => {},
-    openSqlite: () => {},
-    inspectSqlite: () => {
-      const facts = getAdmittedSqliteSchemaFacts(anchor) ?? captureSqliteSchemaFacts(anchor);
-      return {
-        hasEngineAnchor: facts.tables.has("openclaw_engine_anchor"),
-        hasExistingData: [...facts.tables, ...facts.views, ...facts.triggers.keys()].some(
-          (name) => name !== "openclaw_engine_anchor" && !name.startsWith("sqlite_"),
-        ),
-      };
-    },
-    admitPostgres: (db, fresh) => admitAgentPostgres(db, agentId, pathname, fresh),
-  });
+  const input = agentEngineInput();
+  const inspectSqlite = () => {
+    const facts = getAdmittedSqliteSchemaFacts(anchor) ?? captureSqliteSchemaFacts(anchor);
+    return {
+      hasEngineAnchor: facts.tables.has("openclaw_engine_anchor"),
+      hasExistingData: [...facts.tables, ...facts.views, ...facts.triggers.keys()].some(
+        (name) => name !== "openclaw_engine_anchor" && !name.startsWith("sqlite_"),
+      ),
+    };
+  };
+  const retainedPostgres = Boolean(input && inspectSqlite().hasEngineAnchor);
+  const open = () =>
+    openEngineStore({
+      anchor,
+      schema: agentEngineSchema,
+      input,
+      existingOnly: existingOnly || retainedPostgres,
+      reusePostgresConnection,
+      closeOnFailure,
+      assertMigrationCurrent: assertAgentDatabaseMaintenanceAuthority,
+      prepareAnchor: () => {},
+      openSqlite: () => {},
+      inspectSqlite,
+      admitPostgres: (db, fresh) => admitAgentPostgres(db, agentId, pathname, fresh),
+    });
+  // Publish the anchor only after PostgreSQL commits its schema and agent identity.
+  // A crash between commits can leave an unused initialized namespace, never an incomplete anchor.
+  return input && !existingOnly && !retainedPostgres
+    ? runSqliteImmediateTransactionSync(anchor, open)
+    : open();
 }

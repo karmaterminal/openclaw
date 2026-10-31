@@ -20,6 +20,7 @@ const scope = [
   "schema_meta",
   "session_recipient_authority",
   "session_transcript_cold_archive_chunks",
+  "transcript_events",
 ];
 
 const withFixture = migrationFixture({ seed, predecessor, target, scope, admission: true });

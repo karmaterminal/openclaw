@@ -37,6 +37,8 @@ export type SessionEventOutcome = {
   status: "completed" | "failed" | "cancelled";
   executionStarted: boolean;
   delivered: boolean;
+  /** The settled answer was committed by the existing conversation-result writer. */
+  conversationResultCommitted?: true;
   summary?: string;
   nextCheckMs?: number;
   sourceDeliveryOutcome?: SourceDeliveryOutcome;
@@ -94,6 +96,8 @@ export type SessionEventOptions = {
     // A yielded tool's result resuming its own conversation; hidden from chat display.
     | "tool_handoff"
     | "cron"
+    // The scheduler's repair request for a failing job; hidden from chat display.
+    | "cron_failure_repair"
     // Continuation (karmaterminal): delegate returns and notices (continuation/continuation-wake.ts).
     | "continuation";
   contextKey?: string;
@@ -117,6 +121,8 @@ export type SessionEventOptions = {
   preserveOccurrenceOnRejection?: true;
   /** An explicitly silent source records its result without transport delivery. */
   deliver?: boolean;
+  /** Host-owned: runtime error payloads stay in the transcript, out of chat delivery. */
+  suppressErrorDelivery?: true;
   /** Producer-owned terminal policy; only explicit silent continuation wakes may opt out. */
   replyExpectation?: "optional";
   /**

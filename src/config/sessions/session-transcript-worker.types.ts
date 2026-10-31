@@ -123,6 +123,7 @@ import type {
   SessionStoreProjectionWorkerResult,
 } from "./session-store-projection.types.js";
 import type {
+  SessionStoreTargetPreparationRequest,
   SessionStoreTargetInventoryRequest,
   SessionStoreTargetInventoryResult,
   SessionStoreTargetReadRequest,
@@ -342,6 +343,7 @@ export type SessionHistoryWorkerInput =
   | SessionStoreSummaryWorkerInput
   | SessionExactEntriesWorkerInput
   | SessionRowFactsWorkerInput
+  | { kind: "session-target-prepare"; request: SessionStoreTargetPreparationRequest }
   | SessionStoreTargetWorkerInput
   | SessionTargetInventoryWorkerInput
   | CombinedSessionStoreTopologyWorkerInput
@@ -494,6 +496,9 @@ export type SessionTranscriptWorkerValues = SessionTranscriptInventoryWorkerValu
           kind: "session-store-target";
           readError: import("./session-transcript-worker-error.types.js").SessionTranscriptWorkerReadError;
         };
+    "session-target-prepare": ReturnType<
+      typeof import("./session-store-target-inventory.js").prepareSessionStoreTargetCandidates
+    >;
     "session-target-inventory": SessionStoreTargetInventoryResult;
     "combined-store-topology": CombinedSessionStoreTopologyResult;
     "session-identity-evidence": {

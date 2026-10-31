@@ -1,7 +1,9 @@
 import { extractSqliteTableSchema } from "../infra/sqlite-schema-sql.js";
 import { withoutAgentColdArchiveChunks } from "./openclaw-agent-cold-archive-chunks-schema.js";
+import { withoutAgentColdNavigation } from "./openclaw-agent-cold-navigation-schema.js";
 import {
   AGENT_COLD_ARCHIVE_CHUNKS_SCHEMA_VERSION,
+  AGENT_COLD_NAVIGATION_SCHEMA_VERSION,
   AGENT_INDEX_RETIREMENT_SCHEMA_VERSION,
   AGENT_JSON_PREDICATE_SCHEMA_VERSION,
   AGENT_MEMORY_REVISION_SCHEMA_VERSION,
@@ -323,10 +325,14 @@ export function getOpenClawAgentMigrationSchema(targetVersion: number): string {
     targetVersion < AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION
       ? withoutSessionRecipientAuthoritySchema(OPENCLAW_AGENT_SCHEMA_SQL)
       : OPENCLAW_AGENT_SCHEMA_SQL;
+  const navigationSchemaSql =
+    targetVersion < AGENT_COLD_NAVIGATION_SCHEMA_VERSION
+      ? withoutAgentColdNavigation(authoritySchemaSql)
+      : authoritySchemaSql;
   const coldArchiveSchemaSql =
     targetVersion < AGENT_COLD_ARCHIVE_CHUNKS_SCHEMA_VERSION
-      ? withoutAgentColdArchiveChunks(authoritySchemaSql)
-      : authoritySchemaSql;
+      ? withoutAgentColdArchiveChunks(navigationSchemaSql)
+      : navigationSchemaSql;
   const revisionSchemaSql =
     targetVersion < AGENT_MEMORY_REVISION_SCHEMA_VERSION
       ? withLegacyAgentMemoryRevisionTriggers(coldArchiveSchemaSql)
