@@ -406,10 +406,8 @@ export async function buildDiscordMessageProcessContext(params: {
   const originatingTo = autoThreadContext?.OriginatingTo ?? dmConversationTarget ?? replyTarget;
   const effectiveSessionKey =
     boundSessionKey ?? autoThreadContext?.SessionKey ?? threadKeys.sessionKey;
-  // Every guild turn feeds the watermark of the transcript it runs in, per channel or thread.
-  const roomHistoryScope = isGuildMessage
-    ? { sessionKey: effectiveSessionKey, channelId: messageChannelId }
-    : undefined;
+  // Every turn feeds the watermark of the transcript it runs in, per channel or thread.
+  const roomHistoryScope = { sessionKey: effectiveSessionKey, channelId: messageChannelId };
   const effectivePreviousTimestamp =
     effectiveSessionKey === route.sessionKey
       ? previousTimestamp
@@ -442,7 +440,7 @@ export async function buildDiscordMessageProcessContext(params: {
   // mention turns keep today's history. Read last, next to dispatch, where the turn begins:
   // a turn dispatched in between is missed and its messages read new, as without watermarks.
   const inboundHistory =
-    recentHistory && roomHistoryScope && ctx.inboundEventKind === "room_event"
+    recentHistory && isGuildMessage && ctx.inboundEventKind === "room_event"
       ? ctx.roomHistoryWatermarks.markHistory(roomHistoryScope, recentHistory)
       : recentHistory;
   const ctxPayload = await (ctx.buildContext ?? buildChannelInboundEventContext)({

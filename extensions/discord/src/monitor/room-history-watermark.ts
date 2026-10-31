@@ -20,6 +20,7 @@
 
 import { pruneMapToMaxSize } from "openclaw/plugin-sdk/collection-runtime";
 import type { HistoryEntry } from "openclaw/plugin-sdk/reply-history";
+import type { GetReplyOptions } from "openclaw/plugin-sdk/reply-runtime";
 
 /** Maximum (session, channel) scopes retained (oldest-touched evicted first). */
 const DEFAULT_MAX_SCOPES = 5000;
@@ -35,14 +36,16 @@ export type DiscordRoomHistoryScope = {
 };
 
 export type DiscordRoomHistoryTurn = {
-  /** Ends the turn once; only a completed agent run advances the watermark. */
-  settle: (outcome: "completed" | "failed") => void;
+  /** Core reports the inline or queued agent run's outcome through these, once per turn. */
+  replyOptions: Pick<GetReplyOptions, "onAgentRunTerminalOutcome" | "onFollowupQueueDisposition">;
+  /** Called when dispatch returns: a turn core did not queue as a follow-up ends here. */
+  finishDispatch: (result: { deferredToActiveRun?: "steer" | "followup" } | null) => void;
 };
 
 type PendingTurn = { snapshot: bigint; ended: boolean };
 type ScopeState = { completed?: bigint; pending: Set<PendingTurn> };
 
-const UNTRACKED_TURN: DiscordRoomHistoryTurn = { settle: () => {} };
+const UNTRACKED_TURN: DiscordRoomHistoryTurn = { replyOptions: {}, finishDispatch: () => {} };
 
 function parseSnowflake(id: string | undefined): bigint | undefined {
   return id && /^\d+$/u.test(id) ? BigInt(id) : undefined;
@@ -95,28 +98,40 @@ export function createDiscordRoomHistoryWatermarks(maxScopes = DEFAULT_MAX_SCOPE
       const key = keyOf(scope);
       const turn: PendingTurn = { snapshot, ended: false };
       touch(key).pending.add(turn);
+      // Only the first report counts; a completed agent run alone advances the watermark.
+      const settle = (outcome: "completed" | "failed") => {
+        if (turn.ended) {
+          return;
+        }
+        turn.ended = true;
+        const state = touch(key);
+        state.pending.delete(turn);
+        if (outcome !== "completed") {
+          return;
+        }
+        // Monotone: a turn that completes after a later one never moves the watermark back.
+        if (state.completed === undefined || snapshot > state.completed) {
+          state.completed = snapshot;
+        }
+        // Turns at or below the watermark no longer move it. Dropping them here also clears
+        // turns cancelled without reporting an outcome, so they cannot hold the boundary up.
+        for (const other of state.pending) {
+          if (other.snapshot <= state.completed) {
+            other.ended = true;
+            state.pending.delete(other);
+          }
+        }
+      };
       return {
-        settle: (outcome) => {
-          if (turn.ended) {
-            return;
-          }
-          turn.ended = true;
-          const state = touch(key);
-          state.pending.delete(turn);
-          if (outcome !== "completed") {
-            return;
-          }
-          // Monotone: a turn that completes after a later one never moves the watermark back.
-          if (state.completed === undefined || snapshot > state.completed) {
-            state.completed = snapshot;
-          }
-          // Turns at or below the watermark no longer move it. Dropping them here also clears
-          // turns cancelled without reporting an outcome, so they cannot hold the boundary up.
-          for (const other of state.pending) {
-            if (other.snapshot <= state.completed) {
-              other.ended = true;
-              state.pending.delete(other);
-            }
+        replyOptions: {
+          onAgentRunTerminalOutcome: settle,
+          // A queue-cap drop never runs, so it never reports an outcome.
+          onFollowupQueueDisposition: () => settle("failed"),
+        },
+        // An inline run has already reported by now; a steered message is not its own run.
+        finishDispatch: (result) => {
+          if (result?.deferredToActiveRun !== "followup") {
+            settle("failed");
           }
         },
       };
