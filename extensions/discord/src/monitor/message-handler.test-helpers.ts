@@ -2,6 +2,7 @@ import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { onTestFinished, vi } from "vitest";
 import type { DiscordIngressLifecycle } from "./ingress.js";
 import type { createDiscordMessageDispatcher } from "./message-dispatcher.js";
+import { createDiscordRoomHistoryWatermarks } from "./room-history-watermark.js";
 import { createNoopThreadBindingManager } from "./thread-bindings.js";
 
 export const DEFAULT_DISCORD_BOT_USER_ID = "bot-123";
@@ -40,6 +41,7 @@ export function createDiscordHandlerParams(overrides?: {
     ...createHandlerContext(),
     botUserId: overrides?.botUserId ?? DEFAULT_DISCORD_BOT_USER_ID,
     guildHistories: new Map(),
+    roomHistoryWatermarks: createDiscordRoomHistoryWatermarks(),
     historyLimit: 0,
     mediaMaxBytes: 10_000,
     dmEnabled: true,
