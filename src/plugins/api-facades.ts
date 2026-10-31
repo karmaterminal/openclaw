@@ -7,7 +7,10 @@ type PluginApiFacadeFields = Pick<
   OpenClawPluginApi,
   "agent" | "lifecycle" | "runContext" | "session"
 >;
-type PluginApiFacadeSource = OpenClawPluginApi["session"]["state"] &
+type PluginApiFacadeSource = Pick<
+  OpenClawPluginApi["session"]["state"],
+  "registerSessionExtension"
+> &
   OpenClawPluginApi["session"]["workflow"] &
   OpenClawPluginApi["session"]["controls"] &
   OpenClawPluginApi["agent"]["events"] &
@@ -55,7 +58,14 @@ export function attachPluginApiFacades(api: OpenClawPluginApiWithoutFacades): Op
   return {
     ...retained,
     session: {
-      state: { registerSessionExtension: api.registerSessionExtension },
+      state: {
+        registerSessionExtension: api.registerSessionExtension,
+        resolveLocalSessionRoute: async (sessionKey) => {
+          // Setup/CLI metadata constructs this API without needing the session DB worker graph.
+          const { resolvePluginLocalSessionRoute } = await import("./local-session-route.js");
+          return resolvePluginLocalSessionRoute({ cfg: api.config, sessionKey });
+        },
+      },
       workflow: {
         enqueueNextTurnInjection: api.enqueueNextTurnInjection,
         steerActiveRun,
