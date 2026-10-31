@@ -1,6 +1,7 @@
 // Frond (karmaterminal, #1415): room events queued mid-turn over durable ingress collect into one turn.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
+import { resolveRequesterPrincipalKey } from "../../agents/requester-origin.js";
 import type { InboundEventKind } from "../../channels/inbound-event/kind.js";
 import {
   bindIngressLifecycleToReplyOptions,
@@ -15,6 +16,9 @@ import {
 import type { SessionEntry } from "../../config/sessions.js";
 import { createReplyOperation } from "../../sessions/session-controller.js";
 import { testing as controllerTesting } from "../../sessions/session-controller.test-support.js";
+import { readUserTurnRequesterOrigin } from "../../sessions/user-turn-transcript-admission.js";
+import { createUserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
+import { createTestUserTurnTranscriptTarget } from "../../sessions/user-turn-transcript.test-support.js";
 import { parseInlineSessionDirectives } from "./directive-handling.parse.js";
 import { prepareReplyRunAdmission } from "./get-reply-run-admission.js";
 import { prepareReplyRunContext } from "./get-reply-run-context.js";
@@ -64,7 +68,7 @@ afterEach(() => controllerTesting.resetSessionControllerForTest());
 const COLLECT_TITLE = "[Queued messages while agent was busy]";
 const ROOM_LANE = "discord:channel:room";
 
-type Row = { id: string; kind?: InboundEventKind };
+type Row = { id: string; kind?: InboundEventKind; from?: Partial<FollowupRun["run"]> };
 type Harness = Awaited<ReturnType<typeof openRoomIngress>>;
 
 function textOf(row: Row): string {
@@ -83,6 +87,8 @@ async function openRoomIngress(
     supersedes?: (candidateId: string, pendingId: string) => boolean;
     now?: () => number;
     claimLeaseMs?: number;
+    /** Give each source the transcript recorder a real admission carries. */
+    transcripts?: boolean;
     enqueue?: (
       row: Row,
       lifecycle: ChannelIngressDispatchLifecycle,
@@ -137,8 +143,19 @@ async function openRoomIngress(
         turnAdoptionLifecycle,
         // Room events inherit the ingress admission fence as their queued cancel signal.
         abortSignal: turnAdoptionLifecycle.abortSignal,
+        userTurnTranscriptRecorder: options.transcripts
+          ? createUserTurnTranscriptRecorder({
+              input: {
+                text: textOf(row),
+                senderIsOwner: row.from?.senderIsOwner,
+                requesterOrigin: row.from?.requesterOrigin,
+              },
+              target: createTestUserTurnTranscriptTarget(),
+              updateMode: "none",
+            })
+          : undefined,
       },
-      { sessionKey: key, senderId: "peer", messageProvider: "discord" },
+      { sessionKey: key, senderId: "peer", messageProvider: "discord", ...row.from },
     );
     // A mid-turn source waits behind the active turn; the turn's end starts the drain.
     expect(enqueueFollowupRun(key, run, settings, "message-id", undefined, false)).toBe(true);
@@ -243,6 +260,64 @@ async function expectSettledOnce(harness: Harness, completed: string[], failed: 
 
 const burst: Row[] = [{ id: "r1" }, { id: "r2" }, { id: "r3" }];
 
+const ROOM_ORIGIN = {
+  sessionKey: "agent:main:discord:channel:room",
+  messageProvider: "discord",
+  chatType: "channel",
+} as const;
+
+/** A non-owner room participant as channel admission records it. */
+function sender(id: string, extra: Partial<FollowupRun["run"]> = {}): Partial<FollowupRun["run"]> {
+  return {
+    senderId: id,
+    senderName: id,
+    senderUsername: `${id}-handle`,
+    senderIsOwner: false,
+    memberRoleIds: [`role-${id}`],
+    requesterOrigin: { ...ROOM_ORIGIN, senderId: id, senderName: id },
+    ...extra,
+  };
+}
+
+// The 2026-10-31 breakfast burst: four non-owner senders, one of them a peer agent.
+const breakfast: Row[] = [
+  { id: "b1", from: sender("alice") },
+  { id: "b2", from: sender("bob") },
+  { id: "b3", from: sender("carol") },
+  { id: "b4", from: sender("peer-agent") },
+];
+
+/** One turn keeps every member's identity, order and content, and no member's authority. */
+function aggregated(run: FollowupRun | undefined, rows: readonly Row[]) {
+  collected(run, rows);
+  for (const [index, row] of rows.entries()) {
+    expect(run?.prompt).toContain(`Queued #${index + 1} (from ${row.from?.senderName})`);
+  }
+  expect(run?.currentInboundEventKind).toBe("room_event");
+  expect(run?.operatorAuthority).toBeUndefined();
+  expect(run?.createChannelCronAuthority).toBeUndefined();
+  const execution = run!.run;
+  expect({
+    senderId: execution.senderId,
+    senderName: execution.senderName,
+    senderUsername: execution.senderUsername,
+    senderE164: execution.senderE164,
+    senderIsOwner: execution.senderIsOwner,
+    traceAuthorized: execution.traceAuthorized,
+    operatorProfileId: execution.operatorProfileId,
+    memberRoleIds: execution.memberRoleIds,
+    gitContributorProfileId: execution.gitContributorProfileId,
+    execOverrides: execution.execOverrides,
+    approvalReviewerDeviceId: execution.approvalReviewerDeviceId,
+    conversationToolPolicy: execution.conversationToolPolicy,
+    runtimePluginToolGrant: execution.runtimePluginToolGrant,
+  }).toEqual({ senderIsOwner: false, traceAuthorized: false });
+  expect(execution.requesterOrigin).toEqual(ROOM_ORIGIN);
+  expect(
+    resolveRequesterPrincipalKey({ ...execution, messageChannel: run!.originatingChannel }),
+  ).toBeUndefined();
+}
+
 describe("mid-turn room events over durable ingress (#1415)", () => {
   describe("admission keeps the configured queue mode", () => {
     async function admitRoomEvent(params: {
@@ -273,7 +348,7 @@ describe("mid-turn room events over durable ingress (#1415)", () => {
         ChatType: "channel",
         InboundEventKind: row.kind ?? "room_event",
         MessageSid: row.id,
-        SenderId: "peer",
+        SenderId: row.from?.senderId ?? "peer",
         Body: body,
         RawBody: body,
         CommandBody: body,
@@ -364,6 +439,7 @@ describe("mid-turn room events over durable ingress (#1415)", () => {
           senderId: "peer",
           messageProvider: "discord",
           config: cfg,
+          ...row.from,
         },
       );
       // The same publication runReplyAgent performs for an active-run follow-up.
@@ -381,6 +457,47 @@ describe("mid-turn room events over durable ingress (#1415)", () => {
       return run;
     }
 
+    /** A long active turn admits the burst; its end drains the mailbox. */
+    async function withAdmittedBurst(
+      mode: QueueSettings["mode"],
+      rows: readonly Row[],
+      check: (harness: Harness) => void,
+    ) {
+      await withTempState(async (stateDir) => {
+        const sessionKey = `agent:main:discord:channel:room-admission-${mode}`;
+        const active = createReplyOperation({
+          sessionKey,
+          sessionId: "room-session",
+          resetTriggered: false,
+        });
+        active.setPhase("running");
+        const harness = await openRoomIngress(stateDir, rows, {
+          enqueue: (row, lifecycle) =>
+            admitRoomEvent({ stateDir, mode, sessionKey, lifecycle, row }),
+        });
+        try {
+          await harness.dispatchRows();
+          active.complete();
+          const settlements = (getExistingFollowupQueue(sessionKey)?.entries ?? []).map(
+            (input) => input.settlement.promise,
+          );
+          expect(settlements).toHaveLength(rows.length);
+          scheduleFollowupDrain(sessionKey, harness.adoptAndRecord);
+          await Promise.allSettled(settlements);
+          await harness.drain.waitForIdle();
+          check(harness);
+          await expectSettledOnce(
+            harness,
+            rows.map((row) => row.id),
+          );
+        } finally {
+          active.complete();
+          clearFollowupQueue(sessionKey);
+          harness.dispose();
+        }
+      });
+    }
+
     it.each([
       ["collect", 1],
       ["followup", 3],
@@ -388,41 +505,34 @@ describe("mid-turn room events over durable ingress (#1415)", () => {
     ] as const)(
       "drains a mid-turn burst under configured %s as %i turn(s)",
       async (mode, turns) => {
-        await withTempState(async (stateDir) => {
-          const sessionKey = `agent:main:discord:channel:room-admission-${mode}`;
-          const active = createReplyOperation({
-            sessionKey,
-            sessionId: "room-session",
-            resetTriggered: false,
-          });
-          active.setPhase("running");
-          const harness = await openRoomIngress(stateDir, burst, {
-            enqueue: (row, lifecycle) =>
-              admitRoomEvent({ stateDir, mode, sessionKey, lifecycle, row }),
-          });
-          try {
-            await harness.dispatchRows();
-            active.complete();
-            const settlements = (getExistingFollowupQueue(sessionKey)?.entries ?? []).map(
-              (input) => input.settlement.promise,
+        await withAdmittedBurst(mode, burst, (harness) => {
+          expect(harness.calls).toHaveLength(turns);
+          if (turns === 1) {
+            collected(harness.calls[0], burst);
+            // The collected turn keeps room-event semantics (optional reply, no steering).
+            expect(harness.calls[0]?.currentInboundEventKind).toBe("room_event");
+          } else {
+            expect(harness.calls.map((call) => call.prompt)).toEqual(burst.map(textOf));
+          }
+        });
+      },
+    );
+
+    it.each([
+      ["collect", 1],
+      ["followup", 4],
+    ] as const)(
+      "drains the four-sender breakfast burst under configured %s as %i turn(s)",
+      async (mode, turns) => {
+        await withAdmittedBurst(mode, breakfast, (harness) => {
+          expect(harness.calls).toHaveLength(turns);
+          if (turns === 1) {
+            aggregated(harness.calls[0], breakfast);
+          } else {
+            // Outside collect each sender keeps its own turn and principal.
+            expect(harness.calls.map((call) => call.run.senderId)).toEqual(
+              breakfast.map((row) => row.from?.senderId),
             );
-            expect(settlements).toHaveLength(3);
-            scheduleFollowupDrain(sessionKey, harness.adoptAndRecord);
-            await Promise.allSettled(settlements);
-            await harness.drain.waitForIdle();
-            expect(harness.calls).toHaveLength(turns);
-            if (turns === 1) {
-              collected(harness.calls[0], burst);
-              // The collected turn keeps room-event semantics (optional reply, no steering).
-              expect(harness.calls[0]?.currentInboundEventKind).toBe("room_event");
-            } else {
-              expect(harness.calls.map((call) => call.prompt)).toEqual(burst.map(textOf));
-            }
-            await expectSettledOnce(harness, ["r1", "r2", "r3"]);
-          } finally {
-            active.complete();
-            clearFollowupQueue(sessionKey);
-            harness.dispose();
           }
         });
       },
@@ -609,4 +719,141 @@ describe("mid-turn room events over durable ingress (#1415)", () => {
       });
     },
   );
+});
+
+describe("a multi-sender room burst runs as one least-authority aggregate (#1415)", () => {
+  it("gives the owner's room message its own turn, in order, between non-owner aggregates", async () => {
+    const rows: Row[] = [
+      { id: "n1", from: sender("alice") },
+      { id: "n2", from: sender("bob") },
+      { id: "o3", from: sender("owner", { senderIsOwner: true, traceAuthorized: true }) },
+      { id: "n4", from: sender("carol") },
+      { id: "n5", from: sender("peer-agent") },
+    ];
+    await withRoomIngress(rows, async (harness) => {
+      await harness.dispatchRows();
+      await harness.endActiveTurn();
+      expect(harness.calls).toHaveLength(3);
+      aggregated(harness.calls[0], rows.slice(0, 2));
+      // The owner's turn is the owner's own run, owner authority intact.
+      expect(harness.calls[1]).toBe(harness.runs.get("o3"));
+      expect(harness.calls[1]?.run).toMatchObject({ senderId: "owner", senderIsOwner: true });
+      aggregated(harness.calls[2], rows.slice(3));
+      await expectSettledOnce(
+        harness,
+        rows.map((row) => row.id),
+      );
+    });
+  });
+
+  it("keeps each sender-scoped grant or restriction out of the aggregate as its own turn", async () => {
+    const config = {
+      tools: {
+        toolsBySender: {
+          "id:grantee": { alsoAllow: ["exec"] },
+          "id:restricted": { deny: ["exec"] },
+        },
+      },
+    };
+    const member = (id: string, extra: Partial<FollowupRun["run"]> = {}) =>
+      sender(id, { config, ...extra });
+    const rows: Row[] = [
+      { id: "a", from: member("alice") },
+      { id: "b", from: member("bob") },
+      // toolsBySender resolves from the sender at run time: one grant, one restriction.
+      { id: "g", from: member("grantee") },
+      { id: "r", from: member("restricted") },
+      // Sender-scoped authority carried on the run itself.
+      {
+        id: "e",
+        from: member("elevated", {
+          bashElevated: { enabled: true, allowed: true, defaultLevel: "on" },
+        }),
+      },
+      { id: "x", from: member("exec", { execOverrides: { security: "full" } }) },
+      { id: "v", from: member("reviewer", { approvalReviewerDeviceId: "device-1" }) },
+      { id: "l", from: member("legacy", { conversationToolPolicy: { deny: ["exec"] } }) },
+      { id: "c", from: member("carol") },
+      { id: "d", from: member("peer-agent") },
+    ];
+    await withRoomIngress(
+      rows,
+      async (harness) => {
+        await harness.dispatchRows();
+        await harness.endActiveTurn();
+        const own = ["g", "r", "e", "x", "v", "l"];
+        expect(harness.calls).toHaveLength(own.length + 2);
+        aggregated(harness.calls[0], rows.slice(0, 2));
+        // Each excluded member runs as itself: its grant is never shared, its restriction never lifted.
+        expect(harness.calls.slice(1, -1)).toEqual(own.map((id) => harness.runs.get(id)));
+        aggregated(harness.calls.at(-1), rows.slice(-2));
+        // The aggregate's transcript turn records the room, not its last sender.
+        for (const call of [harness.calls[0], harness.calls.at(-1)]) {
+          expect(readUserTurnRequesterOrigin(call?.userTurnTranscriptRecorder)).toEqual(
+            ROOM_ORIGIN,
+          );
+        }
+        await expectSettledOnce(
+          harness,
+          rows.map((row) => row.id),
+        );
+      },
+      { transcripts: true },
+    );
+  });
+
+  it("settles every member once when one sender's member loses custody during adoption", async () => {
+    // Named edge case: b2 loses custody while b1/b3 commit. The turn is refused without
+    // replaying b1/b3; supersede tombstones b2 and its replacement runs as a later turn.
+    const rows = breakfast.slice(0, 3);
+    await withRoomIngress(
+      rows,
+      async (harness) => {
+        await harness.dispatchRows();
+        const lostMember = harness.runs.get("b2")!.turnAdoptionLifecycle!;
+        const adoptLostMember = lostMember.onAdopted;
+        lostMember.onAdopted = async () => {
+          await harness.addRow({ id: "b2-edit", from: sender("bob") });
+          expect(await harness.drain.drainOnce()).toEqual({ started: 1 });
+          await adoptLostMember();
+        };
+        const lost: unknown[] = [];
+        await harness.endActiveTurn(async (run) => {
+          harness.calls.push(run);
+          try {
+            await admitFollowupRunLifecycle(run);
+          } catch (error) {
+            if (!isIngressAdoptionLostError(error)) {
+              throw error;
+            }
+            lost.push(error);
+          }
+        });
+        expect(lost).toEqual([expect.objectContaining({ code: "superseded" })]);
+        expect(harness.calls).toHaveLength(2);
+        aggregated(harness.calls[0], rows);
+        expect(harness.calls[1]).toBe(harness.runs.get("b2-edit"));
+        await expectSettledOnce(harness, ["b1", "b2", "b3", "b2-edit"]);
+      },
+      { supersedes: (candidate, pending) => candidate === "b2-edit" && pending === "b2" },
+    );
+  });
+
+  it("runs room content arriving during the aggregate turn as the next turn", async () => {
+    const late: Row = { id: "late", from: sender("dave") };
+    await withRoomIngress(breakfast, async (harness) => {
+      await harness.dispatchRows();
+      await harness.endActiveTurn(async (run) => {
+        await harness.adoptAndRecord(run);
+        if (harness.calls.length === 1) {
+          await harness.addRow(late);
+          await harness.dispatchRows(1);
+        }
+      });
+      expect(harness.calls).toHaveLength(2);
+      aggregated(harness.calls[0], breakfast);
+      expect(harness.calls[1]).toBe(harness.runs.get("late"));
+      await expectSettledOnce(harness, [...breakfast.map((row) => row.id), "late"]);
+    });
+  });
 });
