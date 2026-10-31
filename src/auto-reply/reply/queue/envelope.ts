@@ -263,7 +263,11 @@ export function requiresIndividualCollectDrain(item: FollowupRun): boolean {
     item.userTurnTranscriptRecorder?.hasPersisted() === true ||
     item.disableCollectBatching === true ||
     item.run.skillLibraryAuthoring !== undefined ||
-    item.currentInboundEventKind === "room_event" ||
+    // Frond (karmaterminal, #1415): only a configured collect batches room events,
+    // including their overflow summaries; their kind in the delivery key keeps them
+    // apart from addressed input.
+    (item.currentInboundEventKind === "room_event" &&
+      item.controllerInput?.policy.mode !== "collect") ||
     item.currentInboundAudio === true
   );
 }

@@ -61,6 +61,8 @@ import {
   resolveInboundUserContextPromptJoiner,
 } from "./inbound-meta.js";
 import { resolveQueueSettings } from "./queue/settings-runtime.js";
+// Frond (karmaterminal, #1415): shared room-event queue-mode rule.
+import { resolveRoomEventQueueMode } from "./queue/settings.js";
 import { resolveReplyOperationRunState } from "./reply-operation-run-state.js";
 import { readReplySourceInput } from "./reply-source-binding.js";
 import { resolveRuntimePolicySessionKey } from "./runtime-policy-session-key.js";
@@ -309,7 +311,8 @@ export async function prepareReplyRunContext(params: RunPreparedReplyParams) {
       ...policy,
       mode:
         inboundEventKind === "room_event"
-          ? "followup"
+          ? // Frond (karmaterminal, #1415): configured collect still batches room events.
+            resolveRoomEventQueueMode(policy.mode)
           : effectiveResetTriggered
             ? "interrupt"
             : policy.mode,

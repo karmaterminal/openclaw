@@ -74,6 +74,10 @@ Stopping already-running work is a different intent from redirecting future work
 
 Messages with separate durable ingress admission, including Discord and Telegram messages, are not compatible for batching: `collect` keeps them as separate followup turns. Compatible Gateway `chat.send` inputs can still combine. See [Queue modes](/concepts/queue#queue-modes).
 
+<!-- Frond (karmaterminal, #1415): unaddressed room events collect. -->
+
+[Ambient room events](/channels/ambient-room-events) are the exception: under `collect`, consecutive room events with the same sender, route, and reply target combine into one followup turn, and each message's admission still settles once. Room events still never steer or interrupt.
+
 ## Burst example
 
 If several messages arrive while the agent is executing a tool call:

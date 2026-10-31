@@ -50,6 +50,10 @@ Same-requester steering is the default. A compatible prompt from the active turn
 
 Messages from channels using durable ingress admission, including Discord and Telegram, keep separate followup turns: `collect` behaves like `followup` there. Each message owns an exclusive admission lifecycle so one source cannot commit before another rejects a combined turn. Compatible Gateway `chat.send` inputs use non-exclusive lifecycles and can still collect.
 
+<!-- Frond (karmaterminal, #1415): unaddressed room events collect. -->
+
+[Ambient room events](/channels/ambient-room-events) are the exception: under `collect`, consecutive room events with the same sender, route, and reply target combine into one followup turn, and each message's admission still settles once. Room events still never steer or interrupt.
+
 For runtime-specific timing and dependency behavior, see [Steering queue](/concepts/queue-steering). For the explicit `/steer <message>` command, see [Steer](/tools/steer).
 
 A restart-recovery resend is an ordinary input in the same session mailbox. When

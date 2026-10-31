@@ -43,16 +43,20 @@ function hasExclusiveTurnAdmission(
   return lifecycle?.admission === "exclusive";
 }
 
-function resolveTurnAdoptionLifecycleDeliveryKey(
-  lifecycle: FollowupRun["turnAdoptionLifecycle"],
-): string {
+// Frond (karmaterminal, #1415): takes the run so room events can share collect identity.
+function resolveTurnAdoptionLifecycleDeliveryKey(run: FollowupRun): string {
+  const lifecycle = run.turnAdoptionLifecycle;
   if (!lifecycle) {
     return "";
   }
   const explicitOwnerKey = lifecycle.ownerKey ?? "";
   // Closed admission marker — never infer exclusive from onAbandoned presence.
   // Cancel-only owners share collect identity via ownerKey alone.
-  if (!hasExclusiveTurnAdmission(lifecycle)) {
+  // Frond (karmaterminal, #1415): so do exclusive room-event lifecycles. The collected
+  // claim still adopts and settles each source lifecycle once. Accepted edge case: a
+  // member losing ingress custody after a sibling committed refuses the turn without
+  // replaying the committed siblings; ingress retries the lost member.
+  if (!hasExclusiveTurnAdmission(lifecycle) || run.currentInboundEventKind === "room_event") {
     return explicitOwnerKey;
   }
   let admissionOwnerKey = queuedAdmissionOwnerState.keys.get(lifecycle);
@@ -170,7 +174,8 @@ export function resolveFollowupDeliveryStorageKey(run: FollowupRun): string {
     execution.suppressNextUserMessagePersistence === true,
     execution.suppressTranscriptOnlyAssistantPersistence === true,
     execution.blockReplyBreak,
-    resolveTurnAdoptionLifecycleDeliveryKey(run.turnAdoptionLifecycle),
+    // Frond (karmaterminal, #1415): room-event-aware admission identity.
+    resolveTurnAdoptionLifecycleDeliveryKey(run),
   ]);
 }
 

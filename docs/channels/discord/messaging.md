@@ -26,6 +26,10 @@ How inbound and outbound Discord messages are routed, formatted, acknowledged, a
 
 Messages in the same channel continue reaching the [reply queue](/concepts/queue) while an earlier message waits for its turn. Discord messages use durable ingress admission, so `collect` keeps queued messages as separate followup turns, like `followup`. This prevents one message from committing before another rejects a combined turn. Deferring a message preserves its durable recovery state.
 
+<!-- Frond (karmaterminal, #1415): unaddressed room events collect. -->
+
+[Ambient room events](/channels/ambient-room-events) are the exception: under `collect`, consecutive room events with the same sender, route, and reply target combine into one followup turn, and each message's admission still settles once. Room events still never steer or interrupt.
+
 ## Message behavior
 
 <AccordionGroup>

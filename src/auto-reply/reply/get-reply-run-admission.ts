@@ -52,6 +52,8 @@ import {
 import { waitForPreparedReplyQueue } from "./get-reply-run-queue.js";
 import { resolveActiveRunQueueAction } from "./queue-policy.js";
 import { resolveQueueSettings } from "./queue/settings-runtime.js";
+// Frond (karmaterminal, #1415): shared room-event queue-mode rule.
+import { resolveRoomEventQueueMode } from "./queue/settings.js";
 import { hasPendingFollowupQueueWork } from "./queue/state.js";
 import { readReplySourceInput } from "./reply-source-binding.js";
 import {
@@ -151,7 +153,8 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
   if (sourceInput) {
     updateSessionControllerSourcePolicy(sourceInput, {
       ...resolvedQueue,
-      mode: isRoomEvent ? "followup" : activeRunQueueMode,
+      // Frond (karmaterminal, #1415): configured collect still batches room events.
+      mode: isRoomEvent ? resolveRoomEventQueueMode(activeRunQueueMode) : activeRunQueueMode,
     });
   }
   // Keep the physical owner through preparation; IDs can overlap across stores.
