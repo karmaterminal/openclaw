@@ -2,13 +2,13 @@
 
 ## Named refs
 
-| Category         | Ref                                        | Full SHA                                                     | Local/tracking/server equality                                                              |
-| ---------------- | ------------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
-| Product/base     | `frond/1415-room-collect-base`             | `22f49a43a118f86dfd8c95dd5b2850420aa8bcad`                   | HEAD, local lane branch, and `origin/frond/1415-room-collect-base` all resolve to this SHA. |
-| Lane/safe branch | `codeagent/1415-heartbeat-room-echo-trace` | `22f49a43a118f86dfd8c95dd5b2850420aa8bcad`                   | Local lane branch and origin lane branch published equal before evidence credit.            |
-| CI/workflow      | N/A (read-only trace)                      | N/A                                                          | N/A                                                                                         |
-| Presentation     | N/A (read-only trace)                      | N/A                                                          | N/A                                                                                         |
-| Docs/proof       | This findings file                         | Will be recorded by the findings-file commit SHA after push. | No source, seat, DB, journal, or test mutation.                                             |
+| Category         | Ref                                        | Full SHA                                   | Local/tracking/server equality                                                              |
+| ---------------- | ------------------------------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| Product/base     | `frond/1415-room-collect-base`             | `22f49a43a118f86dfd8c95dd5b2850420aa8bcad` | HEAD, local lane branch, and `origin/frond/1415-room-collect-base` all resolve to this SHA. |
+| Lane/safe branch | `codeagent/1415-heartbeat-room-echo-trace` | `22f49a43a118f86dfd8c95dd5b2850420aa8bcad` | Local lane branch and origin lane branch published equal before evidence credit.            |
+| CI/workflow      | N/A (read-only trace)                      | N/A                                        | N/A                                                                                         |
+| Presentation     | N/A (read-only trace)                      | N/A                                        | N/A                                                                                         |
+| Docs/proof       | This findings file (findings commit)       | `b67f135e3b3d2ae409a5180852ebbe5d295d6995` | Findings commit is lane local and `origin/codeagent/1415-heartbeat-room-echo-trace` equal.  |
 
 Upstream comparison ref supplied by the workorder: U12 `b8b054c13ae859b9ab14d31c5fec90078141e327`. Against the composite, affected upstream flux is in Discord room-history watermarking, cron session execution, and reply normalization; room-session heartbeat execution itself is ordinary automation/session execution rather than the retired heartbeat implementation.
 
