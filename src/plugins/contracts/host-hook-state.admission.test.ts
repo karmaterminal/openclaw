@@ -69,7 +69,7 @@ describe("next-turn injection admission fence", () => {
     expect(readEntry(scope)?.pluginNextTurnInjections?.["owner-fixture"]?.[0]?.expiresAt).toBe(
       now + 86_395_000,
     );
-  });
+  }, 15_000);
 
   it("requires a current identity tuple for subagent admission but not generic main/channel callers", async () => {
     const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };

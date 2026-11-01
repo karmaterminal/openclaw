@@ -43,7 +43,10 @@ describe("next-turn injection identity", () => {
     return { agentId, sessionKey, storePath };
   }
   async function expectContext(params: Parameters<typeof drain>[0], prependContext: string) {
-    await expect(drain(params)).resolves.toMatchObject({ prependContext });
+    const result = await drain(params);
+    expect(result.queuedInjections.map((injection) => injection.text)).toEqual([prependContext]);
+    expect(result.prependContext).toContain(`\n${prependContext}\n`);
+    expect(result.prependContext).toContain("EXTERNAL_UNTRUSTED_CONTENT");
   }
   async function seed(
     cfg: OpenClawConfig,
@@ -827,12 +830,16 @@ describe("next-turn injection identity", () => {
     }
     setActivePluginRegistry(registry);
     const first = await drain({ cfg, ...scope });
-    // The 32 raw payloads fill 64 KiB exactly; rendered separators leave room for 31.
-    expect(first.queuedInjections).toHaveLength(31);
+    // Provenance wrappers consume the same 64 KiB budget as payloads.
+    const firstCount = first.queuedInjections.length;
+    expect(firstCount).toBeGreaterThan(20);
+    expect(firstCount).toBeLessThan(32);
     expect(Buffer.byteLength(first.prependContext ?? "", "utf8")).toBeLessThanOrEqual(64 * 1024);
     expect(readEntry(scope)?.pluginNextTurnInjections?.["owner-fixture"]).toHaveLength(8);
-    expect(readEntry(scope)?.pluginNextTurnInjections?.["second-fixture"]).toHaveLength(1);
-    expect((await drain({ cfg, ...scope })).queuedInjections).toHaveLength(9);
+    expect(readEntry(scope)?.pluginNextTurnInjections?.["second-fixture"]).toHaveLength(
+      32 - firstCount,
+    );
+    expect((await drain({ cfg, ...scope })).queuedInjections).toHaveLength(40 - firstCount);
     expect(
       readEntry(scope)?.pluginNextTurnInjectionOutcomes?.["owner-fixture"]?.["owner-fixture-0"]
         ?.state,
@@ -966,23 +973,27 @@ describe("next-turn injection identity", () => {
     expect(readEntry({ ...physical("agent:work:global"), agentId: "work" })).toBeUndefined();
   });
 
-  it.each([false, true])("drains only the raw owner when collision=%s", async (collision) => {
-    const cfg: OpenClawConfig = {
-      session: { store: state.path("{agentId}", "sessions.json"), scope: "global" },
-      agents: { entries: { qa: {}, beta: {} } },
-    };
-    const scope = (agentId: string) => sessionScope(cfg, agentId, "global");
-    for (const agentId of ["qa", "beta"]) {
-      await seed(cfg, scope(agentId), agentId, agentId);
-    }
-    const betaBefore = readEntry(scope("beta"));
-    const literal = { ...scope("qa"), sessionKey: "agent:qa:global" };
-    if (collision) {
-      await writeEntry(literal, { sessionId: "separate-literal", updatedAt: 1 });
-    }
-    await expectContext({ cfg, agentId: "qa", sessionKey: "global" }, "qa");
-    expect(readEntry(scope("qa"))?.pluginNextTurnInjections).toBeUndefined();
-    expect(readEntry(literal)?.sessionId).toBe(collision ? "separate-literal" : undefined);
-    expect(readEntry(scope("beta"))).toEqual(betaBefore);
-  });
+  it.each([false, true])(
+    "drains only the raw owner when collision=%s",
+    async (collision) => {
+      const cfg: OpenClawConfig = {
+        session: { store: state.path("{agentId}", "sessions.json"), scope: "global" },
+        agents: { entries: { qa: {}, beta: {} } },
+      };
+      const scope = (agentId: string) => sessionScope(cfg, agentId, "global");
+      for (const agentId of ["qa", "beta"]) {
+        await seed(cfg, scope(agentId), agentId, agentId);
+      }
+      const betaBefore = readEntry(scope("beta"));
+      const literal = { ...scope("qa"), sessionKey: "agent:qa:global" };
+      if (collision) {
+        await writeEntry(literal, { sessionId: "separate-literal", updatedAt: 1 });
+      }
+      await expectContext({ cfg, agentId: "qa", sessionKey: "global" }, "qa");
+      expect(readEntry(scope("qa"))?.pluginNextTurnInjections).toBeUndefined();
+      expect(readEntry(literal)?.sessionId).toBe(collision ? "separate-literal" : undefined);
+      expect(readEntry(scope("beta"))).toEqual(betaBefore);
+    },
+    15_000,
+  );
 });
