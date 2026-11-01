@@ -135,6 +135,23 @@ describe("next-turn injection admission fence", () => {
     };
     expect((await getPluginNextTurnInjectionState(staleLookup)).state).toBe("unknown");
     expect((await withdrawPluginNextTurnInjection(staleLookup)).state).toBe("unknown");
+    for (const partialFence of [
+      { expectedSessionId: "same" },
+      { expectedLifecycleRevision: "after" },
+      { expectedSessionId: "", expectedLifecycleRevision: "after" },
+    ]) {
+      expect(
+        (
+          await withdrawPluginNextTurnInjection({
+            ...staleLookup,
+            expectedSessionId: undefined,
+            expectedLifecycleRevision: undefined,
+            ...partialFence,
+          })
+        ).state,
+      ).toBe("unknown");
+      expect(readEntry(scope)?.pluginNextTurnInjections?.["owner-fixture"]).toHaveLength(1);
+    }
     expect(
       (
         await getPluginNextTurnInjectionState({

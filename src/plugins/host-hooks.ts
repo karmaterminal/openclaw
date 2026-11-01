@@ -344,27 +344,31 @@ export function normalizePluginHostHookId(value: string | undefined): string {
   return (value ?? "").trim();
 }
 
+export function renderPluginNextTurnInjectionText(entry: PluginNextTurnInjectionRecord): string {
+  if (
+    (entry.placement !== "prepend_context" && entry.placement !== "append_context") ||
+    typeof entry.text !== "string"
+  ) {
+    return "";
+  }
+  return entry.provenance
+    ? `Plugin external data (${entry.pluginId.replace(/[^a-zA-Z0-9_.-]/g, "_")}):\n${wrapExternalContent(
+        entry.text.trim(),
+        {
+          source: "unknown",
+          subject: entry.provenance.source,
+        },
+      )}`
+    : entry.text.trim();
+}
+
 export function buildPluginAgentTurnPrepareContext(params: {
   queuedInjections: PluginNextTurnInjectionRecord[];
 }): PluginAgentTurnPrepareResult {
   const prepend: string[] = [];
   const append: string[] = [];
   params.queuedInjections.forEach((entry) => {
-    if (
-      (entry.placement !== "prepend_context" && entry.placement !== "append_context") ||
-      typeof entry.text !== "string"
-    ) {
-      return;
-    }
-    const text = entry.provenance
-      ? `Plugin external data (${entry.pluginId.replace(/[^a-zA-Z0-9_.-]/g, "_")}):\n${wrapExternalContent(
-          entry.text.trim(),
-          {
-            source: "unknown",
-            subject: entry.provenance.source,
-          },
-        )}`
-      : entry.text.trim();
+    const text = renderPluginNextTurnInjectionText(entry);
     if (text) {
       (entry.placement === "prepend_context" ? prepend : append).push(text);
     }

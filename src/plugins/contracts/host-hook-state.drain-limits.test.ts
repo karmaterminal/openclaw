@@ -86,6 +86,67 @@ describe("next-turn injection drain limits", () => {
     ]);
   });
 
+  it("charges provenance wrappers and separators to the plugin byte budget", async () => {
+    const cfg: OpenClawConfig = {
+      agents: { entries: { main: {} } },
+      plugins: { entries: { "owner-fixture": { hooks: { nextTurnInjectionDrainMaxBytes: 600 } } } },
+    };
+    const scope = sessionScope(cfg, "main", "agent:main:rendered-budget");
+    await writeEntry(scope, {
+      sessionId: "rendered-budget",
+      updatedAt: 1,
+      pluginNextTurnInjections: {
+        "owner-fixture": Array.from({ length: 3 }, (_, index) => ({
+          id: String(index),
+          pluginId: "owner-fixture",
+          text: "x",
+          placement: "prepend_context" as const,
+          provenance: { source: "fixture" },
+          createdAt: index,
+        })),
+      },
+    });
+    const first = await drain({ cfg, ...scope });
+    expect(first.queuedInjections.length).toBeGreaterThan(0);
+    expect(first.queuedInjections.length).toBeLessThan(3);
+    expect(Buffer.byteLength(first.prependContext ?? "", "utf8")).toBeLessThanOrEqual(600);
+    const second = await drain({ cfg, ...scope });
+    expect(second.queuedInjections.length).toBeGreaterThan(0);
+    expect(Buffer.byteLength(second.prependContext ?? "", "utf8")).toBeLessThanOrEqual(600);
+  });
+
+  it("charges provenance wrappers to the aggregate budget across owners", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:rendered-aggregate");
+    const registry = createEmptyPluginRegistry();
+    for (const id of ["owner-fixture", "other-fixture"]) {
+      registry.plugins.push(createPluginRecord({ id, status: "loaded" }));
+    }
+    setActivePluginRegistry(registry);
+    await writeEntry(scope, {
+      sessionId: "rendered-aggregate",
+      updatedAt: 1,
+      pluginNextTurnInjections: Object.fromEntries(
+        ["owner-fixture", "other-fixture"].map((pluginId, owner) => [
+          pluginId,
+          Array.from({ length: 16 }, (_, index) => ({
+            id: `${owner}-${index}`,
+            pluginId,
+            text: "x".repeat(1900),
+            placement: "prepend_context" as const,
+            provenance: { source: "fixture" },
+            createdAt: owner * 16 + index,
+          })),
+        ]),
+      ),
+    });
+    const first = await drain({ cfg, ...scope });
+    expect(first.queuedInjections.length).toBeLessThan(32);
+    expect(Buffer.byteLength(first.prependContext ?? "", "utf8")).toBeLessThanOrEqual(64 * 1024);
+    const second = await drain({ cfg, ...scope });
+    expect(second.queuedInjections.length).toBeGreaterThan(0);
+  });
+
   it("caps settled tombstones despite distant injection deadlines", async () => {
     const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
     const scope = sessionScope(cfg, "main", "agent:main:tombstone-cap");

@@ -1,5 +1,18 @@
 import type { PluginNextTurnInjectionRecord } from "./host-hooks.js";
 
+export function hasValidInjectionGenerationFence(
+  expectedSessionId?: string,
+  expectedLifecycleRevision?: string,
+): boolean {
+  if ((expectedSessionId === undefined) !== (expectedLifecycleRevision === undefined)) {
+    return false;
+  }
+  return (
+    expectedSessionId === undefined ||
+    (Boolean(expectedSessionId.trim()) && Boolean(expectedLifecycleRevision?.trim()))
+  );
+}
+
 export function isPluginNextTurnInjectionPlacement(
   value: unknown,
 ): value is PluginNextTurnInjectionRecord["placement"] {

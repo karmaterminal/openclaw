@@ -15,6 +15,7 @@ import {
 } from "./host-hook-injection-outcomes.js";
 import { isUnsupportedInjectionRoute } from "./host-hook-injection-route.js";
 import {
+  hasValidInjectionGenerationFence,
   isExpired,
   isPluginNextTurnInjectionPlacement,
   isPluginNextTurnInjectionRecord,
@@ -26,6 +27,7 @@ import type {
 } from "./host-hook-turn-types.js";
 import {
   buildPluginAgentTurnPrepareContext,
+  renderPluginNextTurnInjectionText as renderInjection,
   isPluginJsonValue,
   type PluginAgentTurnPrepareResult,
   type PluginJsonValue,
@@ -61,6 +63,11 @@ export async function withdrawPluginNextTurnInjection(params: {
   shouldWithdraw?: () => boolean;
 }): Promise<PluginNextTurnInjectionStateResult> {
   const idempotencyKey = params.idempotencyKey.trim();
+  if (
+    !hasValidInjectionGenerationFence(params.expectedSessionId, params.expectedLifecycleRevision)
+  ) {
+    return { sessionKey: params.sessionKey, idempotencyKey, state: "unknown" };
+  }
   if (params.shouldWithdraw && !params.shouldWithdraw()) {
     return {
       sessionKey: params.sessionKey,
@@ -138,11 +145,10 @@ export async function enqueuePluginNextTurnInjection(params: {
   const text = normalizeOptionalString(params.injection.text);
   if (
     !text ||
-    (params.injection.expectedSessionId !== undefined) !==
-      (params.injection.expectedLifecycleRevision !== undefined) ||
-    (params.injection.expectedSessionId !== undefined &&
-      (!params.injection.expectedSessionId.trim() ||
-        !params.injection.expectedLifecycleRevision?.trim())) ||
+    !hasValidInjectionGenerationFence(
+      params.injection.expectedSessionId,
+      params.injection.expectedLifecycleRevision,
+    ) ||
     text.length > MAX_PLUGIN_NEXT_TURN_INJECTION_TEXT_LENGTH ||
     Buffer.byteLength(text, "utf8") >
       (params.cfg.plugins?.entries?.[params.pluginId]?.hooks?.nextTurnInjectionDrainMaxBytes ??
@@ -341,7 +347,6 @@ async function drainPluginNextTurnInjections(
   }
   const scope = { cfg: params.cfg, sessionKey, agentId: params.agentId };
   const selectedEntry = await readResolvedSessionEntryInWorker(scope);
-  // Empty queues need no qualified mutation target. Concurrent enqueues wait for the next turn.
   if (
     (!selectedEntry?.pluginNextTurnInjections ||
       Object.keys(selectedEntry.pluginNextTurnInjections).length === 0) &&
@@ -388,8 +393,9 @@ async function drainPluginNextTurnInjections(
     );
     const drained: PluginNextTurnInjectionRecord[] = [];
     const retained: NonNullable<SessionEntry["pluginNextTurnInjections"]> = {};
-    let totalEntries = 0;
-    let totalBytes = 0;
+    let totalEntries = 0,
+      totalBytes = 0;
+    const totalPlacements = new Set<PluginNextTurnInjectionRecord["placement"]>();
     for (const [pluginId, entries] of Object.entries(entry.pluginNextTurnInjections)) {
       // Guard against malformed/hand-edited persisted state — a non-array value
       // here would crash .filter and break prompt-building for the session.
@@ -408,6 +414,7 @@ async function drainPluginNextTurnInjections(
         DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN;
       let drainedEntriesForPlugin = 0;
       let drainedBytesForPlugin = 0;
+      const pluginPlacements = new Set<PluginNextTurnInjectionRecord["placement"]>();
       let budgetBlocked = false;
       for (const candidate of entries) {
         if (!isPluginNextTurnInjectionRecord(candidate)) {
@@ -425,17 +432,21 @@ async function drainPluginNextTurnInjections(
           budgetBlocked = true;
           (retained[pluginId] ??= []).push(candidate);
         } else {
-          const bytes = Buffer.byteLength(candidate.text, "utf8");
-          if (bytes > DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN || bytes > maxBytes) {
+          const renderedBytes = Buffer.byteLength(renderInjection(candidate), "utf8");
+          const pluginBytes = renderedBytes + (pluginPlacements.has(candidate.placement) ? 2 : 0);
+          const aggregateBytes = renderedBytes + (totalPlacements.has(candidate.placement) ? 2 : 0);
+          if (
+            renderedBytes > Math.min(DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN, maxBytes)
+          ) {
             settle(entry, pluginId, candidate, "discarded", now, notices);
             continue;
           }
           if (
             budgetBlocked ||
             drainedEntriesForPlugin >= maxEntries ||
-            drainedBytesForPlugin + bytes > maxBytes ||
+            drainedBytesForPlugin + pluginBytes > maxBytes ||
             totalEntries >= DEFAULT_DRAINED_NEXT_TURN_INJECTIONS_PER_PLUGIN ||
-            totalBytes + bytes > DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN
+            totalBytes + aggregateBytes > DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN
           ) {
             budgetBlocked = true;
             (retained[pluginId] ??= []).push(candidate);
@@ -443,9 +454,11 @@ async function drainPluginNextTurnInjections(
           }
           drained.push(candidate);
           drainedEntriesForPlugin += 1;
-          drainedBytesForPlugin += bytes;
+          drainedBytesForPlugin += pluginBytes;
+          pluginPlacements.add(candidate.placement);
           totalEntries += 1;
-          totalBytes += bytes;
+          totalBytes += aggregateBytes;
+          totalPlacements.add(candidate.placement);
           settle(entry, pluginId, candidate, "consumed", now, notices);
         }
       }
