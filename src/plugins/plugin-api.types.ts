@@ -116,6 +116,8 @@ type OpenClawPluginSessionStateApi = {
     sessionKey: string;
     exists: boolean;
     onHost: boolean;
+    sessionId: string | null;
+    lifecycleRevision: string | null;
   }>;
 };
 

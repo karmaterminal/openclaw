@@ -15,7 +15,10 @@ it("reads current exact session presence on a worker without host data SQL", asy
     const cfg = { session: { store: storePath } } as OpenClawConfig;
     setRuntimeConfigSnapshot(cfg);
     const resolve = () => resolvePluginLocalSessionRoute({ cfg, sessionKey });
-    await replaceSessionEntry({ agentId, env, sessionKey }, { sessionId: "before", updatedAt: 1 });
+    await replaceSessionEntry(
+      { agentId, env, sessionKey },
+      { sessionId: "before", lifecycleRevision: "r1", updatedAt: 1 },
+    );
     await replaceSessionEntry(
       { agentId, env, sessionKey: "global" },
       { sessionId: "shared", updatedAt: 1 },
@@ -23,20 +26,37 @@ it("reads current exact session presence on a worker without host data SQL", asy
 
     const sql = observeHostDataSql();
     try {
-      expect(await resolve()).toEqual({ sessionKey, exists: true, onHost: true });
+      expect(await resolve()).toEqual({
+        sessionKey,
+        exists: true,
+        onHost: true,
+        sessionId: "before",
+        lifecycleRevision: "r1",
+      });
       expect(await resolvePluginLocalSessionRoute({ cfg, sessionKey: "global" })).toEqual({
         sessionKey: "global",
         exists: true,
         onHost: false,
+        sessionId: "shared",
+        lifecycleRevision: null,
       });
       expect(sql.queries).toEqual([]);
     } finally {
       sql.restore();
     }
-    await replaceSessionEntry({ agentId, env, sessionKey }, { sessionId: "after", updatedAt: 2 });
+    await replaceSessionEntry(
+      { agentId, env, sessionKey },
+      { sessionId: "after", lifecycleRevision: "r2", updatedAt: 2 },
+    );
     const refreshedSql = observeHostDataSql();
     try {
-      expect(await resolve()).toEqual({ sessionKey, exists: true, onHost: true });
+      expect(await resolve()).toEqual({
+        sessionKey,
+        exists: true,
+        onHost: true,
+        sessionId: "after",
+        lifecycleRevision: "r2",
+      });
       expect(refreshedSql.queries).toEqual([]);
     } finally {
       refreshedSql.restore();

@@ -12,6 +12,9 @@ export type PluginLocalSessionRoute = {
   sessionKey: string;
   exists: boolean;
   onHost: boolean;
+  /** Exact persisted row identity; absent when no row can be proved. */
+  sessionId: string | null;
+  lifecycleRevision: string | null;
 };
 
 /** A missing route is not sufficient proof for a shared main or channel-shaped key. */
@@ -25,9 +28,9 @@ function hasOffHostRoute(
     return true;
   }
   const rest = sessionKey.slice(`agent:${agentId}:`.length);
-  // Channel plugins can introduce new key prefixes. Only host-owned session
-  // families have a positive locality proof without an explicit route record.
-  if (!/^(?:subagent|cron|hook):/.test(rest)) {
+  // Cron and hook keys can be routed by schedulers outside this row. Only a
+  // subagent row has a positive host-local proof without another authority.
+  if (!rest.startsWith("subagent:")) {
     return true;
   }
   // Older rows can retain route hints alongside an internal/absent canonical delivery.
@@ -59,7 +62,13 @@ export async function resolvePluginLocalSessionRoute(params: {
   const raw = typeof params.sessionKey === "string" ? params.sessionKey.trim() : "";
   try {
     const sessionKey = raw ? resolveSessionStoreKey({ cfg: params.cfg, sessionKey: raw }) : "";
-    const absent = { sessionKey, exists: false, onHost: false };
+    const absent = {
+      sessionKey,
+      exists: false,
+      onHost: false,
+      sessionId: null,
+      lifecycleRevision: null,
+    };
     if (!sessionKey || sessionKey === "unknown") {
       return absent;
     }
@@ -78,11 +87,22 @@ export async function resolvePluginLocalSessionRoute(params: {
     return {
       sessionKey,
       exists: true,
-      onHost:
-        sessionKey !== "global" && !hasOffHostRoute(params.cfg, sessionKey, agentId, existing),
+      onHost: Boolean(
+        existing.lifecycleRevision &&
+        sessionKey !== "global" &&
+        !hasOffHostRoute(params.cfg, sessionKey, agentId, existing),
+      ),
+      sessionId: existing.sessionId,
+      lifecycleRevision: existing.lifecycleRevision ?? null,
     };
   } catch {
     // An unreadable/transient store cannot prove that a target is local.
-    return { sessionKey: raw, exists: false, onHost: false };
+    return {
+      sessionKey: raw,
+      exists: false,
+      onHost: false,
+      sessionId: null,
+      lifecycleRevision: null,
+    };
   }
 }

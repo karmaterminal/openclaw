@@ -12,6 +12,8 @@ it("keeps setup-only API construction free of the session route worker graph", a
     sessionKey: params.sessionKey,
     exists: true,
     onHost: true,
+    sessionId: "s1",
+    lifecycleRevision: "r1",
   }));
   vi.doMock("./local-session-route.js", () => {
     routeModuleLoads++;
@@ -37,6 +39,8 @@ it("keeps setup-only API construction free of the session route worker graph", a
     sessionKey: key,
     exists: true,
     onHost: true,
+    sessionId: "s1",
+    lifecycleRevision: "r1",
   });
   expect(routeModuleLoads).toBe(1);
   expect(route).toHaveBeenCalledWith({ cfg: api.config, sessionKey: key });
@@ -52,11 +56,23 @@ it("uses the current store/owner config and rejects a route read spanning config
     getRuntimeConfigSnapshotMetadata: () => ({ revision }),
   }));
   let finishRead:
-    | ((value: { sessionKey: string; exists: boolean; onHost: boolean }) => void)
+    | ((value: {
+        sessionKey: string;
+        exists: boolean;
+        onHost: boolean;
+        sessionId: string | null;
+        lifecycleRevision: string | null;
+      }) => void)
     | undefined;
   const route = vi.fn(
     (_params: { cfg: unknown; sessionKey: string }) =>
-      new Promise<{ sessionKey: string; exists: boolean; onHost: boolean }>((resolve) => {
+      new Promise<{
+        sessionKey: string;
+        exists: boolean;
+        onHost: boolean;
+        sessionId: string | null;
+        lifecycleRevision: string | null;
+      }>((resolve) => {
         finishRead = resolve;
       }),
   );
@@ -78,20 +94,56 @@ it("uses the current store/owner config and rejects a route read spanning config
   expect(route).toHaveBeenLastCalledWith({ cfg: oldConfig, sessionKey: key });
   currentConfig = newConfig;
   revision++;
-  finishRead?.({ sessionKey: key, exists: true, onHost: true });
-  expect(await stale).toEqual({ sessionKey: key, exists: false, onHost: false });
+  finishRead?.({
+    sessionKey: key,
+    exists: true,
+    onHost: true,
+    sessionId: "s1",
+    lifecycleRevision: "r1",
+  });
+  expect(await stale).toEqual({
+    sessionKey: key,
+    exists: false,
+    onHost: false,
+    sessionId: null,
+    lifecycleRevision: null,
+  });
 
   const fresh = api.session.state.resolveLocalSessionRoute(key);
   await vi.waitFor(() => expect(route).toHaveBeenCalledTimes(2));
   expect(route).toHaveBeenLastCalledWith({ cfg: newConfig, sessionKey: key });
-  finishRead?.({ sessionKey: key, exists: false, onHost: false });
-  expect(await fresh).toEqual({ sessionKey: key, exists: false, onHost: false });
+  finishRead?.({
+    sessionKey: key,
+    exists: false,
+    onHost: false,
+    sessionId: null,
+    lifecycleRevision: null,
+  });
+  expect(await fresh).toEqual({
+    sessionKey: key,
+    exists: false,
+    onHost: false,
+    sessionId: null,
+    lifecycleRevision: null,
+  });
 
   const inPlace = api.session.state.resolveLocalSessionRoute(key);
   await vi.waitFor(() => expect(route).toHaveBeenCalledTimes(3));
   expect(route).toHaveBeenLastCalledWith({ cfg: newConfig, sessionKey: key });
   newConfig.session.store = "/tmp/another-sessions.json";
   revision++;
-  finishRead?.({ sessionKey: key, exists: true, onHost: true });
-  expect(await inPlace).toEqual({ sessionKey: key, exists: false, onHost: false });
+  finishRead?.({
+    sessionKey: key,
+    exists: true,
+    onHost: true,
+    sessionId: "s1",
+    lifecycleRevision: "r1",
+  });
+  expect(await inPlace).toEqual({
+    sessionKey: key,
+    exists: false,
+    onHost: false,
+    sessionId: null,
+    lifecycleRevision: null,
+  });
 });

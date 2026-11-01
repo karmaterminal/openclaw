@@ -70,17 +70,21 @@ it("keeps session route inspection callable after registration and reads each li
   const read = vi.mocked(readSessionEntryReadOnlyInWorker);
   read.mockReset();
   const api = captureRegisteredPluginApi({});
-  read.mockResolvedValueOnce({ sessionId: "before", updatedAt: 1 });
+  read.mockResolvedValueOnce({ sessionId: "before", lifecycleRevision: "r1", updatedAt: 1 });
   expect(await api.session.state.resolveLocalSessionRoute(key)).toEqual({
     sessionKey: key,
     exists: true,
     onHost: true,
+    sessionId: "before",
+    lifecycleRevision: "r1",
   });
   read.mockResolvedValueOnce(undefined);
   expect(await api.session.state.resolveLocalSessionRoute(key)).toEqual({
     sessionKey: key,
     exists: false,
     onHost: false,
+    sessionId: null,
+    lifecycleRevision: null,
   });
   expect(read).toHaveBeenCalledTimes(2);
 });
@@ -96,11 +100,19 @@ it("fails closed when a retained route callback's owner retires", async () => {
   }, api);
   const key = "agent:main:subagent:abc";
   const read = vi.mocked(readSessionEntryReadOnlyInWorker);
-  read.mockReset().mockResolvedValue({ sessionId: "owned", updatedAt: 1 });
+  read
+    .mockReset()
+    .mockResolvedValue({ sessionId: "owned", lifecycleRevision: "owned-revision", updatedAt: 1 });
   try {
     expect((await retained(key)).onHost).toBe(true);
     await instance.dispose();
-    expect(await retained(key)).toEqual({ sessionKey: key, exists: false, onHost: false });
+    expect(await retained(key)).toEqual({
+      sessionKey: key,
+      exists: false,
+      onHost: false,
+      sessionId: null,
+      lifecycleRevision: null,
+    });
     expect(read).toHaveBeenCalledTimes(1);
   } finally {
     snapshot.mockRestore();

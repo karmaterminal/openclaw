@@ -39,7 +39,13 @@ function createGuardedPluginRegistrationApi(api: OpenClawPluginApi): {
       if (typeof prop === "string" && LATE_CALLABLE_PLUGIN_API_METHODS.has(prop)) {
         if (prop === "resolveLocalSessionRoute" && owner) {
           return async (sessionKey: string) => {
-            const absent = { sessionKey, exists: false, onHost: false };
+            const absent = {
+              sessionKey,
+              exists: false,
+              onHost: false,
+              sessionId: null,
+              lifecycleRevision: null,
+            };
             const current = () =>
               !owner.owner?.revoked && owner.acceptingCalls && !owner.lifecycle.signal.aborted;
             if (!current()) {
@@ -55,7 +61,13 @@ function createGuardedPluginRegistrationApi(api: OpenClawPluginApi): {
             >;
             return current()
               ? result
-              : { sessionKey: result.sessionKey, exists: false, onHost: false };
+              : {
+                  sessionKey: result.sessionKey,
+                  exists: false,
+                  onHost: false,
+                  sessionId: null,
+                  lifecycleRevision: null,
+                };
           };
         }
         return (...args: unknown[]) => Reflect.apply(value, target, args);
