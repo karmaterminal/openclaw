@@ -36,7 +36,10 @@ export function isRecentNativeDiscordMention(
   return Boolean(
     botUserId &&
     raw?.guild_id &&
-    Date.parse(raw.timestamp ?? "") >= nowMs - 15 * 60_000 &&
+    // Stored rows are decoded without a timestamp type check; coercing a malformed
+    // value can throw and abort the drain pass, so only a string can rank.
+    typeof raw.timestamp === "string" &&
+    Date.parse(raw.timestamp) >= nowMs - 15 * 60_000 &&
     Array.isArray(raw.mentions) &&
     raw.mentions.some((user) => user?.id === botUserId),
   );

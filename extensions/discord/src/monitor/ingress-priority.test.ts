@@ -29,4 +29,13 @@ describe("Discord recovery priority", () => {
       ),
     ).toBe(false);
   });
+
+  it("treats a malformed stored timestamp as non-priority instead of throwing", () => {
+    // Valid JSON whose own non-callable toString makes Date.parse throw on coercion.
+    const stored = JSON.parse(
+      `{"guild_id":"guild-1","timestamp":{"toString":null},"mentions":[{"id":"${botUserId}"}]}`,
+    );
+    expect(() => isRecentNativeDiscordMention(stored, botUserId, now)).not.toThrow();
+    expect(isRecentNativeDiscordMention(stored, botUserId, now)).toBe(false);
+  });
 });
