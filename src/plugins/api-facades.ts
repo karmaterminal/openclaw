@@ -63,18 +63,22 @@ export function attachPluginApiFacades(api: OpenClawPluginApiWithoutFacades): Op
         registerSessionExtension: api.registerSessionExtension,
         resolveLocalSessionRoute: async (sessionKey) => {
           // Setup/CLI metadata constructs this API without needing the session DB worker graph.
-          const [{ resolvePluginLocalSessionRoute }, { getRuntimeConfigSnapshot }] =
-            await Promise.all([
-              import("./local-session-route.js"),
-              import("../config/runtime-snapshot.js"),
-            ]);
+          const [
+            { resolvePluginLocalSessionRoute },
+            { getRuntimeConfigSnapshot, getRuntimeConfigSnapshotMetadata },
+          ] = await Promise.all([
+            import("./local-session-route.js"),
+            import("../config/runtime-snapshot.js"),
+          ]);
           const currentConfig = getRuntimeConfigSnapshot();
+          const currentRevision = getRuntimeConfigSnapshotMetadata()?.revision;
           const result = await resolvePluginLocalSessionRoute({
             cfg: currentConfig ?? api.config,
             sessionKey,
           });
           // A read from an earlier store is not a locality proof after config publication.
-          return getRuntimeConfigSnapshot() === currentConfig
+          return getRuntimeConfigSnapshot() === currentConfig &&
+            getRuntimeConfigSnapshotMetadata()?.revision === currentRevision
             ? result
             : { sessionKey: result.sessionKey, exists: false, onHost: false };
         },

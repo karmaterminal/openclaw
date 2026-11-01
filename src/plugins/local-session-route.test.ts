@@ -80,6 +80,18 @@ describe("exact plugin local session route proof", () => {
     expect((await resolve(key)).onHost).toBe(true);
   });
 
+  it("does not claim locality for a child retaining legacy external-route metadata", async () => {
+    const key = "agent:main:subagent:legacy";
+    read.mockResolvedValue({
+      sessionId: "legacy",
+      updatedAt: 1,
+      delivery: { kind: "internal" },
+      lastChannel: "discord",
+      lastTo: "channel:123",
+    });
+    expect(await resolve(key)).toEqual({ sessionKey: key, exists: true, onHost: false });
+  });
+
   it("preserves case-distinct opaque peer identities on exact lookup", async () => {
     const key = "agent:main:signal:group:AbCd";
     expect((await resolve(key)).exists).toBe(false);

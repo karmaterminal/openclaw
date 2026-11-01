@@ -30,7 +30,25 @@ function hasOffHostRoute(
   if (!/^(?:subagent|cron|hook):/.test(rest)) {
     return true;
   }
-  return entry.delivery?.kind === "external" || Boolean(entry.groupChannel || entry.groupId);
+  // Older rows can retain route hints alongside an internal/absent canonical delivery.
+  // Such a row cannot prove host locality until the legacy metadata is reconciled.
+  const legacyRoute = entry as InternalSessionEntry & Record<string, unknown>;
+  return (
+    entry.delivery?.kind === "external" ||
+    Boolean(entry.groupChannel || entry.groupId) ||
+    [
+      "route",
+      "deliveryContext",
+      "origin",
+      "provider",
+      "channel",
+      "lastProvider",
+      "lastChannel",
+      "lastTo",
+      "lastAccountId",
+      "lastThreadId",
+    ].some((field) => legacyRoute[field] != null)
+  );
 }
 
 /** Read-only, exact session-store proof; never creates a session or sends to a route. */
