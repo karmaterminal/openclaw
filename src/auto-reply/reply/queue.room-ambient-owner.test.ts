@@ -17,7 +17,6 @@ import {
   sender,
   widenNextClaim,
   withRoomIngress,
-  type Harness,
   type Row,
 } from "./queue.room-event-collect.test-support.js";
 import { installQueueRuntimeErrorSilencer } from "./queue.test-helpers.js";
@@ -43,15 +42,16 @@ describe("the ambient owner room aggregate (#1415)", () => {
       { id: "x6", from: sender("bob", { config: AMBIENT }) },
       { id: "x7", from: sender("carol", { config: AMBIENT }) },
     ];
-    const authority = (run: FollowupRun | undefined) => ({
-      tools: captureReplyToolAuthorityInput(run!),
+    // Everything the turn's tools, principal and memory audience resolve from.
+    const authority = (run: FollowupRun) => ({
+      tools: captureReplyToolAuthorityInput(run),
       principal: resolveRequesterPrincipalKey({
-        ...run!.run,
-        messageChannel: run!.originatingChannel,
+        ...run.run,
+        messageChannel: run.originatingChannel,
       }),
-      memoryAudienceSenderIsOwner: run!.memoryAudienceSenderIsOwner,
-      createChannelCronAuthority: run!.createChannelCronAuthority,
-      explicitSkillSelections: run!.explicitSkillSelections,
+      memoryAudienceSenderIsOwner: run.memoryAudienceSenderIsOwner,
+      createChannelCronAuthority: run.createChannelCronAuthority,
+      explicitSkillSelections: run.explicitSkillSelections,
     });
     await withRoomIngress(rows, async (harness) => {
       await harness.dispatchRows();
@@ -60,7 +60,7 @@ describe("the ambient owner room aggregate (#1415)", () => {
       const [owners, , people] = harness.calls;
       aggregated(owners, rows.slice(0, 3));
       aggregated(people, rows.slice(4));
-      expect(authority(owners)).toEqual(authority(people));
+      expect(authority(owners!)).toEqual(authority(people!));
       await expectSettledOnce(
         harness,
         rows.map((row) => row.id),
@@ -136,7 +136,7 @@ describe("the ambient owner room aggregate (#1415)", () => {
       { id: "w3", from: ownerPeer("peer-c", AMBIENT), source: prose },
       { id: "w4", from: sender("alice", { config: AMBIENT }) },
     ];
-    await withRoomIngress(rows, async (harness: Harness) => {
+    await withRoomIngress(rows, async (harness) => {
       await harness.dispatchRows();
       await harness.endActiveTurn(undefined, () => widenNextClaim(harness.key));
       // The drain re-checks the claim with the same predicate: neither runs as the room baseline.
