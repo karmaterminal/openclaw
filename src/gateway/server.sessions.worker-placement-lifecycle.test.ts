@@ -19,6 +19,7 @@ import {
   seedSessionTranscript,
   sessionStoreEntry,
   sessionHookMocks,
+  sessionLifecycleHookMocks,
   setupGatewaySessionsHandlerTestHarness,
 } from "./test/server-sessions.test-helpers.js";
 import { createWorkerInferenceDrainService } from "./worker-environments/inference-control.test-helpers.js";
@@ -439,6 +440,31 @@ test("sessions.delete retains failed placement when worker cleanup is unavailabl
   expect(deleted.error?.message).toContain("cloud worker reclaim is unavailable");
   expect(await sessionEntry(sessionKey)).toMatchObject({ sessionId });
   expect(placementService.retireSessionPlacement).not.toHaveBeenCalled();
+});
+
+test("sessions.delete notifies after commit even when placement retirement rejects", async () => {
+  const sessionKey = "discord:group:postcommit-retirement-failure";
+  const sessionId = "sess-postcommit-retirement-failure";
+  await seedSession(sessionKey, sessionId);
+  const placement = placementRecord(sessionId, "local", await canonicalKey(sessionKey));
+  const placementService = {
+    getMany: () => new Map([[sessionId, placement]]),
+    retireSessionPlacementAsync: vi.fn(async () => {
+      throw new Error("retirement unavailable");
+    }),
+  };
+
+  const deleted = await placementReq("sessions.delete", sessionKey, {
+    workerSessionPlacementService: placementService,
+  });
+
+  expect(deleted.ok).toBe(true);
+  expect(await sessionEntry(sessionKey)).toBeUndefined();
+  expect(placementService.retireSessionPlacementAsync).toHaveBeenCalledOnce();
+  expect(sessionLifecycleHookMocks.runSessionEnd).toHaveBeenCalledWith(
+    expect.objectContaining({ reason: "deleted" }),
+    expect.objectContaining({ sessionId }),
+  );
 });
 
 test.each([false, true])(

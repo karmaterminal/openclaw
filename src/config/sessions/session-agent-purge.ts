@@ -223,12 +223,14 @@ export async function purgeDeletedAgentSessionEntries(
         }
       },
     );
-    execution?.assertCurrent();
+    // The purge is committed. Publish removed identities before a post-commit
+    // authority recheck or archive cleanup can reject the remaining work.
     params.onCommitted?.(
       prepared.entryRemovals.flatMap(({ expectedEntry, sessionKey }) =>
         expectedEntry?.sessionId ? [{ sessionId: expectedEntry.sessionId, sessionKey }] : [],
       ),
     );
+    execution?.assertCurrent();
     const publishArchives = (requested: readonly SessionLifecycleArchivedTranscript[]) =>
       execution
         ? publishSessionStateArchivesInWorker({

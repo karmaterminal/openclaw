@@ -11,6 +11,7 @@ import {
   captureSessionTarget,
 } from "../sessions/session-controller.lifecycle.js";
 import { createReplyOperation } from "../sessions/session-controller.operation.js";
+import * as worktreeLifecycle from "../sessions/session-worktree-lifecycle.js";
 import { resolveIncognitoOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.js";
 import { createRequestGate } from "./server-methods.request-gate.test-support.js";
 import { testState, writeSessionStore } from "./test-helpers.js";
@@ -330,6 +331,41 @@ test("sessions.reset of an incognito session broadcasts a delete, not a reset", 
       ts: expect.any(Number),
     });
   } finally {
+    memorySessionActorOwners.closeDatabase(location);
+  }
+});
+
+test("incognito reset publishes deletion before worktree cleanup fails", async () => {
+  await createSessionStoreDir();
+  const location = {
+    agentId: "main",
+    path: resolveIncognitoOpenClawAgentSqlitePath({ agentId: "main" }),
+  };
+  const sessionKey = "agent:main:dashboard:incognito-cleanup-failure";
+  const scope = { agentId: "main", storePath: location.path, sessionKey };
+  const cleanup = vi
+    .spyOn(worktreeLifecycle, "removeSessionWorktree")
+    .mockRejectedValueOnce(new Error("worktree cleanup failed"));
+  try {
+    await upsertSessionEntryCore(
+      scope,
+      sessionStoreEntry("sess-incognito-cleanup", { incognito: true }),
+    );
+    await expect(
+      performSessionReset({
+        key: sessionKey,
+        reason: "reset",
+        commandSource: "gateway:session-reset",
+      }),
+    ).rejects.toThrow("worktree cleanup failed");
+    expect(loadSessionEntry(scope)).toBeUndefined();
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(sessionLifecycleHookMocks.runSessionEnd).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "reset" }),
+      expect.objectContaining({ sessionId: "sess-incognito-cleanup" }),
+    );
+  } finally {
+    cleanup.mockRestore();
     memorySessionActorOwners.closeDatabase(location);
   }
 });
