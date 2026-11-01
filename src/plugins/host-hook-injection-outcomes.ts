@@ -70,6 +70,12 @@ export function pruneOutcomes(entry: SessionEntry, pluginId: string, now: number
       delete outcomes[key];
     }
   }
+  if (Object.keys(outcomes).length === 0) {
+    delete entry.pluginNextTurnInjectionOutcomes?.[pluginId];
+    if (Object.keys(entry.pluginNextTurnInjectionOutcomes ?? {}).length === 0) {
+      delete entry.pluginNextTurnInjectionOutcomes;
+    }
+  }
 }
 
 /** Repair a post-commit expiry only if the original session and tombstone still match. */

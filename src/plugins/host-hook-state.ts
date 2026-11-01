@@ -53,34 +53,53 @@ export async function getPluginNextTurnInjectionState(params: {
   sessionKey: string;
   agentId?: string;
   idempotencyKey: string;
+  shouldQuery?: () => boolean;
 }): Promise<PluginNextTurnInjectionStateResult> {
-  const entry = await readResolvedSessionEntryInWorker({
-    cfg: params.cfg,
-    sessionKey: params.sessionKey,
-    agentId: params.agentId,
-  });
-  const now = Date.now();
   const idempotencyKey = params.idempotencyKey.trim();
-  const queue = entry?.pluginNextTurnInjections?.[params.pluginId];
-  const pending = Array.isArray(queue)
-    ? queue.find(
-        (item) => isPluginNextTurnInjectionRecord(item) && item.idempotencyKey === idempotencyKey,
-      )
-    : undefined;
-  const outcome = ownOutcome(entry, params.pluginId, idempotencyKey);
-  return {
+  const unknown: PluginNextTurnInjectionStateResult = {
     sessionKey: params.sessionKey,
     idempotencyKey,
-    state:
-      pending && !isExpired(pending, now)
-        ? "pending"
-        : outcome && outcome.retainUntil > now
-          ? outcome.state
-          : pending
-            ? "expired"
-            : "unknown",
-    settledAt: outcome?.settledAt,
+    state: "unknown",
   };
+  if (params.shouldQuery && !params.shouldQuery()) {
+    return unknown;
+  }
+  const updated = await updateResolvedSessionEntry(
+    { cfg: params.cfg, sessionKey: params.sessionKey, agentId: params.agentId },
+    (entry) => {
+      if (params.shouldQuery && !params.shouldQuery()) {
+        return unknown;
+      }
+      const now = Date.now();
+      pruneOutcomes(entry, params.pluginId, now);
+      const queue = entry.pluginNextTurnInjections?.[params.pluginId];
+      const pending = Array.isArray(queue)
+        ? queue.find(
+            (item) =>
+              isPluginNextTurnInjectionRecord(item) && item.idempotencyKey === idempotencyKey,
+          )
+        : undefined;
+      const outcome = ownOutcome(entry, params.pluginId, idempotencyKey);
+      return {
+        sessionKey: params.sessionKey,
+        idempotencyKey,
+        state:
+          pending && !isExpired(pending, now)
+            ? "pending"
+            : outcome
+              ? outcome.state
+              : pending
+                ? "expired"
+                : "unknown",
+        ...(outcome ? { settledAt: outcome.settledAt } : {}),
+      } as PluginNextTurnInjectionStateResult;
+    },
+  );
+  return params.shouldQuery && !params.shouldQuery()
+    ? unknown
+    : updated.found
+      ? updated.result
+      : unknown;
 }
 
 export async function withdrawPluginNextTurnInjection(params: {
@@ -153,6 +172,7 @@ export async function enqueuePluginNextTurnInjection(params: {
   pluginName?: string;
   injection: PluginNextTurnInjection;
   now?: number;
+  shouldEnqueue?: () => boolean;
 }): Promise<PluginNextTurnInjectionEnqueueResult> {
   const sessionKey = normalizeOptionalString(params.injection.sessionKey) ?? "";
   if (!sessionKey) {
@@ -238,6 +258,9 @@ export async function enqueuePluginNextTurnInjection(params: {
   const scope = { cfg: params.cfg, sessionKey, agentId: params.injection.agentId };
   const notices: SettlementNotice[] = [];
   const updated = await updateResolvedSessionEntry(scope, (entry) => {
+    if (params.shouldEnqueue && !params.shouldEnqueue()) {
+      return { enqueued: false, id: "", reason: "invalid" as const };
+    }
     if (
       entry.agentHarnessId === "codex" ||
       entry.agentHarnessId === "copilot" ||
@@ -339,14 +362,19 @@ async function drainPluginNextTurnInjections(
   const selectedEntry = await readResolvedSessionEntryInWorker(scope);
   // Empty queues need no qualified mutation target. Concurrent enqueues wait for the next turn.
   if (
-    !selectedEntry?.pluginNextTurnInjections ||
-    Object.keys(selectedEntry.pluginNextTurnInjections).length === 0
+    (!selectedEntry?.pluginNextTurnInjections ||
+      Object.keys(selectedEntry.pluginNextTurnInjections).length === 0) &&
+    (!selectedEntry?.pluginNextTurnInjectionOutcomes ||
+      Object.keys(selectedEntry.pluginNextTurnInjectionOutcomes).length === 0)
   ) {
     return { records: [], notices: [], canonicalKey: sessionKey };
   }
   const notices: SettlementNotice[] = [];
   const updated = await updateResolvedSessionEntry(scope, (entry) => {
     const now = params.clock?.() ?? Date.now();
+    for (const pluginId of Object.keys(entry.pluginNextTurnInjectionOutcomes ?? {})) {
+      pruneOutcomes(entry, pluginId, now);
+    }
     if (!entry?.pluginNextTurnInjections) {
       return {
         records: [],

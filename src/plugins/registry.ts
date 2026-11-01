@@ -348,15 +348,28 @@ export function createPluginRegistry(registryOptions: PluginRegistryParams) {
                   pluginId: record.id,
                   pluginName: record.name,
                   injection,
+                  shouldEnqueue: () =>
+                    registryParams.activateGlobalSideEffects !== false &&
+                    shouldCommitWorkflowSideEffect(),
                 });
               },
               onNextTurnInjectionSettled: (handler) => bound.onNextTurnInjectionSettled(handler),
               getNextTurnInjectionState: async (input) => {
+                const shouldQuery = () =>
+                  registryParams.activateGlobalSideEffects !== false &&
+                  shouldCommitWorkflowSideEffect();
+                if (!shouldQuery()) {
+                  return { ...input, state: "unknown" };
+                }
                 const { getPluginNextTurnInjectionState } = await loadHookState();
+                if (!shouldQuery()) {
+                  return { ...input, state: "unknown" };
+                }
                 return getPluginNextTurnInjectionState({
                   cfg: registryParams.runtime.config.current() as OpenClawConfig,
                   pluginId: record.id,
                   ...input,
+                  shouldQuery,
                 });
               },
               withdrawNextTurnInjection: async (input) => {

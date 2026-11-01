@@ -717,6 +717,31 @@ describe("next-turn injection identity", () => {
     );
   });
 
+  it("prunes expired outcomes on query and drain without returning settlement metadata", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:oc0-prune");
+    const expired = { state: "consumed" as const, settledAt: 1, retainUntil: 2 };
+    await writeEntry(scope, {
+      sessionId: "oc0-prune",
+      updatedAt: 1,
+      pluginNextTurnInjectionOutcomes: {
+        "owner-fixture": { queried: expired },
+        other: { drained: expired },
+      },
+    });
+    expect(
+      await getPluginNextTurnInjectionState({
+        cfg,
+        pluginId: "owner-fixture",
+        ...scope,
+        idempotencyKey: "queried",
+      }),
+    ).toEqual({ sessionKey: scope.sessionKey, idempotencyKey: "queried", state: "unknown" });
+    expect(readEntry(scope)?.pluginNextTurnInjectionOutcomes?.["owner-fixture"]).toBeUndefined();
+    await drain({ cfg, ...scope });
+    expect(readEntry(scope)?.pluginNextTurnInjectionOutcomes).toBeUndefined();
+  });
+
   it("holds not-before entries and wraps declared provenance at drain", async () => {
     const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
     const scope = sessionScope(cfg, "main", "agent:main:oc0-provenance");
