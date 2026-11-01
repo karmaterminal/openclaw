@@ -406,6 +406,7 @@ export function createProcessSupervisor(): ProcessSupervisor & {
               ...construction,
               shell: expectDefined(argv[0], "spawn executable"),
               args: argv.slice(1),
+              childMemoryScope: input.childMemoryScope,
             }).then((adapter) => ({ adapter, ready: Promise.resolve() }))
           : input.mode === "anchored-shell"
             ? createChildAdapter({
@@ -420,6 +421,7 @@ export function createProcessSupervisor(): ProcessSupervisor & {
                 argv,
                 argv0: input.argv0,
                 exactEnv: input.exactEnv,
+                childMemoryScope: input.childMemoryScope,
                 windowsVerbatimArguments: input.windowsVerbatimArguments,
                 input: input.input,
                 prepareInput: input.prepareInput,

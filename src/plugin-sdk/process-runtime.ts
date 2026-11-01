@@ -14,6 +14,10 @@ export {
   type SpawnResult,
 } from "../process/exec.js";
 export { withCommandProcessScope } from "../process/exec-spawn.js";
+export {
+  prepareChildMemoryScopedSpawn,
+  type ChildMemoryScopedSpawn,
+} from "../process/child-memory-scope.js";
 export { prepareOomScoreAdjustedSpawn, spawnOomScoreAdjusted } from "../process/linux-oom-score.js";
 export type { OomScoreAdjustedSpawn, OomWrapOptions } from "../process/linux-oom-score.js";
 export { resolveRuntimeWorkerArgv, resolveRuntimeWorkerUrl } from "../infra/runtime-worker-url.js";

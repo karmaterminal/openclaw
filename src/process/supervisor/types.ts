@@ -156,6 +156,8 @@ export type SpawnInput =
       argv0?: string;
       /** Preserve a caller-prepared environment without environment-mutating spawn wrappers. */
       exactEnv?: true;
+      /** Heavy work: run in the host's capped child memory scope when process.childScope enables it. */
+      childMemoryScope?: true;
       windowsVerbatimArguments?: boolean;
       input?: string;
       /** Prepare input authority at the adapter's stdin delivery boundary. */
@@ -168,6 +170,8 @@ export type SpawnInput =
   | (SpawnBaseInput & {
       mode: "pty";
       argv: string[];
+      /** Heavy work: run in the host's capped child memory scope when process.childScope enables it. */
+      childMemoryScope?: true;
     })
   | (SpawnBaseInput & {
       mode: "anchored-shell";

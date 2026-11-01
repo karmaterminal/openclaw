@@ -16,6 +16,7 @@ import { CLOUD_WORKER_FIELD_LABELS } from "./zod-schema.cloud-workers.js";
 import { DATABASE_FIELD_LABELS } from "./zod-schema.database.js";
 import { DESKTOP_FIELD_LABELS } from "./zod-schema.desktop.js";
 import { NODE_HOST_FIELD_LABELS } from "./zod-schema.node-host.js";
+import { PROCESS_FIELD_LABELS } from "./zod-schema.process.js";
 import { STORAGE_FIELD_LABELS } from "./zod-schema.storage.js";
 import { TELEMETRY_FIELD_LABELS } from "./zod-schema.telemetry.js";
 
@@ -56,6 +57,8 @@ export const FIELD_LABELS: Record<string, string> = {
   "update.auto.enabled": "Auto Update Enabled",
   telemetry: "Telemetry",
   ...TELEMETRY_FIELD_LABELS,
+  process: "Process",
+  ...PROCESS_FIELD_LABELS,
   surfaces: "Surface Policies",
   "surfaces.*.silentReply": "Surface Silent Reply Policy",
   "diagnostics.enabled": "Diagnostics Enabled",

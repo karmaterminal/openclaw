@@ -12,6 +12,7 @@ import {
   resolveWindowsSpawnProgramCandidate,
 } from "../../../plugin-sdk/windows-spawn.js";
 import { createDeferredCore } from "../../../shared/deferred.js";
+import { prepareChildMemoryScopedSpawn } from "../../child-memory-scope.js";
 import { joinProcessCompletionAndOutput, onDecodedOutput } from "../../decoded-output.js";
 import { signalProcessTree } from "../../kill-tree.js";
 import { prepareOomScoreAdjustedSpawn } from "../../linux-oom-score.js";
@@ -107,6 +108,8 @@ type ChildAdapterInput = ProcessAdapterConstruction & {
   ownedWorker?: true;
   /** Preserve the supplied environment exactly by skipping environment-mutating spawn wrappers. */
   exactEnv?: true;
+  /** Heavy work: run in the host's capped child memory scope when process.childScope enables it. */
+  childMemoryScope?: true;
   onWorkerMessage?: (message: unknown) => void;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
@@ -163,9 +166,17 @@ export async function createChildAdapter(
         windowsVerbatimArguments: params.windowsVerbatimArguments,
       });
   const argv0 = invocation.command === params.argv[0] ? params.argv0 : undefined;
+  // systemd-run execvp's its command, so a distinct argv0 keeps the plain launch.
+  const launch =
+    params.childMemoryScope && argv0 === undefined && !windowsShell
+      ? await prepareChildMemoryScopedSpawn(invocation.command, invocation.args, {
+          env: baseEnv,
+          cwd: params.cwd,
+        })
+      : invocation;
   const preparedSpawn = params.exactEnv
-    ? { command: invocation.command, args: invocation.args, argv0, env: baseEnv, wrapped: false }
-    : prepareOomScoreAdjustedSpawn(invocation.command, invocation.args, { env: baseEnv, argv0 });
+    ? { command: launch.command, args: launch.args, argv0, env: baseEnv, wrapped: false }
+    : prepareOomScoreAdjustedSpawn(launch.command, launch.args, { env: baseEnv, argv0 });
 
   const stdinMode = params.stdinMode ?? (params.input !== undefined ? "pipe-closed" : "inherit");
 
