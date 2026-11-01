@@ -186,6 +186,9 @@ describe("next-turn injection identity", () => {
       source: "fixture",
       handler: (event) => {
         delivered.push(event.idempotencyKey);
+        if (event.idempotencyKey === "first") {
+          throw new Error("fixture handler failure");
+        }
       },
     });
     setActivePluginRegistry(registry);

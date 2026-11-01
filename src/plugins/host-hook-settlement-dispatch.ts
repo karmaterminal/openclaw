@@ -76,21 +76,27 @@ export function dispatchSettlements(
               continue;
             }
             const notice = { ...event, sessionKey: scope.sessionKey };
-            const result = instance
-              ? instance.runInRegistry(registry, () => registration.handler(notice))
-              : registration.handler(notice);
-            let timer: ReturnType<typeof setTimeout> | undefined;
-            const timeout = new Promise<"timeout">((resolve) => {
-              timer = setTimeout(() => resolve("timeout"), HANDLER_TIMEOUT_MS);
-            });
             try {
-              if ((await Promise.race([Promise.resolve(result), timeout])) === "timeout") {
-                stalledHandlers.add(registration);
-                log.warn(`next-turn settlement notification timed out for ${pluginId}`);
-                break;
+              const result = instance
+                ? instance.runInRegistry(registry, () => registration.handler(notice))
+                : registration.handler(notice);
+              let timer: ReturnType<typeof setTimeout> | undefined;
+              const timeout = new Promise<"timeout">((resolve) => {
+                timer = setTimeout(() => resolve("timeout"), HANDLER_TIMEOUT_MS);
+              });
+              try {
+                if ((await Promise.race([Promise.resolve(result), timeout])) === "timeout") {
+                  stalledHandlers.add(registration);
+                  log.warn(`next-turn settlement notification timed out for ${pluginId}`);
+                  break;
+                }
+              } finally {
+                clearTimeout(timer);
               }
-            } finally {
-              clearTimeout(timer);
+            } catch (error) {
+              log.warn(
+                `next-turn settlement notification failed for ${pluginId}: ${String(error)}`,
+              );
             }
           }
         })
