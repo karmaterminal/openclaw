@@ -53,14 +53,14 @@ export async function isUnsupportedInjectionRouteNow(
 export function isUnsupportedInjectionRoute(sessionKey: string, entry: SessionEntry): boolean {
   // Local route proof is stricter than admission: main/channel sessions may
   // drain here even though absence of a route never proves host locality.
-  if (entry.delivery?.kind === "external" || /^(?:agent:[^:]+:)?(?:cron|hook):/.test(sessionKey)) {
+  if (/^(?:agent:[^:]+:)?(?:cron|hook):/.test(sessionKey)) {
     return true;
   }
   if (!isSubagentInjectionRoute(sessionKey)) {
     return false;
   }
   // A subagent without a current generation cannot prove host locality.
-  if (!entry.sessionId || !entry.lifecycleRevision) {
+  if (!entry.sessionId || !entry.lifecycleRevision || entry.delivery?.kind === "external") {
     return true;
   }
   const legacy = entry as SessionEntry & Record<string, unknown>;

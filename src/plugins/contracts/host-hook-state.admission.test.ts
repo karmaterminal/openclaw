@@ -8,6 +8,7 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { createOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { normalizeSessionDeliveryState as deliveryState } from "../../utils/delivery-context.shared.js";
 import {
+  drainPluginNextTurnInjectionContext,
   enqueuePluginNextTurnInjection,
   getPluginNextTurnInjectionState,
   withdrawPluginNextTurnInjection,
@@ -199,17 +200,20 @@ describe("next-turn injection admission fence", () => {
     ).toBe("pending");
   });
 
-  it("rejects external, cron, and hook routes while admitting a current channel row", async () => {
+  it("admits external delivery on generic main/channel rows but rejects cron and hook routes", async () => {
     const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
-    for (const suffix of ["external", "cron:job", "hook:event", "channel:chat"]) {
+    for (const suffix of ["main", "discord:channel:chat", "cron:job", "hook:event"]) {
       const scope = sessionScope(cfg, "main", `agent:main:${suffix}`);
       await writeEntry(scope, {
         sessionId: suffix,
         lifecycleRevision: "current",
         updatedAt: 1,
-        ...(suffix === "external"
-          ? { delivery: deliveryState({ context: { channel: "matrix", to: "!room:example.org" } }) }
-          : {}),
+        delivery: deliveryState({
+          context:
+            suffix === "main"
+              ? { channel: "telegram", to: "12345" }
+              : { channel: "discord", to: "channel:chat" },
+        }),
       });
       const result = await enqueuePluginNextTurnInjection({
         cfg,
@@ -222,7 +226,11 @@ describe("next-turn injection admission fence", () => {
           expectedLifecycleRevision: "current",
         },
       });
-      expect(result.enqueued).toBe(suffix === "channel:chat");
+      const allowed = suffix === "main" || suffix === "discord:channel:chat";
+      expect(result.enqueued).toBe(allowed);
+      expect(
+        (await drainPluginNextTurnInjectionContext({ cfg, ...scope })).queuedInjections,
+      ).toHaveLength(allowed ? 1 : 0);
     }
   });
 
