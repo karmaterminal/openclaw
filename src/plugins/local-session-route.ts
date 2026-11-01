@@ -7,6 +7,7 @@ import {
   resolveSessionStoreAgentId,
   resolveSessionStoreKey,
 } from "../gateway/session-store-key.js";
+import { createWorkerSessionPlacementStore } from "../gateway/worker-environments/placement-store.js";
 
 export type PluginLocalSessionRoute = {
   sessionKey: string;
@@ -84,14 +85,30 @@ export async function resolvePluginLocalSessionRoute(params: {
     if (!existing || !existing.sessionId) {
       return absent;
     }
+    // The session row does not own worker locality. Read the current placement
+    // projection for this exact row before claiming it is executable here.
+    let onHost = false;
+    if (
+      existing.lifecycleRevision &&
+      sessionKey !== "global" &&
+      !hasOffHostRoute(params.cfg, sessionKey, agentId, existing)
+    ) {
+      const placement = (
+        await createWorkerSessionPlacementStore().readProjection([existing.sessionId], {
+          current: true,
+        })
+      ).placements.get(existing.sessionId);
+      onHost =
+        !placement ||
+        (placement.sessionId === existing.sessionId &&
+          placement.sessionKey === sessionKey &&
+          placement.agentId === agentId &&
+          placement.state === "local");
+    }
     return {
       sessionKey,
       exists: true,
-      onHost: Boolean(
-        existing.lifecycleRevision &&
-        sessionKey !== "global" &&
-        !hasOffHostRoute(params.cfg, sessionKey, agentId, existing),
-      ),
+      onHost,
       sessionId: existing.sessionId,
       lifecycleRevision: existing.lifecycleRevision ?? null,
     };
