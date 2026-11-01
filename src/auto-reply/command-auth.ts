@@ -527,10 +527,20 @@ export function isConfiguredCommandOwner(
   cfg: OpenClawConfig,
   requester: { channel?: string; accountId?: string; senderId?: string; senderE164?: string },
 ): boolean {
+  return isSenderInOwnerAllowFromList(cfg, requester, cfg.commands?.ownerAllowFrom ?? []);
+}
+
+// Frond (karmaterminal, #1415): the owner match against another list written in the
+// commands.ownerAllowFrom grammar, such as messages.groupChat.ambientOwnerAggregatePeers.
+export function isSenderInOwnerAllowFromList(
+  cfg: OpenClawConfig,
+  requester: { channel?: string; accountId?: string; senderId?: string; senderE164?: string },
+  allowFrom: Array<string | number>,
+): boolean {
   const providerId = normalizeAnyChannelId(requester.channel) ?? requester.channel;
   const plugin = providerId ? getLoadedChannelPluginForRead(providerId) : undefined;
   const params = { cfg, plugin, providerId, accountId: requester.accountId };
-  const owners = stripWildcardAllowFrom(resolveOwnerAllowFromList(params));
+  const owners = stripWildcardAllowFrom(resolveOwnerAllowFromList({ ...params, allowFrom }));
   return resolveSenderCandidates({
     ...params,
     senderId: requester.senderId,

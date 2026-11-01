@@ -18,11 +18,30 @@ export const MentionPatternsPolicySchema = z.strictObject({
   denyIn: z.array(z.string()).optional(),
 });
 
+// Frond (karmaterminal, #1415): exact sender ids in the commands.ownerAllowFrom grammar.
+const AmbientOwnerAggregatePeersSchema = z
+  .array(z.union([z.string(), z.number()]))
+  .superRefine((peers, ctx) => {
+    const seen = new Set<string>();
+    for (const [index, peer] of peers.entries()) {
+      const id = String(peer).trim();
+      if (id.includes("*")) {
+        ctx.addIssue({ code: "custom", message: "Wildcard ambient owner peer", path: [index] });
+      } else if (seen.has(id)) {
+        ctx.addIssue({ code: "custom", message: "Duplicate ambient owner peer", path: [index] });
+      }
+      seen.add(id);
+    }
+  });
+
 export const GroupChatSchema = z
   .strictObject({
     mentionPatterns: z.array(z.string()).optional(),
     historyLimit: z.number().int().min(0).optional(),
     unmentionedInbound: z.enum(["user_request", "room_event"]).optional(),
+    // Frond (karmaterminal, #1415): opt-in ambient owner room aggregate for the listed peers.
+    ambientOwnerAggregate: z.boolean().optional(),
+    ambientOwnerAggregatePeers: AmbientOwnerAggregatePeersSchema.optional(),
     visibleReplies: VisibleRepliesSchema.optional(),
   })
   .optional();
