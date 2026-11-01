@@ -65,4 +65,6 @@ export type CreateChannelIngressDrainOptions<
   orderBy?: "received" | "id";
   scanLimit?: number;
   startLimit?: number;
+  /** Prefer these pending events without preempting claims or bypassing retry-delayed lanes. */
+  prioritizePending?: (record: ChannelIngressQueueRecord<TPayload, TMetadata>) => boolean;
 };

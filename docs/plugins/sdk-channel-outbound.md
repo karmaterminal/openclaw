@@ -153,6 +153,10 @@ semantics, unchanged by this budget.
 Optional settings include custom append delays, a `drain` option block for
 advanced drain ordering/concurrency/retry policy, an external `abortSignal`, a
 clock, pump error reporting, a stopped-error factory, and admission policy.
+`drain.prioritizePending(record)` can prefer pending events while preserving
+snapshot order within each priority. It does not preempt active claims or bypass
+lanes blocked by retry backoff. Priority is scheduling only; normal claim and
+delivery validation still apply.
 `drain.resolvePendingDisposition(record, context)` is an opt-in channel policy
 evaluated before a stored pending row can be claimed. Return `null` or
 `undefined` to keep the row claimable, `{ kind: "fail", reason, message }` to
