@@ -8,6 +8,7 @@ import {
   resolveSessionStoreKey,
 } from "../gateway/session-store-key.js";
 import { createWorkerSessionPlacementStore } from "../gateway/worker-environments/placement-store.js";
+import { listSessionBindingsBySessionAsync } from "../infra/outbound/session-binding-service.js";
 
 export type PluginLocalSessionRoute = {
   sessionKey: string;
@@ -93,6 +94,19 @@ export async function resolvePluginLocalSessionRoute(params: {
       sessionKey !== "global" &&
       !hasOffHostRoute(params.cfg, sessionKey, agentId, existing)
     ) {
+      // A thread-bound child can have internal row delivery while its active
+      // conversation binding routes replies directly to the external thread.
+      // Row fields alone cannot establish a host-local route.
+      const bindings = await listSessionBindingsBySessionAsync(sessionKey);
+      if (bindings.length > 0) {
+        return {
+          sessionKey,
+          exists: true,
+          onHost: false,
+          sessionId: existing.sessionId,
+          lifecycleRevision: existing.lifecycleRevision,
+        };
+      }
       const placement = (
         await createWorkerSessionPlacementStore().readProjection([existing.sessionId], {
           current: true,
