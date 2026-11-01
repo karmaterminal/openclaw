@@ -52,8 +52,11 @@ async function loadScope(config: OpenClawConfig) {
   const snapshot = await import("../config/runtime-snapshot.js");
   snapshot.setRuntimeConfigSnapshot(config);
   const scope = await import("./child-memory-scope.js");
-  return (command: string, args: readonly string[], env: NodeJS.ProcessEnv = process.env) =>
-    scope.prepareChildMemoryScopedSpawn(command, args, { env });
+  return (
+    command: string,
+    args: readonly string[],
+    options: { env?: NodeJS.ProcessEnv; argv0?: string } = {},
+  ) => scope.prepareChildMemoryScopedSpawn(command, args, { env: process.env, ...options });
 }
 
 beforeEach(() => {
@@ -170,15 +173,45 @@ it.skipIf(process.platform !== "linux")(
     const prepare = await loadScope({ process: { childScope: { enabled: true } } });
 
     // systemd-run would exit 1 before the command: no user-bus route in the child env…
-    await expect(prepare(...shell, { PATH: process.env.PATH })).resolves.toMatchObject({
-      command: "/bin/sh",
-      scoped: false,
-    });
+    for (let spawn = 0; spawn < 2; spawn += 1) {
+      await expect(prepare(...shell, { env: { PATH: process.env.PATH } })).resolves.toMatchObject({
+        command: "/bin/sh",
+        scoped: false,
+      });
+    }
     // …or a command its PATH cannot resolve, whose owner expects the native ENOENT.
     await expect(prepare("openclaw-child-scope-missing-command", [])).resolves.toMatchObject({
       command: "openclaw-child-scope-missing-command",
       scoped: false,
     });
-    expect(scopeWarn).not.toHaveBeenCalled();
+    expect(scopeWarn.mock.calls).toEqual([
+      [
+        "child memory scope skipped: the child environment has no XDG_RUNTIME_DIR or DBUS_SESSION_BUS_ADDRESS; those children share the gateway cgroup",
+      ],
+    ]);
+  },
+);
+
+it.skipIf(process.platform !== "linux")(
+  "never changes a distinct argv[0], which systemd-run cannot preserve",
+  async () => {
+    installFakeSystemdRun();
+    const prepare = await loadScope({ process: { childScope: { enabled: true } } });
+
+    for (let spawn = 0; spawn < 2; spawn += 1) {
+      await expect(prepare(...shell, { argv0: "/opt/shims/sh" })).resolves.toEqual({
+        command: "/bin/sh",
+        args: ["-c", "exit 0"],
+        scoped: false,
+      });
+    }
+    await expect(prepare(...shell, { argv0: "/bin/sh" })).resolves.toMatchObject({
+      scoped: true,
+    });
+    expect(scopeWarn.mock.calls).toEqual([
+      [
+        "child memory scope skipped: systemd-run cannot keep a distinct argv[0]; those children share the gateway cgroup",
+      ],
+    ]);
   },
 );

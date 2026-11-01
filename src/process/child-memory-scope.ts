@@ -82,11 +82,20 @@ function resolveChildMemoryScopeAvailability(): Promise<ChildMemoryScopeAvailabi
   }));
 }
 
+const loggedSkips = new Set<string>();
+
+function skipChildMemoryScope(reason: string): void {
+  if (!loggedSkips.has(reason)) {
+    loggedSkips.add(reason);
+    log.warn(`child memory scope skipped: ${reason}; those children share the gateway cgroup`);
+  }
+}
+
 /** Heavy-child owners call this right before native spawn; internal workers never do. */
 export async function prepareChildMemoryScopedSpawn(
   command: string,
   args: readonly string[],
-  options: { env?: NodeJS.ProcessEnv; cwd?: string } = {},
+  options: { env?: NodeJS.ProcessEnv; cwd?: string; argv0?: string } = {},
 ): Promise<ChildMemoryScopedSpawn> {
   const plain = { command, args: [...args], scoped: false };
   const config = getRuntimeConfigSnapshot()?.process?.childScope;
@@ -94,14 +103,24 @@ export async function prepareChildMemoryScopedSpawn(
     return plain;
   }
   const scope = await resolveChildMemoryScopeAvailability();
-  // systemd-run reaches the user manager through the child's environment and execvp's the
-  // command from the child's PATH; without either it exits 1 before the command starts.
-  // An unresolvable command stays plain so its owner keeps the native ENOENT.
-  if (
-    !scope.available ||
-    !hasUserBusRoute(options.env ?? process.env) ||
-    !resolveExecutablePath(command, { env: options.env, cwd: options.cwd })
-  ) {
+  if (!scope.available) {
+    return plain;
+  }
+  // systemd-run execvp's the command as argv[0], reaches the user manager through the child's
+  // environment, and resolves the command from the child's PATH. A spawn that would change
+  // argv[0] or exit 1 before its command starts stays plain; an unresolvable command also keeps
+  // its owner's native ENOENT.
+  if (options.argv0 !== undefined && options.argv0 !== command) {
+    skipChildMemoryScope("systemd-run cannot keep a distinct argv[0]");
+    return plain;
+  }
+  if (!hasUserBusRoute(options.env ?? process.env)) {
+    skipChildMemoryScope(
+      "the child environment has no XDG_RUNTIME_DIR or DBUS_SESSION_BUS_ADDRESS",
+    );
+    return plain;
+  }
+  if (!resolveExecutablePath(command, { env: options.env, cwd: options.cwd })) {
     return plain;
   }
   return {
