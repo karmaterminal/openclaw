@@ -111,4 +111,28 @@ describe("next-turn injection admission fence", () => {
       expect(result.enqueued).toBe(suffix === "channel:chat");
     }
   });
+
+  it("rejects a subagent row with unresolved legacy external-route hints", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:subagent:legacy");
+    await writeEntry(scope, {
+      sessionId: "legacy",
+      lifecycleRevision: "current",
+      updatedAt: 1,
+      groupChannel: "discord",
+    });
+    expect(
+      await enqueuePluginNextTurnInjection({
+        cfg,
+        pluginId: "owner-fixture",
+        injection: {
+          sessionKey: scope.sessionKey,
+          agentId: "main",
+          text: "blocked",
+          expectedSessionId: "legacy",
+          expectedLifecycleRevision: "current",
+        },
+      }),
+    ).toMatchObject({ enqueued: false, reason: "unsupported_route" });
+  });
 });

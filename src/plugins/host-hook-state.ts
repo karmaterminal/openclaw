@@ -13,6 +13,7 @@ import {
   reconcileLateExpiredInjections,
   settle,
 } from "./host-hook-injection-outcomes.js";
+import { isUnsupportedInjectionRoute } from "./host-hook-injection-route.js";
 import {
   isExpired,
   isPluginNextTurnInjectionPlacement,
@@ -46,12 +47,6 @@ const DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN = 64 * 1024;
 const MAX_OUTCOMES_PER_PLUGIN_SESSION = 256;
 const MAX_OUTCOME_RETENTION_MS = 86_400_000;
 type MutableSessionEntry = SessionEntry & Record<string, unknown>;
-
-function isUnsupportedInjectionRoute(sessionKey: string, entry: SessionEntry): boolean {
-  // Local route proof is stricter than admission: main/channel sessions may
-  // drain here even though absence of a route never proves host locality.
-  return entry.delivery?.kind === "external" || /^(?:agent:[^:]+:)?(?:cron|hook):/.test(sessionKey);
-}
 
 export { getPluginNextTurnInjectionState } from "./host-hook-injection-query.js";
 
