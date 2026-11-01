@@ -35,6 +35,27 @@ function createGuardedPluginRegistrationApi(api: OpenClawPluginApi): {
         return value;
       }
       if (typeof prop === "string" && LATE_CALLABLE_PLUGIN_API_METHODS.has(prop)) {
+        if (prop === "resolveLocalSessionRoute" && owner) {
+          return async (sessionKey: string) => {
+            const absent = { sessionKey, exists: false, onHost: false };
+            const current = () =>
+              !owner.owner?.revoked && owner.acceptingCalls && !owner.lifecycle.signal.aborted;
+            if (!current()) {
+              return absent;
+            }
+            const { getRuntimeConfigSnapshot } = await import("../config/runtime-snapshot.js");
+            // Managed callbacks need a published host config, not their registration snapshot.
+            if (!getRuntimeConfigSnapshot() || !current()) {
+              return absent;
+            }
+            const result = (await Reflect.apply(value, target, [sessionKey])) as Awaited<
+              ReturnType<OpenClawPluginApi["session"]["state"]["resolveLocalSessionRoute"]>
+            >;
+            return current()
+              ? result
+              : { sessionKey: result.sessionKey, exists: false, onHost: false };
+          };
+        }
         return (...args: unknown[]) => Reflect.apply(value, target, args);
       }
       return (...args: unknown[]) => {

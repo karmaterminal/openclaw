@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 
 afterEach(() => {
   vi.doUnmock("./local-session-route.js");
+  vi.doUnmock("../config/runtime-snapshot.js");
   vi.resetModules();
 });
 
@@ -39,4 +40,47 @@ it("keeps setup-only API construction free of the session route worker graph", a
   });
   expect(routeModuleLoads).toBe(1);
   expect(route).toHaveBeenCalledWith({ cfg: api.config, sessionKey: key });
+});
+
+it("uses the current store/owner config and rejects a route read spanning config publication", async () => {
+  const oldConfig = { session: { store: "/tmp/old-sessions.json" } };
+  const newConfig = { session: { store: "/tmp/new-sessions.json" } };
+  let currentConfig = oldConfig;
+  vi.doMock("../config/runtime-snapshot.js", () => ({
+    getRuntimeConfigSnapshot: () => currentConfig,
+  }));
+  let finishRead:
+    | ((value: { sessionKey: string; exists: boolean; onHost: boolean }) => void)
+    | undefined;
+  const route = vi.fn(
+    (_params: { cfg: unknown; sessionKey: string }) =>
+      new Promise<{ sessionKey: string; exists: boolean; onHost: boolean }>((resolve) => {
+        finishRead = resolve;
+      }),
+  );
+  vi.doMock("./local-session-route.js", () => ({ resolvePluginLocalSessionRoute: route }));
+  const { buildPluginApi } = await import("./api-builder.js");
+  const api = buildPluginApi({
+    id: "route-drift",
+    name: "Route Drift",
+    source: "test",
+    registrationMode: "full",
+    config: oldConfig,
+    runtime: {} as Parameters<typeof buildPluginApi>[0]["runtime"],
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+    resolvePath: (value) => value,
+  });
+  const key = "agent:main:subagent:late";
+  const stale = api.session.state.resolveLocalSessionRoute(key);
+  await vi.waitFor(() => expect(route).toHaveBeenCalledTimes(1));
+  expect(route).toHaveBeenLastCalledWith({ cfg: oldConfig, sessionKey: key });
+  currentConfig = newConfig;
+  finishRead?.({ sessionKey: key, exists: true, onHost: true });
+  expect(await stale).toEqual({ sessionKey: key, exists: false, onHost: false });
+
+  const fresh = api.session.state.resolveLocalSessionRoute(key);
+  await vi.waitFor(() => expect(route).toHaveBeenCalledTimes(2));
+  expect(route).toHaveBeenLastCalledWith({ cfg: newConfig, sessionKey: key });
+  finishRead?.({ sessionKey: key, exists: false, onHost: false });
+  expect(await fresh).toEqual({ sessionKey: key, exists: false, onHost: false });
 });
