@@ -1,14 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readSessionEntryReadOnlyInWorker } from "../config/sessions/session-entry-read-runtime.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { createWorkerSessionPlacementStore } from "../gateway/worker-environments/placement-store.js";
 import { resolvePluginLocalSessionRoute } from "./local-session-route.js";
 
 vi.mock("../config/sessions/session-entry-read-runtime.js", () => ({
   readSessionEntryReadOnlyInWorker: vi.fn(),
 }));
+vi.mock("../gateway/worker-environments/placement-store.js", () => ({
+  createWorkerSessionPlacementStore: vi.fn(),
+}));
 
 const cfg = { session: { store: "/tmp/oc-local-route/sessions.json" } } as OpenClawConfig;
 const read = vi.mocked(readSessionEntryReadOnlyInWorker);
+const readProjection = vi.fn();
 function entry(sessionKey: string, delivery?: { kind: "internal" | "none" }) {
   read.mockResolvedValue({ sessionId: "s1", lifecycleRevision: "r1", updatedAt: 1, delivery });
 }
@@ -16,7 +21,11 @@ function resolve(sessionKey: string) {
   return resolvePluginLocalSessionRoute({ cfg, sessionKey });
 }
 
-beforeEach(() => read.mockReset());
+beforeEach(() => {
+  read.mockReset();
+  readProjection.mockReset().mockResolvedValue({ placements: new Map() });
+  vi.mocked(createWorkerSessionPlacementStore).mockReturnValue({ readProjection } as never);
+});
 
 describe("exact plugin local session route proof", () => {
   it("proves an exact local child and refuses missing or deleted rows", async () => {
@@ -130,6 +139,31 @@ describe("exact plugin local session route proof", () => {
       sessionId: "legacy",
       lifecycleRevision: "legacy-revision",
     });
+  });
+
+  it("uses current exact placement ownership, rejecting remote and uncertain placements", async () => {
+    const key = "agent:main:subagent:abc";
+    entry(key);
+    const placement = { sessionId: "s1", sessionKey: key, agentId: "main" };
+    readProjection.mockResolvedValueOnce({
+      placements: new Map([["s1", { ...placement, state: "active" }]]),
+    });
+    expect(await resolve(key)).toMatchObject({ exists: true, onHost: false });
+    expect(readProjection).toHaveBeenCalledWith(["s1"], { current: true });
+
+    readProjection.mockResolvedValueOnce({
+      placements: new Map([["s1", { ...placement, state: "local" }]]),
+    });
+    expect(await resolve(key)).toMatchObject({ exists: true, onHost: true });
+
+    readProjection.mockResolvedValueOnce({
+      placements: new Map([
+        ["s1", { ...placement, sessionKey: "agent:main:subagent:other", state: "local" }],
+      ]),
+    });
+    expect(await resolve(key)).toMatchObject({ exists: true, onHost: false });
+    readProjection.mockRejectedValueOnce(new Error("placement unavailable"));
+    expect(await resolve(key)).toMatchObject({ exists: false, onHost: false });
   });
 
   it("preserves case-distinct opaque peer identities on exact lookup", async () => {

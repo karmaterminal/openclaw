@@ -11,6 +11,11 @@ import type { OpenClawPluginApi } from "./types.js";
 vi.mock("../config/sessions/session-entry-read-runtime.js", () => ({
   readSessionEntryReadOnlyInWorker: vi.fn(),
 }));
+vi.mock("../gateway/worker-environments/placement-store.js", () => ({
+  createWorkerSessionPlacementStore: vi.fn(() => ({
+    readProjection: async () => ({ placements: new Map() }),
+  })),
+}));
 
 function createPluginApi(handlers: Parameters<typeof buildPluginApi>[0]["handlers"] = {}) {
   return buildPluginApi({

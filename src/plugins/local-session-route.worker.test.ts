@@ -3,6 +3,7 @@ import { observeHostDataSql } from "../../test/helpers/sqlite-statement-executio
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { replaceSessionEntry } from "../config/sessions/session-accessor.sqlite-entry.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { createWorkerSessionPlacementStore } from "../gateway/worker-environments/placement-store.js";
 import { resolveOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { resolvePluginLocalSessionRoute } from "./local-session-route.js";
@@ -61,5 +62,12 @@ it("reads current exact session presence on a worker without host data SQL", asy
     } finally {
       refreshedSql.restore();
     }
+    const placements = createWorkerSessionPlacementStore();
+    await placements.startDispatch({ sessionId: "after", sessionKey, agentId });
+    expect(await resolve()).toMatchObject({
+      exists: true,
+      onHost: false,
+      sessionId: "after",
+    });
   });
 });
