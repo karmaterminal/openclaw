@@ -14,8 +14,10 @@ import {
   settle,
 } from "./host-hook-injection-outcomes.js";
 import {
-  isSubagentInjectionRoute,
-  isUnsupportedInjectionRouteNow,
+  injectionRouteAdmissionReason,
+  isUnsupportedInjectionRoute,
+  matchesInjectionRouteGeneration,
+  prepareInjectionRoute,
 } from "./host-hook-injection-route.js";
 import {
   hasEnhancedNextTurnInjectionFields,
@@ -222,35 +224,28 @@ export async function enqueuePluginNextTurnInjection(params: {
   };
   const scope = { cfg: params.cfg, sessionKey, agentId: params.injection.agentId };
   const notices: SettlementNotice[] = [];
-  const updated = await updateResolvedSessionEntry(scope, async (entry, context) => {
+  // Broker reads cannot be nested inside a session-row mutation. Binding or
+  // placement may still change after this read without changing row identity.
+  const { selected, unsupportedRoute } = await prepareInjectionRoute(scope);
+  const selectedEntry = selected?.entry;
+  if (!selected || !selectedEntry) {
+    return { enqueued: false, id: "", sessionKey, reason: "missing_session" };
+  }
+  const updated = await updateResolvedSessionEntry(scope, (entry, context) => {
     if (params.shouldEnqueue && !params.shouldEnqueue()) {
       return { enqueued: false, id: "", reason: "invalid" as const };
     }
-    // Subagent admission needs the selected row's exact generation. Check
-    // inside the mutation so a reset or reroute cannot race this proof.
-    if (
-      isSubagentInjectionRoute(context.canonicalKey) &&
-      (injection.expectedSessionId === undefined ||
-        injection.expectedLifecycleRevision === undefined)
-    ) {
-      return { enqueued: false, id: "", reason: "invalid" as const };
-    }
-    if (
-      injection.expectedSessionId !== undefined &&
-      (entry.sessionId !== injection.expectedSessionId ||
-        entry.lifecycleRevision !== injection.expectedLifecycleRevision)
-    ) {
-      return { enqueued: false, id: "", reason: "stale_session" as const };
-    }
-    if (await isUnsupportedInjectionRouteNow(context.canonicalKey, context.agentId, entry)) {
-      return { enqueued: false, id: "", reason: "unsupported_route" as const };
-    }
-    if (
-      entry.agentHarnessId === "codex" ||
-      entry.agentHarnessId === "copilot" ||
-      /(?:^|:)harness:(?:codex|copilot)(?::|$)/.test(sessionKey)
-    ) {
-      return { enqueued: false, id: "", reason: "harness_does_not_drain" as const };
+    const routeReason = injectionRouteAdmissionReason({
+      selected,
+      canonicalKey: context.canonicalKey,
+      requestedKey: sessionKey,
+      entry,
+      expectedSessionId: injection.expectedSessionId,
+      expectedLifecycleRevision: injection.expectedLifecycleRevision,
+      unsupportedRoute,
+    });
+    if (routeReason) {
+      return { enqueued: false, id: "", reason: routeReason };
     }
     const injections = { ...entry.pluginNextTurnInjections };
     pruneOutcomes(entry, params.pluginId, now);
@@ -341,7 +336,8 @@ async function drainPluginNextTurnInjections(
     return { records: [], notices: [], canonicalKey: "" };
   }
   const scope = { cfg: params.cfg, sessionKey, agentId: params.agentId };
-  const selectedEntry = await readResolvedSessionEntryInWorker(scope);
+  const { selected, unsupportedRoute } = await prepareInjectionRoute(scope, true);
+  const selectedEntry = selected?.entry;
   if (
     (!selectedEntry?.pluginNextTurnInjections ||
       Object.keys(selectedEntry.pluginNextTurnInjections).length === 0) &&
@@ -351,19 +347,15 @@ async function drainPluginNextTurnInjections(
     return { records: [], notices: [], canonicalKey: sessionKey };
   }
   const notices: SettlementNotice[] = [];
-  const updated = await updateResolvedSessionEntry(scope, async (entry, context) => {
-    if (
-      selectedEntry &&
-      (entry.sessionId !== selectedEntry.sessionId ||
-        entry.lifecycleRevision !== selectedEntry.lifecycleRevision)
-    ) {
+  const updated = await updateResolvedSessionEntry(scope, (entry, context) => {
+    if (!matchesInjectionRouteGeneration(selected, context.canonicalKey, entry)) {
       return {
         records: [],
         sessionId: entry.sessionId,
         lifecycleRevision: entry.lifecycleRevision,
       };
     }
-    if (await isUnsupportedInjectionRouteNow(context.canonicalKey, context.agentId, entry)) {
+    if (unsupportedRoute || isUnsupportedInjectionRoute(context.canonicalKey, entry)) {
       return {
         records: [],
         sessionId: entry.sessionId,
