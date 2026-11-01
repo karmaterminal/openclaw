@@ -170,7 +170,9 @@ describe("plugin host cleanup session stores", () => {
     expect(outcomes?.cleanup?.old?.state).toBe("consumed");
     expect(outcomes?.cleanup?.pending?.state).toBe("discarded");
     expect(Object.hasOwn(outcomes?.cleanup ?? {}, "__proto__")).toBe(true);
-    expect(outcomes?.cleanup?.["__proto__"]?.state).toBe("discarded");
+    expect(
+      Object.entries(outcomes?.cleanup ?? {}).find(([key]) => key === "__proto__")?.[1].state,
+    ).toBe("discarded");
     expect(outcomes?.cleanup?.stale).toBeUndefined();
     expect(original.pluginNextTurnInjectionOutcomes?.cleanup?.pending).toBeUndefined();
   });

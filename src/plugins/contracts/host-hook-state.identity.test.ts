@@ -14,7 +14,7 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { openOpenClawAgentDatabase } from "../../state/openclaw-agent-db.js";
 import { createOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { normalizeSessionDeliveryState as deliveryState } from "../../utils/delivery-context.shared.js";
-import { dispatchSettlements, type SettlementNotice } from "../host-hook-settlement-dispatch.js";
+import { dispatchSettlements } from "../host-hook-settlement-dispatch.js";
 import {
   drainPluginNextTurnInjectionContext as drain,
   enqueuePluginNextTurnInjection,
@@ -28,7 +28,7 @@ import { createPluginRecord } from "../status.test-helpers.js";
 
 describe("next-turn injection identity", () => {
   it("keeps workflow v2 optional on the legacy API and required on the versioned API", () => {
-    type Optional<T, K extends keyof T> = {} extends Pick<T, K> ? true : false;
+    type Optional<T, K extends keyof T> = Pick<T, K> extends Required<Pick<T, K>> ? false : true;
     type Legacy = OpenClawPluginApi["session"]["workflow"];
     type V2 = OpenClawPluginApiV2["session"]["workflow"];
     expectTypeOf<Optional<Legacy, "getNextTurnInjectionState">>().toEqualTypeOf<true>();
@@ -569,7 +569,9 @@ describe("next-turn injection identity", () => {
     ).resolves.toMatchObject({ state: "withdrawn", idempotencyKey: "__proto__" });
     const outcomes = readEntry(scope)?.pluginNextTurnInjectionOutcomes?.["owner-fixture"];
     expect(Object.hasOwn(outcomes ?? {}, "__proto__")).toBe(true);
-    expect(outcomes?.["__proto__"]?.state).toBe("withdrawn");
+    expect(Object.entries(outcomes ?? {}).find(([key]) => key === "__proto__")?.[1].state).toBe(
+      "withdrawn",
+    );
   });
 
   it("retains the byte-budget suffix in FIFO order", async () => {
