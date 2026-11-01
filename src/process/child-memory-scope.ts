@@ -88,9 +88,6 @@ async function runManagerCommand(
   }
 }
 
-// Unit-name characters only, so a cgroup segment can never reach systemctl as a glob.
-const SERVICE_UNIT_NAME = /^[\w:.\\@-]+\.service$/;
-
 /**
  * The user service whose cgroup holds this process, once its manager confirms it. A process in a
  * scope or login session (a CLI in a terminal) has no service whose stop should end its children.
@@ -113,15 +110,11 @@ async function resolveOwningUnit(): Promise<OwningUnit> {
       ? -1
       : segments.findIndex((segment, index) => index > managerIndex && !segment.endsWith(".slice"));
   const unit = segments[unitIndex];
-  if (!unit || !SERVICE_UNIT_NAME.test(unit)) {
+  if (!unit?.endsWith(".service")) {
     return { reason: `cgroup ${cgroup} is not a service under ${manager}` };
   }
-  const systemctl = resolveExecutablePath("systemctl", { useCache: false });
-  if (!systemctl) {
-    return { reason: "systemctl is not on PATH" };
-  }
   const show = await runManagerCommand([
-    systemctl,
+    "systemctl",
     "--user",
     "show",
     "--property=ControlGroup",

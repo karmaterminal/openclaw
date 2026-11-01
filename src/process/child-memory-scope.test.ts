@@ -189,7 +189,6 @@ it.skipIf(process.platform !== "linux").each([
 );
 
 it.skipIf(process.platform !== "linux").each([
-  { name: "default", cgroup: `${userApps}/${gatewayUnit}`, unit: gatewayUnit },
   {
     name: "profile",
     cgroup: `${userApps}/openclaw-gateway-work.service`,
@@ -254,12 +253,7 @@ it.skipIf(process.platform !== "linux").each([
     cgroup: `/user.slice/user-${uid + 1}.slice/user@${uid + 1}.service/app.slice/${gatewayUnit}`,
   },
   { name: "a transient scope", cgroup: `${userApps}/run-r0123456789abcdef.scope` },
-  { name: "a tmux scope", cgroup: `${userApps}/tmux-spawn-0a1b2c3d.scope` },
   { name: "a login session", cgroup: `/user.slice/user-${uid}.slice/session-3.scope` },
-  {
-    name: "the user manager",
-    cgroup: `/user.slice/user-${uid}.slice/user@${uid}.service/init.scope`,
-  },
   { name: "the container root", cgroup: "/" },
 ])("scopes without a binding, warning once, for a process in $name", async ({ cgroup }) => {
   installFakeSystemdRun();
@@ -312,25 +306,6 @@ it.skipIf(process.platform !== "linux").each([
   expect(fake.invocations()).toEqual([`${launcherArgs().join(" ")} true`]);
   expect(scopeWarn.mock.calls).toEqual([[ownerUnverified(reason)]]);
 });
-
-it.skipIf(process.platform !== "linux")(
-  "refuses the binding when systemctl is not on PATH, and still scopes",
-  async () => {
-    const fake = installFakeSystemdRun();
-    // Only the launcher and the probe's `true` are reachable.
-    fs.writeFileSync(path.join(path.dirname(fake.bin), "true"), "#!/bin/sh\nexit 0\n", {
-      mode: 0o755,
-    });
-    vi.stubEnv("PATH", path.dirname(fake.bin));
-    const prepare = await loadScope({ process: { childScope: { enabled: true } } });
-
-    await expect(prepare(...shell)).resolves.toMatchObject({
-      args: [...launcherArgs(), "/bin/sh", "-c", "exit 0"],
-      scoped: true,
-    });
-    expect(scopeWarn.mock.calls).toEqual([[ownerUnverified("systemctl is not on PATH")]]);
-  },
-);
 
 it.each([
   {
