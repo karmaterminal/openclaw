@@ -173,6 +173,10 @@ policy input that changes after the hook returned rolls the fail back and the
 row stays pending for the next pass, with its lane fenced for this one. A row failed here never reaches the channel's inbound
 handler, so whatever that handler would have done with a skipped message, such
 as recording it as pending conversation history, does not happen.
+`drain.prioritizePending(record)` can prefer pending events while preserving
+snapshot order within each priority. It does not preempt active claims or bypass
+lanes blocked by retry backoff. Priority is scheduling only; normal claim and
+delivery validation still apply.
 The returned monitor exposes `admit`, `ensureQueueAvailable`, `start`, `pause`,
 `stop`, `waitForIdle`, `isRunning`, and `isStopped`. Use the
 `ensureQueueAvailable()` check (safe to repeat) when plugin-owned migration or preparation must

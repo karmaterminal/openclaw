@@ -76,9 +76,11 @@ afterEach(async () => {
 function createPausedMonitor(
   dispatch: Parameters<typeof createDiscordIngressMonitor>[0]["dispatch"],
   ingressQueue = queue,
+  botUserId?: string,
 ) {
   const monitor = createDiscordIngressMonitor({
     accountId: "default",
+    botUserId,
     client: {} as never,
     runtime: { error: vi.fn(), log: vi.fn() },
     queue: ingressQueue,
@@ -94,6 +96,35 @@ function createMonitor(...args: Parameters<typeof createPausedMonitor>) {
 }
 
 describe("Discord durable ingress", () => {
+  it("prioritizes a recent native guild mention without dropping ambient rows", async () => {
+    const old = new Date(Date.now() - 30 * 60_000).toISOString();
+    for (const id of ["old-1", "old-2"]) {
+      await queue.enqueue(
+        id,
+        payloadFor({ ...createRawMessage(id), guild_id: "guild-1", timestamp: old } as APIMessage),
+        { laneKey: "channel:channel-1" },
+      );
+    }
+    const order: string[] = [];
+    const monitor = createPausedMonitor(
+      async (event, lifecycle) => {
+        order.push(event.id);
+        await lifecycle.onAdopted();
+      },
+      queue,
+      "bot-1",
+    );
+    await monitor.accept({
+      ...createRawMessage("live"),
+      guild_id: "guild-1",
+      timestamp: new Date().toISOString(),
+      mentions: [{ id: "bot-1" }],
+    } as APIMessage);
+    monitor.start();
+    await vi.waitFor(() => expect(order).toEqual(["live", "old-1", "old-2"]));
+    expect(await queue.listPending()).toEqual([]);
+  });
+
   it("stores only the awaited ingress transform, before any message dispatch", async () => {
     const raw = {
       ...createRawMessage("privacy-event"),
