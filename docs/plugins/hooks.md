@@ -140,8 +140,9 @@ reload mode, hook policy changes hot-reload the existing plugin runtime.
   Agent deletion also emits `session_delete` for each session row in its
   successfully committed purge; absent stores and failed purges emit none.
   These callbacks are detached and do not block the committed lifecycle operation.
-  For one session key, lifecycle callbacks run in publication order (including
-  `session_end` and `session_start`); callbacks for different keys may overlap.
+  For one session key, `session_end` settles before the corresponding
+  `session_reset` or `session_delete`, and lifecycle callbacks run in publication
+  order (including `session_start`); callbacks for different keys may overlap.
   A failing callback does not prevent later notifications.
 - `allowPromptInjection: false` blocks `agent_turn_prepare`,
   `before_prompt_build`, `heartbeat_prompt_contribution`, and durable next-turn

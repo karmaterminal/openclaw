@@ -101,6 +101,29 @@ export function emitGatewaySessionEndPluginHook(params: {
       storePath: params.storePath,
     });
   }
+  if (shouldEmitPluginHook && hookRunner) {
+    const endedTranscript =
+      params.endedTranscript ??
+      (params.reason === "deleted"
+        ? endedArchive
+          ? createArchivedSessionTranscriptSource({
+              archivedPath: endedArchive.archivedPath,
+              agentId: params.agentId,
+              sessionId: params.sessionId,
+              storePath: params.storePath,
+            })
+          : { available: false as const, reason: "archive-unavailable" as const }
+        : params.reason === "new"
+          ? { available: false as const, reason: "no-stable-cutoff" as const }
+          : { available: false as const, reason: "unsupported-source" as const });
+    const payload = buildSessionEndHookPayload({ ...hookParams, endedTranscript });
+    // Publish the end first; the per-key queue waits for its settlement before reset/delete.
+    void dispatchSessionLifecycleHook(params.sessionKey, "hooks:session-end", async () => {
+      await hookRunner.runSessionEnd(payload.event, payload.context);
+    }).catch((err: unknown) => {
+      logVerbose(`session_end hook failed: ${String(err)}`);
+    });
+  }
   if (shouldEmitLifecycleHook && hookRunner && lifecycleHook) {
     const context = {
       sessionId: params.sessionId,
@@ -128,30 +151,6 @@ export function emitGatewaySessionEndPluginHook(params: {
       logVerbose(`${lifecycleHook} hook failed: ${String(err)}`);
     });
   }
-  if (!shouldEmitPluginHook || !hookRunner) {
-    return;
-  }
-  const endedTranscript =
-    params.endedTranscript ??
-    (params.reason === "deleted"
-      ? endedArchive
-        ? createArchivedSessionTranscriptSource({
-            archivedPath: endedArchive.archivedPath,
-            agentId: params.agentId,
-            sessionId: params.sessionId,
-            storePath: params.storePath,
-          })
-        : { available: false as const, reason: "archive-unavailable" as const }
-      : params.reason === "new"
-        ? { available: false as const, reason: "no-stable-cutoff" as const }
-        : { available: false as const, reason: "unsupported-source" as const });
-  const payload = buildSessionEndHookPayload({ ...hookParams, endedTranscript });
-  // Detached hooks outlive the emitting turn and must not retain its mutation ownership.
-  void dispatchSessionLifecycleHook(params.sessionKey, "hooks:session-end", async () => {
-    await hookRunner.runSessionEnd(payload.event, payload.context);
-  }).catch((err: unknown) => {
-    logVerbose(`session_end hook failed: ${String(err)}`);
-  });
 }
 
 export function emitGatewaySessionStartPluginHook(params: {
