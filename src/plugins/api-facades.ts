@@ -79,7 +79,13 @@ export function attachPluginApiFacades(api: OpenClawPluginApiWithoutFacades): Op
           return getRuntimeConfigSnapshot() === currentConfig &&
             getRuntimeConfigSnapshotMetadata()?.revision === currentRevision
             ? result
-            : { sessionKey: result.sessionKey, exists: false, onHost: false };
+            : {
+                sessionKey: result.sessionKey,
+                exists: false,
+                onHost: false,
+                sessionId: null,
+                lifecycleRevision: null,
+              };
         },
       },
       workflow: {

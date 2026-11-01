@@ -37,7 +37,7 @@ plugins.
 | `api.session.workflow.scheduleSessionTurn(...)` / `unscheduleSessionTurnsByTag(...)` | Bundled-only Cron-backed scheduled session turns plus tag-based cleanup                                                                                    |
 | `api.session.controls.registerSessionAction(...)`                                    | Typed session actions clients can dispatch through the Gateway                                                                                             |
 
-`api.session.state.resolveLocalSessionRoute(sessionKey)` asynchronously returns `{ sessionKey, exists, onHost }`.
+`api.session.state.resolveLocalSessionRoute(sessionKey)` asynchronously returns `{ sessionKey, exists, onHost, sessionId, lifecycleRevision }`. The identity fields name the exact persisted row read, or are `null` if no row was found. `onHost` is true only for an exact subagent row with both identity fields and no external-route metadata. Cron, hook, shared main, and channel-shaped keys fail closed. A consumer must compare both identity fields against its target immediately before acting; this read grants neither routing nor wake authority.
 It checks an exact persisted session key. A missing or unreadable entry cannot prove
 locality; shared main and channel sessions do not receive a positive host-locality
 claim from their key shape. This inspection does not authorize a send or wake.
