@@ -11,7 +11,8 @@ import { withEnvAsync } from "../test-utils/env.js";
 import { resetProcessRegistryForTests } from "./bash-process-registry.test-support.js";
 import { createExecTool } from "./bash-tools.exec-run.js";
 
-vi.mock("../process/supervisor/index.js", () => ({
+vi.mock("../process/supervisor/index.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../process/supervisor/index.js")>()),
   getProcessSupervisor: () => supervisor,
 }));
 
