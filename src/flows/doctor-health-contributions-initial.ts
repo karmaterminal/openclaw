@@ -430,6 +430,22 @@ export function resolveInitialDoctorHealthContributions(params: {
         noteDiskSpace();
       },
     }),
+    createDoctorHealthContribution("doctor:child-memory-scope", "Child memory scope", {
+      healthChecks: {
+        description:
+          "An enabled process.childScope that this host cannot provide leaves heavy children in the Gateway cgroup.",
+        defaultEnabled: true,
+        async detect(ctx) {
+          const { collectChildMemoryScopeHealthFindings } =
+            await import("../commands/doctor-child-memory-scope.js");
+          return await collectChildMemoryScopeHealthFindings(ctx.cfg);
+        },
+      },
+      async run(ctx) {
+        const { noteChildMemoryScope } = await import("../commands/doctor-child-memory-scope.js");
+        await noteChildMemoryScope(ctx.cfg);
+      },
+    }),
     createDoctorHealthContribution("doctor:project-clone-shape", "Project clones", {
       updateWork: { kind: "standalone" },
       healthChecks: {

@@ -1,7 +1,10 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import path from "node:path";
 import { embeddedAgentLog } from "openclaw/plugin-sdk/agent-harness-registration";
-import { resolveLaunchableNodePath } from "openclaw/plugin-sdk/process-runtime";
+import {
+  prepareChildMemoryScopedSpawn,
+  resolveLaunchableNodePath,
+} from "openclaw/plugin-sdk/process-runtime";
 import {
   materializeWindowsSpawnProgram,
   resolveWindowsSpawnProgram,
@@ -139,6 +142,10 @@ export async function createStdioTransport(
     throw previousFailure;
   }
   const register = await prepareCodexAppServerProcessRegistration();
+  const launch = await prepareChildMemoryScopedSpawn(invocation.command, invocation.argv, {
+    env,
+    cwd: options.cwd,
+  });
   await assertCurrent?.();
   embeddedAgentLog.debug("Codex app-server spawn", {
     command: invocation.command,
@@ -150,7 +157,7 @@ export async function createStdioTransport(
   });
   let child: ChildProcessWithoutNullStreams & Pick<CodexAppServerTransport, "startupFailure">;
   try {
-    child = spawn(invocation.command, invocation.argv, {
+    child = spawn(launch.command, launch.args, {
       // Preserve the shipped Supervisor endpoint contract: relative commands and
       // config discovery may depend on the endpoint's process working directory.
       ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
@@ -170,7 +177,7 @@ export async function createStdioTransport(
     }
     // Attach lifecycle observers before inspection can yield to an early exit.
     onSpawn?.(child);
-    await register(child);
+    await register(child, launch.scoped ? launch : undefined);
     await assertCurrent?.();
     return child;
   } catch (error) {

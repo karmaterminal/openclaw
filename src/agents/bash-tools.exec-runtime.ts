@@ -594,6 +594,8 @@ export async function runExecProcess({
       env: spawnSpec.env,
       timeoutMs,
       memoryLimitBytes: opts.sandbox ? undefined : resolveHostExecMemoryLimit(),
+      // Sandboxed work runs in the backend's own cgroup; host commands get the child scope.
+      ...(opts.sandbox ? {} : { childMemoryScope: true as const }),
       captureOutput: false,
       onStdout: handleOutput("stdout", sanitizeStdout),
       onStderr: handleOutput("stderr", sanitizeStderr),

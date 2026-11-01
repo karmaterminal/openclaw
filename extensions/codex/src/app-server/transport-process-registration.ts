@@ -163,11 +163,14 @@ export function createCodexAppServerProcessReaperService(): OpenClawPluginServic
 
 /** Reap previous owners before spawn; commit this child's identity before initialization. */
 export async function prepareCodexAppServerProcessRegistration(): Promise<
-  (child: ChildProcessWithoutNullStreams) => Promise<void>
+  (
+    child: ChildProcessWithoutNullStreams,
+    scopeLauncher?: { command: string; args: readonly string[] },
+  ) => Promise<void>
 > {
   const store =
     process.platform === "win32" ? undefined : await reapRegisteredCodexAppServerOrphans();
-  return async (child) => {
+  return async (child, scopeLauncher) => {
     await once(child, "spawn");
     if (!store) {
       return;
@@ -184,7 +187,7 @@ export async function prepareCodexAppServerProcessRegistration(): Promise<
         "Cannot register the Codex child process: its direct-parent identity is unavailable. Retry.",
       );
     }
-    const command = await readCodexAppServerProcessCommand(spawned, deadline);
+    const command = await readCodexAppServerProcessCommand(spawned, deadline, scopeLauncher);
     if (child.exitCode !== null || child.signalCode !== null) {
       throw new Error(
         "Cannot register the Codex child process command: the child exited during inspection. Retry.",
