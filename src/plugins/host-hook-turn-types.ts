@@ -8,6 +8,9 @@ export type PluginNextTurnInjection = {
   sessionKey: string;
   /** Selected owner when the session key is unscoped, such as global. */
   agentId?: string;
+  /** Exact row from resolveLocalSessionRoute; supply both fields together. */
+  expectedSessionId?: string;
+  expectedLifecycleRevision?: string;
   text: string;
   idempotencyKey?: string;
   placement?: PluginNextTurnInjectionPlacement;
@@ -29,7 +32,7 @@ export type PluginNextTurnInjection = {
 /** Stored next-turn injection after session/plugin metadata is attached. */
 export type PluginNextTurnInjectionRecord = Omit<
   PluginNextTurnInjection,
-  "sessionKey" | "agentId"
+  "sessionKey" | "agentId" | "expectedSessionId" | "expectedLifecycleRevision"
 > & {
   id: string;
   pluginId: string;
@@ -50,7 +53,9 @@ export type PluginNextTurnInjectionEnqueueResult = {
     | "capacity"
     | "missing_session"
     | "supersede_conflict"
-    | "harness_does_not_drain";
+    | "harness_does_not_drain"
+    | "stale_session"
+    | "unsupported_route";
   state?: PluginNextTurnInjectionState;
 };
 

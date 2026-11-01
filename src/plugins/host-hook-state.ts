@@ -47,60 +47,13 @@ const MAX_OUTCOMES_PER_PLUGIN_SESSION = 256;
 const MAX_OUTCOME_RETENTION_MS = 86_400_000;
 type MutableSessionEntry = SessionEntry & Record<string, unknown>;
 
-export async function getPluginNextTurnInjectionState(params: {
-  cfg: OpenClawConfig;
-  pluginId: string;
-  sessionKey: string;
-  agentId?: string;
-  idempotencyKey: string;
-  shouldQuery?: () => boolean;
-}): Promise<PluginNextTurnInjectionStateResult> {
-  const idempotencyKey = params.idempotencyKey.trim();
-  const unknown: PluginNextTurnInjectionStateResult = {
-    sessionKey: params.sessionKey,
-    idempotencyKey,
-    state: "unknown",
-  };
-  if (params.shouldQuery && !params.shouldQuery()) {
-    return unknown;
-  }
-  const updated = await updateResolvedSessionEntry(
-    { cfg: params.cfg, sessionKey: params.sessionKey, agentId: params.agentId },
-    (entry) => {
-      if (params.shouldQuery && !params.shouldQuery()) {
-        return unknown;
-      }
-      const now = Date.now();
-      pruneOutcomes(entry, params.pluginId, now);
-      const queue = entry.pluginNextTurnInjections?.[params.pluginId];
-      const pending = Array.isArray(queue)
-        ? queue.find(
-            (item) =>
-              isPluginNextTurnInjectionRecord(item) && item.idempotencyKey === idempotencyKey,
-          )
-        : undefined;
-      const outcome = ownOutcome(entry, params.pluginId, idempotencyKey);
-      return {
-        sessionKey: params.sessionKey,
-        idempotencyKey,
-        state:
-          pending && !isExpired(pending, now)
-            ? "pending"
-            : outcome
-              ? outcome.state
-              : pending
-                ? "expired"
-                : "unknown",
-        ...(outcome ? { settledAt: outcome.settledAt } : {}),
-      } as PluginNextTurnInjectionStateResult;
-    },
-  );
-  return params.shouldQuery && !params.shouldQuery()
-    ? unknown
-    : updated.found
-      ? updated.result
-      : unknown;
+function isUnsupportedInjectionRoute(sessionKey: string, entry: SessionEntry): boolean {
+  // Local route proof is stricter than admission: main/channel sessions may
+  // drain here even though absence of a route never proves host locality.
+  return entry.delivery?.kind === "external" || /^(?:agent:[^:]+:)?(?:cron|hook):/.test(sessionKey);
 }
+
+export { getPluginNextTurnInjectionState } from "./host-hook-injection-query.js";
 
 export async function withdrawPluginNextTurnInjection(params: {
   cfg: OpenClawConfig;
@@ -108,6 +61,8 @@ export async function withdrawPluginNextTurnInjection(params: {
   sessionKey: string;
   agentId?: string;
   idempotencyKey: string;
+  expectedSessionId?: string;
+  expectedLifecycleRevision?: string;
   shouldWithdraw?: () => boolean;
 }): Promise<PluginNextTurnInjectionStateResult> {
   const idempotencyKey = params.idempotencyKey.trim();
@@ -124,6 +79,13 @@ export async function withdrawPluginNextTurnInjection(params: {
     { cfg: params.cfg, sessionKey: params.sessionKey, agentId: params.agentId },
     (entry) => {
       if (params.shouldWithdraw && !params.shouldWithdraw()) {
+        return { state: "unknown" as const, settledAt: undefined };
+      }
+      if (
+        params.expectedSessionId !== undefined &&
+        (entry.sessionId !== params.expectedSessionId ||
+          entry.lifecycleRevision !== params.expectedLifecycleRevision)
+      ) {
         return { state: "unknown" as const, settledAt: undefined };
       }
       pruneOutcomes(entry, params.pluginId, now);
@@ -181,6 +143,11 @@ export async function enqueuePluginNextTurnInjection(params: {
   const text = normalizeOptionalString(params.injection.text);
   if (
     !text ||
+    (params.injection.expectedSessionId !== undefined) !==
+      (params.injection.expectedLifecycleRevision !== undefined) ||
+    (params.injection.expectedSessionId !== undefined &&
+      (!params.injection.expectedSessionId.trim() ||
+        !params.injection.expectedLifecycleRevision?.trim())) ||
     text.length > MAX_PLUGIN_NEXT_TURN_INJECTION_TEXT_LENGTH ||
     Buffer.byteLength(text, "utf8") >
       (params.cfg.plugins?.entries?.[params.pluginId]?.hooks?.nextTurnInjectionDrainMaxBytes ??
@@ -260,6 +227,16 @@ export async function enqueuePluginNextTurnInjection(params: {
   const updated = await updateResolvedSessionEntry(scope, (entry) => {
     if (params.shouldEnqueue && !params.shouldEnqueue()) {
       return { enqueued: false, id: "", reason: "invalid" as const };
+    }
+    if (
+      injection.expectedSessionId !== undefined &&
+      (entry.sessionId !== injection.expectedSessionId ||
+        entry.lifecycleRevision !== injection.expectedLifecycleRevision)
+    ) {
+      return { enqueued: false, id: "", reason: "stale_session" as const };
+    }
+    if (isUnsupportedInjectionRoute(sessionKey, entry)) {
+      return { enqueued: false, id: "", reason: "unsupported_route" as const };
     }
     if (
       entry.agentHarnessId === "codex" ||
@@ -371,6 +348,24 @@ async function drainPluginNextTurnInjections(
   }
   const notices: SettlementNotice[] = [];
   const updated = await updateResolvedSessionEntry(scope, (entry) => {
+    if (
+      selectedEntry &&
+      (entry.sessionId !== selectedEntry.sessionId ||
+        entry.lifecycleRevision !== selectedEntry.lifecycleRevision)
+    ) {
+      return {
+        records: [],
+        sessionId: entry.sessionId,
+        lifecycleRevision: entry.lifecycleRevision,
+      };
+    }
+    if (isUnsupportedInjectionRoute(sessionKey, entry)) {
+      return {
+        records: [],
+        sessionId: entry.sessionId,
+        lifecycleRevision: entry.lifecycleRevision,
+      };
+    }
     const now = params.clock?.() ?? Date.now();
     for (const pluginId of Object.keys(entry.pluginNextTurnInjectionOutcomes ?? {})) {
       pruneOutcomes(entry, pluginId, now);

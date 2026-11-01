@@ -144,6 +144,8 @@ type OpenClawPluginSessionWorkflowApi = {
     sessionKey: string;
     agentId?: string;
     idempotencyKey: string;
+    expectedSessionId?: string;
+    expectedLifecycleRevision?: string;
   }) => Promise<PluginNextTurnInjectionStateResult>;
   /** Register a metadata-only settlement notice handler. Notifications may be missed; query for truth. */
   onNextTurnInjectionSettled?: (
@@ -155,6 +157,8 @@ type OpenClawPluginSessionWorkflowApi = {
     sessionKey: string;
     agentId?: string;
     idempotencyKey: string;
+    expectedSessionId?: string;
+    expectedLifecycleRevision?: string;
   }) => Promise<PluginNextTurnInjectionStateResult>;
   /** Steer a current run without starting a turn; shown only as a Control UI notice, never a channel reply. */
   steerActiveRun: (params: PluginActiveRunSteerParams) => Promise<PluginActiveRunSteerResult>;
