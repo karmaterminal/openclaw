@@ -112,3 +112,56 @@ it.for([
     }
   },
 );
+
+it.for([
+  { reason: "reset", hookName: "session_reset", nextSessionId: "next-session" },
+  { reason: "new", hookName: "session_reset", nextSessionId: "next-session" },
+  { reason: "idle", hookName: "session_reset", nextSessionId: "next-session" },
+  { reason: "daily", hookName: "session_reset", nextSessionId: "next-session" },
+  {
+    reason: "deleted",
+    hookName: "session_delete",
+    nextSessionId: undefined,
+    endedTranscript: undefined,
+  },
+  {
+    reason: "reset",
+    hookName: "session_delete",
+    nextSessionId: undefined,
+    endedTranscript: { available: false, reason: "incognito-deleted" },
+  },
+] as const)(
+  "dispatches $hookName for a committed $reason lifecycle using the real hook runner",
+  async ({ reason, hookName, nextSessionId, ...action }, { signal }) => {
+    const received = createDeferredCore<{ event: unknown; context: unknown }>();
+    initializeGlobalHookRunner(
+      createMockPluginRegistry([
+        {
+          hookName,
+          handler: (event: unknown, context: unknown) => received.resolve({ event, context }),
+        },
+      ]),
+    );
+    emitGatewaySessionEndPluginHook({
+      cfg: {},
+      sessionKey: "agent:main:main",
+      sessionId: "old-session",
+      storePath: path.join(tempDirs.make("session-lifecycle-callback-"), "sessions.json"),
+      agentId: "main",
+      reason,
+      nextSessionId,
+      ...action,
+    });
+    const { event, context } = await withinTest(received.promise, signal);
+    expect(event).toEqual({
+      sessionId: "old-session",
+      sessionKey: "agent:main:main",
+      ...(hookName === "session_reset" ? { nextSessionId } : {}),
+    });
+    expect(context).toEqual({
+      sessionId: "old-session",
+      sessionKey: "agent:main:main",
+      agentId: "main",
+    });
+  },
+);

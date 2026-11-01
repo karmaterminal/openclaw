@@ -48,8 +48,22 @@ export function emitGatewaySessionEndPluginHook(params: {
   const hookRunner = getGlobalHookRunner();
   const shouldEmitAutoReset =
     isSessionAutoResetReason(params.reason) && hasSessionAutoResetListeners();
+  const lifecycleHook =
+    params.endedTranscript?.available === false &&
+    params.endedTranscript.reason === "incognito-deleted"
+      ? "session_delete"
+      : params.reason === "reset" ||
+          params.reason === "new" ||
+          isSessionAutoResetReason(params.reason)
+        ? "session_reset"
+        : params.reason === "deleted"
+          ? "session_delete"
+          : undefined;
+  const shouldEmitLifecycleHook = lifecycleHook
+    ? hookRunner?.hasHooks(lifecycleHook) === true
+    : false;
   const shouldEmitPluginHook = hookRunner?.hasHooks("session_end") === true;
-  if (!shouldEmitAutoReset && !shouldEmitPluginHook) {
+  if (!shouldEmitAutoReset && !shouldEmitPluginHook && !shouldEmitLifecycleHook) {
     return;
   }
   const archiveCandidates = new Set(
@@ -86,6 +100,35 @@ export function emitGatewaySessionEndPluginHook(params: {
       ...hookParams,
       workspaceDir: params.workspaceDir,
       storePath: params.storePath,
+    });
+  }
+  if (shouldEmitLifecycleHook && hookRunner && lifecycleHook) {
+    const context = {
+      sessionId: params.sessionId,
+      sessionKey: params.sessionKey,
+      agentId: params.agentId,
+    };
+    // These are post-commit notifications. Keep the plugin call outside mutation ownership.
+    void runWithSessionControllerCleanup(() =>
+      runWithGatewayDetachedWorkContinuation(async () => {
+        if (lifecycleHook === "session_delete") {
+          await hookRunner.runSessionDelete(
+            { sessionId: params.sessionId!, sessionKey: params.sessionKey },
+            context,
+          );
+        } else {
+          await hookRunner.runSessionReset(
+            {
+              sessionId: params.sessionId!,
+              sessionKey: params.sessionKey,
+              nextSessionId: params.nextSessionId,
+            },
+            context,
+          );
+        }
+      }, `hooks:${lifecycleHook}`),
+    ).catch((err: unknown) => {
+      logVerbose(`${lifecycleHook} hook failed: ${String(err)}`);
     });
   }
   if (!shouldEmitPluginHook || !hookRunner) {

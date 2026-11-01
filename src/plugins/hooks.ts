@@ -48,6 +48,7 @@ import type {
   VoidHookContextProjection,
   VoidHookRunOptions,
 } from "./hook-runner-types.js";
+import { createSessionLifecycleHookMethods } from "./hook-session-lifecycle-runner.js";
 import { withHookTimeout } from "./hook-timeout.js";
 import { isPluginHookReplyDispatchKind, PLUGIN_HOOK_METADATA } from "./hook-types.js";
 import type {
@@ -1159,7 +1160,7 @@ export function createHookRunner(
     ) => runVoidHook("after_tool_call", event, ctx, {}, event.toolName),
     runToolResultPersist,
     runBeforeMessageWrite,
-    runSessionStart: bindVoidHook("session_start"),
+    ...createSessionLifecycleHookMethods(bindVoidHook),
     runSessionEnd: (event: HookEvent<"session_end">, ctx: HookContext<"session_end">) =>
       runVoidHook("session_end", event, ctx, {}, undefined, (hook, context) =>
         projectSessionEndTranscriptContext(
@@ -1172,9 +1173,7 @@ export function createHookRunner(
       mergeResults: (acc, next): PluginHookSubagentDeliveryTargetResult =>
         acc?.origin ? acc : next,
     }),
-    runSubagentSpawned: bindVoidHook("subagent_spawned"),
-    runSubagentProgress: bindVoidHook("subagent_progress"),
-    runSubagentEnded: bindVoidHook("subagent_ended"),
+
     runGatewayStart: bindVoidHook("gateway_start"),
     runGatewayStop: bindVoidHook("gateway_stop"),
     runHeartbeatPromptContribution: bindModifyingHook("heartbeat_prompt_contribution", {

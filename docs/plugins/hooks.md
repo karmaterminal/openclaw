@@ -132,6 +132,12 @@ reload mode, hook policy changes hot-reload the existing plugin runtime.
   that grant. Its bounded `ctx.endedTranscript` reader is available only when
   the effective conversation-access policy allows it; see the
   [session lifecycle contract](/plugins/hooks/reference#hook-catalog).
+- `session_reset` and `session_delete` are post-commit, metadata-only plugin
+  callbacks. They receive the ended `sessionId`, `sessionKey`, and `agentId`
+  context; reset also includes `nextSessionId` when known. Reset covers manual
+  `/new` and `/reset` plus idle and daily rollover. Delete runs only after
+  the session row is removed, including an incognito reset that deletes the row.
+  These callbacks are detached and do not block the committed lifecycle operation.
 - `allowPromptInjection: false` blocks `agent_turn_prepare`,
   `before_prompt_build`, `heartbeat_prompt_contribution`, and durable next-turn
   injections. It defaults to allowed, but does not grant conversation access.
