@@ -106,7 +106,7 @@ export function createChannelIngressDrainOwner<
   options: ChannelIngressDrainOwnerOptions<TPayload, TMetadata, TCompletedMetadata>,
   retainOwnerUntilDispose = false,
 ) {
-  const queue = options.queue;
+  const { queue, prioritizePending } = options;
   // Unique per drain instance so same-process peers do not share claim ownership.
   const ownerId = options.ownerId ?? createIngressDrainOwnerId();
   registerLiveIngressDrainInstance(ownerId);
@@ -688,8 +688,13 @@ export function createChannelIngressDrainOwner<
       }
     }
 
+    const candidates = prioritizePending
+      ? pending
+          .map((event, index) => [index, event, Number(prioritizePending(event))] as const)
+          .toSorted((left, right) => right[2] - left[2])
+      : pending.entries();
     let started = 0;
-    for (const [index, event] of pending.entries()) {
+    for (const [index, event] of candidates) {
       if (shouldStop() || started >= startLimit) {
         break;
       }

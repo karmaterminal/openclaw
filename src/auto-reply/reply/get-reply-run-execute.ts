@@ -41,6 +41,7 @@ import {
 import { buildChannelUserTurnSender } from "../../sessions/user-turn-transcript.metadata.js";
 import { isReasoningTagProvider } from "../../utils/provider-utils.js";
 import { isConfiguredCommandOwner } from "../command-auth.js";
+import { hasInlineCommandTokens } from "../command-detection.js";
 import { bindCommandOwnerAuthority, getCommandOwnerAuthority } from "../command-owner-authority.js";
 import { getGroupThreadTurn } from "../group-thread-context.js";
 import { getRequesterProfile } from "../requester-profile.js";
@@ -447,6 +448,7 @@ export async function executePreparedReplyRun(
     transcriptPrompt: transcriptCommandBody,
     ...(userTurnTranscriptRecorder ? { userTurnTranscriptRecorder } : {}),
     currentInboundEventKind: inboundEventKind,
+    ambientRoomProse: isRoomEvent && ![ctx.rawText, ctx.commandText].some(hasInlineCommandTokens),
     currentInboundAudio: hasInboundAudio(sessionCtx),
     gatewayLocalUserIngress: getGatewayLocalUserIngress(ctx),
     channelAdmissionEvidence:
@@ -550,6 +552,7 @@ export async function executePreparedReplyRun(
       senderName: normalizeOptionalString(sessionCtx.SenderName),
       senderUsername: normalizeOptionalString(sessionCtx.SenderUsername),
       senderE164: normalizeOptionalString(sessionCtx.SenderE164),
+      senderIsBot: sessionCtx.SenderIsBot,
       // Queued system events are prompt content in the same trusted session;
       // they do not rewrite the sender identity used by command/action auth.
       senderIsOwner: command.senderIsOwner,

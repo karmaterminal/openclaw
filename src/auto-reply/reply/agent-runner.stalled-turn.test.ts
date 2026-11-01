@@ -115,6 +115,7 @@ async function createStalledRun(
     queuedFollowupReplyDisposition?: FollowupRun["queuedFollowupReplyDisposition"];
     originatingChannel?: string;
     skillLibraryAuthoring?: FollowupRun["run"]["skillLibraryAuthoring"];
+    execOverrides?: FollowupRun["run"]["execOverrides"];
   } = {},
 ): Promise<StalledRun> {
   const followupRun = createTestFollowupRun({
@@ -128,6 +129,7 @@ async function createStalledRun(
   followupRun.operatorAuthority = options.operatorAuthority;
   followupRun.queuedFollowupReplyDisposition = options.queuedFollowupReplyDisposition;
   followupRun.run.skillLibraryAuthoring = options.skillLibraryAuthoring;
+  followupRun.run.execOverrides = options.execOverrides;
   followupRun.images = [{ type: "image", data: "aW1n", mimeType: "image/png" }];
   followupRun.transcriptPrompt = "what is good at the hotel restaurant?";
   const transcriptTarget = createSqliteTranscriptTarget({
@@ -372,6 +374,23 @@ describe("runReplyAgent stalled turn continuation", () => {
       expect(executeAgentTurnMock).toHaveBeenCalledTimes(2);
     },
   );
+
+  it("hands the stall to the sender's queued request when its attempt wrote an exec mode", async () => {
+    // Attempts narrow the run's shared exec overrides to the session permission mode in place.
+    const stalled = await createStalledRun({ execOverrides: { host: "gateway", mode: "ask" } });
+    const queued = createQueuedRequest(stalled, { senderId: "traveler", to: "12345" });
+    queued.run.execOverrides = { host: "gateway" };
+    expect(enqueueFollowupRun(queueKey, queued, settings, "message-id", drainedRuns, false)).toBe(
+      true,
+    );
+    await stallBeforeOutput(stalled);
+
+    expect(stalled.runState.continueStalledTurn?.()).toBe(true);
+    expect(queued.stalledTurnRecovery).toBe(true);
+    expect(getFollowupQueueDepth(queueKey)).toBe(1);
+    await settleStalledOwner(stalled);
+    await vi.waitFor(() => expect(drainedRuns).toHaveBeenCalledExactlyOnceWith(queued));
+  });
 
   // Default DM scope shares one main session across senders.
   it("never hands the stalled request past another sender's earlier queued request", async () => {

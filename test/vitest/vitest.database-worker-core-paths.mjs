@@ -354,6 +354,9 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/reply/queue.collect.test.ts",
   // Frond (karmaterminal, #1415): room-event collect over real durable ingress rows.
   "src/auto-reply/reply/queue.room-event-collect.test.ts",
+  // Frond (karmaterminal, #1415): the ambient owner room aggregate over the same durable ingress.
+  "src/auto-reply/reply/queue.room-ambient-owner.test.ts",
+  "test/discord-room-ambient-owner-echo.integration.test.ts",
   "src/auto-reply/reply/reply-run-registry.preparation.test.ts",
   "src/auto-reply/reply/reply-run-registry.question-registration.test.ts",
   "src/auto-reply/reply/reply-tool-authority.worker.test.ts",
@@ -581,6 +584,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/bash-tools.exec-request-stop.test.ts",
   "src/auto-reply/reply/abort.target-owner.test.ts",
   "src/agents/bash-tools.exec-foreground-failures.test.ts",
+  "src/agents/bash-tools.exec-child-memory-scope.test.ts",
   "src/agents/bash-tools.exec-group-cleanup.real.test.ts",
   "src/agents/bash-tools.exec-host-gateway.integration.test.ts",
   "src/agents/bash-tools.exec-host-node.integration.test.ts",

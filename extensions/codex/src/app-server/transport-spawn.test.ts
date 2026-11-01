@@ -4,17 +4,26 @@ import { once } from "node:events";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { useAutoCleanupTempDirTracker } from "openclaw/plugin-sdk/test-env";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CodexAppServerClient } from "./client.js";
+import { normalizeCodexAppServerArgs } from "./launch-args.js";
 import { resolveManagedCodexNativeCommand } from "./managed-binary.js";
 import { observeManagedCodexLauncherFailure } from "./managed-launcher-failure.js";
 import { findCodexAppServerSpawnError } from "./spawn-error.js";
 import { RegistrationTestChildProcess } from "./transport-process-registration.test-support.js";
 import { createStdioTransport } from "./transport-stdio.js";
-import type { CodexAppServerTransport } from "./transport.js";
+import { closeCodexAppServerTransportAndWait, type CodexAppServerTransport } from "./transport.js";
 
-const registration = vi.hoisted(() => ({ rejectOnExit: false, holdStderrUntilExit: false }));
+const registration = vi.hoisted(() => ({
+  rejectOnExit: false,
+  holdStderrUntilExit: false,
+  scopeLaunchers: [] as unknown[],
+}));
 
 vi.mock("node:child_process", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:child_process")>()),
@@ -22,7 +31,9 @@ vi.mock("node:child_process", async (importOriginal) => ({
 
 vi.mock("./transport-process-registration.js", () => ({
   prepareCodexAppServerProcessRegistration:
-    async () => async (child: import("node:child_process").ChildProcess) => {
+    async () =>
+    async (child: import("node:child_process").ChildProcess, scopeLauncher?: unknown) => {
+      registration.scopeLaunchers.push(scopeLauncher);
       if (registration.holdStderrUntilExit) {
         child.stderr?.pause();
         child.once("exit", () => child.stderr?.resume());
@@ -97,6 +108,70 @@ describe("Codex app-server OS launch failure", () => {
         registration.rejectOnExit = false;
         registration.holdStderrUntilExit = false;
         await client?.closeAndWait();
+        spawn.mockRestore();
+      }
+    },
+  );
+});
+
+describe("Codex app-server child memory scope", () => {
+  const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+  afterEach(() => {
+    clearRuntimeConfigSnapshot();
+    vi.unstubAllEnvs();
+  });
+
+  it.runIf(process.platform === "linux")(
+    "launches Codex in the capped scope and registers it past the launcher",
+    async () => {
+      const root = tempDirs.make("codex-child-scope-");
+      const systemdRun = path.join(root, "systemd-run");
+      // Stands in for systemd-run --scope: execs the command in place.
+      await fs.writeFile(
+        systemdRun,
+        '#!/bin/sh\nwhile [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done; shift; exec "$@"\n',
+        { mode: 0o755 },
+      );
+      // A failing systemctl leaves scopes unbound wherever the suite runs, even in a user service.
+      await fs.writeFile(path.join(root, "systemctl"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+      const codex = path.join(root, "codex");
+      await fs.writeFile(codex, "#!/bin/sh\nexec cat\n", { mode: 0o755 });
+      vi.stubEnv("PATH", `${root}${path.delimiter}${process.env.PATH ?? ""}`);
+      vi.stubEnv("XDG_RUNTIME_DIR", "/run/user/openclaw-test");
+      setRuntimeConfigSnapshot({ process: { childScope: { enabled: true } } });
+      registration.scopeLaunchers.length = 0;
+      const spawn = vi.spyOn(childProcess, "spawn");
+      const child = await createStdioTransport({
+        transport: "stdio",
+        commandSource: "config",
+        command: codex,
+        args: ["app-server"],
+        headers: {},
+      });
+      try {
+        const launcher = {
+          command: systemdRun,
+          args: [
+            "--user",
+            "--scope",
+            "--quiet",
+            "--collect",
+            "--description=OpenClaw heavy child",
+            "-p",
+            "MemoryMax=5G",
+            "-p",
+            "MemorySwapMax=2G",
+            "--",
+            codex,
+            ...normalizeCodexAppServerArgs(["app-server"]),
+          ],
+        };
+        expect(spawn.mock.calls.map(([command, args]) => [command, args])).toEqual([
+          [launcher.command, launcher.args],
+        ]);
+        expect(registration.scopeLaunchers).toEqual([expect.objectContaining(launcher)]);
+      } finally {
+        await closeCodexAppServerTransportAndWait(child, { drainStdio: true });
         spawn.mockRestore();
       }
     },

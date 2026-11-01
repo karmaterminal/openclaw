@@ -5,7 +5,7 @@ import { asSchemaObject, type ConfigJsonSchemaObject } from "./schema.shared.js"
 const ROOT_TIER_PATHS = `
 accessGroups acp agents approvals attachments auth bindings broadcast browser channels
 cloudWorkers commands cron database desktop diagnostics discovery env gateway hooks logging mcp memory messages
-meta models nodeHost plugins proxy secrets security session skills storage surfaces talk telemetry tools transcripts
+meta models nodeHost plugins process proxy secrets security session skills storage surfaces talk telemetry tools transcripts
 tts ui update wizard worktreeAcceleration worktreeMaxCount worktreeRoot
 `
   .trim()
@@ -175,6 +175,9 @@ wizard.accessMode wizard.appRecommendations
 const ADVANCED_TUNING_PATHS = new Set([
   "agents.entries.*.tools.github.allowInSandbox",
   "agents.entries.*.tools.github.app",
+  // Frond (karmaterminal, #1415): changes which room messages run with owner authority.
+  "messages.groupChat.ambientOwnerAggregate",
+  "messages.groupChat.ambientOwnerAggregatePeers",
   "session.maintenance.preserveRecent",
   "tools.github.app",
   "tools.sessions.allowThreadTargets",

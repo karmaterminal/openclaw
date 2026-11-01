@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { open, readdir } from "node:fs/promises";
-import { setImmediate } from "node:timers/promises";
+import { setImmediate, setTimeout as delay } from "node:timers/promises";
 import {
   DarwinProcessInspectionError,
   readDarwinProcessSnapshot,
@@ -109,9 +109,13 @@ export async function readCodexAppServerProcess(
 export async function readCodexAppServerProcessCommand(
   observed: PosixProcess,
   deadline: number,
+  scopeLauncher?: { command: string; args: readonly string[] },
 ): Promise<string> {
   let output: string;
   if (process.platform === "linux") {
+    const launcherCommand = scopeLauncher
+      ? [scopeLauncher.command, ...scopeLauncher.args].join(" ").trim()
+      : undefined;
     let pending = false;
     do {
       remainingInspectionTime(deadline);
@@ -120,8 +124,10 @@ export async function readCodexAppServerProcessCommand(
           throw inspectionFailure(error);
         },
       );
-      // Linux can expose zero command bytes during exec startup. Wait only for
-      // that state, with the original identity and deadline, including the final read.
+      // Linux can expose zero command bytes during exec startup, and a scoped launch shows
+      // systemd-run until it execs Codex in place. Orphan cleanup compares the fingerprint
+      // with Codex's command, so wait only for those states, with the original identity and
+      // deadline, including the final read.
       if (command.length === 0 || pending) {
         const current = await readCodexAppServerProcess(observed.pid, deadline);
         if (
@@ -135,8 +141,11 @@ export async function readCodexAppServerProcessCommand(
         }
       }
       output = command.toString("utf8").split("\0").join(" ").trim();
-      pending = command.length === 0;
-      if (pending) {
+      const launching = output === launcherCommand;
+      pending = command.length === 0 || launching;
+      if (launching) {
+        await delay(5);
+      } else if (pending) {
         await setImmediate();
       }
     } while (pending);

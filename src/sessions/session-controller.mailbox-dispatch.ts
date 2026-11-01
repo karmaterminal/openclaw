@@ -1,7 +1,7 @@
 /** Selection, preparation and dispatch share one mailbox-owned lifecycle. */
 import {
   prepareNextDeliveryGroup,
-  resolveFollowupDeliveryStorageKey,
+  resolveFollowupBatchKey,
 } from "../auto-reply/reply/queue/delivery-context.js";
 import { runOutsideAdmittedGenerationScopes } from "../auto-reply/reply/queue/drain-admission-scope.js";
 import { requiresIndividualCollectDrain } from "../auto-reply/reply/queue/envelope.js";
@@ -109,7 +109,8 @@ function selectSessionControllerMailbox(
     (isSummary || first.policy.mode === "collect"),
   );
   if (prepareDelivery && first.source) {
-    const context = resolveFollowupDeliveryStorageKey(first.source);
+    // Frond (karmaterminal, #1415): room events with baseline authority share one batch identity.
+    const context = resolveFollowupBatchKey(first.source);
     const matchesGateway = captureGatewayScopeMatcher(getGatewayContextResolver(first));
     const candidates = isSummary ? summaries : mailbox.items;
     const start = candidates.indexOf(first.source);
@@ -128,7 +129,7 @@ function selectSessionControllerMailbox(
         input.withdrawalHolds ||
         !matchesGateway(input) ||
         requiresIndividualCollectDrain(candidate) ||
-        resolveFollowupDeliveryStorageKey(candidate) !== context
+        resolveFollowupBatchKey(candidate) !== context
       ) {
         break;
       }

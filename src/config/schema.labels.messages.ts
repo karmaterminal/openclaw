@@ -8,6 +8,8 @@ export const MESSAGE_FIELD_LABELS: Record<string, string> = {
   "messages.groupChat.mentionPatterns": "Group Mention Patterns",
   "messages.groupChat.historyLimit": "Group History Limit",
   "messages.groupChat.unmentionedInbound": "Group Unmentioned Inbound",
+  "messages.groupChat.ambientOwnerAggregate": "Aggregate Ambient Owner Room Messages",
+  "messages.groupChat.ambientOwnerAggregatePeers": "Ambient Owner Aggregate Peers",
   "messages.groupChat.visibleReplies": "Group Visible Replies",
   "messages.queue": "Inbound Queue",
   "messages.queue.mode": "Queue Mode",

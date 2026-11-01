@@ -1,5 +1,6 @@
 import { resolveEnvironmentValue } from "../../../infra/process-env.js";
 import { createDeferredCore } from "../../../shared/deferred.js";
+import { prepareChildMemoryScopedSpawn } from "../../child-memory-scope.js";
 import { prepareOomScoreAdjustedSpawn } from "../../linux-oom-score.js";
 import { resolvePtyTerminalName, setPtyTerminalName } from "../../pty-terminal-name.js";
 import type { TerminalPtySubscription } from "../../terminal-pty.js";
@@ -27,7 +28,13 @@ export async function createPtyAdapter(
   }
   const { signalTerminalPtyTree, spawnTerminalPty } = await import("../../terminal-pty.js");
   const baseEnv = params.env ? toStringEnv(params.env) : undefined;
-  const preparedSpawn = prepareOomScoreAdjustedSpawn(params.shell, params.args, { env: baseEnv });
+  const target = params.childMemoryScope
+    ? await prepareChildMemoryScopedSpawn(params.shell, params.args, {
+        env: baseEnv,
+        cwd: params.cwd,
+      })
+    : { command: params.shell, args: params.args };
+  const preparedSpawn = prepareOomScoreAdjustedSpawn(target.command, target.args, { env: baseEnv });
   const terminalName = resolvePtyTerminalName(
     params.name ??
       resolveEnvironmentValue(preparedSpawn.env, "TERM", process.platform) ??

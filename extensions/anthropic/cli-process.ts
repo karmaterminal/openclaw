@@ -91,6 +91,7 @@ export function createClaudeCliProcessOwner(
         cwd: options.cwd,
         env: options.env,
         exactEnv: true,
+        childMemoryScope: true,
         abortSignal: options.signal,
         assertCurrent,
         secretInput,

@@ -12,6 +12,7 @@ import {
   resolveWindowsSpawnProgramCandidate,
 } from "../../../plugin-sdk/windows-spawn.js";
 import { createDeferredCore } from "../../../shared/deferred.js";
+import { prepareChildMemoryScopedSpawn } from "../../child-memory-scope.js";
 import { joinProcessCompletionAndOutput, onDecodedOutput } from "../../decoded-output.js";
 import { signalProcessTree } from "../../kill-tree.js";
 import { prepareOomScoreAdjustedSpawn } from "../../linux-oom-score.js";
@@ -163,9 +164,23 @@ export async function createChildAdapter(
         windowsVerbatimArguments: params.windowsVerbatimArguments,
       });
   const argv0 = invocation.command === params.argv[0] ? params.argv0 : undefined;
+  const scoped = params.childMemoryScope
+    ? await prepareChildMemoryScopedSpawn(invocation.command, invocation.args, {
+        env: baseEnv,
+        cwd: params.cwd,
+        argv0,
+      })
+    : undefined;
+  // systemd-run execs the command as its own argv[0]; the scope applies only when that matches.
+  const target = scoped?.scoped
+    ? { command: scoped.command, args: scoped.args, argv0: undefined }
+    : { command: invocation.command, args: invocation.args, argv0 };
   const preparedSpawn = params.exactEnv
-    ? { command: invocation.command, args: invocation.args, argv0, env: baseEnv, wrapped: false }
-    : prepareOomScoreAdjustedSpawn(invocation.command, invocation.args, { env: baseEnv, argv0 });
+    ? { ...target, env: baseEnv, wrapped: false }
+    : prepareOomScoreAdjustedSpawn(target.command, target.args, {
+        env: baseEnv,
+        argv0: target.argv0,
+      });
 
   const stdinMode = params.stdinMode ?? (params.input !== undefined ? "pipe-closed" : "inherit");
 

@@ -1,12 +1,21 @@
 import { MessageType, type APIMessage } from "discord-api-types/v10";
+import { createPluginRuntimeMock } from "openclaw/plugin-sdk/channel-test-helpers";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import type { GetReplyOptions } from "openclaw/plugin-sdk/reply-runtime";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { setDiscordRuntime } from "../runtime.js";
+import { createDiscordMessageDispatcher } from "./message-dispatcher.js";
+import {
+  createDiscordMessage,
+  createGuildEvent,
+  createGuildTextClient,
+} from "./message-handler.preflight.test-helpers.js";
 import * as h from "./message-handler.process.test-harness.js";
 import {
   createDiscordRoomHistoryWatermarks,
   type DiscordRoomHistoryWatermarks,
 } from "./room-history-watermark.js";
+import { createNoopThreadBindingManager } from "./thread-bindings.js";
 
 h.registerDiscordProcessTestLifecycle();
 const dispatch = h.dispatchInboundMessageForTest;
@@ -386,6 +395,90 @@ describe("Discord room-history watermark", () => {
     expect(room.history).toEqual([
       ["seen", "note"],
       ["seen", "@main q"],
+    ]);
+  });
+
+  it("keeps one watermark per message dispatcher, which its callers never supply", async () => {
+    setDiscordRuntime(createPluginRuntimeMock());
+    const channel = createChannel("c1");
+    channel.post(99, "rune", "morning, all");
+    const client = Object.assign(createGuildTextClient(channel.channelId), {
+      fetchGuild: async () => null,
+      rest: { get: channel.get },
+    });
+    const discordConfig = { groupPolicy: "allowlist" as const };
+    // The allowlist matches users by snowflake.
+    const userIds: Record<string, string> = { figs: "1001", cael: "1002" };
+    const runtimeError = vi.fn();
+    const threadBindings = createNoopThreadBindingManager("default");
+    onTestFinished(() => threadBindings.stop());
+    // The provider's and the public message handler's options: transport and policy only.
+    const dispatcher = createDiscordMessageDispatcher({
+      cfg: {
+        channels: { discord: discordConfig },
+        messages: { inbound: { debounceMs: 0 }, groupChat: { unmentionedInbound: "room_event" } },
+      },
+      discordConfig,
+      accountId: "default",
+      token: "token",
+      runtime: {
+        log: vi.fn(),
+        error: runtimeError,
+        exit: (code: number): never => {
+          throw new Error(`exit ${code}`);
+        },
+      },
+      botUserId: "bot-1",
+      guildHistories: new Map(),
+      historyLimit: 20,
+      mediaMaxBytes: 1_000,
+      textLimit: 2_000,
+      replyToMode: "off",
+      dmEnabled: false,
+      groupDmEnabled: false,
+      dmPolicy: "disabled",
+      guildEntries: { g1: { users: Object.values(userIds), requireMention: false } },
+      threadBindings,
+    });
+    onTestFinished(() => dispatcher.deactivate());
+    const send = async (id: number, author: string, content: string) => {
+      channel.post(id, author, content);
+      let history: [Mark, string][] | undefined;
+      dispatch.mockImplementationOnce(async (dispatchParams) => {
+        history = marks(dispatchParams?.ctx?.InboundHistory);
+        return completes(dispatchParams?.replyOptions);
+      });
+      const sender = { id: userIds[author]!, bot: false, username: author };
+      const message = createDiscordMessage(
+        {
+          id: String(id),
+          channelId: channel.channelId,
+          content,
+          author: sender,
+          timestamp: at(id),
+        },
+        client,
+      );
+      await dispatcher(
+        createGuildEvent({
+          channelId: channel.channelId,
+          guildId: "g1",
+          author: message.author,
+          message,
+        }),
+        client,
+      );
+      return history;
+    };
+
+    const first = await send(100, "figs", "does the release build pass?");
+    const second = await send(101, "cael", "it passes");
+
+    expect(runtimeError).not.toHaveBeenCalled();
+    expect(first).toEqual([["unmarked", "morning, all"]]);
+    expect(second).toEqual([
+      ["seen", "morning, all"],
+      ["seen", "does the release build pass?"],
     ]);
   });
 });

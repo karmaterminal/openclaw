@@ -431,6 +431,7 @@ export async function executeCliProcess(params: {
               argv: [params.executionCommand, ...params.executionLeadingArgv],
               resolveArgs: params.resolveExecutionArgs,
               argv0: params.executionArgv0,
+              childMemoryScope: true,
               timeoutMs: runParams.timeoutMs,
               noOutputTimeoutMs: params.noOutputTimeoutMs,
               onCancel: () => {

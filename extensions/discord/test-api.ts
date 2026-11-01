@@ -2,6 +2,8 @@
 export const loadDiscordDraftPreview = () =>
   import("./src/monitor/message-handler.draft-preview.js");
 export { RequestClient } from "./src/internal/discord.js";
+// Core queue fixtures drive the per-agent room-history watermark the Discord monitor owns.
+export { createDiscordRoomHistoryWatermarks } from "./src/monitor/room-history-watermark.js";
 export {
   discordVoiceTranscriptsSourceProvider,
   setDiscordTranscriptsVoiceManager,
