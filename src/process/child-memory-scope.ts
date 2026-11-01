@@ -18,6 +18,7 @@ import { runUtf8CommandWithTimeout } from "./exec-runner.js";
 const DEFAULT_MEMORY_MAX = "5G";
 const DEFAULT_MEMORY_SWAP_MAX = "2G";
 const PROBE_TIMEOUT_MS = 5_000;
+const SCOPE_DESCRIPTION = "OpenClaw heavy child";
 
 const log = createSubsystemLogger("process/child-scope");
 
@@ -110,6 +111,9 @@ export async function prepareChildMemoryScopedSpawn(
       "--scope",
       "--quiet",
       "--collect",
+      // systemd otherwise describes the scope with the full command line, which would put
+      // tool commands (and any secrets in them) into the user journal on every spawn.
+      `--description=${SCOPE_DESCRIPTION}`,
       "-p",
       `MemoryMax=${config.memoryMax ?? DEFAULT_MEMORY_MAX}`,
       "-p",

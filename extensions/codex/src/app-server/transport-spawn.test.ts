@@ -154,6 +154,7 @@ describe("Codex app-server child memory scope", () => {
             "--scope",
             "--quiet",
             "--collect",
+            "--description=OpenClaw heavy child",
             "-p",
             "MemoryMax=5G",
             "-p",

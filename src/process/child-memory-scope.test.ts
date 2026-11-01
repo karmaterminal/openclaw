@@ -102,6 +102,7 @@ it.skipIf(process.platform !== "linux").each([
         "--scope",
         "--quiet",
         "--collect",
+        "--description=OpenClaw heavy child",
         "-p",
         `MemoryMax=${memoryMax}`,
         "-p",

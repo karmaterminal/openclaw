@@ -76,7 +76,7 @@ it.skipIf(process.platform !== "linux")(
           .filter((line) => line.includes("MemoryMax="));
         expect(scoped).toEqual([
           expect.stringMatching(
-            /^--user --scope --quiet --collect -p MemoryMax=1G -p MemorySwapMax=0 -- \/bin\/sh -c .*printf scoped-output; exit 7$/,
+            /^--user --scope --quiet --collect --description=OpenClaw heavy child -p MemoryMax=1G -p MemorySwapMax=0 -- \/bin\/sh -c .*printf scoped-output; exit 7$/,
           ),
         ]);
       },

@@ -98,7 +98,7 @@ describe.skipIf(process.platform !== "linux")("child memory scope process parity
 
     expect(scopedInvocations()).toEqual([
       expect.stringMatching(
-        /^--user --scope --quiet --collect -p MemoryMax=1G -p MemorySwapMax=0 -- \/bin\/sh -c sleep 30 &/,
+        /^--user --scope --quiet --collect --description=OpenClaw heavy child -p MemoryMax=1G -p MemorySwapMax=0 -- \/bin\/sh -c sleep 30 &/,
       ),
     ]);
     expect(plain).toEqual({
