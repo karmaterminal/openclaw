@@ -13,7 +13,10 @@ import {
   reconcileLateExpiredInjections,
   settle,
 } from "./host-hook-injection-outcomes.js";
-import { isUnsupportedInjectionRoute } from "./host-hook-injection-route.js";
+import {
+  isSubagentInjectionRoute,
+  isUnsupportedInjectionRouteNow,
+} from "./host-hook-injection-route.js";
 import {
   hasEnhancedNextTurnInjectionFields,
   hasValidInjectionGenerationFence,
@@ -219,14 +222,14 @@ export async function enqueuePluginNextTurnInjection(params: {
   };
   const scope = { cfg: params.cfg, sessionKey, agentId: params.injection.agentId };
   const notices: SettlementNotice[] = [];
-  const updated = await updateResolvedSessionEntry(scope, (entry, context) => {
+  const updated = await updateResolvedSessionEntry(scope, async (entry, context) => {
     if (params.shouldEnqueue && !params.shouldEnqueue()) {
       return { enqueued: false, id: "", reason: "invalid" as const };
     }
     // Subagent admission needs the selected row's exact generation. Check
     // inside the mutation so a reset or reroute cannot race this proof.
     if (
-      /^agent:[^:]+:subagent:/.test(context.canonicalKey) &&
+      isSubagentInjectionRoute(context.canonicalKey) &&
       (injection.expectedSessionId === undefined ||
         injection.expectedLifecycleRevision === undefined)
     ) {
@@ -239,7 +242,7 @@ export async function enqueuePluginNextTurnInjection(params: {
     ) {
       return { enqueued: false, id: "", reason: "stale_session" as const };
     }
-    if (isUnsupportedInjectionRoute(context.canonicalKey, entry)) {
+    if (await isUnsupportedInjectionRouteNow(context.canonicalKey, context.agentId, entry)) {
       return { enqueued: false, id: "", reason: "unsupported_route" as const };
     }
     if (
@@ -348,7 +351,7 @@ async function drainPluginNextTurnInjections(
     return { records: [], notices: [], canonicalKey: sessionKey };
   }
   const notices: SettlementNotice[] = [];
-  const updated = await updateResolvedSessionEntry(scope, (entry) => {
+  const updated = await updateResolvedSessionEntry(scope, async (entry, context) => {
     if (
       selectedEntry &&
       (entry.sessionId !== selectedEntry.sessionId ||
@@ -360,7 +363,7 @@ async function drainPluginNextTurnInjections(
         lifecycleRevision: entry.lifecycleRevision,
       };
     }
-    if (isUnsupportedInjectionRoute(sessionKey, entry)) {
+    if (await isUnsupportedInjectionRouteNow(context.canonicalKey, context.agentId, entry)) {
       return {
         records: [],
         sessionId: entry.sessionId,
