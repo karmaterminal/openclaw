@@ -369,7 +369,7 @@ export function createDiscordMessageDispatcher(
 
   handler.deactivate = async () => {
     dispatcherShutdown.abort(new Error("discord-message-handler-deactivated"));
-    // First, so a shutdown that stalls on running work still stops scheduled reads from this set.
+    // Before draining, so a shutdown that stalls on running turns still stops scheduled reads.
     releaseRoomHistoryWatermarks();
     const pendingKeys = new Set(
       [...pendingDebounceEntries]

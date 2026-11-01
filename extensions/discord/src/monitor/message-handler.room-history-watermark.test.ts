@@ -6,6 +6,7 @@ import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { discordPlugin } from "../channel.js";
 import { setDiscordRuntime } from "../runtime.js";
 import { createDiscordMessageDispatcher } from "./message-dispatcher.js";
+import { createDiscordMessageHandler } from "./message-handler.js";
 import {
   createDiscordMessage,
   createGuildEvent,
@@ -187,7 +188,7 @@ function createRoomDispatcher(channel: Channel) {
   const runtimeError = vi.fn();
   const threadBindings = createNoopThreadBindingManager("default");
   onTestFinished(() => threadBindings.stop());
-  const dispatcher = createDiscordMessageDispatcher({
+  const params: Parameters<typeof createDiscordMessageDispatcher>[0] = {
     cfg: {
       channels: { discord: discordConfig },
       messages: { inbound: { debounceMs: 0 }, groupChat: { unmentionedInbound: "room_event" } },
@@ -213,7 +214,8 @@ function createRoomDispatcher(channel: Channel) {
     dmPolicy: "disabled",
     guildEntries: { g1: { users: Object.values(userIds), requireMention: false } },
     threadBindings,
-  });
+  };
+  const dispatcher = createDiscordMessageDispatcher(params);
   onTestFinished(() => dispatcher.deactivate());
   const send = async (id: number, author: string, content: string) => {
     channel.post(id, author, content);
@@ -245,7 +247,13 @@ function createRoomDispatcher(channel: Channel) {
     return history;
   };
 
-  return { dispatcher, send, runtimeError };
+  return {
+    dispatcher,
+    send,
+    runtimeError,
+    /** Starts another message handler, with its own dispatcher, for the same account. */
+    startHandler: () => createDiscordMessageHandler({ ...params, client }),
+  };
 }
 
 describe("Discord room-history watermark", () => {
@@ -497,6 +505,15 @@ describe("Discord room-history watermark", () => {
 // Frond (karmaterminal, #1415): a scheduled turn in the room session, such as its heartbeat.
 describe("Discord room history for a scheduled turn", () => {
   const roomSession = { sessionKey: "agent:main:discord:channel:c1", channelId: "c1" };
+  const readRoom = async () => {
+    const history = await discordPlugin.heartbeat!.readRoomHistory!({
+      cfg: {},
+      sessionKey: roomSession.sessionKey,
+      to: "channel:c1",
+      accountId: "default",
+    });
+    return history && marks(history);
+  };
 
   it("marks what room turns handled as seen and leaves the watermark where they put it", async () => {
     const watermarks = createDiscordRoomHistoryWatermarks();
@@ -567,24 +584,15 @@ describe("Discord room history for a scheduled turn", () => {
   it("reads the room through the account's live message dispatcher until it shuts down", async () => {
     const channel = createChannel("c1");
     channel.post(99, "rune", "morning, all");
-    const read = async () => {
-      const history = await discordPlugin.heartbeat!.readRoomHistory!({
-        cfg: {},
-        sessionKey: roomSession.sessionKey,
-        to: "channel:c1",
-        accountId: "default",
-      });
-      return history && marks(history);
-    };
     const first = createRoomDispatcher(channel);
     await first.send(100, "figs", "does the release build pass?");
-    const firstView = await read();
+    const firstView = await readRoom();
     // A replacement monitor can start while the one it replaces is still shutting down.
     const second = createRoomDispatcher(channel);
     await second.send(101, "cael", "it passes");
-    const secondView = await read();
+    const secondView = await readRoom();
     await second.dispatcher.deactivate();
-    const afterSecondShutdown = await read();
+    const afterSecondShutdown = await readRoom();
     await first.dispatcher.deactivate();
 
     expect(firstView).toEqual([
@@ -603,6 +611,21 @@ describe("Discord room history for a scheduled turn", () => {
       ["seen", "does the release build pass?"],
       ["new", "it passes"],
     ]);
-    await expect(read()).resolves.toBeUndefined();
+    await expect(readRoom()).resolves.toBeUndefined();
+  });
+
+  it("releases the watermarks of a dispatcher whose message handler fails to start", async () => {
+    const channel = createChannel("c1");
+    channel.post(99, "rune", "morning, all");
+    const live = createRoomDispatcher(channel);
+    await live.send(100, "figs", "does the release build pass?");
+
+    // The mock runtime has no ingress queue store: the handler fails after creating its dispatcher.
+    expect(live.startHandler).toThrow("openChannelIngressQueue mock is not configured");
+    // That dispatcher never ran a turn, so it must not hide the live dispatcher's marks.
+    await expect(readRoom()).resolves.toEqual([
+      ["seen", "morning, all"],
+      ["seen", "does the release build pass?"],
+    ]);
   });
 });
