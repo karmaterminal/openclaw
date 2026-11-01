@@ -165,3 +165,86 @@ it.for([
     });
   },
 );
+
+it("serializes lifecycle callbacks per key without blocking other keys", async ({ signal }) => {
+  const entered = createDeferredCore();
+  const release = createDeferredCore();
+  const order: string[] = [];
+  initializeGlobalHookRunner(
+    createMockPluginRegistry([
+      {
+        hookName: "session_reset",
+        handler: async () => {
+          order.push("reset-enter");
+          entered.resolve();
+          await release.promise;
+          order.push("reset-exit");
+        },
+      },
+      {
+        hookName: "session_end",
+        handler: () => {
+          order.push("end");
+        },
+      },
+      {
+        hookName: "session_start",
+        handler: () => {
+          order.push("start");
+        },
+      },
+    ]),
+  );
+  const storePath = path.join(tempDirs.make("session-order-"), "sessions.json");
+  const base = {
+    cfg: {},
+    sessionKey: "agent:main:one",
+    sessionId: "old",
+    storePath,
+    agentId: "main",
+  };
+  try {
+    emitGatewaySessionEndPluginHook({ ...base, reason: "reset", nextSessionId: "next" });
+    emitGatewaySessionStartPluginHook({ ...base, sessionId: "next" });
+    await withinTest(entered.promise, signal);
+    expect(order).toEqual(["reset-enter"]);
+    emitGatewaySessionStartPluginHook({
+      ...base,
+      sessionKey: "agent:main:two",
+      sessionId: "other",
+    });
+    await vi.waitFor(() => expect(order).toContain("start"));
+    expect(order).toEqual(["reset-enter", "start"]);
+    release.resolve();
+    await vi.waitFor(() =>
+      expect(order).toEqual(["reset-enter", "start", "reset-exit", "end", "start"]),
+    );
+  } finally {
+    release.resolve();
+  }
+});
+
+it("continues the lifecycle queue after a plugin failure", async () => {
+  const started = vi.fn();
+  initializeGlobalHookRunner(
+    createMockPluginRegistry([
+      {
+        hookName: "session_reset",
+        handler: () => {
+          throw new Error("plugin failure");
+        },
+      },
+      { hookName: "session_start", handler: started },
+    ]),
+  );
+  const base = {
+    cfg: {},
+    sessionKey: "agent:main:failure",
+    sessionId: "old",
+    storePath: path.join(tempDirs.make("session-failure-"), "sessions.json"),
+    agentId: "main",
+  };
+  emitGatewaySessionEndPluginHook({ ...base, reason: "reset", nextSessionId: "next" });
+  emitGatewaySessionStartPluginHook({ ...base, sessionId: "next" });
+  await vi.waitFor(() => expect(started).toHaveBeenCalledOnce());
+});

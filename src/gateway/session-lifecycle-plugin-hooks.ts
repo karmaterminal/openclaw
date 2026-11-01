@@ -13,8 +13,7 @@ import {
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import type { PluginHookSessionEndReason } from "../plugins/hook-types.js";
 import type { SessionEndTranscriptSource } from "../plugins/session-end-transcript.js";
-import { runWithGatewayDetachedWorkContinuation } from "../process/gateway-work-admission.js";
-import { runWithSessionControllerCleanup } from "../sessions/session-controller.owner-context.js";
+import { dispatchSessionLifecycleHook } from "../plugins/session-lifecycle-dispatch.js";
 import {
   forgetActiveSessionForShutdown,
   noteActiveSessionForShutdown,
@@ -109,25 +108,23 @@ export function emitGatewaySessionEndPluginHook(params: {
       agentId: params.agentId,
     };
     // These are post-commit notifications. Keep the plugin call outside mutation ownership.
-    void runWithSessionControllerCleanup(() =>
-      runWithGatewayDetachedWorkContinuation(async () => {
-        if (lifecycleHook === "session_delete") {
-          await hookRunner.runSessionDelete(
-            { sessionId: params.sessionId!, sessionKey: params.sessionKey },
-            context,
-          );
-        } else {
-          await hookRunner.runSessionReset(
-            {
-              sessionId: params.sessionId!,
-              sessionKey: params.sessionKey,
-              nextSessionId: params.nextSessionId,
-            },
-            context,
-          );
-        }
-      }, `hooks:${lifecycleHook}`),
-    ).catch((err: unknown) => {
+    void dispatchSessionLifecycleHook(params.sessionKey, `hooks:${lifecycleHook}`, async () => {
+      if (lifecycleHook === "session_delete") {
+        await hookRunner.runSessionDelete(
+          { sessionId: params.sessionId!, sessionKey: params.sessionKey },
+          context,
+        );
+      } else {
+        await hookRunner.runSessionReset(
+          {
+            sessionId: params.sessionId!,
+            sessionKey: params.sessionKey,
+            nextSessionId: params.nextSessionId,
+          },
+          context,
+        );
+      }
+    }).catch((err: unknown) => {
       logVerbose(`${lifecycleHook} hook failed: ${String(err)}`);
     });
   }
@@ -150,11 +147,9 @@ export function emitGatewaySessionEndPluginHook(params: {
         : { available: false as const, reason: "unsupported-source" as const });
   const payload = buildSessionEndHookPayload({ ...hookParams, endedTranscript });
   // Detached hooks outlive the emitting turn and must not retain its mutation ownership.
-  void runWithSessionControllerCleanup(() =>
-    runWithGatewayDetachedWorkContinuation(async () => {
-      await hookRunner.runSessionEnd(payload.event, payload.context);
-    }, "hooks:session-end"),
-  ).catch((err: unknown) => {
+  void dispatchSessionLifecycleHook(params.sessionKey, "hooks:session-end", async () => {
+    await hookRunner.runSessionEnd(payload.event, payload.context);
+  }).catch((err: unknown) => {
     logVerbose(`session_end hook failed: ${String(err)}`);
   });
 }
@@ -184,11 +179,9 @@ export function emitGatewaySessionStartPluginHook(params: {
     return;
   }
   const payload = buildSessionStartHookPayload({ ...params, sessionId: params.sessionId });
-  void runWithSessionControllerCleanup(() =>
-    runWithGatewayDetachedWorkContinuation(async () => {
-      await hookRunner.runSessionStart(payload.event, payload.context);
-    }, "hooks:session-start"),
-  ).catch((err: unknown) => {
+  void dispatchSessionLifecycleHook(params.sessionKey, "hooks:session-start", async () => {
+    await hookRunner.runSessionStart(payload.event, payload.context);
+  }).catch((err: unknown) => {
     logVerbose(`session_start hook failed: ${String(err)}`);
   });
 }

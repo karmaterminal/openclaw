@@ -111,7 +111,7 @@ import {
 import { createReplySessionEntryHandle } from "./session-entry-handle.js";
 import {
   createReplySessionResetBoundary,
-  emitReplySessionEndHook,
+  emitReplySessionRolloverHooks,
   emitReplySessionStartHook,
   resolveExplicitSessionEndReason,
 } from "./session-hooks.js";
@@ -931,16 +931,14 @@ async function initSessionStateAttemptLocked(
       // that is being replaced here; forget unconditionally so the next drain
       // skips this id even when no `session_end` plugin is currently attached.
       forgetActiveSessionForShutdown(previousSessionEntry.sessionId);
-      if (hookRunner.hasHooks("session_end")) {
-        emitReplySessionEndHook({
-          ...sessionTarget,
-          hookRunner,
-          sessionId: previousSessionEntry.sessionId,
-          reason: previousSessionEndReason,
-          nextSessionId: sessionId,
-          resetBoundaryId: resetBoundary?.boundaryId,
-        });
-      }
+      emitReplySessionRolloverHooks({
+        ...sessionTarget,
+        hookRunner,
+        sessionId: previousSessionEntry.sessionId,
+        reason: previousSessionEndReason,
+        nextSessionId: sessionId,
+        resetBoundaryId: resetBoundary?.boundaryId,
+      });
     }
 
     if (sessionId) {

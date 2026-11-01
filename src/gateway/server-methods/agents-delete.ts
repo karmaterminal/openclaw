@@ -63,6 +63,7 @@ import {
   readAgentDeletionJournalAsync,
   type AgentDeletionJournalCleanupPath,
 } from "../../state/agent-deletion-journal.js";
+import { emitGatewaySessionEndPluginHook } from "../session-lifecycle-plugin-hooks.js";
 import {
   AgentConfigPreconditionError,
   deleteAgentConfigEntry,
@@ -346,6 +347,22 @@ export async function deleteGatewayAgent(
         const purgeFailed = await purgeAgentSessionStoreEntries(lockedConfig, agentId, {
           runDatabaseCleanup: deletion.runDatabaseCleanup,
           onFailure: (failure) => failed.push(failure),
+          onPurged: (entries, storePath) => {
+            for (const { sessionId, sessionKey } of entries) {
+              try {
+                emitGatewaySessionEndPluginHook({
+                  cfg: lockedConfig,
+                  sessionKey,
+                  sessionId,
+                  storePath,
+                  agentId,
+                  reason: "deleted",
+                });
+              } catch {
+                // The committed purge cannot be rolled back by a notification.
+              }
+            }
+          },
         });
         await deletion.assertCurrentAsync();
         const { closeDeletedAgentDatabases } =

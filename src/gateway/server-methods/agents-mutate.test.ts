@@ -14,6 +14,7 @@ import * as lifecycleState from "../session-lifecycle-state.js";
 import { registerAgentCreateTests } from "./agents-create.test-support.js";
 import { registerAgentDeletionAuthorityTests } from "./agents-delete-authority.test-support.js";
 import { registerAgentDeleteFilesystemTests } from "./agents-delete-filesystem.test-support.js";
+import { registerAgentDeleteLifecycleTests } from "./agents-delete-lifecycle.test-support.js";
 import {
   registerAgentDeleteDrainRecoveryTests,
   registerAgentDeleteRollbackTests,
@@ -1381,22 +1382,14 @@ describe("agents.delete", () => {
     expect(mocks.beginAgentDeletionFinish).not.toHaveBeenCalledWith({ unregisterDatabases: true });
   });
 
-  it("reports failed session cleanup and retains its journal and files for retry", async () => {
-    const failure = {
-      path: "/agents/test-agent/openclaw-agent.sqlite",
-      reason: "admit session-store cleanup: agent database is still open",
-    };
-    mocks.purgeAgentSessionStoreEntries.mockImplementationOnce(async (_cfg, _agentId, options) => {
-      options?.onFailure?.(failure);
-      return true;
-    });
-    const respond = await call("agents.delete", { agentId: "test-agent" });
-
-    expectPendingDeletion(respond, { ok: true, purgeFailed: true, failed: [failure] });
-    expect(mockCallArg(respond, 0, 2)).toMatchObject({
-      message: expect.stringContaining(`${failure.path}: ${failure.reason}`),
-    });
-    expectUncalled(mocks.movePathToTrash, mocks.beginAgentDeletionFinish);
+  registerAgentDeleteLifecycleTests({
+    purge: mocks.purgeAgentSessionStoreEntries,
+    runDelete: async () => {
+      await deleteAgent({ failed: [] });
+    },
+    runDeletePending: async () => await call("agents.delete", { agentId: "test-agent" }),
+    movePathToTrash: mocks.movePathToTrash,
+    beginAgentDeletionFinish: mocks.beginAgentDeletionFinish,
   });
 
   it("sweeps WAL sidecars recreated between deletion preparation and cleanup", async () => {

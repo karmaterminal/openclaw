@@ -48,7 +48,12 @@ it.each(["fixed selector", "retired schema owner"])(
       appendTranscriptEventSync(scope, { type: "proof", data: scope.agentId });
     }
 
-    await expect(purgeAgentSessionStoreEntries(cfg, "ops")).resolves.toBe(false);
+    const onPurged = vi.fn();
+    await expect(purgeAgentSessionStoreEntries(cfg, "ops", { onPurged })).resolves.toBe(false);
+    expect(onPurged).toHaveBeenCalledExactlyOnceWith(
+      [{ sessionId: "ops-session", sessionKey: "agent:ops:chat" }],
+      storePath,
+    );
 
     expect(loadSessionEntry(scopes[0]!)).toMatchObject({ sessionId: "main-session" });
     expect(loadTranscriptEventsSync(scopes[0]!)).toEqual([{ type: "proof", data: "main" }]);
@@ -62,7 +67,9 @@ it.each(["fixed selector", "retired schema owner"])(
 
 it("treats an absent store as an already successful purge", async () => {
   const { storePath, cfg } = store("absent.json");
-  await expect(purgeAgentSessionStoreEntries(cfg, "ops")).resolves.toBe(false);
+  const onPurged = vi.fn();
+  await expect(purgeAgentSessionStoreEntries(cfg, "ops", { onPurged })).resolves.toBe(false);
+  expect(onPurged).not.toHaveBeenCalled();
   expect(
     fs.existsSync(resolveSqliteTargetFromSessionStorePath(storePath, { agentId: "ops" }).path),
   ).toBe(false);
@@ -74,8 +81,12 @@ it("records a bounded warning and failure fact when storage purge fails", async 
   fs.writeFileSync(storePath, "not a sqlite database");
   const warn = vi.spyOn(getLogger(), "warn").mockImplementation(() => {});
   const onFailure = vi.fn();
+  const onPurged = vi.fn();
 
-  await expect(purgeAgentSessionStoreEntries(cfg, "ops", { onFailure })).resolves.toBe(true);
+  await expect(purgeAgentSessionStoreEntries(cfg, "ops", { onFailure, onPurged })).resolves.toBe(
+    true,
+  );
+  expect(onPurged).not.toHaveBeenCalled();
 
   const failure = {
     path: storePath,

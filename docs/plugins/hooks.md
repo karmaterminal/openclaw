@@ -137,7 +137,12 @@ reload mode, hook policy changes hot-reload the existing plugin runtime.
   context; reset also includes `nextSessionId` when known. Reset covers manual
   `/new` and `/reset` plus idle and daily rollover. Delete runs only after
   the session row is removed, including an incognito reset that deletes the row.
+  Agent deletion also emits `session_delete` for each session row in its
+  successfully committed purge; absent stores and failed purges emit none.
   These callbacks are detached and do not block the committed lifecycle operation.
+  For one session key, lifecycle callbacks run in publication order (including
+  `session_end` and `session_start`); callbacks for different keys may overlap.
+  A failing callback does not prevent later notifications.
 - `allowPromptInjection: false` blocks `agent_turn_prepare`,
   `before_prompt_build`, `heartbeat_prompt_contribution`, and durable next-turn
   injections. It defaults to allowed, but does not grant conversation access.

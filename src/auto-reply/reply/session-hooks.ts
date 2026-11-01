@@ -14,9 +14,7 @@ import {
   attachSessionEndTranscriptSource,
   type SessionEndTranscriptSource,
 } from "../../plugins/session-end-transcript.js";
-import { runWithGatewayDetachedWorkContinuation } from "../../process/gateway-work-admission.js";
-import { runWithSessionControllerCleanup } from "../../sessions/session-controller.owner-context.js";
-import { runOutsideStoreWriterContext } from "../../shared/store-writer-queue.js";
+import { dispatchSessionLifecycleHook } from "../../plugins/session-lifecycle-dispatch.js";
 
 type ReplySessionEndReason = Extract<
   PluginHookSessionEndReason,
@@ -86,12 +84,8 @@ export function emitReplySessionStartHook(
   const payload = buildSessionStartHookPayload(params);
   // Lifecycle hooks outlive their requester and must not inherit its writer
   // lane or controller ownership while their detached work keeps drain alive.
-  void runWithSessionControllerCleanup(() =>
-    runWithGatewayDetachedWorkContinuation(async () => {
-      await runOutsideStoreWriterContext(() =>
-        hookRunner.runSessionStart(payload.event, payload.context),
-      );
-    }, "hooks:session-start"),
+  void dispatchSessionLifecycleHook(params.sessionKey, "hooks:session-start", () =>
+    hookRunner.runSessionStart(payload.event, payload.context),
   ).catch(() => {});
 }
 
@@ -147,11 +141,42 @@ export function emitReplySessionEndHook(params: {
       )
     : { available: false as const, reason: "unsupported-source" as const };
   const payload = buildSessionEndHookPayload({ ...params, endedTranscript });
-  void runWithSessionControllerCleanup(() =>
-    runWithGatewayDetachedWorkContinuation(async () => {
-      await runOutsideStoreWriterContext(() =>
-        params.hookRunner.runSessionEnd(payload.event, payload.context),
-      );
-    }, "hooks:session-end"),
+  void dispatchSessionLifecycleHook(params.sessionKey, "hooks:session-end", () =>
+    params.hookRunner.runSessionEnd(payload.event, payload.context),
   ).catch(() => {});
+}
+
+export function emitReplySessionResetHook(params: {
+  hookRunner: HookRunner;
+  sessionId: string;
+  sessionKey: string;
+  agentId: string;
+  nextSessionId?: string;
+}): void {
+  if (!params.hookRunner.hasHooks("session_reset")) {
+    return;
+  }
+  const { sessionId, sessionKey, agentId, nextSessionId } = params;
+  void dispatchSessionLifecycleHook(sessionKey, "hooks:session-reset", () =>
+    params.hookRunner.runSessionReset(
+      { sessionId, sessionKey, nextSessionId },
+      { sessionId, sessionKey, agentId },
+    ),
+  ).catch(() => {});
+}
+
+export function emitReplySessionRolloverHooks(
+  params: Parameters<typeof emitReplySessionEndHook>[0],
+): void {
+  if (params.hookRunner.hasHooks("session_end")) {
+    emitReplySessionEndHook(params);
+  }
+  if (
+    params.reason === "new" ||
+    params.reason === "reset" ||
+    params.reason === "idle" ||
+    params.reason === "daily"
+  ) {
+    emitReplySessionResetHook(params);
+  }
 }

@@ -53,6 +53,7 @@ const hookRunnerMocks = vi.hoisted(() => ({
   hasHooks: vi.fn<HookRunner["hasHooks"]>(),
   runSessionStart: vi.fn<HookRunner["runSessionStart"]>(),
   runSessionEnd: vi.fn<HookRunner["runSessionEnd"]>(),
+  runSessionReset: vi.fn<HookRunner["runSessionReset"]>(),
   runBeforeReset: vi.fn<HookRunner["runBeforeReset"]>(),
 }));
 const sessionCleanupMocks = vi.hoisted(() => ({
@@ -68,6 +69,7 @@ vi.mock("../../plugins/hook-runner-global.js", () => ({
       hasHooks: hookRunnerMocks.hasHooks,
       runSessionStart: hookRunnerMocks.runSessionStart,
       runSessionEnd: hookRunnerMocks.runSessionEnd,
+      runSessionReset: hookRunnerMocks.runSessionReset,
       runBeforeReset: hookRunnerMocks.runBeforeReset,
     }) as unknown as HookRunner,
 }));
@@ -160,6 +162,7 @@ describe("session hook context wiring", () => {
     hookRunnerMocks.hasHooks.mockReset();
     hookRunnerMocks.runSessionStart.mockReset().mockResolvedValue(undefined);
     hookRunnerMocks.runSessionEnd.mockReset().mockResolvedValue(undefined);
+    hookRunnerMocks.runSessionReset.mockReset().mockResolvedValue(undefined);
     hookRunnerMocks.runBeforeReset.mockReset().mockResolvedValue(undefined);
     sessionCleanupMocks.closeTrackedBrowserTabsForSessions.mockClear();
     sessionCleanupMocks.closeTrackedBrowserTabsForSessions.mockResolvedValue(0);
@@ -242,6 +245,7 @@ describe("session hook context wiring", () => {
       (hookName) =>
         hookName === "session_start" ||
         hookName === "session_end" ||
+        hookName === "session_reset" ||
         (!automatic && hookName === "before_reset"),
     );
 
@@ -249,6 +253,13 @@ describe("session hook context wiring", () => {
       const body = automatic ? "Start the next turn" : `/${reason}`;
       const ctx = { Body: body, SessionKey: sessionKey };
       const initialized = await initSessionState({ ctx, cfg, commandAuthorized: true });
+      await vi.waitFor(() => expect(hookRunnerMocks.runSessionReset).toHaveBeenCalledOnce());
+      const [resetEvent, resetContext] = requireHookCall(
+        hookRunnerMocks.runSessionReset,
+        "session_reset",
+      );
+      expectFields(resetEvent, { sessionId, sessionKey, nextSessionId: sessionId });
+      expectFields(resetContext, { agentId: "main", sessionKey });
       if (!automatic) {
         await emitResetCommandHooks({
           ...initialized,
@@ -571,12 +582,12 @@ describe("session hook context wiring", () => {
               markGatewayRestartDraining();
             }
             await startSession(storePath, sessionKey, draining ? "/new" : "/reset");
-            await vi.waitFor(() => expect(releases).toHaveLength(3));
+            await vi.waitFor(() => expect(releases).toHaveLength(2));
             expect(getActiveGatewayRootWorkCount()).toBe(4);
           }),
         );
         expect(hookRunnerMocks.runSessionEnd).toHaveBeenCalledOnce();
-        expect(hookRunnerMocks.runSessionStart).toHaveBeenCalledOnce();
+        expect(hookRunnerMocks.runSessionStart).not.toHaveBeenCalled();
         const [ended, endContext] = requireHookCall(hookRunnerMocks.runSessionEnd, "session_end");
         expectFields(ended, {
           sessionKey,
@@ -584,19 +595,21 @@ describe("session hook context wiring", () => {
           nextSessionId: sessionId,
         });
         expectFields(endContext, { sessionKey, agentId: "main", sessionId: ended.sessionId });
+        admission.release();
+        await withinTest(parent.drain(), signal);
+        expect(getActiveGatewayRootWorkCount()).toBe(3);
+        expect(completedHooks).toEqual([]);
+        for (const release of [...releases]) {
+          release();
+        }
+        await vi.waitFor(() => expect(releases).toHaveLength(3));
         const [started, startContext] = requireHookCall(
           hookRunnerMocks.runSessionStart,
           "session_start",
         );
         expectFields(started, { sessionId, resumedFrom: sessionId });
         expectFields(startContext, { sessionId: started.sessionId });
-        admission.release();
-        await withinTest(parent.drain(), signal);
-        expect(getActiveGatewayRootWorkCount()).toBe(3);
-        expect(completedHooks).toEqual([]);
-        for (const release of releases) {
-          release();
-        }
+        releases[2]?.();
         await withinTest(joinContinuations(), signal);
         expect(completedHooks.toSorted()).toEqual(["end", "start"]);
         expect(getActiveGatewayRootWorkCount()).toBe(0);
