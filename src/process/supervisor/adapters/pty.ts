@@ -19,8 +19,6 @@ export async function createPtyAdapter(
     cols?: number;
     rows?: number;
     name?: string;
-    /** Heavy work: run in the host's capped child memory scope when process.childScope enables it. */
-    childMemoryScope?: true;
   },
 ): Promise<SpawnProcessAdapter> {
   // Worker deploys are portable JavaScript artifacts; exec falls back to the child adapter
@@ -30,13 +28,13 @@ export async function createPtyAdapter(
   }
   const { signalTerminalPtyTree, spawnTerminalPty } = await import("../../terminal-pty.js");
   const baseEnv = params.env ? toStringEnv(params.env) : undefined;
-  const launch = params.childMemoryScope
+  const target = params.childMemoryScope
     ? await prepareChildMemoryScopedSpawn(params.shell, params.args, {
         env: baseEnv,
         cwd: params.cwd,
       })
     : { command: params.shell, args: params.args };
-  const preparedSpawn = prepareOomScoreAdjustedSpawn(launch.command, launch.args, { env: baseEnv });
+  const preparedSpawn = prepareOomScoreAdjustedSpawn(target.command, target.args, { env: baseEnv });
   const terminalName = resolvePtyTerminalName(
     params.name ??
       resolveEnvironmentValue(preparedSpawn.env, "TERM", process.platform) ??

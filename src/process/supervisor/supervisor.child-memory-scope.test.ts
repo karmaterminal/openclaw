@@ -46,7 +46,9 @@ async function loadSupervisor(enabled: boolean) {
 /** The command reports its own pid and a grandchild's, then waits on the grandchild. */
 async function spawnTree(input: Pick<SpawnInput, "childMemoryScope">) {
   let reported!: (line: string) => void;
-  const report = new Promise<string>((resolve) => (reported = resolve));
+  const report = new Promise<string>((resolve) => {
+    reported = resolve;
+  });
   const run = await supervisor.spawn({
     mode: "child",
     argv: ["/bin/sh", "-c", 'sleep 30 & echo "$$ $!"; wait'],

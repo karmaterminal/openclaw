@@ -69,6 +69,8 @@ export type ProcessAdapterConstruction = {
   abortSignal?: AbortSignal;
   /** Publish resource cleanup before readiness or private-input delivery can fail. */
   onSpawnCleanup?: (cleanup: Promise<ProcessExtinctionResult>) => void;
+  /** Heavy work: run in the host's capped child memory scope when process.childScope enables it. */
+  childMemoryScope?: true;
 };
 
 export type AwaitedStdoutConsumer = {
