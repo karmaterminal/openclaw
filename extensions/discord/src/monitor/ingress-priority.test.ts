@@ -22,6 +22,9 @@ describe("Discord recovery priority", () => {
       false,
     );
     expect(
+      isRecentNativeDiscordMention({ ...mention, timestamp: { toString: null } }, botUserId, now),
+    ).toBe(false);
+    expect(
       isRecentNativeDiscordMention(
         { ...mention, timestamp: new Date(now - 15 * 60_000 - 1).toISOString() },
         botUserId,

@@ -29,14 +29,15 @@ const DISCORD_INGRESS_PAYLOAD_VERSION = 1;
 const DISCORD_INGRESS_DRAIN_INTERVAL_MS = 1_000;
 
 export function isRecentNativeDiscordMention(
-  raw: { guild_id?: string; timestamp?: string; mentions?: Array<{ id: string }> } | undefined,
+  raw: { guild_id?: string; timestamp?: unknown; mentions?: Array<{ id: string }> } | undefined,
   botUserId: string | undefined,
   nowMs = Date.now(),
 ): boolean {
   return Boolean(
     botUserId &&
     raw?.guild_id &&
-    Date.parse(raw.timestamp ?? "") >= nowMs - 15 * 60_000 &&
+    typeof raw.timestamp === "string" &&
+    Date.parse(raw.timestamp) >= nowMs - 15 * 60_000 &&
     Array.isArray(raw.mentions) &&
     raw.mentions.some((user) => user?.id === botUserId),
   );
