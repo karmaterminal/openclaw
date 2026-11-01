@@ -13,6 +13,11 @@ import {
   reconcileLateExpiredInjections,
   settle,
 } from "./host-hook-injection-outcomes.js";
+import {
+  isExpired,
+  isPluginNextTurnInjectionPlacement,
+  isPluginNextTurnInjectionRecord,
+} from "./host-hook-injection-validation.js";
 import { dispatchSettlements, type SettlementNotice } from "./host-hook-settlement-dispatch.js";
 import type {
   PluginNextTurnInjectionState,
@@ -41,54 +46,6 @@ const DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN = 64 * 1024;
 const MAX_OUTCOMES_PER_PLUGIN_SESSION = 256;
 const MAX_OUTCOME_RETENTION_MS = 86_400_000;
 type MutableSessionEntry = SessionEntry & Record<string, unknown>;
-
-function isPluginNextTurnInjectionPlacement(
-  value: unknown,
-): value is PluginNextTurnInjectionRecord["placement"] {
-  return value === "prepend_context" || value === "append_context";
-}
-
-function isPluginNextTurnInjectionRecord(value: unknown): value is PluginNextTurnInjectionRecord {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const candidate = value as Partial<PluginNextTurnInjectionRecord>;
-  return (
-    typeof candidate.id === "string" &&
-    typeof candidate.pluginId === "string" &&
-    typeof candidate.text === "string" &&
-    typeof candidate.createdAt === "number" &&
-    Number.isFinite(candidate.createdAt) &&
-    isPluginNextTurnInjectionPlacement(candidate.placement) &&
-    (candidate.ttlMs === undefined ||
-      (typeof candidate.ttlMs === "number" &&
-        Number.isFinite(candidate.ttlMs) &&
-        candidate.ttlMs >= 0)) &&
-    (candidate.idempotencyKey === undefined || typeof candidate.idempotencyKey === "string") &&
-    (candidate.expiresAt === undefined ||
-      (typeof candidate.expiresAt === "number" && Number.isFinite(candidate.expiresAt))) &&
-    (candidate.notBefore === undefined ||
-      (typeof candidate.notBefore === "number" && Number.isFinite(candidate.notBefore))) &&
-    (candidate.supersedeKey === undefined || typeof candidate.supersedeKey === "string") &&
-    (candidate.outcomeRetainUntil === undefined ||
-      (typeof candidate.outcomeRetainUntil === "number" &&
-        Number.isFinite(candidate.outcomeRetainUntil))) &&
-    (candidate.provenance === undefined ||
-      (typeof candidate.provenance === "object" &&
-        candidate.provenance !== null &&
-        typeof candidate.provenance.source === "string"))
-  );
-}
-
-function isExpired(entry: unknown, now: number) {
-  if (!isPluginNextTurnInjectionRecord(entry)) {
-    return true;
-  }
-  return (
-    (entry.expiresAt !== undefined && now >= entry.expiresAt) ||
-    (entry.ttlMs !== undefined && now - entry.createdAt > entry.ttlMs)
-  );
-}
 
 export async function getPluginNextTurnInjectionState(params: {
   cfg: OpenClawConfig;
@@ -261,6 +218,7 @@ export async function enqueuePluginNextTurnInjection(params: {
     };
   }
   const injection = { ...params.injection };
+  const expectedSupersededKey = injection.expectedSupersededKey?.trim();
   const record: PluginNextTurnInjectionRecord = {
     id: injection.idempotencyKey?.trim() || randomUUID(),
     pluginId: params.pluginId,
@@ -313,15 +271,14 @@ export async function enqueuePluginNextTurnInjection(params: {
     const predecessor = record.supersedeKey
       ? existing.find((item) => item.supersedeKey === record.supersedeKey)
       : undefined;
-    const expectedState: PluginNextTurnInjectionState | undefined = injection.expectedSupersededKey
-      ? existing.some((item) => item.idempotencyKey === injection.expectedSupersededKey)
+    const expectedState: PluginNextTurnInjectionState | undefined = expectedSupersededKey
+      ? existing.some((item) => item.idempotencyKey === expectedSupersededKey)
         ? "pending"
-        : (ownOutcome(entry, params.pluginId, injection.expectedSupersededKey)?.state ?? "unknown")
+        : (ownOutcome(entry, params.pluginId, expectedSupersededKey)?.state ?? "unknown")
       : undefined;
     const conflict =
-      injection.expectedSupersededKey &&
-      (predecessor?.idempotencyKey !== injection.expectedSupersededKey ||
-        expectedState !== "pending");
+      expectedSupersededKey &&
+      (predecessor?.idempotencyKey !== expectedSupersededKey || expectedState !== "pending");
     const capacity =
       (record.idempotencyKey !== undefined &&
         Object.keys(entry.pluginNextTurnInjectionOutcomes?.[params.pluginId] ?? {}).length >=
@@ -404,6 +361,8 @@ async function drainPluginNextTurnInjections(
     );
     const drained: PluginNextTurnInjectionRecord[] = [];
     const retained: NonNullable<SessionEntry["pluginNextTurnInjections"]> = {};
+    let totalEntries = 0;
+    let totalBytes = 0;
     for (const [pluginId, entries] of Object.entries(entry.pluginNextTurnInjections)) {
       // Guard against malformed/hand-edited persisted state — a non-array value
       // here would crash .filter and break prompt-building for the session.
@@ -436,17 +395,20 @@ async function drainPluginNextTurnInjections(
             settle(entry, pluginId, candidate, "discarded", now, notices);
           }
         } else if (candidate.notBefore !== undefined && now < candidate.notBefore) {
+          budgetBlocked = true;
           (retained[pluginId] ??= []).push(candidate);
         } else {
           const bytes = Buffer.byteLength(candidate.text, "utf8");
-          if (bytes > DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN) {
+          if (bytes > DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN || bytes > maxBytes) {
             settle(entry, pluginId, candidate, "discarded", now, notices);
             continue;
           }
           if (
             budgetBlocked ||
             drainedEntriesForPlugin >= maxEntries ||
-            drainedBytesForPlugin + bytes > maxBytes
+            drainedBytesForPlugin + bytes > maxBytes ||
+            totalEntries >= DEFAULT_DRAINED_NEXT_TURN_INJECTIONS_PER_PLUGIN ||
+            totalBytes + bytes > DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN
           ) {
             budgetBlocked = true;
             (retained[pluginId] ??= []).push(candidate);
@@ -455,6 +417,8 @@ async function drainPluginNextTurnInjections(
           drained.push(candidate);
           drainedEntriesForPlugin += 1;
           drainedBytesForPlugin += bytes;
+          totalEntries += 1;
+          totalBytes += bytes;
           settle(entry, pluginId, candidate, "consumed", now, notices);
         }
       }

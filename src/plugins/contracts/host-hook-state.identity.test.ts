@@ -170,6 +170,36 @@ describe("next-turn injection identity", () => {
     ).toBe("consumed");
   });
 
+  it("delivers every notice in a bounded settlement batch", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:batch-notices");
+    await writeEntry(scope, {
+      sessionId: "batch-notices",
+      lifecycleRevision: "first",
+      updatedAt: 1,
+    });
+    const delivered: string[] = [];
+    const registry = createEmptyPluginRegistry();
+    registry.plugins.push(createPluginRecord({ id: "owner-fixture", status: "loaded" }));
+    registry.nextTurnInjectionSettlementHandlers.push({
+      pluginId: "owner-fixture",
+      source: "fixture",
+      handler: (event) => {
+        delivered.push(event.idempotencyKey);
+      },
+    });
+    setActivePluginRegistry(registry);
+    for (const key of ["first", "second"]) {
+      await enqueuePluginNextTurnInjection({
+        cfg,
+        pluginId: "owner-fixture",
+        injection: { ...scope, text: key, idempotencyKey: key },
+      });
+    }
+    await drain({ cfg, ...scope });
+    await vi.waitFor(() => expect(delivered).toEqual(["first", "second"]));
+  });
+
   it("bounds stalled settlement delivery to one call per registration", async () => {
     const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
     const scope = sessionScope(cfg, "main", "agent:main:bounded-notice");
@@ -607,7 +637,7 @@ describe("next-turn injection identity", () => {
         },
       });
     expect((await put("first")).enqueued).toBe(true);
-    expect((await put("second", "first")).enqueued).toBe(true);
+    expect((await put("second", " first ")).enqueued).toBe(true);
     expect(
       (
         await getPluginNextTurnInjectionState({

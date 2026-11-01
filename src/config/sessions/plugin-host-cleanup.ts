@@ -146,7 +146,10 @@ function settlePendingPluginInjections(entry: SessionEntry, now: number, pluginI
               ? "expired"
               : "discarded",
           settledAt: now,
-          retainUntil: Math.max(now, record.expiresAt ?? 0, record.outcomeRetainUntil ?? 0) + 5_000,
+          retainUntil: Math.min(
+            Math.max(now, record.expiresAt ?? 0, record.outcomeRetainUntil ?? 0) + 5_000,
+            now + 86_400_000,
+          ),
         },
       });
     }

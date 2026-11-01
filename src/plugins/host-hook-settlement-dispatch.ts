@@ -31,8 +31,8 @@ export function dispatchSettlements(
     return Promise.resolve();
   }
   const registry = getPluginRegistryForContext();
-  const invocations: Promise<unknown>[] = [];
-  for (const { pluginId, event, sessionId, lifecycleRevision } of notices) {
+  const deliveries: Promise<void>[] = [];
+  for (const pluginId of new Set(notices.map((notice) => notice.pluginId))) {
     const record = registry?.plugins.find(
       (plugin) => plugin.id === pluginId && plugin.status === "loaded",
     );
@@ -60,57 +60,55 @@ export function dispatchSettlements(
       }
       activeHandlers.add(registration);
       inFlightByPluginId.set(pluginId, (inFlightByPluginId.get(pluginId) ?? 0) + 1);
-      const invocation = Promise.resolve().then(async () => {
-        if (!isCurrent() || !sessionId || !lifecycleRevision) {
-          return;
-        }
-        const entry = await readResolvedSessionEntryInWorker(scope);
-        if (
-          !isCurrent() ||
-          entry?.sessionId !== sessionId ||
-          entry.lifecycleRevision !== lifecycleRevision
-        ) {
-          return;
-        }
-        const notice = { ...event, sessionKey: scope.sessionKey };
-        const result = instance
-          ? instance.runInRegistry(registry, () => registration.handler(notice))
-          : registration.handler(notice);
-        return { result };
-      });
-      invocations.push(invocation);
-      const delivered = invocation.then((value) => value?.result);
-      const release = () => {
-        const remaining = (inFlightByPluginId.get(pluginId) ?? 1) - 1;
-        if (remaining > 0) {
-          inFlightByPluginId.set(pluginId, remaining);
-        } else {
-          inFlightByPluginId.delete(pluginId);
-        }
-      };
-      void delivered.then(release, release);
-      let timer: ReturnType<typeof setTimeout>;
-      const timeout = new Promise<"timeout">((resolve) => {
-        timer = setTimeout(() => resolve("timeout"), HANDLER_TIMEOUT_MS);
-      });
-      void Promise.race([delivered, timeout])
-        .then((result) => {
-          if (result === "timeout") {
-            // Never start another call after a timeout: an unresolved handler retains
-            // at most one plugin promise, regardless of future settlement volume.
-            stalledHandlers.add(registration);
-            log.warn(`next-turn settlement notification timed out for ${pluginId}`);
+      const batch = notices.filter((notice) => notice.pluginId === pluginId).slice(0, 32);
+      const delivery = Promise.resolve()
+        .then(async () => {
+          for (const { event, sessionId, lifecycleRevision } of batch) {
+            if (!isCurrent() || !sessionId || !lifecycleRevision) {
+              continue;
+            }
+            const entry = await readResolvedSessionEntryInWorker(scope);
+            if (
+              !isCurrent() ||
+              entry?.sessionId !== sessionId ||
+              entry.lifecycleRevision !== lifecycleRevision
+            ) {
+              continue;
+            }
+            const notice = { ...event, sessionKey: scope.sessionKey };
+            const result = instance
+              ? instance.runInRegistry(registry, () => registration.handler(notice))
+              : registration.handler(notice);
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            const timeout = new Promise<"timeout">((resolve) => {
+              timer = setTimeout(() => resolve("timeout"), HANDLER_TIMEOUT_MS);
+            });
+            try {
+              if ((await Promise.race([Promise.resolve(result), timeout])) === "timeout") {
+                stalledHandlers.add(registration);
+                log.warn(`next-turn settlement notification timed out for ${pluginId}`);
+                break;
+              }
+            } finally {
+              clearTimeout(timer);
+            }
           }
         })
         .catch((error: unknown) => {
           log.warn(`next-turn settlement notification failed for ${pluginId}: ${String(error)}`);
         })
         .finally(() => {
-          clearTimeout(timer);
+          const remaining = (inFlightByPluginId.get(pluginId) ?? 1) - 1;
+          if (remaining > 0) {
+            inFlightByPluginId.set(pluginId, remaining);
+          } else {
+            inFlightByPluginId.delete(pluginId);
+          }
           activeHandlers.delete(registration);
         });
+      deliveries.push(delivery);
     }
   }
-  // Only the authority checks and invocation are awaitable; callback settlement is detached.
-  return Promise.allSettled(invocations).then(() => {});
+  // Callers detach this bounded per-registration batch from prompt preparation.
+  return Promise.all(deliveries).then(() => {});
 }
