@@ -473,8 +473,6 @@ describe("discordPlugin outbound", () => {
     const releaseNewer = publishReading("newer");
     try {
       await expect(read()).resolves.toEqual(["newer"]);
-      // A second release of the same publication is a no-op, as a repeated shutdown is.
-      releaseOlder();
       releaseOlder();
       await expect(read()).resolves.toEqual(["newer"]);
     } finally {

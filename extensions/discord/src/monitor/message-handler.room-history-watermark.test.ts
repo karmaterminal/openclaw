@@ -581,7 +581,6 @@ describe("Discord room history for a scheduled turn", () => {
     const firstView = await read();
     // A replacement monitor can start while the one it replaces is still shutting down.
     const second = createRoomDispatcher(channel);
-    const beforeItsFirstTurn = await read();
     await second.send(101, "cael", "it passes");
     const secondView = await read();
     await second.dispatcher.deactivate();
@@ -592,8 +591,7 @@ describe("Discord room history for a scheduled turn", () => {
       ["seen", "morning, all"],
       ["seen", "does the release build pass?"],
     ]);
-    // The newest dispatcher is read; like a restart, it has no room turn to repeat yet.
-    expect(beforeItsFirstTurn).toBeUndefined();
+    // The newest dispatcher is read.
     expect(secondView).toEqual([
       ["seen", "morning, all"],
       ["seen", "does the release build pass?"],

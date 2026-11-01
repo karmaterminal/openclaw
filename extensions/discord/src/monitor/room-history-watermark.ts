@@ -177,10 +177,9 @@ export type DiscordRoomHistoryWatermarks = ReturnType<typeof createDiscordRoomHi
 // The channel adapter can load through a separate runtime path from the message dispatcher that
 // owns the watermarks; keep the publications process-global so both see the live instance.
 // A replacement monitor can start before the one it replaces has shut down, so an account keeps
-// every live publication in publish order and reads the newest. Each release removes only its
-// own publication: neither monitor's shutdown strands the other's watermarks.
-type Publication = { watermarks: DiscordRoomHistoryWatermarks };
-const publications = resolveGlobalMap<string, Set<Publication>>(
+// every live dispatcher's watermarks in publish order and reads the newest. Each release removes
+// only its own: neither monitor's shutdown strands the other's watermarks.
+const publications = resolveGlobalMap<string, Set<DiscordRoomHistoryWatermarks>>(
   Symbol.for("openclaw.discord.roomHistoryWatermarks"),
 );
 
@@ -189,16 +188,15 @@ export function publishDiscordRoomHistoryWatermarks(
   accountId: string,
   watermarks: DiscordRoomHistoryWatermarks,
 ): () => void {
-  const publication: Publication = { watermarks };
   const live = publications.get(accountId) ?? new Set();
-  publications.set(accountId, live.add(publication));
+  publications.set(accountId, live.add(watermarks));
   return () => {
-    live.delete(publication);
+    live.delete(watermarks);
   };
 }
 
 export function getPublishedDiscordRoomHistoryWatermarks(
   accountId: string,
 ): DiscordRoomHistoryWatermarks | undefined {
-  return [...(publications.get(accountId) ?? [])].at(-1)?.watermarks;
+  return [...(publications.get(accountId) ?? [])].at(-1);
 }
