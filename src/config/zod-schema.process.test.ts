@@ -7,6 +7,7 @@ it("accepts the host-level child memory scope with systemd sizes, off when omitt
     { enabled: true },
     { enabled: true, memoryMax: "1.5G", memorySwapMax: "0" },
     { enabled: true, memoryMax: "64M", memorySwapMax: "infinity" },
+    { enabled: true, memoryMax: "15E", memorySwapMax: "17179869183G" },
   ]) {
     expect(OpenClawSchema.parse({ process: { childScope } }).process).toStrictEqual({
       childScope,
@@ -22,6 +23,9 @@ it.each([
   // Tinier caps OOM-kill systemd-run itself before the command starts.
   { memoryMax: "0" },
   { memoryMax: "63M" },
+  // systemd parses sizes as uint64.
+  { memoryMax: "16E" },
+  { memorySwapMax: "17179869184G" },
   { memorySwapMax: "2g" },
   { memorySwapMax: "-1" },
 ])("refuses an invalid child scope size: %o", (sizes) => {

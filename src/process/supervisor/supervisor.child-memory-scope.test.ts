@@ -28,7 +28,7 @@ function scopedInvocations(): string[] {
         .readFileSync(invocationLog, "utf8")
         .trim()
         .split("\n")
-        .filter((line) => line.includes("MemoryMax="))
+        .filter((line) => line.includes("MemoryMax=") && !line.endsWith(" -- true"))
     : [];
 }
 

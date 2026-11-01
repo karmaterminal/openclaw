@@ -23,7 +23,7 @@ const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")!;
 const shell = ["/bin/sh", ["-c", "exit 0"]] as const;
 
 /** Stands in for systemd-run --scope: records its argv, then execs the command in place. */
-function installFakeSystemdRun(mode: "exec" | "fail" = "exec") {
+function installFakeSystemdRun(mode: "exec" | "fail" | "reject-properties" = "exec") {
   const dir = tempDirs.make("openclaw-child-scope-bin-");
   const log = path.join(dir, "invocations.log");
   const bin = path.join(dir, "systemd-run");
@@ -34,7 +34,9 @@ function installFakeSystemdRun(mode: "exec" | "fail" = "exec") {
       `printf '%s\\n' "$*" >> '${log}'`,
       mode === "fail"
         ? 'echo "Failed to start transient scope unit: Access denied" >&2; exit 1'
-        : 'while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done; shift; exec "$@"',
+        : mode === "reject-properties"
+          ? 'case " $* " in *" -p "*) echo "Unknown assignment: MemorySwapMax=2G" >&2; exit 1;; esac'
+          : 'while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done; shift; exec "$@"',
       "",
     ].join("\n"),
     { mode: 0o755 },
@@ -120,8 +122,10 @@ it.skipIf(process.platform !== "linux").each([
 
     await expect(prepare(...shell)).resolves.toEqual(wrapped);
     await expect(prepare(...shell)).resolves.toEqual(wrapped);
-    // One real probe scope per process, never one per spawn.
-    expect(fake.invocations()).toEqual(["--user --scope --quiet --collect -- true"]);
+    // One real probe scope per process, with the launch properties, never one per spawn.
+    expect(fake.invocations()).toEqual([
+      `${wrapped.args.slice(0, wrapped.args.indexOf("--") + 1).join(" ")} true`,
+    ]);
     expect(scopeWarn).not.toHaveBeenCalled();
   },
 );
@@ -146,6 +150,11 @@ it.each([
   {
     reason: "systemd-run probe failed: Failed to start transient scope unit: Access denied",
     arrange: () => installFakeSystemdRun("fail"),
+  },
+  {
+    // The probe carries the launch properties, so a manager that rejects them never wraps.
+    reason: "systemd-run probe failed: Unknown assignment: MemorySwapMax=2G",
+    arrange: () => installFakeSystemdRun("reject-properties"),
   },
 ])(
   "spawns plain with exactly one warning when the scope is unavailable: $reason",

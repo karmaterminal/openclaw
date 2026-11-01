@@ -1,4 +1,5 @@
 import { getRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resolveExecutablePath } from "../infra/executable-path.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { runUtf8CommandWithTimeout } from "./exec-runner.js";
@@ -27,6 +28,25 @@ export type ChildMemoryScopeAvailability =
   | { available: false; reason: string };
 
 export type ChildMemoryScopedSpawn = { command: string; args: string[]; scoped: boolean };
+type ChildScopeConfig = NonNullable<NonNullable<OpenClawConfig["process"]>["childScope"]>;
+
+/** The probe and every launch share one argv, so the probe proves the properties launches set. */
+function scopeLauncherArgs(config: ChildScopeConfig): string[] {
+  return [
+    "--user",
+    "--scope",
+    "--quiet",
+    "--collect",
+    // systemd otherwise describes the scope with the full command line, which would put
+    // tool commands (and any secrets in them) into the user journal on every spawn.
+    `--description=${SCOPE_DESCRIPTION}`,
+    "-p",
+    `MemoryMax=${config.memoryMax ?? DEFAULT_MEMORY_MAX}`,
+    "-p",
+    `MemorySwapMax=${config.memorySwapMax ?? DEFAULT_MEMORY_SWAP_MAX}`,
+    "--",
+  ];
+}
 
 // systemd-run --user reaches the user manager through either variable.
 function hasUserBusRoute(env: NodeJS.ProcessEnv): boolean {
@@ -38,7 +58,9 @@ export function formatChildMemoryScopeUnavailable(reason: string): string {
 }
 
 /** Uncached host check for this process's environment; the spawn path caches its own result. */
-export async function probeChildMemoryScope(): Promise<ChildMemoryScopeAvailability> {
+export async function probeChildMemoryScope(
+  config: ChildScopeConfig,
+): Promise<ChildMemoryScopeAvailability> {
   if (process.platform !== "linux") {
     return { available: false, reason: `not Linux (${process.platform})` };
   }
@@ -52,10 +74,11 @@ export async function probeChildMemoryScope(): Promise<ChildMemoryScopeAvailabil
       reason: "no user systemd bus (XDG_RUNTIME_DIR and DBUS_SESSION_BUS_ADDRESS are unset)",
     };
   }
-  // Start and collect one real scope: the user manager must answer and accept transient scopes.
+  // Start and collect one real scope with the launch properties: the user manager must answer
+  // and accept them. A manager restarted after this probe restarts the Gateway unit with it.
   try {
     const result = await runUtf8CommandWithTimeout(
-      [systemdRun, "--user", "--scope", "--quiet", "--collect", "--", "true"],
+      [systemdRun, ...scopeLauncherArgs(config), "true"],
       { timeoutMs: PROBE_TIMEOUT_MS },
     );
     if (result.termination === "exit" && result.code === 0) {
@@ -72,9 +95,14 @@ export async function probeChildMemoryScope(): Promise<ChildMemoryScopeAvailabil
 
 let availability: Promise<ChildMemoryScopeAvailability> | undefined;
 
-/** Probe once per process; an unavailable scope is logged once and every spawn stays plain. */
-function resolveChildMemoryScopeAvailability(): Promise<ChildMemoryScopeAvailability> {
-  return (availability ??= probeChildMemoryScope().then((result) => {
+/**
+ * Probe once per process; an unavailable scope is logged once and every spawn stays plain.
+ * Size changes restart the Gateway (process.* has no hot-reload rule), so one probe suffices.
+ */
+function resolveChildMemoryScopeAvailability(
+  config: ChildScopeConfig,
+): Promise<ChildMemoryScopeAvailability> {
+  return (availability ??= probeChildMemoryScope(config).then((result) => {
     if (!result.available) {
       log.warn(formatChildMemoryScopeUnavailable(result.reason));
     }
@@ -102,7 +130,7 @@ export async function prepareChildMemoryScopedSpawn(
   if (config?.enabled !== true) {
     return plain;
   }
-  const scope = await resolveChildMemoryScopeAvailability();
+  const scope = await resolveChildMemoryScopeAvailability(config);
   if (!scope.available) {
     return plain;
   }
@@ -125,22 +153,7 @@ export async function prepareChildMemoryScopedSpawn(
   }
   return {
     command: scope.systemdRun,
-    args: [
-      "--user",
-      "--scope",
-      "--quiet",
-      "--collect",
-      // systemd otherwise describes the scope with the full command line, which would put
-      // tool commands (and any secrets in them) into the user journal on every spawn.
-      `--description=${SCOPE_DESCRIPTION}`,
-      "-p",
-      `MemoryMax=${config.memoryMax ?? DEFAULT_MEMORY_MAX}`,
-      "-p",
-      `MemorySwapMax=${config.memorySwapMax ?? DEFAULT_MEMORY_SWAP_MAX}`,
-      "--",
-      command,
-      ...args,
-    ],
+    args: [...scopeLauncherArgs(config), command, ...args],
     scoped: true,
   };
 }

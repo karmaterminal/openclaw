@@ -12,10 +12,11 @@ const CHECK_ID = "core/doctor/child-memory-scope";
 export async function collectChildMemoryScopeHealthFindings(
   cfg: OpenClawConfig,
 ): Promise<readonly HealthFinding[]> {
-  if (cfg.process?.childScope?.enabled !== true) {
+  const config = cfg.process?.childScope;
+  if (config?.enabled !== true) {
     return [];
   }
-  const scope = await probeChildMemoryScope();
+  const scope = await probeChildMemoryScope(config);
   if (scope.available) {
     return [];
   }

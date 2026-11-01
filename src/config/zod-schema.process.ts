@@ -13,9 +13,12 @@ function systemdSizeBytes(value: string): number | undefined {
   if (!match) {
     return undefined;
   }
-  return match[1] === undefined
-    ? Number.POSITIVE_INFINITY
-    : Number(match[1]) * 1024 ** SYSTEMD_SIZE_UNITS.indexOf(match[2] ?? "");
+  if (match[1] === undefined) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const bytes = Number(match[1]) * 1024 ** SYSTEMD_SIZE_UNITS.indexOf(match[2] ?? "");
+  // systemd parses sizes as uint64 and refuses anything from 16E up.
+  return bytes < 2 ** 64 ? bytes : undefined;
 }
 
 const SystemdSizeSchema = z.string().refine((value) => systemdSizeBytes(value) !== undefined, {
