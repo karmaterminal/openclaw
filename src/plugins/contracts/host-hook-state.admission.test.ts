@@ -33,6 +33,66 @@ describe("next-turn injection admission fence", () => {
     await state.cleanup();
   });
 
+  it("requires a current identity tuple for subagent admission but not generic main/channel callers", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    for (const suffix of ["subagent:local", "main", "channel:chat"]) {
+      const scope = sessionScope(cfg, "main", `agent:main:${suffix}`);
+      await writeEntry(scope, { sessionId: suffix, lifecycleRevision: "current", updatedAt: 1 });
+      const result = await enqueuePluginNextTurnInjection({
+        cfg,
+        pluginId: "owner-fixture",
+        injection: { sessionKey: scope.sessionKey, agentId: "main", text: "unqualified" },
+      });
+      if (suffix.startsWith("subagent:")) {
+        expect(result).toMatchObject({ enqueued: false, reason: "invalid" });
+        expect(readEntry(scope)?.pluginNextTurnInjections).toBeUndefined();
+      } else {
+        expect(result.enqueued).toBe(true);
+      }
+    }
+  });
+
+  it("rejects same-ID subagent reset and reroute at admission, then admits the current local row", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:subagent:local");
+    await writeEntry(scope, { sessionId: "same", lifecycleRevision: "before", updatedAt: 1 });
+    await writeEntry(scope, { sessionId: "same", lifecycleRevision: "after", updatedAt: 2 });
+    const request = {
+      cfg,
+      pluginId: "owner-fixture",
+      injection: {
+        sessionKey: scope.sessionKey,
+        agentId: "main",
+        text: "qualified",
+        expectedSessionId: "same",
+        expectedLifecycleRevision: "before",
+      },
+    };
+    expect(await enqueuePluginNextTurnInjection(request)).toMatchObject({
+      enqueued: false,
+      reason: "stale_session",
+    });
+    await writeEntry(scope, {
+      sessionId: "same",
+      lifecycleRevision: "after",
+      updatedAt: 3,
+      delivery: deliveryState({ context: { channel: "matrix", to: "!room:example.org" } }),
+    });
+    expect(
+      await enqueuePluginNextTurnInjection({
+        ...request,
+        injection: { ...request.injection, expectedLifecycleRevision: "after" },
+      }),
+    ).toMatchObject({ enqueued: false, reason: "unsupported_route" });
+    await writeEntry(scope, { sessionId: "same", lifecycleRevision: "after", updatedAt: 4 });
+    expect(
+      await enqueuePluginNextTurnInjection({
+        ...request,
+        injection: { ...request.injection, expectedLifecycleRevision: "after" },
+      }),
+    ).toMatchObject({ enqueued: true });
+  });
+
   it("rejects a reset with the same sessionId but a new lifecycle revision", async () => {
     const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
     const scope = sessionScope(cfg, "main", "agent:main:main");

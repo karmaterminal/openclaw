@@ -8,7 +8,7 @@ export type PluginNextTurnInjection = {
   sessionKey: string;
   /** Selected owner when the session key is unscoped, such as global. */
   agentId?: string;
-  /** Exact row from resolveLocalSessionRoute; supply both fields together. */
+  /** Exact row from resolveLocalSessionRoute; required together for subagent targets. */
   expectedSessionId?: string;
   expectedLifecycleRevision?: string;
   text: string;

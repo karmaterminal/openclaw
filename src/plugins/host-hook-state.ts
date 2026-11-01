@@ -219,8 +219,17 @@ export async function enqueuePluginNextTurnInjection(params: {
   };
   const scope = { cfg: params.cfg, sessionKey, agentId: params.injection.agentId };
   const notices: SettlementNotice[] = [];
-  const updated = await updateResolvedSessionEntry(scope, (entry) => {
+  const updated = await updateResolvedSessionEntry(scope, (entry, context) => {
     if (params.shouldEnqueue && !params.shouldEnqueue()) {
+      return { enqueued: false, id: "", reason: "invalid" as const };
+    }
+    // Subagent admission needs the selected row's exact generation. Check
+    // inside the mutation so a reset or reroute cannot race this proof.
+    if (
+      /^agent:[^:]+:subagent:/.test(context.canonicalKey) &&
+      (injection.expectedSessionId === undefined ||
+        injection.expectedLifecycleRevision === undefined)
+    ) {
       return { enqueued: false, id: "", reason: "invalid" as const };
     }
     if (
@@ -230,7 +239,7 @@ export async function enqueuePluginNextTurnInjection(params: {
     ) {
       return { enqueued: false, id: "", reason: "stale_session" as const };
     }
-    if (isUnsupportedInjectionRoute(sessionKey, entry)) {
+    if (isUnsupportedInjectionRoute(context.canonicalKey, entry)) {
       return { enqueued: false, id: "", reason: "unsupported_route" as const };
     }
     if (

@@ -9,6 +9,10 @@ export function isUnsupportedInjectionRoute(sessionKey: string, entry: SessionEn
   if (!/^agent:[^:]+:subagent:/.test(sessionKey)) {
     return false;
   }
+  // A subagent without a current generation cannot prove host locality.
+  if (!entry.sessionId || !entry.lifecycleRevision) {
+    return true;
+  }
   const legacy = entry as SessionEntry & Record<string, unknown>;
   return Boolean(
     entry.groupChannel ||
