@@ -1,7 +1,10 @@
 import { expect, it, vi } from "vitest";
+import * as runtimeSnapshot from "../config/runtime-snapshot.js";
 import { readSessionEntryReadOnlyInWorker } from "../config/sessions/session-entry-read-runtime.js";
 import { buildPluginApi } from "./api-builder.js";
+import { instrumentPluginInstanceApi } from "./api-facades.js";
 import { runPluginRegistration } from "./api-lifecycle.js";
+import { createOwnedInstance } from "./plugin-instance.test-support.js";
 import type { PluginRuntime } from "./runtime/types.js";
 import type { OpenClawPluginApi } from "./types.js";
 
@@ -80,6 +83,28 @@ it("keeps session route inspection callable after registration and reads each li
     onHost: false,
   });
   expect(read).toHaveBeenCalledTimes(2);
+});
+
+it("fails closed when a retained route callback's owner retires", async () => {
+  const config = { session: { store: "/tmp/route-owner-test.json" } };
+  const snapshot = vi.spyOn(runtimeSnapshot, "getRuntimeConfigSnapshot").mockReturnValue(config);
+  const { instance } = createOwnedInstance("route-owner-test");
+  const api = instrumentPluginInstanceApi(createPluginApi({}), instance);
+  let retained!: OpenClawPluginApi["session"]["state"]["resolveLocalSessionRoute"];
+  runPluginRegistration((registered) => {
+    retained = registered.session.state.resolveLocalSessionRoute;
+  }, api);
+  const key = "agent:main:subagent:abc";
+  const read = vi.mocked(readSessionEntryReadOnlyInWorker);
+  read.mockReset().mockResolvedValue({ sessionId: "owned", updatedAt: 1 });
+  try {
+    expect((await retained(key)).onHost).toBe(true);
+    await instance.dispose();
+    expect(await retained(key)).toEqual({ sessionKey: key, exists: false, onHost: false });
+    expect(read).toHaveBeenCalledTimes(1);
+  } finally {
+    snapshot.mockRestore();
+  }
 });
 
 it.each<[string, unknown, boolean]>([

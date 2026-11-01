@@ -30,6 +30,25 @@ describe("exact plugin local session route proof", () => {
     expect(await resolve(key)).toEqual({ sessionKey: key, exists: false, onHost: false });
   });
 
+  it("does not reuse a row from a previous configured store", async () => {
+    const key = "agent:main:subagent:abc";
+    entry(key);
+    expect((await resolve(key)).onHost).toBe(true);
+    const nextConfig = { session: { store: "/tmp/oc-local-route/other.json" } } as OpenClawConfig;
+    read.mockResolvedValueOnce(undefined);
+    expect(await resolvePluginLocalSessionRoute({ cfg: nextConfig, sessionKey: key })).toEqual({
+      sessionKey: key,
+      exists: false,
+      onHost: false,
+    });
+    expect(read).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        storePath: "/tmp/oc-local-route/other.json",
+        sessionKey: key,
+      }),
+    );
+  });
+
   it("never infers locality for shared main or channel keys", async () => {
     for (const key of ["agent:main:main", "agent:main:discord:channel:123"]) {
       entry(key, { kind: "internal" });
