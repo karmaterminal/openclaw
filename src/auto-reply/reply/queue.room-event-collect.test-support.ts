@@ -267,18 +267,38 @@ export function sender(
 export const owner = sender("owner", { senderIsOwner: true, traceAuthorized: true });
 
 // Frond (karmaterminal, #1415): the fleet's room, where every prince is a command owner, with the
-// ambient owner room aggregate on.
+// ambient owner room aggregate on for the listed princes, one in the typed owner-list form.
 export const AMBIENT: OpenClawConfig = {
-  messages: { groupChat: { unmentionedInbound: "room_event", ambientOwnerAggregate: true } },
+  messages: {
+    groupChat: {
+      unmentionedInbound: "room_event",
+      ambientOwnerAggregate: true,
+      ambientOwnerAggregatePeers: ["peer-a", "discord:peer-b", "peer-c", "peer-d"],
+    },
+  },
 };
 
-/** A command owner speaking in the room, as channel admission records it. */
+/** A command owner prince, a bot account, speaking in the room as channel admission records it. */
 export function ownerPeer(
   id: string,
   config: OpenClawConfig,
   extra: Partial<FollowupRun["run"]> = {},
 ): Partial<FollowupRun["run"]> {
-  return sender(id, { senderIsOwner: true, traceAuthorized: true, config, ...extra });
+  return sender(id, {
+    senderIsOwner: true,
+    traceAuthorized: true,
+    senderIsBot: true,
+    config,
+    ...extra,
+  });
+}
+
+/** The human principal, a command owner Discord reports as no bot. */
+export function principal(
+  config: OpenClawConfig,
+  extra: Partial<FollowupRun["run"]> = {},
+): Partial<FollowupRun["run"]> {
+  return sender("figs", { senderIsOwner: true, traceAuthorized: true, config, ...extra });
 }
 
 /** What the reply run records for unaddressed prose (get-reply-run-execute.ambient-room-prose). */
@@ -332,6 +352,7 @@ export function expectRoomBaseline(run: FollowupRun | undefined, shared: Shared 
     senderUsername: execution.senderUsername,
     senderE164: execution.senderE164,
     senderIsOwner: execution.senderIsOwner,
+    senderIsBot: execution.senderIsBot,
     traceAuthorized: execution.traceAuthorized,
     operatorProfileId: execution.operatorProfileId,
     memberRoleIds: execution.memberRoleIds,

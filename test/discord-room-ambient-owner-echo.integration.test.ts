@@ -4,8 +4,8 @@
 // owner facts and the prose fact as the reply run records them
 // (get-reply-run-execute.ambient-room-prose.test.ts); the model and its runner's terminal report are
 // scripted. The watermark shows every reply the question as already seen; with
-// messages.groupChat.ambientOwnerAggregate on, the five owner turns collapse into one collected turn
-// that does not answer it again.
+// messages.groupChat.ambientOwnerAggregate on and the peers listed, the five owner turns collapse into
+// one collected turn that does not answer it again. The principal's own line keeps its turn.
 import { afterEach, describe, expect, it } from "vitest";
 import { createDiscordRoomHistoryWatermarks } from "../extensions/discord/test-api.js";
 import type { HistoryEntry } from "../src/auto-reply/reply/history.types.js";
@@ -16,6 +16,7 @@ import {
   AMBIENT,
   expectSettledOnce,
   ownerPeer,
+  principal,
   prose,
   withRoomIngress,
   type Row,
@@ -29,6 +30,9 @@ installQueueRuntimeErrorSilencer();
 afterEach(() => controllerTesting.resetSessionControllerForTest());
 
 const DEFAULT: OpenClawConfig = { messages: { groupChat: { unmentionedInbound: "room_event" } } };
+const NO_PEERS: OpenClawConfig = {
+  messages: { groupChat: { ...AMBIENT.messages?.groupChat, ambientOwnerAggregatePeers: [] } },
+};
 
 const ROOM = { sessionKey: "agent:main:discord:channel:room", channelId: "room" };
 const QUESTION = { messageId: "1000", sender: "figs", body: "does the nightly build pass?" };
@@ -42,6 +46,8 @@ const REPLIES = [
   ["1004", "peer-d", "confirmed"],
   ["1005", "peer-a", "the docs job too"],
 ] as const;
+// The principal's own unaddressed line, still inside the question's turn.
+const ASIDE = ["1006", "figs", "also check the arm runner"] as const;
 
 /** Lines naming the question in a turn's rendered room history, one per member's history. */
 function questionLines(context: string | undefined): string[] {
@@ -61,11 +67,14 @@ function scriptedReply(run: FollowupRun): string {
 type Post = { replyTo: string; text: string };
 
 /** Replays the echo and counts inputs per turn, posts, and posts answering the question. */
-async function replayEcho(config: OpenClawConfig) {
+async function replayEcho(config: OpenClawConfig, aside = false) {
   const watermarks = createDiscordRoomHistoryWatermarks();
+  const lines: ReadonlyArray<readonly [string, string, string]> = aside
+    ? [...REPLIES, ASIDE]
+    : REPLIES;
   const timeline: HistoryEntry[] = [
     QUESTION,
-    ...REPLIES.map(([messageId, name, body]) => ({ messageId, sender: name, body })),
+    ...lines.map(([messageId, name, body]) => ({ messageId, sender: name, body })),
   ];
   const posts: Post[] = [];
   /** Discord renders a turn's room history at dispatch, then begins its watermark turn. */
@@ -80,9 +89,9 @@ async function replayEcho(config: OpenClawConfig) {
     } as TemplateContext);
     return { context, turn: watermarks.beginTurn(ROOM, messageId) };
   };
-  const rows: Row[] = REPLIES.map(([id, name]) => ({
+  const rows: Row[] = lines.map(([id, name]) => ({
     id,
-    from: ownerPeer(name, config),
+    from: name === "figs" ? principal(config) : ownerPeer(name, config),
     source: () => {
       const { context, turn } = dispatch(id);
       // Core queued the turn behind the active run; it settles when its agent run ends.
@@ -127,7 +136,7 @@ async function replayEcho(config: OpenClawConfig) {
     });
     await expectSettledOnce(
       harness,
-      REPLIES.map(([id]) => id),
+      lines.map(([id]) => id),
     );
     ({ calls, runs } = harness);
   });
@@ -137,7 +146,7 @@ async function replayEcho(config: OpenClawConfig) {
     posts: posts.length,
     answers: posts.filter((post) => post.text === ANSWER).length,
   };
-  return { rows, calls, runs, posts, count, later: dispatch("1006").context };
+  return { rows, calls, runs, posts, count, later: dispatch("1007").context };
 }
 
 describe("the all-owner echo under the ambient owner room aggregate (#1415)", () => {
@@ -164,8 +173,28 @@ describe("the all-owner echo under the ambient owner room aggregate (#1415)", ()
     ]);
   });
 
-  it("keeps the default: with the mode off each owner reply is its own owner turn", async () => {
-    const echo = await replayEcho(DEFAULT);
+  it("keeps the principal's aside as its own owner turn beside the peers' collected turn", async () => {
+    const echo = await replayEcho(AMBIENT, true);
+    expect(echo.count).toEqual({ inputsPerTurn: [1, 5, 1], posts: 3, answers: 1 });
+    const [collectedTurn, aside] = echo.calls;
+    aggregated(collectedTurn, echo.rows.slice(0, REPLIES.length));
+    expect(collectedTurn?.controllerClaim?.sources).not.toContain(echo.runs.get(ASIDE[0]));
+    // Discord reports a human as no bot: the principal runs as itself with its owner authority.
+    expect(aside).toBe(echo.runs.get(ASIDE[0]));
+    expect(aside?.run).toMatchObject({
+      senderId: "figs",
+      senderName: "figs",
+      senderIsOwner: true,
+      traceAuthorized: true,
+    });
+    expect(echo.posts.at(-1)).toEqual({ replyTo: ASIDE[0], text: ACK });
+  });
+
+  it.each([
+    ["the mode off", DEFAULT],
+    ["the mode on with no peers listed", NO_PEERS],
+  ])("keeps the default with %s: each owner reply is its own owner turn", async (_, config) => {
+    const echo = await replayEcho(config);
     expect(echo.count).toEqual({ inputsPerTurn: [1, 1, 1, 1, 1, 1], posts: 6, answers: 1 });
     expect(echo.calls).toEqual(echo.rows.map((row) => echo.runs.get(row.id)));
     for (const call of echo.calls) {
