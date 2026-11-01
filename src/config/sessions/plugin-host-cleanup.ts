@@ -101,7 +101,9 @@ export function preserveResetPluginInjectionOutcomes(
       Object.entries(entry.pluginNextTurnInjectionOutcomes ?? {}).map(([owner, outcomes]) => [
         owner,
         Object.fromEntries(
-          Object.entries(outcomes).filter(([, outcome]) => outcome.retainUntil > now),
+          Object.entries(outcomes)
+            .filter(([, outcome]) => outcome.retainUntil > now)
+            .map(([key, { lateExpiryToken: _lateExpiryToken, ...outcome }]) => [key, outcome]),
         ),
       ]),
     ),

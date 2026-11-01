@@ -21,4 +21,6 @@ export type SessionPluginNextTurnInjectionOutcome = {
   state: "consumed" | "withdrawn" | "expired" | "discarded";
   settledAt: number;
   retainUntil: number;
+  /** One-shot authority for a legacy, unversioned post-commit expiry repair. */
+  lateExpiryToken?: string;
 };

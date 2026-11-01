@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "v
 import { observeHostDataSql } from "../../../test/helpers/sqlite-statement-execution-counter.js";
 import { resolvePromptBuildHookResult } from "../../agents/embedded-agent-runner/run/attempt-prompt-helpers.js";
 import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
+import { preserveResetPluginInjectionOutcomes } from "../../config/sessions/plugin-host-cleanup.js";
 import {
   loadSessionEntryReadOnly as readEntry,
   replaceSessionEntry as writeEntry,
@@ -455,7 +456,7 @@ describe("next-turn injection identity", () => {
     expect(clock).toHaveBeenCalledTimes(2);
   });
 
-  it("fails closed when a post-commit expiry has no lifecycle revision", async () => {
+  it("repairs a post-commit expiry without a lifecycle revision", async () => {
     const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
     const scope = sessionScope(cfg, "main", "agent:main:expiry-unversioned");
     const base = Date.now();
@@ -489,8 +490,56 @@ describe("next-turn injection identity", () => {
     expect(result.prependContext).toBeUndefined();
     expect(
       readEntry(scope)?.pluginNextTurnInjectionOutcomes?.["owner-fixture"]?.deadline?.state,
-    ).toBe("consumed");
+    ).toBe("expired");
     expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("does not repair a reset successor with the same unversioned session ID", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:expiry-unversioned-reset");
+    const base = Date.now();
+    await writeEntry(scope, { sessionId: "legacy", updatedAt: base });
+    await enqueuePluginNextTurnInjection({
+      cfg,
+      pluginId: "owner-fixture",
+      now: base,
+      injection: {
+        ...scope,
+        text: "deadline",
+        idempotencyKey: "deadline",
+        expiresAt: base + 1_000,
+      },
+    });
+    const clock = vi
+      .fn()
+      .mockReturnValueOnce(base)
+      .mockImplementation(() => {
+        const committed = readEntry(scope)!;
+        expect(
+          committed.pluginNextTurnInjectionOutcomes?.["owner-fixture"]?.deadline,
+        ).toMatchObject({
+          state: "consumed",
+          lateExpiryToken: expect.any(String),
+        });
+        writeEntrySync(scope, {
+          sessionId: "legacy",
+          updatedAt: base + 2_000,
+          pluginNextTurnInjectionOutcomes: preserveResetPluginInjectionOutcomes(
+            committed,
+            base + 2_000,
+          ),
+        });
+        return base + 2_000;
+      });
+    const result = await drain({ cfg, ...scope, clock });
+    expect(result.queuedInjections).toEqual([]);
+    expect(result.prependContext).toBeUndefined();
+    expect(clock).toHaveBeenCalledTimes(2);
+    expect(readEntry(scope)?.pluginNextTurnInjectionOutcomes?.["owner-fixture"]?.deadline).toEqual({
+      state: "consumed",
+      settledAt: base,
+      retainUntil: base + 6_000,
+    });
   });
 
   it("normalizes lookup keys and persists __proto__ as an own tombstone", async () => {

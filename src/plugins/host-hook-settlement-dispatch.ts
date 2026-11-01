@@ -18,6 +18,8 @@ export type SettlementNotice = {
   event: PluginNextTurnInjectionSettlement;
   sessionId: string;
   lifecycleRevision?: string;
+  /** Internal repair authority; never included in the plugin callback event. */
+  lateExpiryToken?: string;
 };
 
 type SettlementScope = { cfg: OpenClawConfig; sessionKey: string; agentId?: string };

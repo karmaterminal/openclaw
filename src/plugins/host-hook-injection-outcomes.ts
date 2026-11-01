@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { SessionEntry } from "../config/sessions.js";
 import { updateResolvedSessionEntry } from "../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -26,10 +27,13 @@ export function settle(
   if (ownOutcome(entry, pluginId, record.idempotencyKey)) {
     return;
   }
+  const lateExpiryToken =
+    state === "consumed" && !entry.lifecycleRevision ? randomUUID() : undefined;
   notices?.push({
     pluginId,
     sessionId: entry.sessionId,
     lifecycleRevision: entry.lifecycleRevision,
+    ...(lateExpiryToken ? { lateExpiryToken } : {}),
     event: { sessionKey: "", idempotencyKey: record.idempotencyKey, state, settledAt: now },
   });
   if (!Object.hasOwn(byPlugin, pluginId)) {
@@ -51,6 +55,7 @@ export function settle(
         Math.max(record.expiresAt ?? 0, record.outcomeRetainUntil ?? 0, now) + 5_000,
         now + 86_400_000,
       ),
+      ...(lateExpiryToken ? { lateExpiryToken } : {}),
     },
   });
 }
@@ -86,12 +91,6 @@ export async function reconcileLateExpiredInjections(params: {
   if (candidates.length === 0) {
     return;
   }
-  if (!params.lifecycleRevision) {
-    for (const notice of candidates) {
-      params.notices.splice(params.notices.indexOf(notice), 1);
-    }
-    return;
-  }
   const updated = await updateResolvedSessionEntry(params.scope, (entry) => {
     if (
       entry.sessionId !== params.sessionId ||
@@ -100,14 +99,20 @@ export async function reconcileLateExpiredInjections(params: {
       return [] as number[];
     }
     const applied: number[] = [];
-    for (const [index, { pluginId, event }] of candidates.entries()) {
+    for (const [index, { pluginId, event, lateExpiryToken }] of candidates.entries()) {
       const outcome = ownOutcome(entry, pluginId, event.idempotencyKey);
-      if (outcome?.state !== "consumed" || outcome.settledAt !== event.settledAt) {
+      if (
+        outcome?.state !== "consumed" ||
+        outcome.settledAt !== event.settledAt ||
+        (!params.lifecycleRevision &&
+          (!lateExpiryToken || outcome.lateExpiryToken !== lateExpiryToken))
+      ) {
         continue;
       }
       outcome.state = "expired";
       outcome.settledAt = params.now;
       outcome.retainUntil = Math.max(outcome.retainUntil, params.now + 5_000);
+      delete outcome.lateExpiryToken;
       applied.push(index);
     }
     return applied;
