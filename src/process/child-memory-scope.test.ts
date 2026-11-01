@@ -196,10 +196,12 @@ it.skipIf(process.platform !== "linux").each([
   },
   { name: "custom", cgroup: `${userApps}/frond-gateway.service`, unit: "frond-gateway.service" },
   {
-    // The user manager places template instances in an implicit app-<template>.slice.
+    // The user manager places template instances in an implicit app-<template>.slice, and
+    // systemd-run unquotes property values, so the escaped instance's backslash is doubled.
     name: "templated",
-    cgroup: `${userApps}/app-openclaw\\x2dgateway.slice/openclaw-gateway@work.service`,
-    unit: "openclaw-gateway@work.service",
+    cgroup: `${userApps}/app-openclaw\\x2dgateway.slice/openclaw-gateway@work\\x2dprofile.service`,
+    unit: "openclaw-gateway@work\\x2dprofile.service",
+    bound: "openclaw-gateway@work\\\\x2dprofile.service",
   },
   {
     name: "delegated sub-cgroup",
@@ -209,17 +211,18 @@ it.skipIf(process.platform !== "linux").each([
   },
 ])(
   "binds each scope to the owning unit the user manager confirms: $name",
-  async ({ cgroup, controlGroup, unit }) => {
+  async ({ cgroup, controlGroup, unit, bound }) => {
     const fake = installFakeSystemdRun();
     const owner = arrangeOwner(`0::${cgroup}`, controlGroup ?? cgroup);
     const prepare = await loadScope({ process: { childScope: { enabled: true } } });
+    const launcher = launcherArgs(bound ?? unit);
 
     await expect(prepare(...shell)).resolves.toEqual({
       command: fake.bin,
-      args: [...launcherArgs(unit), "/bin/sh", "-c", "exit 0"],
+      args: [...launcher, "/bin/sh", "-c", "exit 0"],
       scoped: true,
     });
-    expect(fake.invocations()).toEqual([`${launcherArgs(unit).join(" ")} true`]);
+    expect(fake.invocations()).toEqual([`${launcher.join(" ")} true`]);
     expect(owner.invocations()).toEqual([`--user show --property=ControlGroup -- ${unit}`]);
     expect(scopeWarn).not.toHaveBeenCalled();
   },
@@ -306,6 +309,34 @@ it.skipIf(process.platform !== "linux").each([
   expect(fake.invocations()).toEqual([`${launcherArgs().join(" ")} true`]);
   expect(scopeWarn.mock.calls).toEqual([[ownerUnverified(reason)]]);
 });
+
+it.skipIf(process.platform !== "linux")(
+  "spawns plain while the gateway drains, when its unit may have a stop or restart queued",
+  async () => {
+    const fake = installFakeSystemdRun();
+    const prepare = await loadScope({ process: { childScope: { enabled: true } } });
+    const admission = await import("./gateway-work-admission.js");
+    admission.markGatewayRestartDraining("stop (SIGTERM)");
+    try {
+      for (let spawn = 0; spawn < 2; spawn += 1) {
+        await expect(prepare(...shell)).resolves.toEqual({
+          command: "/bin/sh",
+          args: ["-c", "exit 0"],
+          scoped: false,
+        });
+      }
+      // Never probed either: a bound probe would meet the same queued job.
+      expect(fake.invocations()).toEqual([]);
+      expect(scopeWarn.mock.calls).toEqual([
+        [
+          "child memory scope skipped: the gateway is draining; those children share the gateway cgroup",
+        ],
+      ]);
+    } finally {
+      admission.resetGatewayWorkAdmission();
+    }
+  },
+);
 
 it.each([
   {

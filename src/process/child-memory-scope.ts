@@ -5,6 +5,7 @@ import { parseKeyValueOutput } from "../daemon/runtime-parse.js";
 import { resolveExecutablePath } from "../infra/executable-path.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { runUtf8CommandWithTimeout } from "./exec-runner.js";
+import { isGatewayRestartDraining } from "./gateway-work-admission.js";
 
 /**
  * systemd-oomd kills a whole cgroup, so heavy children in the Gateway's user unit take the
@@ -39,6 +40,8 @@ type ChildScopeConfig = NonNullable<NonNullable<OpenClawConfig["process"]>["chil
 
 /** The probe and every launch share one argv, so the probe proves the properties launches set. */
 function scopeLauncherArgs(config: ChildScopeConfig, owner: OwningUnit): string[] {
+  // systemd-run unquotes dependency values, so a systemd-escaped unit name needs its \ doubled.
+  const unit = "unit" in owner ? owner.unit.replaceAll("\\", "\\\\") : undefined;
   return [
     "--user",
     "--scope",
@@ -53,18 +56,12 @@ function scopeLauncherArgs(config: ChildScopeConfig, owner: OwningUnit): string[
     `MemorySwapMax=${config.memorySwapMax ?? DEFAULT_MEMORY_SWAP_MAX}`,
     // Stop with the owning unit on stop, restart or death. BindsTo= alone misses `systemctl
     // restart`: a scope cannot restart, so systemd drops the restart it propagates, stop and all.
-    // StopPropagatedFrom= (systemd 249+) carries that stop. Before= keeps the unit's
-    // KillMode=mixed order: the Gateway drains with its children alive and the scopes stop once
-    // it exits. None of these lets a scope's stop or OOM kill reach the unit.
-    ...("unit" in owner
-      ? [
-          "-p",
-          `BindsTo=${owner.unit}`,
-          "-p",
-          `Before=${owner.unit}`,
-          "-p",
-          `StopPropagatedFrom=${owner.unit}`,
-        ]
+    // StopPropagatedFrom= carries that stop; systemd before 249 rejects it, so the probe then
+    // reports the scope unavailable. Before= keeps the unit's KillMode=mixed order: the Gateway
+    // drains with its children alive and the scopes stop once it exits. None of these lets a
+    // scope's stop or OOM kill reach the unit.
+    ...(unit
+      ? ["-p", `BindsTo=${unit}`, "-p", `Before=${unit}`, "-p", `StopPropagatedFrom=${unit}`]
       : []),
     "--",
   ];
@@ -207,6 +204,13 @@ export async function prepareChildMemoryScopedSpawn(
   const plain = { command, args: [...args], scoped: false };
   const config = getRuntimeConfigSnapshot()?.process?.childScope;
   if (config?.enabled !== true) {
+    return plain;
+  }
+  // A draining Gateway's unit may have a stop or restart job queued: a bound scope would then fail
+  // to start (BindsTo= pulls in a start that conflicts with the stop) or wait out the drain behind
+  // the restart. Children started now stay in the unit's cgroup and end with it, as before.
+  if (isGatewayRestartDraining()) {
+    skipChildMemoryScope("the gateway is draining");
     return plain;
   }
   const scope = await resolveChildMemoryScopeAvailability(config);
