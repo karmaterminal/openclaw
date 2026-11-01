@@ -46,8 +46,10 @@ it("uses the current store/owner config and rejects a route read spanning config
   const oldConfig = { session: { store: "/tmp/old-sessions.json" } };
   const newConfig = { session: { store: "/tmp/new-sessions.json" } };
   let currentConfig = oldConfig;
+  let revision = 1;
   vi.doMock("../config/runtime-snapshot.js", () => ({
     getRuntimeConfigSnapshot: () => currentConfig,
+    getRuntimeConfigSnapshotMetadata: () => ({ revision }),
   }));
   let finishRead:
     | ((value: { sessionKey: string; exists: boolean; onHost: boolean }) => void)
@@ -75,6 +77,7 @@ it("uses the current store/owner config and rejects a route read spanning config
   await vi.waitFor(() => expect(route).toHaveBeenCalledTimes(1));
   expect(route).toHaveBeenLastCalledWith({ cfg: oldConfig, sessionKey: key });
   currentConfig = newConfig;
+  revision++;
   finishRead?.({ sessionKey: key, exists: true, onHost: true });
   expect(await stale).toEqual({ sessionKey: key, exists: false, onHost: false });
 
@@ -83,4 +86,12 @@ it("uses the current store/owner config and rejects a route read spanning config
   expect(route).toHaveBeenLastCalledWith({ cfg: newConfig, sessionKey: key });
   finishRead?.({ sessionKey: key, exists: false, onHost: false });
   expect(await fresh).toEqual({ sessionKey: key, exists: false, onHost: false });
+
+  const inPlace = api.session.state.resolveLocalSessionRoute(key);
+  await vi.waitFor(() => expect(route).toHaveBeenCalledTimes(3));
+  expect(route).toHaveBeenLastCalledWith({ cfg: newConfig, sessionKey: key });
+  newConfig.session.store = "/tmp/another-sessions.json";
+  revision++;
+  finishRead?.({ sessionKey: key, exists: true, onHost: true });
+  expect(await inPlace).toEqual({ sessionKey: key, exists: false, onHost: false });
 });
