@@ -479,6 +479,80 @@ room session, or pending work that vanished without being delivered, is a regres
 Then run steps 0–5 above. Step 1, direction A, comes first, and **if A fails, stop**: run no
 probe, and record what holds the gate closed.
 
+### O. Owner-list toggle for directions A and B (emeric only; 🕯's option a)
+
+This step exists because the first burst could not form A (see "Burst shape"). 🕯 chose
+(2026-10-31, msg 1566239971252371478) to remove **only frond-scribe** (`1495281313526059018`)
+from his `commands.ownerAllowFrom` for the bursts, and then to restore the exact authored array.
+With frond-scribe out, frond-scribe and 🍃 are two non-owner senders. `commands.allowFrom.discord`
+(command access) stays as it is.
+
+**What the write does.** `senderIsOwner` comes from the global owner list
+(`src/auto-reply/command-auth.ts:247`, `:419-429`), read from the live config for each message.
+`commands` is a shared channel prefix (`src/gateway/config-reload-plan.ts:91-97`). A change to it
+is a **hot** reload that also **restarts the Discord channel** on this seat, because Discord does
+not declare it a no-op (`:351-361`, `:578-585`; `extensions/discord/src/shared.ts:162-163`). The
+write reports `requiresRestart: false`, but each owner-list write reconnects Discord briefly.
+Make each write at a quiet moment, and confirm Discord reconnects before any burst.
+
+**O1. Record the authored array**, privately, beside the C1 evidence:
+
+```bash
+E=$HOME/.openclaw/evidence/1415-canary-<TS>; CFG=$(openclaw config file)
+jq -c '.commands.ownerAllowFrom' "$CFG" > "$E/ownerAllowFrom.authored.json"; chmod 0600 "$E/ownerAllowFrom.authored.json"
+jq 'length' "$E/ownerAllowFrom.authored.json"                                                  # expect 8
+jq --arg id 1495281313526059018 '[.[] | tostring | contains($id)] | index(true)' "$E/ownerAllowFrom.authored.json"   # 🌿's position
+sha256sum "$E/ownerAllowFrom.authored.json"                                                    # OWNERS_SHA256
+```
+
+**O2. Remove frond-scribe only:**
+
+```bash
+openclaw config set commands.ownerAllowFrom \
+  "$(jq -c --arg id 1495281313526059018 'map(select((tostring|contains($id))|not))' "$E/ownerAllowFrom.authored.json")" --strict-json
+jq -c --arg id 1495281313526059018 '.commands.ownerAllowFrom | {n: length, scribe: any(.[]; tostring|contains($id))}' "$CFG"   # expect {"n":7,"scribe":false}
+diff <(jq -c --arg id 1495281313526059018 'map(select((tostring|contains($id))|not))' "$E/ownerAllowFrom.authored.json") \
+     <(jq -c '.commands.ownerAllowFrom' "$CFG") && echo "others unchanged, order kept"
+journalctl --user -u openclaw-gateway --since -2min -o cat | grep -E 'config hot reload applied|\[discord\].*starting'
+```
+
+Expect `config hot reload applied (commands.ownerAllowFrom)` and a Discord account start after
+it. **Stop**, and take C5's branch, if any of these holds:
+
+- the write reports `requiresRestart: true`;
+- there is no hot-reload line;
+- Discord does not come back;
+- any other entry changed.
+
+Then get one delivered room turn from 🕯 before the burst.
+
+**O3. Direction A:** frond-scribe and 🍃 each post two unaddressed lines while 🕯 is mid-turn.
+A passes only if all of these hold:
+
+- the four rows share **one** adoption (their `completed_at` values are milliseconds apart);
+- the journal shows one new run;
+- 🕯 reports one input headed `[Queued messages while agent was busy]`, with members from both
+  senders.
+
+**If A fails, stop.** Skip the probe and go to O5.
+
+**O4. Direction B and the probe:** steps 2–5 above. Stage, load, run the B burst with the same two
+senders, then unload, and verify 5a and 5b. Then run the restore A burst, still with frond-scribe
+as a non-owner, after the probe has unloaded.
+
+**O5. Restore the authored array**, after the probe is unloaded (or right away if A failed):
+
+```bash
+openclaw config set commands.ownerAllowFrom "$(cat "$E/ownerAllowFrom.authored.json")" --strict-json
+jq -c '.commands.ownerAllowFrom' "$CFG" | sha256sum                                            # == OWNERS_SHA256
+journalctl --user -u openclaw-gateway --since -2min -o cat | grep -E 'config hot reload applied|\[discord\].*starting'
+sha256sum "$CFG"                                                                               # compare with PRECUT_CFG_SHA256 (C4)
+```
+
+frond-scribe is an owner again once the array digest matches and Discord has reconnected. If the
+restore write fails, or needs a restart, use C5 step 3: the C1 stage holds the authored array.
+Make no improvised live edit.
+
 ### C4. Normal close
 
 Steps 5a and 5b leave the probe config as C1 found it: `plugins.entries.frond-1415-gate-probe`
