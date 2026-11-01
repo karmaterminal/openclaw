@@ -1,7 +1,11 @@
 // Frond (karmaterminal, #1415): the all-owner echo. A question gets its answer; while that turn runs,
 // five unmentioned prose replies arrive from four owner peers. Replayed through real durable ingress,
-// the session mailbox, adoption and Discord's per-agent room-history watermark; only the model is
-// scripted. With messages.groupChat.ambientOwnerAggregate on, the question is answered exactly once.
+// the session mailbox, adoption and Discord's per-agent room-history watermark. The sources carry the
+// owner facts and the prose fact as the reply run records them
+// (get-reply-run-execute.ambient-room-prose.test.ts); the model and its runner's terminal report are
+// scripted. The watermark shows every reply the question as already seen; with
+// messages.groupChat.ambientOwnerAggregate on, the five owner turns collapse into one collected turn
+// that does not answer it again.
 import { afterEach, describe, expect, it } from "vitest";
 import { createDiscordRoomHistoryWatermarks } from "../extensions/discord/test-api.js";
 import type { HistoryEntry } from "../src/auto-reply/reply/history.types.js";
@@ -166,6 +170,10 @@ describe("the all-owner echo under the ambient owner room aggregate (#1415)", ()
     expect(echo.calls).toEqual(echo.rows.map((row) => echo.runs.get(row.id)));
     for (const call of echo.calls) {
       expect(call.run).toMatchObject({ senderIsOwner: true, traceAuthorized: true });
+      // Each owner turn still saw the question as seen; it acknowledged, one post per reply.
+      expect(questionLines(call.currentInboundContext?.text)).toEqual([
+        `#1000 [already seen] figs: ${QUESTION.body}`,
+      ]);
     }
   });
 });

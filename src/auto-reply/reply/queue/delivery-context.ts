@@ -16,6 +16,7 @@ import { combineGatewayLocalUserIngress } from "../../../gateway/local-user-ingr
 import { channelRouteDedupeKey } from "../../../plugin-sdk/channel-route.js";
 import { resolveGlobalSingleton } from "../../../shared/global-singleton.js";
 import { normalizeMessageChannel } from "../../../utils/message-channel.js";
+import { unbindCommandOwnerAuthority } from "../../command-owner-authority.js";
 import {
   resolveReplyOperatorAuthorityKey,
   resolveReplyPersonalToolTargets,
@@ -114,7 +115,7 @@ export function resolveFollowupAuthorizationKey(run: FollowupRun): string {
 // Exec overrides stay: they are in the batch key, so every member carries the same ones.
 export function resolveRoomAggregateExecution(execution: FollowupRun["run"]): FollowupRun["run"] {
   const origin = execution.requesterOrigin;
-  return {
+  const baseline: FollowupRun["run"] = {
     ...execution,
     requesterOrigin:
       origin &&
@@ -148,6 +149,9 @@ export function resolveRoomAggregateExecution(execution: FollowupRun["run"]): Fo
     approvalReviewerDeviceId: undefined,
     gatewayUiCommandTarget: undefined,
   };
+  // Object spread keeps an owner's command-owner check; the room has none.
+  unbindCommandOwnerAuthority(baseline);
+  return baseline;
 }
 
 // Frond (karmaterminal, #1415): toolsBySender resolves group and sender tool policy from the

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { resolveRequesterPrincipalKey } from "../../agents/requester-origin.js";
 import { defaultRuntime } from "../../runtime.js";
 import { testing as controllerTesting } from "../../sessions/session-controller.test-support.js";
+import { bindCommandOwnerAuthority, getCommandOwnerAuthority } from "../command-owner-authority.js";
 import type { FollowupRun } from "./queue.js";
 import {
   aggregated,
@@ -27,14 +28,17 @@ afterEach(() => controllerTesting.resetSessionControllerForTest());
 
 describe("the ambient owner room aggregate (#1415)", () => {
   it("runs the owners' collected turn with exactly a non-owner aggregate's authority", async () => {
+    // Channel ingress binds an owner's live command-owner check to its run; copies keep it.
+    const lastOwner = ownerPeer("peer-c", AMBIENT);
+    bindCommandOwnerAuthority(lastOwner, { isCurrent: () => true });
     // Owner prose, an addressed line that ends the batch, then people: two collected turns.
     const rows: Row[] = [
       { id: "x1", from: ownerPeer("peer-a", AMBIENT), source: prose },
       { id: "x2", from: ownerPeer("peer-b", AMBIENT), source: prose },
-      // The one owner fact a source carries besides the owner bit, on the source the turn spreads.
+      // The owner facts a source carries besides the owner bit, on the source the turn spreads.
       {
         id: "x3",
-        from: ownerPeer("peer-c", AMBIENT),
+        from: lastOwner,
         source: () => ({ ...prose(), memoryAudienceSenderIsOwner: true }),
       },
       { id: "x4", kind: "user_request", from: sender("asker", { config: AMBIENT }) },
@@ -52,6 +56,7 @@ describe("the ambient owner room aggregate (#1415)", () => {
       memoryAudienceSenderIsOwner: run.memoryAudienceSenderIsOwner,
       createChannelCronAuthority: run.createChannelCronAuthority,
       explicitSkillSelections: run.explicitSkillSelections,
+      commandOwner: getCommandOwnerAuthority(run.run),
     });
     await withRoomIngress(rows, async (harness) => {
       await harness.dispatchRows();
