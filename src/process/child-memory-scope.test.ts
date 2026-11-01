@@ -338,6 +338,51 @@ it.skipIf(process.platform !== "linux")(
   },
 );
 
+it.skipIf(process.platform !== "linux")(
+  "spawns plain when the gateway starts draining while the first probe awaits the user manager",
+  async () => {
+    const fake = installFakeSystemdRun();
+    // The owner check waits on the user manager until the test releases it.
+    const gate = tempDirs.make("openclaw-child-scope-gate-");
+    const release = path.join(gate, "release");
+    const log = path.join(gate, "invocations.log");
+    fs.writeFileSync(
+      path.join(gate, "systemctl"),
+      [
+        "#!/bin/sh",
+        `printf '%s\\n' "$*" >> '${log}'`,
+        `while [ ! -e '${release}' ]; do sleep 0.02; done`,
+        `printf 'ControlGroup=%s\\n' '${userApps}/${gatewayUnit}'`,
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    vi.stubEnv("PATH", `${gate}${path.delimiter}${process.env.PATH ?? ""}`);
+    const prepare = await loadScope({ process: { childScope: { enabled: true } } });
+    const admission = await import("./gateway-work-admission.js");
+    try {
+      const first = prepare(...shell);
+      await vi.waitFor(() => expect(fs.existsSync(log)).toBe(true));
+      admission.markGatewayRestartDraining("stop (SIGTERM)");
+      fs.writeFileSync(release, "");
+      await expect(first).resolves.toEqual({
+        command: "/bin/sh",
+        args: ["-c", "exit 0"],
+        scoped: false,
+      });
+      // The probe itself finished bound; only the launch it would have served stays plain.
+      expect(fake.invocations()).toEqual([`${launcherArgs(gatewayUnit).join(" ")} true`]);
+      expect(scopeWarn.mock.calls).toEqual([
+        [
+          "child memory scope skipped: the gateway is draining; those children share the gateway cgroup",
+        ],
+      ]);
+    } finally {
+      admission.resetGatewayWorkAdmission();
+    }
+  },
+);
+
 it.each([
   {
     reason: "not Linux (darwin)",

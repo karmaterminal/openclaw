@@ -217,6 +217,11 @@ export async function prepareChildMemoryScopedSpawn(
   if (!scope.available) {
     return plain;
   }
+  // The first spawn awaits the probe's user-manager calls, and a drain can begin meanwhile.
+  if (isGatewayRestartDraining()) {
+    skipChildMemoryScope("the gateway is draining");
+    return plain;
+  }
   // systemd-run execvp's the command as argv[0], reaches the user manager through the child's
   // environment, and resolves the command from the child's PATH. A spawn that would change
   // argv[0] or exit 1 before its command starts stays plain; an unresolvable command also keeps
