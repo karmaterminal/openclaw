@@ -21,7 +21,10 @@ import {
 } from "./message-forwarded.js";
 import type { DiscordMessagePreflightParams } from "./message-handler.preflight.types.js";
 import { resolveDiscordMessageText } from "./message-text.js";
-import { createDiscordRoomHistoryWatermarks } from "./room-history-watermark.js";
+import {
+  createDiscordRoomHistoryWatermarks,
+  publishDiscordRoomHistoryWatermarks,
+} from "./room-history-watermark.js";
 import type { DiscordMonitorStatusSink } from "./status.js";
 
 type DiscordMessageHandlerParams = Omit<
@@ -111,6 +114,11 @@ export function createDiscordMessageDispatcher(
   const avatarResolver = createDiscordAvatarResolver();
   // The account's one watermark set: preflight hands it to every turn this dispatcher runs.
   const roomHistoryWatermarks = createDiscordRoomHistoryWatermarks();
+  // Frond (karmaterminal, #1415): the account's scheduled room-session turns read it until shutdown.
+  const releaseRoomHistoryWatermarks = publishDiscordRoomHistoryWatermarks(
+    params.accountId,
+    roomHistoryWatermarks,
+  );
 
   type DiscordDebounceEntry = {
     data: DiscordMessageEvent;
@@ -361,6 +369,8 @@ export function createDiscordMessageDispatcher(
 
   handler.deactivate = async () => {
     dispatcherShutdown.abort(new Error("discord-message-handler-deactivated"));
+    // First, so a shutdown that stalls on running work still stops scheduled reads from this set.
+    releaseRoomHistoryWatermarks();
     const pendingKeys = new Set(
       [...pendingDebounceEntries]
         .map((entry) => entry.debounceKey)

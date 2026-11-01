@@ -174,27 +174,31 @@ export function createDiscordRoomHistoryWatermarks() {
 
 export type DiscordRoomHistoryWatermarks = ReturnType<typeof createDiscordRoomHistoryWatermarks>;
 
-// The channel adapter can load through a separate runtime path from the account monitor that
-// owns the watermarks; keep the publication process-global so both see the live instance.
-const publishedWatermarks = resolveGlobalMap<string, DiscordRoomHistoryWatermarks>(
+// The channel adapter can load through a separate runtime path from the message dispatcher that
+// owns the watermarks; keep the publications process-global so both see the live instance.
+// A replacement monitor can start before the one it replaces has shut down, so an account keeps
+// every live publication in publish order and reads the newest. Each release removes only its
+// own publication: neither monitor's shutdown strands the other's watermarks.
+type Publication = { watermarks: DiscordRoomHistoryWatermarks };
+const publications = resolveGlobalMap<string, Set<Publication>>(
   Symbol.for("openclaw.discord.roomHistoryWatermarks"),
 );
 
-/** Publishes an account monitor's watermarks for scheduled reads until the release runs. */
+/** Publishes a dispatcher's watermarks for the account's scheduled reads until the release runs. */
 export function publishDiscordRoomHistoryWatermarks(
   accountId: string,
   watermarks: DiscordRoomHistoryWatermarks,
 ): () => void {
-  publishedWatermarks.set(accountId, watermarks);
+  const publication: Publication = { watermarks };
+  const live = publications.get(accountId) ?? new Set();
+  publications.set(accountId, live.add(publication));
   return () => {
-    if (publishedWatermarks.get(accountId) === watermarks) {
-      publishedWatermarks.delete(accountId);
-    }
+    live.delete(publication);
   };
 }
 
 export function getPublishedDiscordRoomHistoryWatermarks(
   accountId: string,
 ): DiscordRoomHistoryWatermarks | undefined {
-  return publishedWatermarks.get(accountId);
+  return [...(publications.get(accountId) ?? [])].at(-1)?.watermarks;
 }
