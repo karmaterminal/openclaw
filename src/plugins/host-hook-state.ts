@@ -15,6 +15,7 @@ import {
 } from "./host-hook-injection-outcomes.js";
 import { isUnsupportedInjectionRoute } from "./host-hook-injection-route.js";
 import {
+  hasEnhancedNextTurnInjectionFields,
   hasValidInjectionGenerationFence,
   isExpired,
   isPluginNextTurnInjectionPlacement,
@@ -49,9 +50,7 @@ const DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN = 64 * 1024;
 const MAX_OUTCOMES_PER_PLUGIN_SESSION = 256;
 const MAX_OUTCOME_RETENTION_MS = 86_400_000;
 type MutableSessionEntry = SessionEntry & Record<string, unknown>;
-
 export { getPluginNextTurnInjectionState } from "./host-hook-injection-query.js";
-
 export async function withdrawPluginNextTurnInjection(params: {
   cfg: OpenClawConfig;
   pluginId: string;
@@ -129,7 +128,6 @@ export async function withdrawPluginNextTurnInjection(params: {
     settledAt: updated.found ? updated.result.settledAt : undefined,
   };
 }
-
 export async function enqueuePluginNextTurnInjection(params: {
   cfg: OpenClawConfig;
   pluginId: string;
@@ -168,19 +166,15 @@ export async function enqueuePluginNextTurnInjection(params: {
   }
   const now = params.now ?? Date.now();
   const requested = params.injection;
-  const enhanced =
-    requested.expiresAt !== undefined ||
-    requested.notBefore !== undefined ||
-    requested.supersedeKey !== undefined ||
-    requested.expectedSupersededKey !== undefined ||
-    requested.outcomeRetainUntil !== undefined ||
-    requested.provenance !== undefined;
+  const enhanced = hasEnhancedNextTurnInjectionFields(requested);
   if (
     (requested.expiresAt !== undefined &&
-      (!Number.isFinite(requested.expiresAt) || requested.expiresAt <= now)) ||
+      (!Number.isFinite(requested.expiresAt) ||
+        requested.expiresAt <= now ||
+        requested.expiresAt > now + MAX_OUTCOME_RETENTION_MS)) ||
     (requested.notBefore !== undefined &&
       (!Number.isFinite(requested.notBefore) ||
-        (requested.expiresAt !== undefined && requested.notBefore >= requested.expiresAt))) ||
+        requested.notBefore >= (requested.expiresAt ?? now + MAX_OUTCOME_RETENTION_MS - 5_000))) ||
     (requested.outcomeRetainUntil !== undefined &&
       (!Number.isFinite(requested.outcomeRetainUntil) ||
         requested.outcomeRetainUntil > now + MAX_OUTCOME_RETENTION_MS)) ||
@@ -215,7 +209,7 @@ export async function enqueuePluginNextTurnInjection(params: {
     idempotencyKey: injection.idempotencyKey?.trim() || undefined,
     placement: injection.placement ?? "prepend_context",
     ttlMs: injection.ttlMs,
-    expiresAt: injection.expiresAt,
+    expiresAt: injection.expiresAt ?? now + MAX_OUTCOME_RETENTION_MS - 5_000,
     notBefore: injection.notBefore,
     supersedeKey: injection.supersedeKey,
     outcomeRetainUntil: injection.outcomeRetainUntil,
@@ -257,8 +251,6 @@ export async function enqueuePluginNextTurnInjection(params: {
     }
     const injections = { ...entry.pluginNextTurnInjections };
     pruneOutcomes(entry, params.pluginId, now);
-    // Guard against malformed/hand-edited persisted state — a non-array value
-    // here would crash the spread/filter and break the whole session's enqueue.
     const rawExisting = injections[params.pluginId];
     const existing = (Array.isArray(rawExisting) ? rawExisting : []).filter(
       (candidate): candidate is PluginNextTurnInjectionRecord => {
@@ -579,10 +571,6 @@ export async function patchPluginSessionExtension(params: {
   if (!registration) {
     return { ok: false, error: `unknown plugin session extension: ${pluginId}/${namespace}` };
   }
-  // Promote the projected value into a top-level SessionEntry slot when the
-  // extension opted in via `sessionEntrySlotKey`. The slot is a read-only
-  // mirror: writes still go through patchSessionExtension; the host overwrites
-  // the slot value on every patch and clears it on unset.
   const slotKey = registration.extension.sessionEntrySlotKey;
   const updated = await updateResolvedSessionEntry(
     {
@@ -719,6 +707,5 @@ function projectSessionExtensionValue(params: {
     void Promise.resolve(projected).catch(() => undefined);
     return undefined;
   }
-  // Both plugin projections and persisted state must satisfy the same size and shape bounds.
   return isPluginJsonValue(projected) ? structuredClone(projected) : undefined;
 }

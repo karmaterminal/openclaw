@@ -1,9 +1,12 @@
 import type { InternalSessionEntry } from "../config/sessions/types.js";
+import { settle } from "../plugins/host-hook-injection-outcomes.js";
 import { clearAllCliSessions } from "./cli-session.js";
 
 export function clearRotatedSessionMetadata(entry: InternalSessionEntry): InternalSessionEntry {
   const next = {
     ...entry,
+    pluginNextTurnInjectionOutcomes: structuredClone(entry.pluginNextTurnInjectionOutcomes),
+    pluginNextTurnInjections: undefined,
     sessionFile: undefined,
     status: undefined,
     lifecycleRunId: undefined,
@@ -19,6 +22,14 @@ export function clearRotatedSessionMetadata(entry: InternalSessionEntry): Intern
     lastInteractionAt: undefined,
     pendingTranscriptRepair: undefined,
   };
+  for (const [pluginId, records] of Object.entries(entry.pluginNextTurnInjections ?? {})) {
+    if (!Array.isArray(records)) {
+      continue;
+    }
+    for (const record of records) {
+      settle(next, pluginId, record, "discarded", Date.now());
+    }
+  }
   clearAllCliSessions(next);
   return next;
 }

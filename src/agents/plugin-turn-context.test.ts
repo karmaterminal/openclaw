@@ -43,6 +43,42 @@ describe("plugin turn context", () => {
       drain.mockReset();
     }
   });
+  it("omits expired injections from a cached retry", async () => {
+    const runId = "expired-retry";
+    const drain = vi.mocked(drainPluginNextTurnInjectionContext);
+    drain.mockResolvedValueOnce({
+      queuedInjections: [
+        {
+          id: "one",
+          pluginId: "fixture",
+          text: "expired",
+          placement: "prepend_context",
+          createdAt: 1,
+          expiresAt: Date.now() + 50,
+        },
+      ],
+      prependContext: "rendered-once-boundary",
+    });
+    const params = {
+      config: {},
+      prompt: "request",
+      messages: [],
+      hookCtx: { runId, sessionKey: "agent:main:main", agentId: "main" },
+    };
+    try {
+      expect((await resolvePluginTurnContext(params)).prependContext).toContain(
+        "rendered-once-boundary",
+      );
+      await new Promise((resolve) => {
+        setTimeout(() => resolve(undefined), 60);
+      });
+      expect((await resolvePluginTurnContext(params)).prependContext).toBeUndefined();
+      expect(drain).toHaveBeenCalledTimes(1);
+    } finally {
+      forgetPromptBuildDrainCacheForRun(runId);
+      drain.mockReset();
+    }
+  });
   it("does not repeat turn-start work on a refresh continuation", async () => {
     const runAgentTurnPrepare = vi.fn(async () => ({ prependContext: "again" }));
 

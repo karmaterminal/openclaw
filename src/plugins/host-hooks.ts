@@ -351,15 +351,10 @@ export function renderPluginNextTurnInjectionText(entry: PluginNextTurnInjection
   ) {
     return "";
   }
-  return entry.provenance
-    ? `Plugin external data (${entry.pluginId.replace(/[^a-zA-Z0-9_.-]/g, "_")}):\n${wrapExternalContent(
-        entry.text.trim(),
-        {
-          source: "unknown",
-          subject: entry.provenance.source,
-        },
-      )}`
-    : entry.text.trim();
+  return `Plugin external data (${entry.pluginId.replace(/[^a-zA-Z0-9_.-]/g, "_")}):\n${wrapExternalContent(
+    entry.text.trim(),
+    { source: "unknown", subject: entry.provenance?.source ?? entry.pluginId },
+  )}`;
 }
 
 export function buildPluginAgentTurnPrepareContext(params: {

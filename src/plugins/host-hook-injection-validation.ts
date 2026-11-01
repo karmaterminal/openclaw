@@ -1,4 +1,4 @@
-import type { PluginNextTurnInjectionRecord } from "./host-hooks.js";
+import type { PluginNextTurnInjection, PluginNextTurnInjectionRecord } from "./host-hooks.js";
 
 export function hasValidInjectionGenerationFence(
   expectedSessionId?: string,
@@ -60,5 +60,16 @@ export function isExpired(entry: unknown, now: number) {
   return (
     (entry.expiresAt !== undefined && now >= entry.expiresAt) ||
     (entry.ttlMs !== undefined && now - entry.createdAt > entry.ttlMs)
+  );
+}
+
+export function hasEnhancedNextTurnInjectionFields(requested: PluginNextTurnInjection): boolean {
+  return (
+    requested.expiresAt !== undefined ||
+    requested.notBefore !== undefined ||
+    requested.supersedeKey !== undefined ||
+    requested.expectedSupersededKey !== undefined ||
+    requested.outcomeRetainUntil !== undefined ||
+    requested.provenance !== undefined
   );
 }

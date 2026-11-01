@@ -3,6 +3,7 @@ import { pruneMapToMaxSize } from "../infra/map-size.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { HookRunner } from "../plugins/hooks.js";
 import { drainPluginNextTurnInjectionContext } from "../plugins/host-hook-state.js";
+import { buildPluginAgentTurnPrepareContext } from "../plugins/host-hooks.js";
 import type {
   PluginAgentTurnPrepareResult,
   PluginHookAgentContext,
@@ -46,7 +47,16 @@ export async function resolvePluginTurnContext(params: {
   const runId = params.hookCtx.runId;
   const cachedContext = runId ? promptBuildDrainCache.get(runId) : undefined;
   const queuedContext = cachedContext
-    ? cachedContext
+    ? cachedContext.queuedInjections.some(
+        (entry) => entry.expiresAt !== undefined && entry.expiresAt <= Date.now(),
+      )
+      ? (() => {
+          const queuedInjections = cachedContext.queuedInjections.filter(
+            (entry) => entry.expiresAt === undefined || entry.expiresAt > Date.now(),
+          );
+          return { ...buildPluginAgentTurnPrepareContext({ queuedInjections }), queuedInjections };
+        })()
+      : cachedContext
     : await drainPluginNextTurnInjectionContext({
         cfg: params.config,
         sessionKey: params.hookCtx.sessionKey,

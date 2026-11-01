@@ -51,10 +51,7 @@ export function settle(
     value: {
       state,
       settledAt: now,
-      retainUntil: Math.min(
-        Math.max(record.expiresAt ?? 0, record.outcomeRetainUntil ?? 0, now) + 5_000,
-        now + 86_400_000,
-      ),
+      retainUntil: Math.max(record.expiresAt ?? 0, record.outcomeRetainUntil ?? 0, now) + 5_000,
       ...(lateExpiryToken ? { lateExpiryToken } : {}),
     },
   });

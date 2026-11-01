@@ -366,9 +366,9 @@ export function createPluginRegistry(registryOptions: PluginRegistryParams) {
                   return { ...input, state: "unknown" };
                 }
                 return getPluginNextTurnInjectionState({
+                  ...input,
                   cfg: registryParams.runtime.config.current() as OpenClawConfig,
                   pluginId: record.id,
-                  ...input,
                   shouldQuery,
                 });
               },
@@ -384,9 +384,9 @@ export function createPluginRegistry(registryOptions: PluginRegistryParams) {
                   return { ...input, state: "unknown" };
                 }
                 return withdrawPluginNextTurnInjection({
+                  ...input,
                   cfg: registryParams.runtime.config.current() as OpenClawConfig,
                   pluginId: record.id,
-                  ...input,
                   shouldWithdraw,
                 });
               },

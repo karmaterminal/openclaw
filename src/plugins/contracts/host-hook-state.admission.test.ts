@@ -33,6 +33,43 @@ describe("next-turn injection admission fence", () => {
     await state.cleanup();
   });
 
+  it("bounds explicit expiry to the replay horizon and defaults missing expiry", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:main");
+    await writeEntry(scope, { sessionId: "main", updatedAt: 1 });
+    const now = Date.now();
+    expect(
+      await enqueuePluginNextTurnInjection({
+        cfg,
+        pluginId: "owner-fixture",
+        now,
+        injection: {
+          sessionKey: scope.sessionKey,
+          agentId: "main",
+          text: "future",
+          idempotencyKey: "future",
+          expiresAt: now + 86_400_001,
+        },
+      }),
+    ).toMatchObject({ enqueued: false, reason: "invalid" });
+    expect(
+      await enqueuePluginNextTurnInjection({
+        cfg,
+        pluginId: "owner-fixture",
+        now,
+        injection: {
+          sessionKey: scope.sessionKey,
+          agentId: "main",
+          text: "bounded",
+          idempotencyKey: "bounded",
+        },
+      }),
+    ).toMatchObject({ enqueued: true });
+    expect(readEntry(scope)?.pluginNextTurnInjections?.["owner-fixture"]?.[0]?.expiresAt).toBe(
+      now + 86_395_000,
+    );
+  });
+
   it("requires a current identity tuple for subagent admission but not generic main/channel callers", async () => {
     const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
     for (const suffix of ["subagent:local", "main", "channel:chat"]) {
