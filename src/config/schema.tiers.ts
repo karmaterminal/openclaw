@@ -173,10 +173,10 @@ wizard.accessMode wizard.appRecommendations
   .split(/\s+/);
 
 const ADVANCED_TUNING_PATHS = new Set([
-  // Frond (karmaterminal, #1415): changes which room messages run with owner authority.
-  "messages.groupChat.ambientOwnerAggregate",
   "agents.entries.*.tools.github.allowInSandbox",
   "agents.entries.*.tools.github.app",
+  // Frond (karmaterminal, #1415): changes which room messages run with owner authority.
+  "messages.groupChat.ambientOwnerAggregate",
   "session.maintenance.preserveRecent",
   "tools.github.app",
   "tools.sessions.allowThreadTargets",
