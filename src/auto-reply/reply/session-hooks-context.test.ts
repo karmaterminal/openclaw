@@ -27,6 +27,7 @@ import {
 } from "../../process/gateway-work-admission.js";
 import { withSessionTurn } from "../../sessions/session-controller.admission.js";
 import { beginSessionEffect } from "../../sessions/session-controller.lifecycle.js";
+import * as sessionReader from "../../sessions/session-controller.session-reader.js";
 import { AsyncWorkScope, trackAsyncWork } from "../../shared/async-work-scope.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { openOpenClawAgentDatabase } from "../../state/openclaw-agent-db.js";
@@ -178,6 +179,48 @@ describe("session hook context wiring", () => {
     clearInternalHooks();
     resetGatewayWorkAdmission();
     vi.restoreAllMocks();
+  });
+
+  it("emits the committed retiring generation before acknowledgement fails", async () => {
+    const sessionKey = "agent:main:telegram:direct:ack-failure-rollover";
+    const retiringSessionId = "retiring-before-ack-failure";
+    const { storePath } = await createStoredSession({
+      prefix: "ack-failure-rollover",
+      sessionKey,
+      sessionId: retiringSessionId,
+    });
+    await replaceSessionEntry(
+      { storePath, sessionKey },
+      {
+        sessionId: retiringSessionId,
+        lifecycleRevision: "retiring-revision",
+        updatedAt: Date.now(),
+      },
+    );
+    hookRunnerMocks.hasHooks.mockImplementation(
+      (hookName) => hookName === "session_end" || hookName === "session_reset",
+    );
+    vi.spyOn(sessionReader, "acknowledgeReplySessionTransition").mockRejectedValueOnce(
+      new Error("injected acknowledgement failure"),
+    );
+
+    await expect(
+      initSessionState({
+        ctx: { Body: "/new", SessionKey: sessionKey },
+        cfg: { session: { store: storePath } },
+        commandAuthorized: true,
+      }),
+    ).rejects.toThrow("injected acknowledgement failure");
+    const committed = await loadSessionEntry({ storePath, sessionKey });
+    expect(committed?.lifecycleRevision).not.toBe("retiring-revision");
+    await vi.waitFor(() => expect(hookRunnerMocks.runSessionReset).toHaveBeenCalledOnce());
+    const [ended] = requireHookCall(hookRunnerMocks.runSessionEnd, "session_end");
+    const [reset] = requireHookCall(hookRunnerMocks.runSessionReset, "session_reset");
+    expectFields(ended, { sessionId: retiringSessionId, reason: "new" });
+    expectFields(reset, {
+      sessionId: retiringSessionId,
+      lifecycleRevision: "retiring-revision",
+    });
   });
 
   it.each<["new" | "reset" | "daily" | "idle", SessionResetConfig?]>([

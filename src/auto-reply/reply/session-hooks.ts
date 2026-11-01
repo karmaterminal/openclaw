@@ -3,6 +3,7 @@ import {
   createSessionResetBoundaryId,
   type SessionResetBoundaryRequest,
 } from "../../config/sessions/session-reset-boundary-event.js";
+import { forgetActiveSessionForShutdown } from "../../gateway/active-sessions-shutdown-tracker.js";
 import { createResetBoundaryTranscriptSource } from "../../gateway/session-end-transcript-reader.js";
 import type {
   PluginHookSessionEndEvent,
@@ -172,8 +173,16 @@ export function emitReplySessionResetHook(params: {
 }
 
 export function emitReplySessionRolloverHooks(
-  params: Parameters<typeof emitReplySessionEndHook>[0] & { lifecycleRevision?: string },
+  params: Omit<Parameters<typeof emitReplySessionEndHook>[0], "hookRunner"> & {
+    hookRunner: HookRunner | undefined;
+    lifecycleRevision?: string;
+  },
 ): void {
+  // A committed replacement is no longer active even without a plugin runner.
+  forgetActiveSessionForShutdown(params.sessionId);
+  if (!params.hookRunner) {
+    return;
+  }
   if (params.hookRunner.hasHooks("session_end")) {
     emitReplySessionEndHook(params);
   }
