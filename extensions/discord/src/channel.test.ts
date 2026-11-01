@@ -453,6 +453,37 @@ describe("discordPlugin outbound", () => {
     await expect(read()).resolves.toBeUndefined();
   });
 
+  // Frond (karmaterminal, #1415): a replacement monitor can start before the old one shuts down.
+  it("keeps an account's newer watermarks published when an older publication is released", async () => {
+    const room = { sessionKey: "agent:main:discord:channel:456", channelId: "456" };
+    const publishReading = (body: string) => {
+      const watermarks = createDiscordRoomHistoryWatermarks();
+      watermarks.recordReread(room, async () => [{ sender: "figs", body }]);
+      return publishDiscordRoomHistoryWatermarks("default", watermarks);
+    };
+    const read = async () =>
+      (
+        await discordPlugin.heartbeat!.readRoomHistory!({
+          cfg: createCfg(),
+          sessionKey: room.sessionKey,
+          to: "channel:456",
+        })
+      )?.map((entry) => entry.body);
+    const releaseOlder = publishReading("older");
+    const releaseNewer = publishReading("newer");
+    try {
+      await expect(read()).resolves.toEqual(["newer"]);
+      // A second release of the same publication is a no-op, as a repeated shutdown is.
+      releaseOlder();
+      releaseOlder();
+      await expect(read()).resolves.toEqual(["newer"]);
+    } finally {
+      releaseOlder();
+      releaseNewer();
+    }
+    await expect(read()).resolves.toBeUndefined();
+  });
+
   it.each(["cancelled", "revoked"] as const)(
     "does not send queued typing after its owner is %s",
     async (reason) => {
