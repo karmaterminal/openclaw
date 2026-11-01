@@ -1,5 +1,8 @@
 // Discord plugin module owns raw gateway-message durable ingress and replay draining.
-import { GatewayDispatchEvents, type APIMessage } from "discord-api-types/v10";
+import {
+  GatewayDispatchEvents,
+  type GatewayMessageCreateDispatchData,
+} from "discord-api-types/v10";
 import { prepareChannelIngressEvent } from "openclaw/plugin-sdk/channel-ingress-runtime";
 import {
   createChannelIngressError,
@@ -25,10 +28,24 @@ import type { DiscordLivePolicyReader } from "./live-policy.js";
 const DISCORD_INGRESS_PAYLOAD_VERSION = 1;
 const DISCORD_INGRESS_DRAIN_INTERVAL_MS = 1_000;
 
+export function isRecentNativeDiscordMention(
+  raw: { guild_id?: string; timestamp?: string; mentions?: Array<{ id: string }> } | undefined,
+  botUserId: string | undefined,
+  nowMs = Date.now(),
+): boolean {
+  return Boolean(
+    botUserId &&
+    raw?.guild_id &&
+    Date.parse(raw.timestamp ?? "") >= nowMs - 15 * 60_000 &&
+    Array.isArray(raw.mentions) &&
+    raw.mentions.some((user) => user?.id === botUserId),
+  );
+}
+
 type DiscordIngressPayload = {
   version: 1;
   receivedAt: number;
-  rawMessage: APIMessage;
+  rawMessage: GatewayMessageCreateDispatchData;
 };
 
 type DiscordIngressBody = Omit<DiscordIngressPayload, "version">;
@@ -43,7 +60,7 @@ type DiscordIngressDispatch = (
 ) => Promise<DiscordIngressDispatchResult | void> | DiscordIngressDispatchResult | void;
 
 type DiscordIngressMonitor = {
-  accept: (rawMessage: APIMessage) => Promise<void>;
+  accept: (rawMessage: GatewayMessageCreateDispatchData) => Promise<void>;
   start: () => void;
   stop: () => Promise<void>;
 };
@@ -129,7 +146,7 @@ export function createDiscordIngressMonitor(params: {
       accountId: params.accountId,
     });
   const monitor = createChannelIngressMonitor<
-    APIMessage,
+    GatewayMessageCreateDispatchData,
     DiscordIngressBody,
     DiscordIngressPayload
   >({
@@ -183,6 +200,10 @@ export function createDiscordIngressMonitor(params: {
     },
     appendRetryDelaysMs: [0],
     drain: {
+      // Native mentions can overtake recovery chatter; canonical preflight still
+      // decides access and retains every ambient message for pending history.
+      prioritizePending: ({ payload }) =>
+        isRecentNativeDiscordMention(payload?.rawMessage, params.botUserId),
       deferredLaneOccupancy: "release",
       ...(readPolicy
         ? {
