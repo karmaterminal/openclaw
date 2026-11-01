@@ -104,6 +104,28 @@ it("purges only entry-referenced generations and retains history and surviving r
     expect(f.transcript("shared")).toEqual([{ type: "proof", data: "shared" }]);
   }));
 
+it("publishes committed purge identities before postcommit cleanup can fail", () =>
+  withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    const f = fixture(state.statePath("shared-postcommit.sqlite"));
+    await state.writeConfig(f.cfg);
+    const onCommitted = vi.fn(() => {
+      throw new Error("postcommit notification failure");
+    });
+    await expect(
+      purgeDeletedAgentSessionEntries({
+        cfg: f.cfg,
+        agentId: "ops",
+        storeAgentId: "main",
+        storePath: f.scope.storePath,
+        onCommitted,
+      }),
+    ).rejects.toThrow("postcommit notification failure");
+    expect(onCommitted).toHaveBeenCalledExactlyOnceWith([
+      { sessionId: "current", sessionKey: f.scope.sessionKey },
+    ]);
+    expect(f.read()).toBeUndefined();
+  }));
+
 it.each([
   ["changed entry", "ops", "agent:ops:chat", "concurrent"],
   ["added owned key", "ops", "agent:ops:concurrent", "concurrent"],

@@ -47,10 +47,7 @@ import {
   SESSION_TOTAL_TOKENS_VERSION,
   type SessionEntry,
 } from "../../config/sessions/types.js";
-import {
-  forgetActiveSessionForShutdown,
-  noteActiveSessionForShutdown,
-} from "../../gateway/active-sessions-shutdown-tracker.js";
+import { noteActiveSessionForShutdown } from "../../gateway/active-sessions-shutdown-tracker.js";
 import {
   captureSessionMemoryTranscript,
   type SessionMemoryTranscript,
@@ -111,7 +108,7 @@ import {
 import { createReplySessionEntryHandle } from "./session-entry-handle.js";
 import {
   createReplySessionResetBoundary,
-  emitReplySessionEndHook,
+  emitReplySessionRolloverHooks,
   emitReplySessionStartHook,
   resolveExplicitSessionEndReason,
 } from "./session-hooks.js";
@@ -825,6 +822,27 @@ async function initSessionStateAttemptLocked(
     // The outer retry owns conflicts; never retry while holding the writer lane.
     throw new ReplySessionInitConflictError(sessionKey);
   }
+  sessionEntry = committed.sessionEntry;
+  sessionId = sessionEntry.sessionId;
+  // A committed generation replacement must notify lifecycle observers even if
+  // later acknowledgement, registration, or abort checks fail. Use the captured
+  // retiring entry, not a fresh read of the now-current generation.
+  const createdByAdmission =
+    pinExpectedExistingSession &&
+    params.newlyCreatedSessionId === sessionId &&
+    !previousSessionEntry;
+  const isFirstSessionTurn = isNewSession || createdByAdmission;
+  const hookRunner = getGlobalHookRunner();
+  if (previousSessionEntry?.sessionId && isFirstSessionTurn) {
+    emitReplySessionRolloverHooks({
+      ...sessionTarget,
+      hookRunner,
+      ...previousSessionEntry,
+      reason: previousSessionEndReason,
+      nextSessionId: sessionId,
+      resetBoundaryId: resetBoundary?.boundaryId,
+    });
+  }
   await acknowledgeReplySessionTransition(
     params.replyOperation,
     { previous: entry, current: committed.sessionEntry },
@@ -839,15 +857,8 @@ async function initSessionStateAttemptLocked(
     onError: (error) =>
       log.warn(`failed to clear reset runtime state for session ${sessionKey}: ${String(error)}`),
   });
-  sessionEntry = committed.sessionEntry;
-  sessionId = sessionEntry.sessionId;
   // Admission may commit the first row before dispatch. Preserve its Goal and generation
   // through initialization, then report the first lifecycle only for that winning dispatch.
-  const createdByAdmission =
-    pinExpectedExistingSession &&
-    params.newlyCreatedSessionId === sessionId &&
-    !previousSessionEntry;
-  const isFirstSessionTurn = isNewSession || createdByAdmission;
   if (!isSystemEvent && !isInterSession) {
     recordAcceptedSessionParticipantInput(ctx, {
       ...sessionTarget,
@@ -924,25 +935,7 @@ async function initSessionStateAttemptLocked(
     IsNewSession: isFirstSessionTurn ? "true" : "false",
   };
 
-  const hookRunner = getGlobalHookRunner();
   if (hookRunner && isFirstSessionTurn) {
-    if (previousSessionEntry?.sessionId) {
-      // The shutdown finalizer must not re-fire session_end for a session
-      // that is being replaced here; forget unconditionally so the next drain
-      // skips this id even when no `session_end` plugin is currently attached.
-      forgetActiveSessionForShutdown(previousSessionEntry.sessionId);
-      if (hookRunner.hasHooks("session_end")) {
-        emitReplySessionEndHook({
-          ...sessionTarget,
-          hookRunner,
-          sessionId: previousSessionEntry.sessionId,
-          reason: previousSessionEndReason,
-          nextSessionId: sessionId,
-          resetBoundaryId: resetBoundary?.boundaryId,
-        });
-      }
-    }
-
     if (sessionId) {
       // Track the new session so the shutdown finalizer fires a typed
       // session_end with reason="shutdown"/"restart" if the gateway stops

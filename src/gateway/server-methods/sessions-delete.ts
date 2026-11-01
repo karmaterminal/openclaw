@@ -518,11 +518,20 @@ async function deleteGatewaySessionInScope(
             if (result.deleted) {
               // Retain cloud affinity on every precommit failure. The absent-session
               // reconciler covers a crash or artifact-publication failure after commit.
-              await retirement.retire();
+              try {
+                await retirement.retire();
+              } catch (error) {
+                // The row is already gone. The retained placement is retried by
+                // orphan reconciliation; notification cannot wait for retirement.
+                sessionLog.warn(
+                  `sessions.delete: post-commit placement retirement failed: ${formatErrorMessage(error)}`,
+                );
+              }
               emitGatewaySessionEndPluginHook({
                 cfg,
                 sessionKey: target.canonicalKey ?? key,
                 sessionId: result.deletedSessionId,
+                lifecycleRevision: postCleanupEntry?.lifecycleRevision,
                 storePath,
                 agentId: target.agentId,
                 reason: "deleted",

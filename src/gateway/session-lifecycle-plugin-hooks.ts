@@ -13,8 +13,7 @@ import {
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import type { PluginHookSessionEndReason } from "../plugins/hook-types.js";
 import type { SessionEndTranscriptSource } from "../plugins/session-end-transcript.js";
-import { runWithGatewayDetachedWorkContinuation } from "../process/gateway-work-admission.js";
-import { runWithSessionControllerCleanup } from "../sessions/session-controller.owner-context.js";
+import { dispatchSessionLifecycleHook } from "../plugins/session-lifecycle-dispatch.js";
 import {
   forgetActiveSessionForShutdown,
   noteActiveSessionForShutdown,
@@ -30,6 +29,7 @@ export function emitGatewaySessionEndPluginHook(params: {
   cfg: OpenClawConfig;
   sessionKey: string;
   sessionId?: string;
+  lifecycleRevision?: string;
   storePath: string;
   sessionFile?: string;
   agentId: string;
@@ -48,8 +48,22 @@ export function emitGatewaySessionEndPluginHook(params: {
   const hookRunner = getGlobalHookRunner();
   const shouldEmitAutoReset =
     isSessionAutoResetReason(params.reason) && hasSessionAutoResetListeners();
+  const lifecycleHook =
+    params.endedTranscript?.available === false &&
+    params.endedTranscript.reason === "incognito-deleted"
+      ? "session_delete"
+      : params.reason === "reset" ||
+          params.reason === "new" ||
+          isSessionAutoResetReason(params.reason)
+        ? "session_reset"
+        : params.reason === "deleted"
+          ? "session_delete"
+          : undefined;
+  const shouldEmitLifecycleHook = lifecycleHook
+    ? hookRunner?.hasHooks(lifecycleHook) === true
+    : false;
   const shouldEmitPluginHook = hookRunner?.hasHooks("session_end") === true;
-  if (!shouldEmitAutoReset && !shouldEmitPluginHook) {
+  if (!shouldEmitAutoReset && !shouldEmitPluginHook && !shouldEmitLifecycleHook) {
     return;
   }
   const archiveCandidates = new Set(
@@ -88,32 +102,65 @@ export function emitGatewaySessionEndPluginHook(params: {
       storePath: params.storePath,
     });
   }
-  if (!shouldEmitPluginHook || !hookRunner) {
-    return;
-  }
-  const endedTranscript =
-    params.endedTranscript ??
-    (params.reason === "deleted"
-      ? endedArchive
-        ? createArchivedSessionTranscriptSource({
-            archivedPath: endedArchive.archivedPath,
-            agentId: params.agentId,
-            sessionId: params.sessionId,
-            storePath: params.storePath,
-          })
-        : { available: false as const, reason: "archive-unavailable" as const }
-      : params.reason === "new"
-        ? { available: false as const, reason: "no-stable-cutoff" as const }
-        : { available: false as const, reason: "unsupported-source" as const });
-  const payload = buildSessionEndHookPayload({ ...hookParams, endedTranscript });
-  // Detached hooks outlive the emitting turn and must not retain its mutation ownership.
-  void runWithSessionControllerCleanup(() =>
-    runWithGatewayDetachedWorkContinuation(async () => {
+  if (shouldEmitPluginHook && hookRunner) {
+    const endedTranscript =
+      params.endedTranscript ??
+      (params.reason === "deleted"
+        ? endedArchive
+          ? createArchivedSessionTranscriptSource({
+              archivedPath: endedArchive.archivedPath,
+              agentId: params.agentId,
+              sessionId: params.sessionId,
+              storePath: params.storePath,
+            })
+          : { available: false as const, reason: "archive-unavailable" as const }
+        : params.reason === "new"
+          ? { available: false as const, reason: "no-stable-cutoff" as const }
+          : { available: false as const, reason: "unsupported-source" as const });
+    const payload = buildSessionEndHookPayload({ ...hookParams, endedTranscript });
+    // Publish the end first; the per-key queue waits for its settlement before reset/delete.
+    void dispatchSessionLifecycleHook(params.sessionKey, "hooks:session-end", async () => {
       await hookRunner.runSessionEnd(payload.event, payload.context);
-    }, "hooks:session-end"),
-  ).catch((err: unknown) => {
-    logVerbose(`session_end hook failed: ${String(err)}`);
-  });
+    }).catch((err: unknown) => {
+      logVerbose(`session_end hook failed: ${String(err)}`);
+    });
+  }
+  if (shouldEmitLifecycleHook && hookRunner && lifecycleHook) {
+    const context = {
+      sessionId: params.sessionId,
+      sessionKey: params.sessionKey,
+      agentId: params.agentId,
+    };
+    // These are post-commit notifications. Keep the plugin call outside mutation ownership.
+    void dispatchSessionLifecycleHook(params.sessionKey, `hooks:${lifecycleHook}`, async () => {
+      if (lifecycleHook === "session_delete") {
+        await hookRunner.runSessionDelete(
+          {
+            sessionId: params.sessionId!,
+            sessionKey: params.sessionKey,
+            ...(params.lifecycleRevision !== undefined
+              ? { lifecycleRevision: params.lifecycleRevision }
+              : {}),
+          },
+          context,
+        );
+      } else {
+        await hookRunner.runSessionReset(
+          {
+            sessionId: params.sessionId!,
+            sessionKey: params.sessionKey,
+            ...(params.lifecycleRevision !== undefined
+              ? { lifecycleRevision: params.lifecycleRevision }
+              : {}),
+            nextSessionId: params.nextSessionId,
+          },
+          context,
+        );
+      }
+    }).catch((err: unknown) => {
+      logVerbose(`${lifecycleHook} hook failed: ${String(err)}`);
+    });
+  }
 }
 
 export function emitGatewaySessionStartPluginHook(params: {
@@ -141,11 +188,9 @@ export function emitGatewaySessionStartPluginHook(params: {
     return;
   }
   const payload = buildSessionStartHookPayload({ ...params, sessionId: params.sessionId });
-  void runWithSessionControllerCleanup(() =>
-    runWithGatewayDetachedWorkContinuation(async () => {
-      await hookRunner.runSessionStart(payload.event, payload.context);
-    }, "hooks:session-start"),
-  ).catch((err: unknown) => {
+  void dispatchSessionLifecycleHook(params.sessionKey, "hooks:session-start", async () => {
+    await hookRunner.runSessionStart(payload.event, payload.context);
+  }).catch((err: unknown) => {
     logVerbose(`session_start hook failed: ${String(err)}`);
   });
 }

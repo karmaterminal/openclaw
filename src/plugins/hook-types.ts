@@ -42,6 +42,12 @@ import type {
   PluginHookInboundClaimEvent,
 } from "./hook-message.types.js";
 import type { PluginHookReplyDispatchEvent } from "./hook-reply-dispatch-event.types.js";
+import type {
+  PluginHookSessionStartEvent,
+  PluginHookSessionEndEvent,
+  PluginHookSessionResetEvent,
+  PluginHookSessionDeleteEvent,
+} from "./hook-session-lifecycle.types.js";
 import type { PluginHookSkillChangedEvent, PluginHookSkillContext } from "./hook-skill.types.js";
 import type {
   PluginHookToolKind,
@@ -58,6 +64,13 @@ import type { SkillInstallSpecMetadata } from "./install-security-scan.types.js"
 import type { PluginHookSessionContext } from "./session-end-transcript.js";
 
 export type { PluginHookReplyDispatchEvent } from "./hook-reply-dispatch-event.types.js";
+export type {
+  PluginHookSessionStartEvent,
+  PluginHookSessionEndReason,
+  PluginHookSessionEndEvent,
+  PluginHookSessionResetEvent,
+  PluginHookSessionDeleteEvent,
+} from "./hook-session-lifecycle.types.js";
 
 export type {
   PluginHookAgentContext,
@@ -156,6 +169,8 @@ export const PLUGIN_HOOK_METADATA: Readonly<Record<PluginHookName, PluginHookMet
   before_message_write: {},
   session_start: {},
   session_end: {},
+  session_reset: {},
+  session_delete: {},
   subagent_delivery_target: {},
   subagent_spawned: {},
   subagent_progress: {},
@@ -569,35 +584,6 @@ export type PluginHookBeforeMessageWriteResult = {
   message?: AgentMessage;
 };
 
-export type PluginHookSessionStartEvent = {
-  sessionId: string;
-  sessionKey?: string;
-  resumedFrom?: string;
-};
-
-export type PluginHookSessionEndReason =
-  | "new"
-  | "reset"
-  | "idle"
-  | "daily"
-  | "compaction"
-  | "deleted"
-  | "shutdown"
-  | "restart"
-  | "unknown";
-
-export type PluginHookSessionEndEvent = {
-  sessionId: string;
-  sessionKey?: string;
-  messageCount: number;
-  durationMs?: number;
-  reason?: PluginHookSessionEndReason;
-  sessionFile?: string;
-  transcriptArchived?: boolean;
-  nextSessionId?: string;
-  nextSessionKey?: string;
-};
-
 type PluginHookSubagentContext = {
   runId?: string;
   childSessionKey?: string;
@@ -859,6 +845,8 @@ export type PluginHookHandlerMap = PluginMessageHookHandlerMap & {
   ) => PluginHookBeforeMessageWriteResult | void;
   session_start: AsyncPluginHook<PluginHookSessionStartEvent, PluginHookSessionContext>;
   session_end: AsyncPluginHook<PluginHookSessionEndEvent, PluginHookSessionContext>;
+  session_reset: AsyncPluginHook<PluginHookSessionResetEvent, PluginHookSessionContext>;
+  session_delete: AsyncPluginHook<PluginHookSessionDeleteEvent, PluginHookSessionContext>;
   subagent_delivery_target: AsyncPluginHook<
     PluginHookSubagentDeliveryTargetEvent,
     PluginHookSubagentContext,

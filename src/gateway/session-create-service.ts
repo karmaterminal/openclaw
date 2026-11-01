@@ -1059,8 +1059,8 @@ async function createGatewaySessionInScope(
       if (params.succeedsParent !== false) {
         emitGatewaySessionEndPluginHook({
           cfg: params.cfg,
+          ...parentEntry,
           sessionKey: canonicalParentSessionKey,
-          sessionId: parentEntry?.sessionId,
           storePath: parentSessionTarget.storePath,
           sessionFile: canonicalParentSessionKey,
           agentId: parentSessionTarget.agentId,

@@ -523,6 +523,10 @@ export async function purgeAgentSessionStoreEntries(
   options: {
     runDatabaseCleanup?: ReturnType<typeof createAgentDeletionDatabaseCleanup>;
     onFailure?: (failure: { path: string; reason: string }) => void;
+    onPurged?: (
+      entries: readonly { sessionId: string; sessionKey: string; lifecycleRevision?: string }[],
+      storePath: string,
+    ) => void;
   } = {},
 ): Promise<boolean> {
   const normalizedAgentId = normalizeAgentId(agentId);
@@ -549,6 +553,7 @@ export async function purgeAgentSessionStoreEntries(
         agentId: normalizedAgentId,
         storeAgentId,
         storePath,
+        onCommitted: (entries) => options.onPurged?.(entries, storePath),
       });
       step = "close session-store cleanup";
     };

@@ -3,7 +3,9 @@ import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, expect, it, vi } from "vitest";
 import { withinTest } from "../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import { emitReplySessionRolloverHooks } from "../auto-reply/reply/session-hooks.js";
 import {
+  getGlobalHookRunner,
   initializeGlobalHookRunner,
   resetGlobalHookRunner,
 } from "../plugins/hook-runner-global.js";
@@ -112,3 +114,196 @@ it.for([
     }
   },
 );
+
+it.for([
+  { reason: "reset", hookName: "session_reset", nextSessionId: "next-session" },
+  { reason: "new", hookName: "session_reset", nextSessionId: "next-session" },
+  { reason: "idle", hookName: "session_reset", nextSessionId: "next-session" },
+  { reason: "daily", hookName: "session_reset", nextSessionId: "next-session" },
+  {
+    reason: "deleted",
+    hookName: "session_delete",
+    nextSessionId: undefined,
+    endedTranscript: undefined,
+  },
+  {
+    reason: "reset",
+    hookName: "session_delete",
+    nextSessionId: undefined,
+    endedTranscript: { available: false, reason: "incognito-deleted" },
+  },
+] as const)(
+  "dispatches $hookName for a committed $reason lifecycle using the real hook runner",
+  async ({ reason, hookName, nextSessionId, ...action }, { signal }) => {
+    const received = createDeferredCore<{ event: unknown; context: unknown }>();
+    initializeGlobalHookRunner(
+      createMockPluginRegistry([
+        {
+          hookName,
+          handler: (event: unknown, context: unknown) => received.resolve({ event, context }),
+        },
+      ]),
+    );
+    emitGatewaySessionEndPluginHook({
+      cfg: {},
+      sessionKey: "agent:main:main",
+      sessionId: "old-session",
+      lifecycleRevision: "old-revision",
+      storePath: path.join(tempDirs.make("session-lifecycle-callback-"), "sessions.json"),
+      agentId: "main",
+      reason,
+      nextSessionId,
+      ...action,
+    });
+    const { event, context } = await withinTest(received.promise, signal);
+    expect(event).toEqual({
+      sessionId: "old-session",
+      sessionKey: "agent:main:main",
+      lifecycleRevision: "old-revision",
+      ...(hookName === "session_reset" ? { nextSessionId } : {}),
+    });
+    expect(context).toEqual({
+      sessionId: "old-session",
+      sessionKey: "agent:main:main",
+      agentId: "main",
+    });
+  },
+);
+
+it.for(["reset", "deleted"] as const)(
+  "runs session_end before $0 callback for the same key without blocking other keys",
+  async (reason, { signal }) => {
+    const entered = createDeferredCore();
+    const release = createDeferredCore();
+    const order: string[] = [];
+    initializeGlobalHookRunner(
+      createMockPluginRegistry([
+        {
+          hookName: "session_reset",
+          handler: () => {
+            order.push("reset");
+          },
+        },
+        {
+          hookName: "session_delete",
+          handler: () => {
+            order.push("delete");
+          },
+        },
+        {
+          hookName: "session_end",
+          handler: async () => {
+            order.push("end-enter");
+            entered.resolve();
+            await release.promise;
+            order.push("end-exit");
+          },
+        },
+        {
+          hookName: "session_start",
+          handler: () => {
+            order.push("start");
+          },
+        },
+      ]),
+    );
+    const storePath = path.join(tempDirs.make("session-order-"), "sessions.json");
+    const base = {
+      cfg: {},
+      sessionKey: "agent:main:one",
+      sessionId: "old",
+      storePath,
+      agentId: "main",
+    };
+    try {
+      emitGatewaySessionEndPluginHook({ ...base, reason, nextSessionId: "next" });
+      if (reason === "reset") {
+        emitGatewaySessionStartPluginHook({ ...base, sessionId: "next" });
+      }
+      await withinTest(entered.promise, signal);
+      expect(order).toEqual(["end-enter"]);
+      emitGatewaySessionStartPluginHook({
+        ...base,
+        sessionKey: "agent:main:two",
+        sessionId: "other",
+      });
+      await vi.waitFor(() => expect(order).toContain("start"));
+      expect(order).toEqual(["end-enter", "start"]);
+      release.resolve();
+      await vi.waitFor(() =>
+        expect(order).toEqual([
+          "end-enter",
+          "start",
+          "end-exit",
+          reason === "reset" ? "reset" : "delete",
+          ...(reason === "reset" ? ["start"] : []),
+        ]),
+      );
+    } finally {
+      release.resolve();
+    }
+  },
+);
+
+it("runs reply session_end before session_reset for the same key", async ({ signal }) => {
+  const entered = createDeferredCore();
+  const release = createDeferredCore();
+  const order: string[] = [];
+  initializeGlobalHookRunner(
+    createMockPluginRegistry([
+      {
+        hookName: "session_end",
+        handler: async () => {
+          order.push("end-enter");
+          entered.resolve();
+          await release.promise;
+          order.push("end-exit");
+        },
+      },
+      { hookName: "session_reset", handler: () => order.push("reset") },
+    ]),
+  );
+  const hookRunner = expectDefined(getGlobalHookRunner(), "reply lifecycle hook runner");
+  try {
+    emitReplySessionRolloverHooks({
+      hookRunner,
+      sessionId: "old",
+      sessionKey: "agent:main:reply-order",
+      agentId: "main",
+      storePath: path.join(tempDirs.make("reply-order-"), "sessions.json"),
+      reason: "reset",
+      nextSessionId: "next",
+    });
+    await withinTest(entered.promise, signal);
+    expect(order).toEqual(["end-enter"]);
+    release.resolve();
+    await vi.waitFor(() => expect(order).toEqual(["end-enter", "end-exit", "reset"]));
+  } finally {
+    release.resolve();
+  }
+});
+
+it("continues the lifecycle queue after a plugin failure", async () => {
+  const started = vi.fn();
+  initializeGlobalHookRunner(
+    createMockPluginRegistry([
+      {
+        hookName: "session_reset",
+        handler: () => {
+          throw new Error("plugin failure");
+        },
+      },
+      { hookName: "session_start", handler: started },
+    ]),
+  );
+  const base = {
+    cfg: {},
+    sessionKey: "agent:main:failure",
+    sessionId: "old",
+    storePath: path.join(tempDirs.make("session-failure-"), "sessions.json"),
+    agentId: "main",
+  };
+  emitGatewaySessionEndPluginHook({ ...base, reason: "reset", nextSessionId: "next" });
+  emitGatewaySessionStartPluginHook({ ...base, sessionId: "next" });
+  await vi.waitFor(() => expect(started).toHaveBeenCalledOnce());
+});

@@ -704,17 +704,13 @@ async function performPreparedGatewaySessionReset({
           if (!deleted.ok) {
             return deleted;
           }
-          await handleSessionStateSessionDeleted(target.canonicalKey, agentId);
-          const worktreePreserved = await removeSessionWorktree({
-            id: normalizeOptionalString(entry.worktree?.id),
-            sessionKey: target.canonicalKey,
-            reason: "session-reset",
-          });
+          // Incognito deletion is committed. Notify before fallible state and
+          // worktree cleanup so a cleanup failure cannot lose the lifecycle edge.
           notifyGatewaySessionReset(target.canonicalKey, target.agentId);
           emitGatewaySessionEndPluginHook({
             cfg,
             sessionKey: target.canonicalKey,
-            sessionId: entry.sessionId,
+            ...entry,
             storePath,
             sessionFile: target.canonicalKey,
             agentId: target.agentId,
@@ -724,6 +720,12 @@ async function performPreparedGatewaySessionReset({
           });
           await emitSessionUnboundLifecycleEvent({
             targetSessionKey: target.canonicalKey,
+            reason: "session-reset",
+          });
+          await handleSessionStateSessionDeleted(target.canonicalKey, agentId);
+          const worktreePreserved = await removeSessionWorktree({
+            id: normalizeOptionalString(entry.worktree?.id),
+            sessionKey: target.canonicalKey,
             reason: "session-reset",
           });
           return {
@@ -951,7 +953,7 @@ async function performPreparedGatewaySessionReset({
                 emitGatewaySessionEndPluginHook({
                   cfg,
                   sessionKey: resetSessionKey,
-                  sessionId: mutation.previousSessionId,
+                  ...mutation.previousEntry,
                   storePath,
                   sessionFile: mutation.previousSessionFile,
                   agentId: target.agentId,

@@ -480,6 +480,7 @@ export async function persistAgentSessionPhase(
         cfg: params.cfg,
         sessionKey: params.canonicalSessionKey,
         sessionId: previousSessionId,
+        lifecycleRevision: params.entry?.lifecycleRevision,
         storePath: params.storePath,
         sessionFile: undefined,
         agentId: params.sessionAgentId,
