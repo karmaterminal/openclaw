@@ -16,6 +16,7 @@ import { combineGatewayLocalUserIngress } from "../../../gateway/local-user-ingr
 import { channelRouteDedupeKey } from "../../../plugin-sdk/channel-route.js";
 import { resolveGlobalSingleton } from "../../../shared/global-singleton.js";
 import { normalizeMessageChannel } from "../../../utils/message-channel.js";
+import { isSenderInOwnerAllowFromList } from "../../command-auth.js";
 import { unbindCommandOwnerAuthority } from "../../command-owner-authority.js";
 import {
   resolveReplyOperatorAuthorityKey,
@@ -137,6 +138,7 @@ export function resolveRoomAggregateExecution(execution: FollowupRun["run"]): Fo
     senderName: undefined,
     senderUsername: undefined,
     senderE164: undefined,
+    senderIsBot: undefined,
     memberRoleIds: undefined,
     gitContributorProfileId: undefined,
     senderIsOwner: false,
@@ -172,14 +174,30 @@ function resolveSenderScopedToolPolicyKey(execution: FollowupRun["run"]): string
   }
 }
 
-// Frond (karmaterminal, #1415): messages.groupChat.ambientOwnerAggregate, resolved like
-// unmentionedInbound: a per-agent groupChat setting wins when present.
-function isAmbientOwnerAggregateEnabled(execution: FollowupRun["run"]): boolean {
+// Frond (karmaterminal, #1415): with messages.groupChat.ambientOwnerAggregate on, an owner folds
+// only as a bot account listed in ambientOwnerAggregatePeers, matched on its channel-verified
+// sender id in the commands.ownerAllowFrom grammar. Each setting resolves like unmentionedInbound:
+// a per-agent groupChat value wins when present. A human, or a sender the channel did not report
+// as a bot, keeps its own turn even when listed, so the principal's request never folds.
+function isAmbientOwnerPeer(execution: FollowupRun["run"]): boolean {
   const agentGroupChat = resolveAgentConfig(execution.config, execution.agentId)?.groupChat;
-  if (agentGroupChat && Object.hasOwn(agentGroupChat, "ambientOwnerAggregate")) {
-    return agentGroupChat.ambientOwnerAggregate === true;
-  }
-  return execution.config.messages?.groupChat?.ambientOwnerAggregate === true;
+  const groupChat = execution.config.messages?.groupChat;
+  const resolve = <K extends "ambientOwnerAggregate" | "ambientOwnerAggregatePeers">(key: K) =>
+    agentGroupChat && Object.hasOwn(agentGroupChat, key) ? agentGroupChat[key] : groupChat?.[key];
+  return (
+    execution.senderIsBot === true &&
+    resolve("ambientOwnerAggregate") === true &&
+    isSenderInOwnerAllowFromList(
+      execution.config,
+      {
+        channel: execution.messageProvider,
+        accountId: execution.agentAccountId,
+        senderId: execution.senderId,
+        senderE164: execution.senderE164,
+      },
+      resolve("ambientOwnerAggregatePeers") ?? [],
+    )
+  );
 }
 
 // Frond (karmaterminal, #1415): a room event joins a cross-sender aggregate only when its own
@@ -187,15 +205,15 @@ function isAmbientOwnerAggregateEnabled(execution: FollowupRun["run"]): boolean 
 // authority it lacks or lifts a member's restriction. It does lose sender-derived context
 // (roles, requester-scoped connections); returns that baseline source. A spawned session stays
 // out: there a senderless requester resolves its tool policy through the persisted child
-// envelope instead of the current request. With the ambient owner mode on, unaddressed owner
-// prose joins too and loses its owner facts the same way: the owner bit, the owner memory
-// audience, and the trace grant the owner bit derives. Every other grant still keeps it out.
+// envelope instead of the current request. With the ambient owner mode on, unaddressed prose from
+// a listed owner bot joins too and loses its owner facts the same way: the owner bit, the owner
+// memory audience, and the trace grant the owner bit derives. Every other grant still keeps it out.
 function resolveRoomAggregateSource(source: FollowupRun): FollowupRun | undefined {
   const execution = source.run;
   const ownerFacts =
     execution.senderIsOwner === true || source.memoryAudienceSenderIsOwner === true;
   const ambientOwner =
-    ownerFacts && source.ambientRoomProse === true && isAmbientOwnerAggregateEnabled(execution);
+    ownerFacts && source.ambientRoomProse === true && isAmbientOwnerPeer(execution);
   if (
     source.currentInboundEventKind !== "room_event" ||
     source.operatorAuthority ||

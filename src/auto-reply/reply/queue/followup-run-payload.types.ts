@@ -197,6 +197,8 @@ export type FollowupRunPayload = {
     senderName?: string;
     senderUsername?: string;
     senderE164?: string;
+    /** Frond (karmaterminal, #1415): the channel's bot flag; only `true` names a bot account. */
+    senderIsBot?: boolean;
     traceAuthorized?: boolean;
     /** Inline choice stays on this run; omission follows the live session preference. */
     traceLevelOverride?: TraceLevel;
