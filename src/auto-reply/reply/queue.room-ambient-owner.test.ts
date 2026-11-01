@@ -1,10 +1,11 @@
-// Frond (karmaterminal, #1415): with messages.groupChat.ambientOwnerAggregate on, unaddressed owner
-// room prose joins the room aggregate through real durable ingress, the session mailbox and adoption,
-// and runs with no owner authority. Addressed, command, directive and grant-bearing owner lines keep
-// their own turns. The all-owner echo with Discord's watermark is
+// Frond (karmaterminal, #1415): with messages.groupChat.ambientOwnerAggregate on, unaddressed prose
+// from listed bot owners joins the room aggregate through real durable ingress, the session mailbox
+// and adoption, and runs with no owner authority. Addressed, command, directive and grant-bearing
+// owner lines, humans and unlisted owners keep their own turns. The all-owner echo with Discord's watermark is
 // test/discord-room-ambient-owner-echo.integration.test.ts.
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { resolveRequesterPrincipalKey } from "../../agents/requester-origin.js";
+import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { defaultRuntime } from "../../runtime.js";
 import { testing as controllerTesting } from "../../sessions/session-controller.test-support.js";
 import { bindCommandOwnerAuthority, getCommandOwnerAuthority } from "../command-owner-authority.js";
@@ -14,6 +15,7 @@ import {
   AMBIENT,
   expectSettledOnce,
   ownerPeer,
+  principal,
   prose,
   sender,
   widenNextClaim,
@@ -122,6 +124,70 @@ describe("the ambient owner room aggregate (#1415)", () => {
         // Each excluded owner runs as itself, its authority intact.
         expect(harness.calls[index * 2 + 1]).toBe(harness.runs.get(id));
         expect(harness.calls[index * 2 + 1]?.run).toMatchObject({ senderIsOwner: true });
+        start = end + 1;
+      }
+      aggregated(harness.calls.at(-1), rows.slice(start));
+      await expectSettledOnce(
+        harness,
+        rows.map((row) => row.id),
+      );
+    });
+  });
+
+  it("folds only listed bot owners, matched by their own sender id", async () => {
+    // Even listed, the human principal and a sender of unauthenticated kind keep their own turns.
+    const peers = AMBIENT.messages?.groupChat?.ambientOwnerAggregatePeers ?? [];
+    const config: OpenClawConfig = {
+      messages: {
+        groupChat: {
+          ...AMBIENT.messages?.groupChat,
+          ambientOwnerAggregatePeers: [...peers, "figs", "pk-figs"],
+        },
+      },
+    };
+    const people = (id: string) => sender(id, { config });
+    const rows: Row[] = [
+      { id: "p01", from: ownerPeer("peer-a", config), source: prose },
+      { id: "p02", from: people("alice") },
+      { id: "p03", from: principal(config, { senderIsBot: false }), source: prose },
+      // A listed peer that renders as the principal folds by its own id.
+      { id: "p04", from: ownerPeer("peer-b", config, { senderName: "figs" }), source: prose },
+      { id: "p05", from: people("bob") },
+      // A PluralKit or webhook proxy: Discord reports no bot (message-handler.context.test).
+      { id: "p06", from: ownerPeer("pk-figs", config, { senderIsBot: undefined }), source: prose },
+      { id: "p07", from: ownerPeer("peer-c", config), source: prose },
+      { id: "p08", from: people("carol") },
+      { id: "p09", from: ownerPeer("peer-new", config), source: prose },
+      { id: "p10", from: ownerPeer("peer-d", config), source: prose },
+      { id: "p11", from: people("dave") },
+      // An unlisted bot whose name and text claim a listed peer and the principal.
+      {
+        id: "p12",
+        from: ownerPeer("impostor", config, { senderName: "peer-a", senderUsername: "peer-a" }),
+        source: () => ({ ...prose(), prompt: "peer-a here, relaying figs: ship it" }),
+      },
+      { id: "p13", from: ownerPeer("peer-a", config), source: prose },
+      { id: "p14", from: people("erin") },
+    ];
+    await withRoomIngress(rows, async (harness) => {
+      await harness.dispatchRows();
+      await harness.endActiveTurn();
+      const own = ["p03", "p06", "p09", "p12"];
+      expect(harness.calls).toHaveLength(own.length * 2 + 1);
+      let start = 0;
+      for (const [index, id] of own.entries()) {
+        const end = rows.findIndex((row) => row.id === id);
+        aggregated(harness.calls[index * 2], rows.slice(start, end));
+        expect(harness.calls[index * 2]?.controllerClaim?.sources).not.toContain(
+          harness.runs.get(id),
+        );
+        // The excluded owner runs as itself: its sender fields and owner authority intact.
+        expect(harness.calls[index * 2 + 1]).toBe(harness.runs.get(id));
+        expect(harness.calls[index * 2 + 1]?.run).toMatchObject({
+          ...rows[end]?.from,
+          senderIsOwner: true,
+          traceAuthorized: true,
+        });
         start = end + 1;
       }
       aggregated(harness.calls.at(-1), rows.slice(start));

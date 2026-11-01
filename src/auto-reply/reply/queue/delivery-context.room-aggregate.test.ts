@@ -1,5 +1,6 @@
 // Frond (karmaterminal, #1415): which room events may join a cross-sender room aggregate.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { GroupChatConfig } from "../../../config/types.messages.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { clearCurrentPluginMetadataSnapshot } from "../../../plugins/current-plugin-metadata-state.js";
 import { createEmptyPluginRegistry } from "../../../plugins/registry-empty.js";
@@ -162,25 +163,23 @@ describe("room aggregate eligibility (#1415)", () => {
 });
 
 describe("ambient owner room aggregate eligibility (#1415)", () => {
+  const peers = { ambientOwnerAggregatePeers: ["peer-a", "peer-x"] };
   const ambient: OpenClawConfig = {
     ...config,
-    messages: { groupChat: { ambientOwnerAggregate: true } },
+    messages: { groupChat: { ambientOwnerAggregate: true, ...peers } },
   };
-  const withAgentMode = (base: OpenClawConfig, enabled: boolean): OpenClawConfig => ({
+  const withAgent = (base: OpenClawConfig, groupChat: GroupChatConfig): OpenClawConfig => ({
     ...base,
-    agents: {
-      entries: {
-        agent: { ...config.agents.entries.agent, groupChat: { ambientOwnerAggregate: enabled } },
-      },
-    },
+    agents: { entries: { agent: { ...config.agents.entries.agent, groupChat } } },
   });
-  /** Unaddressed owner room prose as the reply run stages it; a patched config keeps the mode. */
+  /** Unaddressed prose from a bot owner as the reply run stages it; a patched config keeps the mode. */
   const owner = (id: string, patch: Patch = {}, cfg = ambient) =>
     member(id, {
       source: { ambientRoomProse: true, ...patch.source },
       run: {
         senderIsOwner: true,
         traceAuthorized: true,
+        senderIsBot: true,
         ...patch.run,
         config: { ...cfg, ...patch.run?.config },
       },
@@ -202,14 +201,55 @@ describe("ambient owner room aggregate eligibility (#1415)", () => {
 
   it.each<[string, OpenClawConfig]>([
     ["unset", config],
-    ["off", { ...config, messages: { groupChat: { ambientOwnerAggregate: false } } }],
-    ["on but off for the agent", withAgentMode(ambient, false)],
+    ["off", { ...config, messages: { groupChat: { ambientOwnerAggregate: false, ...peers } } }],
+    ["on but off for the agent", withAgent(ambient, { ambientOwnerAggregate: false })],
+    [
+      "on with no peers listed",
+      { ...config, messages: { groupChat: { ambientOwnerAggregate: true } } },
+    ],
+    [
+      "on with the agent's empty peers list",
+      withAgent(ambient, { ambientOwnerAggregatePeers: [] }),
+    ],
+    ["on only for the agent, with no peers", withAgent(config, { ambientOwnerAggregate: true })],
   ])("keeps owner prose on its own key with the mode %s", (_, cfg) => {
     expect(joins(owner("peer-a", {}, cfg))).toBe(false);
   });
 
-  it("follows the agent's override when only the agent turns the mode on", () => {
-    expect(joins(owner("peer-a", {}, withAgentMode(config, true)))).toBe(true);
+  it("follows the agent's override of the mode and of the peers list", () => {
+    expect(
+      joins(owner("peer-a", {}, withAgent(config, { ambientOwnerAggregate: true, ...peers }))),
+    ).toBe(true);
+    const narrowed = withAgent(ambient, { ambientOwnerAggregatePeers: ["peer-b"] });
+    expect(joins(owner("peer-b", {}, narrowed))).toBe(true);
+    expect(joins(owner("peer-a", {}, narrowed))).toBe(false);
+  });
+
+  it("matches the listed peer by its own sender id, never by its name", () => {
+    expect(joins(owner("peer-x"))).toBe(true);
+    expect(joins(owner("peer-a", { run: { senderName: "figs", senderUsername: "figs" } }))).toBe(
+      true,
+    );
+    const named = { senderName: "peer-a", senderUsername: "peer-a" };
+    expect(
+      joins(
+        owner("impostor", {
+          run: { ...named, requesterOrigin: { ...ROOM, senderId: "impostor", ...named } },
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it.each<[string, string, Patch]>([
+    ["an unlisted bot", "peer-new", {}],
+    ["a listed human", "peer-a", { run: { senderIsBot: false } }],
+    ["a listed sender of unauthenticated kind", "peer-a", { run: { senderIsBot: undefined } }],
+  ])("keeps owner prose from %s on its own key", (_, id, patch) => {
+    expect(joins(owner(id, patch))).toBe(false);
+  });
+
+  it("runs the room baseline as no bot", () => {
+    expect(resolveRoomAggregateExecution(owner("peer-a").run).senderIsBot).toBeUndefined();
   });
 
   it.each<[string, Patch]>([

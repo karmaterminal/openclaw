@@ -29,7 +29,7 @@ vi.mock("./get-reply-run-helpers.js", async (importOriginal) => ({
   }),
 }));
 
-/** The queued source an owner's Discord channel message becomes. */
+/** The queued source an owner prince's Discord channel message becomes. */
 async function stageOwnerMessage(body: string, kind: InboundEventKind): Promise<FollowupRun> {
   return await withTempState(async (stateDir) => {
     const sessionKey = "agent:main:discord:channel:room";
@@ -44,6 +44,7 @@ async function stageOwnerMessage(body: string, kind: InboundEventKind): Promise<
       InboundEventKind: kind,
       MessageSid: "m1",
       SenderId: "peer-a",
+      SenderIsBot: true,
       Body: body,
       RawBody: body,
       CommandBody: body,
@@ -122,8 +123,13 @@ describe("ambient room prose (#1415)", () => {
   ])("%s from an owner is ambient prose: %s", async (_, prose, body, kind) => {
     const run = await stageOwnerMessage(body, kind);
     expect(run.currentInboundEventKind).toBe(kind);
-    // The owner keeps its own authority on its own run; the fact only names the text.
-    expect(run.run).toMatchObject({ senderIsOwner: true, traceAuthorized: true });
+    // The owner keeps its own authority on its own run; the fact only names the text. The channel's
+    // bot flag rides the run for the ambient owner peers check.
+    expect(run.run).toMatchObject({
+      senderIsOwner: true,
+      traceAuthorized: true,
+      senderIsBot: true,
+    });
     expect(run.ambientRoomProse).toBe(prose);
   });
 });

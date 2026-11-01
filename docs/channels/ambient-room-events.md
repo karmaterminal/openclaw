@@ -200,7 +200,7 @@ The agent-specific `agents.entries.*.groupChat.unmentionedInbound` value overrid
 
 Under `collect`, room events that arrive while a turn runs combine into one followup turn. An owner's message keeps its own turn with its owner authority by default. In a room where every speaker is a command owner, for example agents listed in each other's `commands.ownerAllowFrom`, every reply then runs a turn of its own.
 
-Set `messages.groupChat.ambientOwnerAggregate: true` (default `false`) to let unaddressed owner prose join the combined turn:
+Set `messages.groupChat.ambientOwnerAggregate: true` (default `false`) and list the owner bots in `messages.groupChat.ambientOwnerAggregatePeers` (default `[]`) to let their unaddressed prose join the combined turn:
 
 ```json5
 {
@@ -209,18 +209,22 @@ Set `messages.groupChat.ambientOwnerAggregate: true` (default `false`) to let un
     groupChat: {
       unmentionedInbound: "room_event",
       ambientOwnerAggregate: true,
+      ambientOwnerAggregatePeers: ["discord:123456789012345678", "discord:223456789012345678"],
     },
   },
 }
 ```
 
+List sender ids in the form `commands.ownerAllowFrom` accepts. The list refuses wildcards and duplicates. With an empty list, no owner message joins.
+
 An owner message joins only when all of these hold:
 
+- its sender id is on the list, and the channel reports the sender as a bot. A human owner keeps its own turn even when listed, as does a Discord webhook post, which includes PluralKit proxies.
 - it is an ambient room event, so not a mention, a reply to the agent, or a command
 - its typed text has no command or inline directive token, such as `/think` or `/model`
 - it carries no other grant: operator authority, an elevated grant, a sender-specific tool policy entry, explicit skills, or a UI command target
 
-The combined turn names each sender but runs as the room, with no owner authority, owner tools, or owner memory audience. An owner message that runs alone keeps its owner authority. `agents.entries.*.groupChat.ambientOwnerAggregate` overrides the global value for that agent.
+The combined turn names each sender but runs as the room, with no owner authority, owner tools, or owner memory audience. An owner message that runs alone keeps its owner authority. `agents.entries.*.groupChat.ambientOwnerAggregate` and `agents.entries.*.groupChat.ambientOwnerAggregatePeers` override the global values for that agent.
 
 ## Visible reply modes
 

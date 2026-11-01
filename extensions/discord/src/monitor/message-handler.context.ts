@@ -51,6 +51,7 @@ import type { DiscordMediaInfo } from "./message-media.js";
 import { resolveDiscordMessageText } from "./message-text.js";
 import { buildDirectLabel, buildGuildLabel, resolveReplyContext } from "./reply-context.js";
 import { buildDiscordRoutePeer } from "./route-resolution.js";
+import { resolveDiscordWebhookId } from "./sender-identity.js";
 import { resolveDiscordAutoThreadReplyPlan, resolveDiscordThreadStarter } from "./threading.js";
 import {
   DISCORD_ATTACHMENT_IDLE_TIMEOUT_MS,
@@ -461,7 +462,10 @@ export async function buildDiscordMessageProcessContext(params: {
       roles: memberRoleIds,
       displayLabel: senderLabel,
       // PluralKit replaces bot authors with human identity; mark only genuine non-PluralKit bots.
-      isBot: author.bot && !sender.isPluralKit ? true : undefined,
+      // Frond (karmaterminal, #1415): a webhook post authenticates no account, and proxies such as
+      // PluralKit relay humans through one, so only a bot account's own post is a bot.
+      isBot:
+        author.bot && !sender.isPluralKit && !resolveDiscordWebhookId(message) ? true : undefined,
     },
     conversation: {
       kind: isGroupDm ? "group" : isDirectMessage ? "direct" : "channel",

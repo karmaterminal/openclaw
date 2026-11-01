@@ -177,6 +177,7 @@ const ADVANCED_TUNING_PATHS = new Set([
   "agents.entries.*.tools.github.app",
   // Frond (karmaterminal, #1415): changes which room messages run with owner authority.
   "messages.groupChat.ambientOwnerAggregate",
+  "messages.groupChat.ambientOwnerAggregatePeers",
   "session.maintenance.preserveRecent",
   "tools.github.app",
   "tools.sessions.allowThreadTargets",
