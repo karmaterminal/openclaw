@@ -49,7 +49,8 @@ import { clearFollowupQueue, getExistingFollowupQueue } from "./queue/state.js";
 import { bindReplySourceToFollowup, prepareReplySourceInput } from "./reply-source-binding.js";
 import { createTypingController } from "./typing.js";
 
-vi.mock("../../agents/auth-profiles/session-override.js", () => ({
+vi.mock("../../agents/auth-profiles/session-override.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../agents/auth-profiles/session-override.js")>()),
   resolveSessionAuthSelection: vi.fn(async () => undefined),
 }));
 vi.mock("./get-reply-run-helpers.js", async (importOriginal) => ({

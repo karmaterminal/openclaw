@@ -8,8 +8,8 @@ import { createInstalledPluginEnabledPredicate } from "../../../plugins/installe
 import type { PluginOrigin } from "../../../plugins/plugin-origin.types.js";
 import type { PluginRegistry } from "../../../plugins/registry-types.js";
 import { getActivePluginRegistry } from "../../../plugins/runtime.js";
+import type { SessionControllerMailboxClaim } from "../../../sessions/session-controller.contracts.js";
 import { deferSessionControllerClaimBeforeExecution } from "../../../sessions/session-controller.mailbox-claim.js";
-import type { SessionControllerMailboxClaim } from "../../../sessions/session-controller.mailbox.js";
 import type { FollowupRun } from "./types.js";
 
 type RoomTurn = Pick<FollowupRun["run"], "config" | "workspaceDir">;

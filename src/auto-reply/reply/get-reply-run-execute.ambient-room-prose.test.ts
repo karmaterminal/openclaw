@@ -16,7 +16,8 @@ import type { FollowupRun } from "./queue.js";
 import { createTypingController } from "./typing.js";
 
 const runReplyAgent = vi.hoisted(() => vi.fn());
-vi.mock("../../agents/auth-profiles/session-override.js", () => ({
+vi.mock("../../agents/auth-profiles/session-override.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../agents/auth-profiles/session-override.js")>()),
   resolveSessionAuthSelection: vi.fn(async () => undefined),
 }));
 vi.mock("./get-reply-run-helpers.js", async (importOriginal) => ({

@@ -29,7 +29,8 @@ vi.mock("node:child_process", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:child_process")>()),
 }));
 
-vi.mock("./transport-process-registration.js", () => ({
+vi.mock("./transport-process-registration.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./transport-process-registration.js")>()),
   prepareCodexAppServerProcessRegistration:
     async () =>
     async (child: import("node:child_process").ChildProcess, scopeLauncher?: unknown) => {
