@@ -1,6 +1,8 @@
-import { expect, it, vi } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 import * as runtimeSnapshot from "../config/runtime-snapshot.js";
 import { readSessionEntryReadOnlyInWorker } from "../config/sessions/session-entry-read-runtime.js";
+import { createWorkerSessionPlacementStore } from "../gateway/worker-environments/placement-store.js";
+import { listSessionBindingsBySessionAsync } from "../infra/outbound/session-binding-service.js";
 import { buildPluginApi } from "./api-builder.js";
 import { instrumentPluginInstanceApi } from "./api-facades.js";
 import { runPluginRegistration } from "./api-lifecycle.js";
@@ -11,6 +13,21 @@ import type { OpenClawPluginApi } from "./types.js";
 vi.mock("../config/sessions/session-entry-read-runtime.js", () => ({
   readSessionEntryReadOnlyInWorker: vi.fn(),
 }));
+vi.mock("../gateway/worker-environments/placement-store.js", () => ({
+  createWorkerSessionPlacementStore: vi.fn(),
+}));
+vi.mock("../infra/outbound/session-binding-service.js", () => ({
+  listSessionBindingsBySessionAsync: vi.fn(),
+}));
+
+beforeEach(() => {
+  vi.mocked(listSessionBindingsBySessionAsync).mockReset().mockResolvedValue([]);
+  vi.mocked(createWorkerSessionPlacementStore)
+    .mockReset()
+    .mockReturnValue({
+      readProjection: vi.fn().mockResolvedValue({ placements: new Map() }),
+    } as never);
+});
 
 function createPluginApi(handlers: Parameters<typeof buildPluginApi>[0]["handlers"] = {}) {
   return buildPluginApi({
