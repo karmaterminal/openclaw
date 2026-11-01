@@ -31,14 +31,14 @@ describe("next-turn injection drain limits", () => {
   it("discards a persisted head that exceeds a lowered plugin byte budget", async () => {
     const cfg: OpenClawConfig = {
       agents: { entries: { main: {} } },
-      plugins: { entries: { "owner-fixture": { hooks: { nextTurnInjectionDrainMaxBytes: 10 } } } },
+      plugins: { entries: { "owner-fixture": { hooks: { nextTurnInjectionDrainMaxBytes: 600 } } } },
     };
     const scope = sessionScope(cfg, "main", "agent:main:oversized-head");
     await writeEntry(scope, {
       sessionId: "oversized-head",
       updatedAt: 1,
       pluginNextTurnInjections: {
-        "owner-fixture": ["too-long-for-budget", "fits"].map((text, index) => ({
+        "owner-fixture": ["x".repeat(1_000), "fits"].map((text, index) => ({
           id: String(index),
           pluginId: "owner-fixture",
           text,
