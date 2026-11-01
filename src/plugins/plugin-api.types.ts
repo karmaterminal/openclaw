@@ -115,6 +115,8 @@ type OpenClawPluginSessionStateApi = {
     sessionKey: string;
     exists: boolean;
     onHost: boolean;
+    /** Persisted session generation; present only when `exists`. */
+    sessionId?: string;
   }>;
 };
 

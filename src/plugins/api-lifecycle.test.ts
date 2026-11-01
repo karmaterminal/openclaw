@@ -75,6 +75,7 @@ it("keeps session route inspection callable after registration and reads each li
     sessionKey: key,
     exists: true,
     onHost: true,
+    sessionId: "before",
   });
   read.mockResolvedValueOnce(undefined);
   expect(await api.session.state.resolveLocalSessionRoute(key)).toEqual({

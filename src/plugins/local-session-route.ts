@@ -12,6 +12,8 @@ export type PluginLocalSessionRoute = {
   sessionKey: string;
   exists: boolean;
   onHost: boolean;
+  /** Persisted session generation; present only when `exists`. */
+  sessionId?: string;
 };
 
 /** A missing route is not sufficient proof for a shared main or channel-shaped key. */
@@ -24,10 +26,14 @@ function hasOffHostRoute(
   if (sessionKey === resolveAgentMainSessionKey({ cfg, agentId })) {
     return true;
   }
-  const rest = sessionKey.slice(`agent:${agentId}:`.length);
-  // Channel plugins can introduce new key prefixes. Only host-owned session
-  // families have a positive locality proof without an explicit route record.
-  if (!/^(?:subagent|cron|hook):/.test(rest)) {
+  const prefix = `agent:${agentId}:`;
+  if (!sessionKey.startsWith(prefix)) {
+    return true;
+  }
+  // Channel plugins can introduce new key prefixes. Only subagent sessions have a
+  // positive locality proof from the row alone: cron delivery lives on the job and
+  // hook delivery on the request or mapping, so a clean cron/hook row can still announce.
+  if (!sessionKey.slice(prefix.length).startsWith("subagent:")) {
     return true;
   }
   // Older rows can retain route hints alongside an internal/absent canonical delivery.
@@ -80,6 +86,7 @@ export async function resolvePluginLocalSessionRoute(params: {
       exists: true,
       onHost:
         sessionKey !== "global" && !hasOffHostRoute(params.cfg, sessionKey, agentId, existing),
+      sessionId: existing.sessionId,
     };
   } catch {
     // An unreadable/transient store cannot prove that a target is local.

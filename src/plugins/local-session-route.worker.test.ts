@@ -23,11 +23,17 @@ it("reads current exact session presence on a worker without host data SQL", asy
 
     const sql = observeHostDataSql();
     try {
-      expect(await resolve()).toEqual({ sessionKey, exists: true, onHost: true });
+      expect(await resolve()).toEqual({
+        sessionKey,
+        exists: true,
+        onHost: true,
+        sessionId: "before",
+      });
       expect(await resolvePluginLocalSessionRoute({ cfg, sessionKey: "global" })).toEqual({
         sessionKey: "global",
         exists: true,
         onHost: false,
+        sessionId: "shared",
       });
       expect(sql.queries).toEqual([]);
     } finally {
@@ -36,7 +42,12 @@ it("reads current exact session presence on a worker without host data SQL", asy
     await replaceSessionEntry({ agentId, env, sessionKey }, { sessionId: "after", updatedAt: 2 });
     const refreshedSql = observeHostDataSql();
     try {
-      expect(await resolve()).toEqual({ sessionKey, exists: true, onHost: true });
+      expect(await resolve()).toEqual({
+        sessionKey,
+        exists: true,
+        onHost: true,
+        sessionId: "after",
+      });
       expect(refreshedSql.queries).toEqual([]);
     } finally {
       refreshedSql.restore();

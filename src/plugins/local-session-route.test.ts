@@ -22,7 +22,12 @@ describe("exact plugin local session route proof", () => {
   it("proves an exact local child and refuses missing or deleted rows", async () => {
     const key = "agent:main:subagent:abc";
     entry(key);
-    expect(await resolve(key)).toEqual({ sessionKey: key, exists: true, onHost: true });
+    expect(await resolve(key)).toEqual({
+      sessionKey: key,
+      exists: true,
+      onHost: true,
+      sessionId: "s1",
+    });
     expect(read).toHaveBeenCalledWith(
       expect.objectContaining({ sessionKey: key, agentId: "main" }),
     );
@@ -52,13 +57,23 @@ describe("exact plugin local session route proof", () => {
   it("never infers locality for shared main or channel keys", async () => {
     for (const key of ["agent:main:main", "agent:main:discord:channel:123"]) {
       entry(key, { kind: "internal" });
-      expect(await resolve(key)).toEqual({ sessionKey: key, exists: true, onHost: false });
+      expect(await resolve(key)).toEqual({
+        sessionKey: key,
+        exists: true,
+        onHost: false,
+        sessionId: "s1",
+      });
     }
   });
 
   it("reports global presence without claiming locality", async () => {
     entry("global");
-    expect(await resolve("global")).toEqual({ sessionKey: "global", exists: true, onHost: false });
+    expect(await resolve("global")).toEqual({
+      sessionKey: "global",
+      exists: true,
+      onHost: false,
+      sessionId: "s1",
+    });
     read.mockResolvedValue(undefined);
     expect(await resolve("global")).toEqual({ sessionKey: "global", exists: false, onHost: false });
   });
@@ -89,7 +104,28 @@ describe("exact plugin local session route proof", () => {
       lastChannel: "discord",
       lastTo: "channel:123",
     });
-    expect(await resolve(key)).toEqual({ sessionKey: key, exists: true, onHost: false });
+    expect(await resolve(key)).toEqual({
+      sessionKey: key,
+      exists: true,
+      onHost: false,
+      sessionId: "legacy",
+    });
+  });
+
+  it("never claims locality for cron or hook rows, whose delivery is not on the row", async () => {
+    for (const key of [
+      "agent:main:cron:job-1",
+      "agent:main:cron:job-1:run:r1",
+      "agent:main:hook:gmail:m1",
+    ]) {
+      entry(key, { kind: "internal" });
+      expect(await resolve(key)).toEqual({
+        sessionKey: key,
+        exists: true,
+        onHost: false,
+        sessionId: "s1",
+      });
+    }
   });
 
   it("preserves case-distinct opaque peer identities on exact lookup", async () => {

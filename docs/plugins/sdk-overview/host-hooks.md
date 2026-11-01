@@ -37,10 +37,15 @@ plugins.
 | `api.session.workflow.scheduleSessionTurn(...)` / `unscheduleSessionTurnsByTag(...)` | Bundled-only Cron-backed scheduled session turns plus tag-based cleanup                                                                                    |
 | `api.session.controls.registerSessionAction(...)`                                    | Typed session actions clients can dispatch through the Gateway                                                                                             |
 
-`api.session.state.resolveLocalSessionRoute(sessionKey)` asynchronously returns `{ sessionKey, exists, onHost }`.
+`api.session.state.resolveLocalSessionRoute(sessionKey)` asynchronously returns `{ sessionKey, exists, onHost, sessionId? }`.
 It checks an exact persisted session key. A missing or unreadable entry cannot prove
 locality; shared main and channel sessions do not receive a positive host-locality
-claim from their key shape. This inspection does not authorize a send or wake.
+claim from their key shape. Only subagent sessions can be `onHost`: cron delivery is
+configured on the job and hook delivery on the request or mapping, not on the session
+row, so cron and hook sessions fail closed. `sessionId` is the persisted session
+generation when the entry exists. `onHost` is a locality proof, not an egress proof:
+a subagent's result still announces to its requester session, which may be a channel.
+This inspection does not authorize a send or wake.
 
 Runtime lifecycle registrations can also supply `dispose()` for resources captured
 by that registration. Explicitly owned, uncached plugin inspections invoke it on
