@@ -710,7 +710,7 @@ async function performPreparedGatewaySessionReset({
           emitGatewaySessionEndPluginHook({
             cfg,
             sessionKey: target.canonicalKey,
-            sessionId: entry.sessionId,
+            ...entry,
             storePath,
             sessionFile: target.canonicalKey,
             agentId: target.agentId,
@@ -953,7 +953,7 @@ async function performPreparedGatewaySessionReset({
                 emitGatewaySessionEndPluginHook({
                   cfg,
                   sessionKey: resetSessionKey,
-                  sessionId: mutation.previousSessionId,
+                  ...mutation.previousEntry,
                   storePath,
                   sessionFile: mutation.previousSessionFile,
                   agentId: target.agentId,

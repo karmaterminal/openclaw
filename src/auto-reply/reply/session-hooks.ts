@@ -151,22 +151,28 @@ export function emitReplySessionResetHook(params: {
   sessionId: string;
   sessionKey: string;
   agentId: string;
+  lifecycleRevision?: string;
   nextSessionId?: string;
 }): void {
   if (!params.hookRunner.hasHooks("session_reset")) {
     return;
   }
-  const { sessionId, sessionKey, agentId, nextSessionId } = params;
+  const { sessionId, sessionKey, agentId, lifecycleRevision, nextSessionId } = params;
   void dispatchSessionLifecycleHook(sessionKey, "hooks:session-reset", () =>
     params.hookRunner.runSessionReset(
-      { sessionId, sessionKey, nextSessionId },
+      {
+        sessionId,
+        sessionKey,
+        ...(lifecycleRevision !== undefined ? { lifecycleRevision } : {}),
+        nextSessionId,
+      },
       { sessionId, sessionKey, agentId },
     ),
   ).catch(() => {});
 }
 
 export function emitReplySessionRolloverHooks(
-  params: Parameters<typeof emitReplySessionEndHook>[0],
+  params: Parameters<typeof emitReplySessionEndHook>[0] & { lifecycleRevision?: string },
 ): void {
   if (params.hookRunner.hasHooks("session_end")) {
     emitReplySessionEndHook(params);

@@ -348,12 +348,13 @@ export async function deleteGatewayAgent(
           runDatabaseCleanup: deletion.runDatabaseCleanup,
           onFailure: (failure) => failed.push(failure),
           onPurged: (entries, storePath) => {
-            for (const { sessionId, sessionKey } of entries) {
+            for (const { sessionId, sessionKey, lifecycleRevision } of entries) {
               try {
                 emitGatewaySessionEndPluginHook({
                   cfg: lockedConfig,
                   sessionKey,
                   sessionId,
+                  lifecycleRevision,
                   storePath,
                   agentId,
                   reason: "deleted",

@@ -531,6 +531,7 @@ async function deleteGatewaySessionInScope(
                 cfg,
                 sessionKey: target.canonicalKey ?? key,
                 sessionId: result.deletedSessionId,
+                lifecycleRevision: postCleanupEntry?.lifecycleRevision,
                 storePath,
                 agentId: target.agentId,
                 reason: "deleted",

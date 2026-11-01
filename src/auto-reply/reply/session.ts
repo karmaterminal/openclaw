@@ -934,7 +934,7 @@ async function initSessionStateAttemptLocked(
       emitReplySessionRolloverHooks({
         ...sessionTarget,
         hookRunner,
-        sessionId: previousSessionEntry.sessionId,
+        ...previousSessionEntry,
         reason: previousSessionEndReason,
         nextSessionId: sessionId,
         resetBoundaryId: resetBoundary?.boundaryId,

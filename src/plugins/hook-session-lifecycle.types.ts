@@ -19,6 +19,7 @@ export type PluginHookSessionEndReason =
 export type PluginHookSessionResetEvent = {
   sessionId: string;
   sessionKey: string;
+  lifecycleRevision?: string;
   nextSessionId?: string;
 };
 
@@ -26,6 +27,7 @@ export type PluginHookSessionResetEvent = {
 export type PluginHookSessionDeleteEvent = {
   sessionId: string;
   sessionKey: string;
+  lifecycleRevision?: string;
 };
 
 export type PluginHookSessionEndEvent = {

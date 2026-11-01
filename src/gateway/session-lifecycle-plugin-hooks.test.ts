@@ -148,6 +148,7 @@ it.for([
       cfg: {},
       sessionKey: "agent:main:main",
       sessionId: "old-session",
+      lifecycleRevision: "old-revision",
       storePath: path.join(tempDirs.make("session-lifecycle-callback-"), "sessions.json"),
       agentId: "main",
       reason,
@@ -158,6 +159,7 @@ it.for([
     expect(event).toEqual({
       sessionId: "old-session",
       sessionKey: "agent:main:main",
+      lifecycleRevision: "old-revision",
       ...(hookName === "session_reset" ? { nextSessionId } : {}),
     });
     expect(context).toEqual({

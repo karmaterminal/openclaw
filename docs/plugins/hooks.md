@@ -134,7 +134,8 @@ reload mode, hook policy changes hot-reload the existing plugin runtime.
   [session lifecycle contract](/plugins/hooks/reference#hook-catalog).
 - `session_reset` and `session_delete` are post-commit, metadata-only plugin
   callbacks. They receive the ended `sessionId`, `sessionKey`, and `agentId`
-  context; reset also includes `nextSessionId` when known. Reset covers manual
+  context and the ended generation's `lifecycleRevision` when available; reset
+  also includes `nextSessionId` when known. Reset covers manual
   `/new` and `/reset` plus idle and daily rollover. Delete runs only after
   the session row is removed, including an incognito reset that deletes the row.
   Agent deletion also emits `session_delete` for each session row in its

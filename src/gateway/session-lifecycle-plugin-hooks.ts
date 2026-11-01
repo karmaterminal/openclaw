@@ -29,6 +29,7 @@ export function emitGatewaySessionEndPluginHook(params: {
   cfg: OpenClawConfig;
   sessionKey: string;
   sessionId?: string;
+  lifecycleRevision?: string;
   storePath: string;
   sessionFile?: string;
   agentId: string;
@@ -134,7 +135,13 @@ export function emitGatewaySessionEndPluginHook(params: {
     void dispatchSessionLifecycleHook(params.sessionKey, `hooks:${lifecycleHook}`, async () => {
       if (lifecycleHook === "session_delete") {
         await hookRunner.runSessionDelete(
-          { sessionId: params.sessionId!, sessionKey: params.sessionKey },
+          {
+            sessionId: params.sessionId!,
+            sessionKey: params.sessionKey,
+            ...(params.lifecycleRevision !== undefined
+              ? { lifecycleRevision: params.lifecycleRevision }
+              : {}),
+          },
           context,
         );
       } else {
@@ -142,6 +149,9 @@ export function emitGatewaySessionEndPluginHook(params: {
           {
             sessionId: params.sessionId!,
             sessionKey: params.sessionKey,
+            ...(params.lifecycleRevision !== undefined
+              ? { lifecycleRevision: params.lifecycleRevision }
+              : {}),
             nextSessionId: params.nextSessionId,
           },
           context,

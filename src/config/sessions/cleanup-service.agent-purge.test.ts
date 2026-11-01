@@ -44,14 +44,24 @@ it.each(["fixed selector", "retired schema owner"])(
       storePath,
     }));
     for (const scope of scopes) {
-      await replaceSessionEntry(scope, { sessionId: scope.sessionId, updatedAt: Date.now() });
+      await replaceSessionEntry(scope, {
+        sessionId: scope.sessionId,
+        lifecycleRevision: `${scope.agentId}-generation`,
+        updatedAt: Date.now(),
+      });
       appendTranscriptEventSync(scope, { type: "proof", data: scope.agentId });
     }
 
     const onPurged = vi.fn();
     await expect(purgeAgentSessionStoreEntries(cfg, "ops", { onPurged })).resolves.toBe(false);
     expect(onPurged).toHaveBeenCalledExactlyOnceWith(
-      [{ sessionId: "ops-session", sessionKey: "agent:ops:chat" }],
+      [
+        {
+          sessionId: "ops-session",
+          sessionKey: "agent:ops:chat",
+          lifecycleRevision: "ops-generation",
+        },
+      ],
       storePath,
     );
 

@@ -53,7 +53,9 @@ import { normalizeResolvedMaintenanceConfigInput } from "./store-maintenance.js"
 /** Retire logical entries without widening their selected transcript generations. */
 export async function purgeDeletedAgentSessionEntries(
   params: DeletedAgentSessionEntryPurgeParams & {
-    onCommitted?: (entries: readonly { sessionId: string; sessionKey: string }[]) => void;
+    onCommitted?: (
+      entries: readonly { sessionId: string; sessionKey: string; lifecycleRevision?: string }[],
+    ) => void;
   },
 ): Promise<void> {
   const resolved = captureLifecycleDatabaseScope(
@@ -227,7 +229,17 @@ export async function purgeDeletedAgentSessionEntries(
     // authority recheck or archive cleanup can reject the remaining work.
     params.onCommitted?.(
       prepared.entryRemovals.flatMap(({ expectedEntry, sessionKey }) =>
-        expectedEntry?.sessionId ? [{ sessionId: expectedEntry.sessionId, sessionKey }] : [],
+        expectedEntry?.sessionId
+          ? [
+              {
+                sessionId: expectedEntry.sessionId,
+                sessionKey,
+                ...(expectedEntry.lifecycleRevision !== undefined
+                  ? { lifecycleRevision: expectedEntry.lifecycleRevision }
+                  : {}),
+              },
+            ]
+          : [],
       ),
     );
     execution?.assertCurrent();

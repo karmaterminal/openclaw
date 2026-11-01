@@ -524,7 +524,7 @@ export async function purgeAgentSessionStoreEntries(
     runDatabaseCleanup?: ReturnType<typeof createAgentDeletionDatabaseCleanup>;
     onFailure?: (failure: { path: string; reason: string }) => void;
     onPurged?: (
-      entries: readonly { sessionId: string; sessionKey: string }[],
+      entries: readonly { sessionId: string; sessionKey: string; lifecycleRevision?: string }[],
       storePath: string,
     ) => void;
   } = {},

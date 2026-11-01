@@ -37,7 +37,13 @@ export function registerAgentDeleteLifecycleTests(harness: {
       .mockImplementation(() => {});
     harness.purge.mockImplementationOnce(async (_cfg, _agentId, options) => {
       options?.onPurged?.(
-        [{ sessionId: "removed-session", sessionKey: "agent:test-agent:chat" }],
+        [
+          {
+            sessionId: "removed-session",
+            sessionKey: "agent:test-agent:chat",
+            lifecycleRevision: "removed-generation",
+          },
+        ],
         "/agents/test-agent/sessions.sqlite",
       );
       return false;
@@ -48,6 +54,7 @@ export function registerAgentDeleteLifecycleTests(harness: {
         agentId: "test-agent",
         sessionId: "removed-session",
         sessionKey: "agent:test-agent:chat",
+        lifecycleRevision: "removed-generation",
         reason: "deleted",
       }),
     );

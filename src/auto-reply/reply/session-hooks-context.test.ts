@@ -204,6 +204,7 @@ describe("session hook context wiring", () => {
     await writeStore(storePath, {
       [sessionKey]: {
         sessionId,
+        lifecycleRevision: "old-generation",
         updatedAt: automatic
           ? new Date(2026, 0, 18, overlap ? 4 : 3, overlap ? 45 : 0, 0).getTime()
           : Date.now(),
@@ -258,7 +259,12 @@ describe("session hook context wiring", () => {
         hookRunnerMocks.runSessionReset,
         "session_reset",
       );
-      expectFields(resetEvent, { sessionId, sessionKey, nextSessionId: sessionId });
+      expectFields(resetEvent, {
+        sessionId,
+        sessionKey,
+        lifecycleRevision: "old-generation",
+        nextSessionId: sessionId,
+      });
       expectFields(resetContext, { agentId: "main", sessionKey });
       if (!automatic) {
         await emitResetCommandHooks({
