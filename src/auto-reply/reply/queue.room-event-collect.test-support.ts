@@ -13,6 +13,7 @@ import {
   createTestIngressQueue,
   withTempState,
 } from "../../channels/message/ingress-drain.test-helpers.js";
+import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { createUserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
 import { createTestUserTurnTranscriptTarget } from "../../sessions/user-turn-transcript.test-support.js";
 import {
@@ -264,6 +265,24 @@ export function sender(
 }
 
 export const owner = sender("owner", { senderIsOwner: true, traceAuthorized: true });
+
+// Frond (karmaterminal, #1415): the fleet's room, where every prince is a command owner, with the
+// ambient owner room aggregate on.
+export const AMBIENT: OpenClawConfig = {
+  messages: { groupChat: { unmentionedInbound: "room_event", ambientOwnerAggregate: true } },
+};
+
+/** A command owner speaking in the room, as channel admission records it. */
+export function ownerPeer(
+  id: string,
+  config: OpenClawConfig,
+  extra: Partial<FollowupRun["run"]> = {},
+): Partial<FollowupRun["run"]> {
+  return sender(id, { senderIsOwner: true, traceAuthorized: true, config, ...extra });
+}
+
+/** What the reply run records for unaddressed prose (get-reply-run-execute.ambient-room-prose). */
+export const prose = () => ({ ambientRoomProse: true });
 
 export type Shared = Pick<FollowupRun["run"], "execOverrides">;
 
