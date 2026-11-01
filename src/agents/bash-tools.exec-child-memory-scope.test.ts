@@ -39,6 +39,8 @@ it.skipIf(process.platform !== "linux")(
       `#!/bin/sh\nprintf '%s\\n' "$*" >> '${invocationLog}'\nwhile [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done; shift; exec "$@"\n`,
       { mode: 0o755 },
     );
+    // A failing systemctl leaves scopes unbound wherever the suite runs, even in a user service.
+    fs.writeFileSync(path.join(bin, "systemctl"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
     setRuntimeConfigSnapshot({
       process: { childScope: { enabled: true, memoryMax: "1G", memorySwapMax: "0" } },
     });
