@@ -132,6 +132,8 @@ describe("Codex app-server child memory scope", () => {
         '#!/bin/sh\nwhile [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done; shift; exec "$@"\n',
         { mode: 0o755 },
       );
+      // A failing systemctl leaves scopes unbound wherever the suite runs, even in a user service.
+      await fs.writeFile(path.join(root, "systemctl"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
       const codex = path.join(root, "codex");
       await fs.writeFile(codex, "#!/bin/sh\nexec cat\n", { mode: 0o755 });
       vi.stubEnv("PATH", `${root}${path.delimiter}${process.env.PATH ?? ""}`);

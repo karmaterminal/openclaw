@@ -6,6 +6,8 @@ import { isPidAlive } from "../../shared/pid-alive.js";
 import type { SpawnInput } from "./types.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+// Only the child and pty variants of the SpawnInput union carry the opt-in.
+type ScopeOptIn = Pick<Extract<SpawnInput, { mode: "child" }>, "childMemoryScope">;
 let invocationLog: string;
 let supervisor: Awaited<ReturnType<typeof loadSupervisor>>;
 
@@ -18,6 +20,8 @@ function installFakeSystemdRun() {
     `#!/bin/sh\nprintf '%s\\n' "$*" >> '${invocationLog}'\nwhile [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done; shift; exec "$@"\n`,
     { mode: 0o755 },
   );
+  // A failing systemctl leaves scopes unbound wherever the suite runs, even in a user service.
+  fs.writeFileSync(path.join(dir, "systemctl"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
   vi.stubEnv("PATH", `${dir}${path.delimiter}${process.env.PATH ?? ""}`);
   vi.stubEnv("XDG_RUNTIME_DIR", "/run/user/openclaw-test");
 }
@@ -44,7 +48,7 @@ async function loadSupervisor(enabled: boolean) {
 }
 
 /** The command reports its own pid and a grandchild's, then waits on the grandchild. */
-async function spawnTree(input: Pick<SpawnInput, "childMemoryScope">) {
+async function spawnTree(input: ScopeOptIn) {
   let reported!: (line: string) => void;
   const report = new Promise<string>((resolve) => {
     reported = resolve;
@@ -67,7 +71,7 @@ async function spawnTree(input: Pick<SpawnInput, "childMemoryScope">) {
   };
 }
 
-async function runToExit(input: Pick<SpawnInput, "childMemoryScope"> & { mode: "child" | "pty" }) {
+async function runToExit(input: ScopeOptIn & { mode: "child" | "pty" }) {
   const run = await supervisor.spawn({
     argv: ["/bin/sh", "-c", 'printf "pid=%s" "$$"; exit 7'],
     captureOutput: true,
