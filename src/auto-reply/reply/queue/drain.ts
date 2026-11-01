@@ -268,6 +268,8 @@ async function executeClaim(
       transcriptPrompt: claim.summary ? prompt : buildCollectTranscriptInput(sources).text,
       userTurnTranscriptRecorder: recorder,
       run: execution,
+      // Frond (karmaterminal, #1415): the room baseline drops an owner memory audience too.
+      memoryAudienceSenderIsOwner: crossSender ? undefined : source.memoryAudienceSenderIsOwner,
       controllerInput: source.controllerInput,
       controllerClaim: claim,
       turnAdoptionLifecycle: {
