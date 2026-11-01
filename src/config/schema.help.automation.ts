@@ -282,6 +282,8 @@ export const AUTOMATION_FIELD_HELP: Record<string, string> = {
     "Maximum number of prior group messages loaded as context per turn for group sessions. Use higher values for richer continuity, or lower values for faster and cheaper responses. Automatic prompt history is capped at 200 messages. The JSON integer maximum selects the channel default window (50 for shared group history), not an unlimited window.",
   "messages.groupChat.unmentionedInbound":
     'Controls how unmentioned always-on group chatter is submitted. "user_request" treats it as a user request; "room_event" submits it as quiet context where visible output requires the message tool.',
+  "messages.groupChat.ambientOwnerAggregate":
+    'Lets unmentioned owner messages in a room join the room-event batch with other senders (default: false). Applies to "room_event" traffic collected while a turn runs: an owner message that is not addressed to the agent and carries no command or inline directive joins one collected turn that runs as the room, with no owner authority, owner tools or owner memory audience. Mentions, replies to the agent, commands, directives and senders with their own grants keep their own turns. agents.entries.<id>.groupChat.ambientOwnerAggregate overrides this for one agent.',
   "messages.groupChat.visibleReplies":
     'Overrides model-authored source replies for group/channel conversations. Defaults to "automatic" when no global visible reply policy is set. "message_tool" requires message(action=send) for normal assistant output and generic tool media; explicitly host-owned runtime output remains deliverable except for ambient room events. "automatic" posts normal replies as before.',
   "messages.queue":

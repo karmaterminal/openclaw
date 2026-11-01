@@ -183,38 +183,44 @@ describe("the all-owner echo under the ambient owner room aggregate (#1415)", ()
   });
 
   it("runs the owners' collected turn with exactly a non-owner aggregate's authority", async () => {
-    const collect = async (owners: boolean) => {
-      const rows: Row[] = ["peer-a", "peer-b", "peer-c"].map((id, index) => ({
-        id: `x${index + 1}`,
-        from: owners ? ownerPeer(id, AMBIENT) : sender(`person-${index + 1}`, { config: AMBIENT }),
-        // The one owner fact a source can carry besides the owner bit: an owner memory audience.
-        source: () => ({
-          ...prose(),
-          ...(owners && index === 0 ? { memoryAudienceSenderIsOwner: true } : {}),
-        }),
-      }));
-      let turn: FollowupRun | undefined;
-      await withRoomIngress(rows, async (harness) => {
-        await harness.dispatchRows();
-        await harness.endActiveTurn();
-        expect(harness.calls).toHaveLength(1);
-        turn = harness.calls[0];
-      });
-      return turn!;
-    };
-    const authority = (run: FollowupRun) => ({
-      tools: captureReplyToolAuthorityInput(run),
+    // Owner prose, an addressed line that ends the batch, then people: two collected turns.
+    const rows: Row[] = [
+      { id: "x1", from: ownerPeer("peer-a", AMBIENT), source: prose },
+      { id: "x2", from: ownerPeer("peer-b", AMBIENT), source: prose },
+      // The one owner fact a source carries besides the owner bit, on the source the turn spreads.
+      {
+        id: "x3",
+        from: ownerPeer("peer-c", AMBIENT),
+        source: () => ({ ...prose(), memoryAudienceSenderIsOwner: true }),
+      },
+      { id: "x4", kind: "user_request", from: sender("asker", { config: AMBIENT }) },
+      { id: "x5", from: sender("alice", { config: AMBIENT }) },
+      { id: "x6", from: sender("bob", { config: AMBIENT }) },
+      { id: "x7", from: sender("carol", { config: AMBIENT }) },
+    ];
+    const authority = (run: FollowupRun | undefined) => ({
+      tools: captureReplyToolAuthorityInput(run!),
       principal: resolveRequesterPrincipalKey({
-        ...run.run,
-        messageChannel: run.originatingChannel,
+        ...run!.run,
+        messageChannel: run!.originatingChannel,
       }),
-      memoryAudienceSenderIsOwner: run.memoryAudienceSenderIsOwner,
-      createChannelCronAuthority: run.createChannelCronAuthority,
-      explicitSkillSelections: run.explicitSkillSelections,
+      memoryAudienceSenderIsOwner: run!.memoryAudienceSenderIsOwner,
+      createChannelCronAuthority: run!.createChannelCronAuthority,
+      explicitSkillSelections: run!.explicitSkillSelections,
     });
-    const owners = await collect(true);
-    expectRoomBaseline(owners);
-    expect(authority(owners)).toEqual(authority(await collect(false)));
+    await withRoomIngress(rows, async (harness) => {
+      await harness.dispatchRows();
+      await harness.endActiveTurn();
+      expect(harness.calls).toHaveLength(3);
+      const [owners, , people] = harness.calls;
+      aggregated(owners, rows.slice(0, 3));
+      aggregated(people, rows.slice(4));
+      expect(authority(owners)).toEqual(authority(people));
+      await expectSettledOnce(
+        harness,
+        rows.map((row) => row.id),
+      );
+    });
   });
 
   it("keeps owner commands, mentions, directives and elevated grants as their own turns", async () => {

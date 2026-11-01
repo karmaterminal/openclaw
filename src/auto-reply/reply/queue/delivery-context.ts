@@ -1,5 +1,6 @@
 import { expectDefined, stableStringify } from "@openclaw/normalization-core";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { resolveAgentConfig } from "../../../agents/agent-scope-config.js";
 import {
   captureRequesterOrigin,
   resolveRequesterPrincipalKey,
@@ -167,22 +168,37 @@ function resolveSenderScopedToolPolicyKey(execution: FollowupRun["run"]): string
   }
 }
 
+// Frond (karmaterminal, #1415): messages.groupChat.ambientOwnerAggregate, resolved like
+// unmentionedInbound: a per-agent groupChat setting wins when present.
+function isAmbientOwnerAggregateEnabled(execution: FollowupRun["run"]): boolean {
+  const agentGroupChat = resolveAgentConfig(execution.config, execution.agentId)?.groupChat;
+  if (agentGroupChat && Object.hasOwn(agentGroupChat, "ambientOwnerAggregate")) {
+    return agentGroupChat.ambientOwnerAggregate === true;
+  }
+  return execution.config.messages?.groupChat?.ambientOwnerAggregate === true;
+}
+
 // Frond (karmaterminal, #1415): a room event joins a cross-sender aggregate only when its own
 // authority already equals the senderless baseline, so the aggregate never grants a member
 // authority it lacks or lifts a member's restriction. It does lose sender-derived context
 // (roles, requester-scoped connections); returns that baseline source. A spawned session stays
 // out: there a senderless requester resolves its tool policy through the persisted child
-// envelope instead of the current request.
+// envelope instead of the current request. With the ambient owner mode on, unaddressed owner
+// prose joins too and loses its owner facts the same way: the owner bit, the owner memory
+// audience, and the trace grant the owner bit derives. Every other grant still keeps it out.
 function resolveRoomAggregateSource(source: FollowupRun): FollowupRun | undefined {
   const execution = source.run;
+  const ownerFacts =
+    execution.senderIsOwner === true || source.memoryAudienceSenderIsOwner === true;
+  const ambientOwner =
+    ownerFacts && source.ambientRoomProse === true && isAmbientOwnerAggregateEnabled(execution);
   if (
     source.currentInboundEventKind !== "room_event" ||
     source.operatorAuthority ||
     source.createChannelCronAuthority ||
-    source.memoryAudienceSenderIsOwner === true ||
+    (ownerFacts && !ambientOwner) ||
     source.explicitSkillSelections?.length ||
-    execution.senderIsOwner === true ||
-    execution.traceAuthorized === true ||
+    (execution.traceAuthorized === true && !(ambientOwner && execution.senderIsOwner === true)) ||
     execution.operatorProfileId ||
     execution.requesterOrigin?.operatorProfileId ||
     execution.conversationToolPolicy ||
@@ -586,6 +602,7 @@ export function createOverflowSummaryRetrySource(source: InternalFollowupRun): I
     ...(source.currentInboundEventKind === "room_event"
       ? { currentInboundEventKind: "room_event" }
       : {}),
+    ambientRoomProse: source.ambientRoomProse,
     run: source.run,
   };
 }

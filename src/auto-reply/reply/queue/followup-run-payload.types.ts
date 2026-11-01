@@ -92,6 +92,11 @@ export type FollowupRunPayload = {
   /** Shared lifecycle owner for the current user-turn transcript append. */
   userTurnTranscriptRecorder?: UserTurnTranscriptRecorder;
   currentInboundEventKind?: InboundEventKind;
+  /**
+   * Frond (karmaterminal, #1415): a room event whose typed text carries no command or inline
+   * directive token. Names the text only; the ambient owner room aggregate keys on it.
+   */
+  ambientRoomProse?: boolean;
   /** Native inbound event timestamp in epoch milliseconds, when the transport provides one. */
   currentInboundEventTimestampMs?: number;
   /** Whether the current inbound message contained audio for inbound-only TTS policy. */

@@ -41,6 +41,7 @@ import {
 import { buildChannelUserTurnSender } from "../../sessions/user-turn-transcript.metadata.js";
 import { isReasoningTagProvider } from "../../utils/provider-utils.js";
 import { isConfiguredCommandOwner } from "../command-auth.js";
+import { hasInlineCommandTokens } from "../command-detection.js";
 import { bindCommandOwnerAuthority, getCommandOwnerAuthority } from "../command-owner-authority.js";
 import { getGroupThreadTurn } from "../group-thread-context.js";
 import { getRequesterProfile } from "../requester-profile.js";
@@ -447,6 +448,7 @@ export async function executePreparedReplyRun(
     transcriptPrompt: transcriptCommandBody,
     ...(userTurnTranscriptRecorder ? { userTurnTranscriptRecorder } : {}),
     currentInboundEventKind: inboundEventKind,
+    ambientRoomProse: isRoomEvent && ![ctx.rawText, ctx.commandText].some(hasInlineCommandTokens),
     currentInboundAudio: hasInboundAudio(sessionCtx),
     gatewayLocalUserIngress: getGatewayLocalUserIngress(ctx),
     channelAdmissionEvidence:

@@ -7,6 +7,7 @@ import { setActivePluginRegistry } from "../../../plugins/runtime.js";
 import { resolveReplyExecOverrides } from "../get-reply-exec-overrides.js";
 import { createQueueTestRun } from "../queue.test-helpers.js";
 import {
+  createOverflowSummaryRetrySource,
   resolveFollowupBatchKey,
   resolveFollowupDeliveryStorageKey,
   resolveRoomAggregateExecution,
@@ -193,6 +194,10 @@ describe("ambient owner room aggregate eligibility (#1415)", () => {
       resolveFollowupBatchKey(member("alice", { run: { config: ambient } })),
     );
     expect(joins(owner("peer-a", { source: { memoryAudienceSenderIsOwner: true } }))).toBe(true);
+    // An overflow-compacted copy keeps its source's batch identity.
+    expect(resolveFollowupBatchKey(createOverflowSummaryRetrySource(owner("peer-a")))).toBe(
+      resolveFollowupBatchKey(owner("peer-a")),
+    );
   });
 
   it.each<[string, OpenClawConfig]>([

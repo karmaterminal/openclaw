@@ -23,6 +23,8 @@ export const GroupChatSchema = z
     mentionPatterns: z.array(z.string()).optional(),
     historyLimit: z.number().int().min(0).optional(),
     unmentionedInbound: z.enum(["user_request", "room_event"]).optional(),
+    // Frond (karmaterminal, #1415): opt-in ambient owner room aggregate.
+    ambientOwnerAggregate: z.boolean().optional(),
     visibleReplies: VisibleRepliesSchema.optional(),
   })
   .optional();
