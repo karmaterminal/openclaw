@@ -825,12 +825,12 @@ describe("next-turn injection identity", () => {
     }
     setActivePluginRegistry(registry);
     const first = await drain({ cfg, ...scope });
-    expect(first.queuedInjections).toHaveLength(32);
-    expect(Buffer.byteLength(first.prependContext ?? "", "utf8")).toBeLessThanOrEqual(
-      64 * 1024 + 64,
-    );
+    // The 32 raw payloads fill 64 KiB exactly; rendered separators leave room for 31.
+    expect(first.queuedInjections).toHaveLength(31);
+    expect(Buffer.byteLength(first.prependContext ?? "", "utf8")).toBeLessThanOrEqual(64 * 1024);
     expect(readEntry(scope)?.pluginNextTurnInjections?.["owner-fixture"]).toHaveLength(8);
-    expect((await drain({ cfg, ...scope })).queuedInjections).toHaveLength(8);
+    expect(readEntry(scope)?.pluginNextTurnInjections?.["second-fixture"]).toHaveLength(1);
+    expect((await drain({ cfg, ...scope })).queuedInjections).toHaveLength(9);
     expect(
       readEntry(scope)?.pluginNextTurnInjectionOutcomes?.["owner-fixture"]?.["owner-fixture-0"]
         ?.state,
