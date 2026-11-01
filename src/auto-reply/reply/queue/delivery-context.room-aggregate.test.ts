@@ -1,5 +1,6 @@
 // Frond (karmaterminal, #1415): which room events may join a cross-sender room aggregate.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { clearCurrentPluginMetadataSnapshot } from "../../../plugins/current-plugin-metadata-state.js";
 import { createEmptyPluginRegistry } from "../../../plugins/registry-empty.js";
 import { setActivePluginRegistry } from "../../../plugins/runtime.js";
@@ -72,6 +73,45 @@ function member(id: string, patch: Patch = {}, origin: typeof ROOM | typeof GROU
   );
 }
 
+/** Authority a member may carry, each of which keeps it out of the senderless room aggregate. */
+const exclusions: [string, Patch][] = [
+  ["an addressed request", { source: { currentInboundEventKind: "user_request" } }],
+  [
+    "operator authority",
+    { source: { operatorAuthority: { profileId: "op", scopes: [], assertCurrent: () => {} } } },
+  ],
+  ["cron-creator authority", { source: { createChannelCronAuthority: () => undefined } }],
+  ["an owner memory audience", { source: { memoryAudienceSenderIsOwner: true } }],
+  [
+    "an explicit skill selection",
+    { source: { explicitSkillSelections: [{ name: "s", path: "/s" }] } },
+  ],
+  ["the owner bit", { run: { senderIsOwner: true } }],
+  ["a trace grant", { run: { traceAuthorized: true } }],
+  ["an operator profile", { run: { operatorProfileId: "op" } }],
+  [
+    "an origin operator profile",
+    { run: { requesterOrigin: { ...ROOM, senderId: "x", operatorProfileId: "op" } } },
+  ],
+  ["a legacy tool policy", { run: { conversationToolPolicy: { deny: ["exec"] } } }],
+  [
+    "a runtime plugin tool grant",
+    { run: { runtimePluginToolGrant: { pluginId: "p", toolNames: ["t"] } } },
+  ],
+  ["an approval reviewer", { run: { approvalReviewerDeviceId: "device-1" } }],
+  ["a UI command target", { run: { gatewayUiCommandTarget: { connId: "c", profileId: "p" } } }],
+  [
+    "an elevated grant",
+    { run: { bashElevated: { enabled: true, allowed: true, defaultLevel: "on" } } },
+  ],
+  // A persisted child envelope resolves a senderless requester through its delegation floor.
+  ["a spawned session", { run: { spawnedBy: "agent:main:main" } }],
+  [
+    "an unreadable sender policy",
+    { run: { config: { tools: { toolsBySender: { untyped: {} } } } } },
+  ],
+];
+
 /** A member that keeps its own per-sender key never batches across senders. */
 const joins = (run: FollowupRun) =>
   resolveFollowupBatchKey(run) !== resolveFollowupDeliveryStorageKey(run);
@@ -82,43 +122,7 @@ describe("room aggregate eligibility (#1415)", () => {
     expect(resolveFollowupBatchKey(member("alice"))).toBe(resolveFollowupBatchKey(member("bob")));
   });
 
-  it.each<[string, Patch]>([
-    ["an addressed request", { source: { currentInboundEventKind: "user_request" } }],
-    [
-      "operator authority",
-      { source: { operatorAuthority: { profileId: "op", scopes: [], assertCurrent: () => {} } } },
-    ],
-    ["cron-creator authority", { source: { createChannelCronAuthority: () => undefined } }],
-    ["an owner memory audience", { source: { memoryAudienceSenderIsOwner: true } }],
-    [
-      "an explicit skill selection",
-      { source: { explicitSkillSelections: [{ name: "s", path: "/s" }] } },
-    ],
-    ["the owner bit", { run: { senderIsOwner: true } }],
-    ["a trace grant", { run: { traceAuthorized: true } }],
-    ["an operator profile", { run: { operatorProfileId: "op" } }],
-    [
-      "an origin operator profile",
-      { run: { requesterOrigin: { ...ROOM, senderId: "x", operatorProfileId: "op" } } },
-    ],
-    ["a legacy tool policy", { run: { conversationToolPolicy: { deny: ["exec"] } } }],
-    [
-      "a runtime plugin tool grant",
-      { run: { runtimePluginToolGrant: { pluginId: "p", toolNames: ["t"] } } },
-    ],
-    ["an approval reviewer", { run: { approvalReviewerDeviceId: "device-1" } }],
-    ["a UI command target", { run: { gatewayUiCommandTarget: { connId: "c", profileId: "p" } } }],
-    [
-      "an elevated grant",
-      { run: { bashElevated: { enabled: true, allowed: true, defaultLevel: "on" } } },
-    ],
-    // A persisted child envelope resolves a senderless requester through its delegation floor.
-    ["a spawned session", { run: { spawnedBy: "agent:main:main" } }],
-    [
-      "an unreadable sender policy",
-      { run: { config: { tools: { toolsBySender: { untyped: {} } } } } },
-    ],
-  ])("keeps a member with %s on its own key", (_, patch) => {
+  it.each(exclusions)("keeps a member with %s on its own key", (_, patch) => {
     expect(joins(member("x", patch))).toBe(false);
   });
 
@@ -153,5 +157,71 @@ describe("room aggregate eligibility (#1415)", () => {
       expect(resolveFollowupBatchKey(other)).not.toBe(resolveFollowupBatchKey(alice));
     }
     expect(resolveRoomAggregateExecution(alice.run).execOverrides).toEqual(execOverrides);
+  });
+});
+
+describe("ambient owner room aggregate eligibility (#1415)", () => {
+  const ambient: OpenClawConfig = {
+    ...config,
+    messages: { groupChat: { ambientOwnerAggregate: true } },
+  };
+  const withAgentMode = (base: OpenClawConfig, enabled: boolean): OpenClawConfig => ({
+    ...base,
+    agents: {
+      entries: {
+        agent: { ...config.agents.entries.agent, groupChat: { ambientOwnerAggregate: enabled } },
+      },
+    },
+  });
+  /** Unaddressed owner room prose as the reply run stages it; a patched config keeps the mode. */
+  const owner = (id: string, patch: Patch = {}, cfg = ambient) =>
+    member(id, {
+      source: { ambientRoomProse: true, ...patch.source },
+      run: {
+        senderIsOwner: true,
+        traceAuthorized: true,
+        ...patch.run,
+        config: { ...cfg, ...patch.run?.config },
+      },
+    });
+  // Only the owner facts relax; the trace grant only as the owner bit's own derivation.
+  const relaxed = new Set(["an owner memory audience", "the owner bit", "a trace grant"]);
+
+  it("batches owner prose with other senders under one room key", () => {
+    expect(joins(owner("peer-a"))).toBe(true);
+    expect(resolveFollowupBatchKey(owner("peer-a"))).toBe(
+      resolveFollowupBatchKey(member("alice", { run: { config: ambient } })),
+    );
+    expect(joins(owner("peer-a", { source: { memoryAudienceSenderIsOwner: true } }))).toBe(true);
+  });
+
+  it.each<[string, OpenClawConfig]>([
+    ["unset", config],
+    ["off", { ...config, messages: { groupChat: { ambientOwnerAggregate: false } } }],
+    ["on but off for the agent", withAgentMode(ambient, false)],
+  ])("keeps owner prose on its own key with the mode %s", (_, cfg) => {
+    expect(joins(owner("peer-a", {}, cfg))).toBe(false);
+  });
+
+  it("follows the agent's override when only the agent turns the mode on", () => {
+    expect(joins(owner("peer-a", {}, withAgentMode(config, true)))).toBe(true);
+  });
+
+  it.each<[string, Patch]>([
+    ...exclusions.filter(([label]) => !relaxed.has(label)),
+    ["a command or inline directive", { source: { ambientRoomProse: false } }],
+    ["no recorded prose fact", { source: { ambientRoomProse: undefined } }],
+  ])("keeps owner prose with %s on its own key", (_, patch) => {
+    expect(joins(owner("peer-a", patch))).toBe(false);
+  });
+
+  it("keeps a non-owner trace grant and an owner's tool grant on their own keys", () => {
+    const traced = member("x", {
+      source: { ambientRoomProse: true },
+      run: { config: ambient, traceAuthorized: true },
+    });
+    expect(joins(traced)).toBe(false);
+    const grant = { tools: { toolsBySender: { "id:peer-x": { alsoAllow: ["exec"] } } } };
+    expect(joins(owner("peer-x", { run: { config: grant } }))).toBe(false);
   });
 });
