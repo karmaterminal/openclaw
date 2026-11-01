@@ -91,7 +91,6 @@ import {
 } from "./provider.startup.js";
 import { createDiscordQuestionButton } from "./questions.js";
 import { resolveDiscordRestFetch } from "./rest-fetch.js";
-import { createDiscordRoomHistoryWatermarks } from "./room-history-watermark.js";
 import { formatDiscordStartupStatusMessage } from "./startup-status.js";
 import { createDiscordReadyStatusPatch, type DiscordMonitorStatusSink } from "./status.js";
 
@@ -544,7 +543,6 @@ export async function monitorDiscordProvider(opts: MonitorDiscordOpts) {
       string,
       import("./message-handler.history.js").DiscordHistoryEntry[]
     >();
-    const roomHistoryWatermarks = createDiscordRoomHistoryWatermarks();
     const { botUserId, botUserName } = await fetchDiscordBotIdentity({
       client,
       token,
@@ -589,7 +587,6 @@ export async function monitorDiscordProvider(opts: MonitorDiscordOpts) {
       setStatus: opts.setStatus,
       abortSignal: opts.abortSignal,
       guildHistories,
-      roomHistoryWatermarks,
       historyLimit,
       mediaMaxBytes,
       textLimit,

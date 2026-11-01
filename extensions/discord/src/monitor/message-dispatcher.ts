@@ -21,11 +21,12 @@ import {
 } from "./message-forwarded.js";
 import type { DiscordMessagePreflightParams } from "./message-handler.preflight.types.js";
 import { resolveDiscordMessageText } from "./message-text.js";
+import { createDiscordRoomHistoryWatermarks } from "./room-history-watermark.js";
 import type { DiscordMonitorStatusSink } from "./status.js";
 
 type DiscordMessageHandlerParams = Omit<
   DiscordMessagePreflightParams,
-  "ackReactionScope" | "groupPolicy" | "data" | "client"
+  "ackReactionScope" | "groupPolicy" | "data" | "client" | "roomHistoryWatermarks"
 > & {
   readPolicy?: DiscordLivePolicyReader;
   setStatus?: DiscordMonitorStatusSink;
@@ -108,6 +109,8 @@ export function createDiscordMessageDispatcher(
   }
   const dispatcherShutdown = new AbortController();
   const avatarResolver = createDiscordAvatarResolver();
+  // The account's one watermark set: preflight hands it to every turn this dispatcher runs.
+  const roomHistoryWatermarks = createDiscordRoomHistoryWatermarks();
 
   type DiscordDebounceEntry = {
     data: DiscordMessageEvent;
@@ -181,6 +184,7 @@ export function createDiscordMessageDispatcher(
               ...policy,
               isPolicyCurrent: policy.isCurrent,
               avatarResolver,
+              roomHistoryWatermarks,
               ackReactionScope:
                 params.discordConfig?.ackReactionScope ??
                 cfg.messages?.ackReactionScope ??
