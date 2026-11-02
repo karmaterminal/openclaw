@@ -4,6 +4,7 @@ import {
   withResponsesRequestAcceptance,
 } from "../transports/openai-responses-request-lifecycle.js";
 import { createResponseModelTracker } from "../transports/openai-transport-shared.js";
+import { parseRetryAfterSeconds } from "../transports/transport-utils.js";
 import type { StreamOptions } from "../types.js";
 
 export class CodexApiError extends Error {
@@ -27,6 +28,55 @@ export class CodexApiError extends Error {
     this.payload = options?.payload;
     this.cause = options?.cause;
   }
+}
+
+export function parseErrorResponse(raw: string, response: Response): CodexApiError {
+  const { status, statusText } = response;
+  let message = raw || statusText || "Request failed";
+  let friendlyMessage: string | undefined;
+  let code: string | undefined;
+  let payload: Record<string, unknown> | undefined;
+
+  try {
+    const parsed = JSON.parse(raw) as {
+      error?: {
+        code?: string;
+        type?: string;
+        message?: string;
+        plan_type?: string;
+        resets_at?: number;
+      };
+    };
+    payload = isRecord(parsed) ? parsed : undefined;
+    const err = parsed?.error;
+    if (err) {
+      code = err.code || err.type || undefined;
+      if (
+        /usage_limit_reached|usage_not_included|rate_limit_exceeded/i.test(code ?? "") ||
+        status === 429
+      ) {
+        const plan = err.plan_type ? ` (${err.plan_type.toLowerCase()} plan)` : "";
+        const mins = err.resets_at
+          ? Math.max(0, Math.round((err.resets_at * 1000 - Date.now()) / 60000))
+          : undefined;
+        const when = mins !== undefined ? ` Try again in ~${mins} min.` : "";
+        friendlyMessage = `You have hit your ChatGPT usage limit${plan}.${when}`.trim();
+      }
+      message = err.message || friendlyMessage || message;
+    }
+  } catch {}
+
+  const retryAfterSeconds = parseRetryAfterSeconds(response.headers);
+  // The canonical projection retains HTTP status; retry owners read its bounded
+  // terminal text for pacing, matching Anthropic HTTP error projection.
+  const retryAfterSuffix = Number.isFinite(retryAfterSeconds)
+    ? `; Retry-After: ${Math.ceil(retryAfterSeconds ?? 0)} seconds`
+    : "";
+  return new CodexApiError(`${friendlyMessage || message}${retryAfterSuffix}`, {
+    code,
+    status,
+    payload,
+  });
 }
 
 function extractCodexEventError(event: Record<string, unknown>): {
