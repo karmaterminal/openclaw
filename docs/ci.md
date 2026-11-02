@@ -119,8 +119,10 @@ not compared. See
 
 Add `ci:full` before a PR run to select every `checks-ui` unit shard, all
 `checks-ui-e2e` shards (Control UI and browser extension), and every
-`checks-ui-e2e-real-gateway` shard, including desktop resize proof. These use the
-same UI inventories and shard budgets as scheduled `main` CI. Unlabeled PRs keep
+`checks-ui-e2e-real-gateway` shard. These use the same UI inventories and shard
+budgets as scheduled `main` CI, including the release-only exclusions. Editing
+a release-only test selects that test; full manual/release runs retain the
+complete inventory, including desktop resize proof. Unlabeled PRs keep
 change-selected UI coverage; the label does not expand unrelated platform lanes.
 
 Current UI unit/browser CI retains three native shards with three workers each,
@@ -148,18 +150,18 @@ browser cases do not load backend stores or Gateway policy. The shared E2E
 cleanup hook reads the canonical admission state through its thin state module;
 policy and logging remain owned by the Gateway admission module.
 
-When artifact reuse is enabled, service-worker-update, phone stale-build, and
-real protocol-mismatch recovery fixtures run in `build-artifacts`. Each copies
+When artifact reuse is enabled, service-worker-update and phone stale-build
+fixtures run in `build-artifacts`. Each copies
 the verified production UI artifact and refreshes its own build identity before
-serving it. Protocol recovery also uses the producer’s built Gateway and retains
-its incompatible-protocol UI build. Local, compatibility, and frozen targets
+serving it. Local, compatibility, and frozen targets
 retain their ordinary preparation path.
 
-When the selected mocked Control UI shard includes production stale-build recovery,
-its workflow step prepares the Gateway runtime before starting Vitest. This moves
-the existing cold build outside the fixture's subprocess budget without adding a
-job or building on shards that do not select that fixture. Production-artifact
-reuse still omits the delegated fixture from the mocked shards.
+Real protocol-mismatch recovery runs in the prebuilt real-Gateway pool, sharing
+that job's Gateway and current UI artifacts while retaining its incompatible
+protocol UI build. It no longer makes a mocked browser shard prepare a Gateway.
+Isolated child-Gateway fixtures share the existing two-worker parallel pool;
+in-process global Gateway fixtures remain serial. Both parallel phases start
+their longest measured files first without crossing the serial phase barrier.
 
 The exact Doctor plugin-index and SQLite sessions/transcripts built-CLI proofs
 use the runtime-only compiled-worker registry. The local TUI file does the same
@@ -210,7 +212,7 @@ chunk allows 75 minutes; the remaining OpenAI package chunk allows 60 minutes. S
 
 For the published-upgrade regression gate, see [selection and routing](/ci/scope-and-routing#scope-and-routing), [runner budgets](/ci/capacity#runner-registration-budget), and [Package Acceptance baselines](/ci/release-validation#suite-profiles). Weekly validation is listed under [Update Migration](/ci/scheduled-workflows#update-migration).
 
-Updater, state-lease, SQLite identity, native-plugin, startup-trace, and updater-tooling PRs also require the [published-driver update cell](/ci/scope-and-routing/selection#published-driver-update-cell). One GitHub-hosted Linux job runs the latest stable npm updater against the candidate package with two synthetic agents. Its twenty-minute budget and result are included in `openclaw/ci-gate`; the broader main/release Docker survivor remains separate.
+Main-tier and selected manual/release CI run the [published-driver update cell](/ci/scope-and-routing/selection#published-driver-update-cell). One GitHub-hosted Linux job runs the latest stable npm updater against the candidate package with two synthetic agents. The Docker cell retains its twenty-minute budget, followed by a fifteen-minute native systemd survivor step using the same candidate and published `2026.10.9`. Both results are included in `openclaw/ci-gate`; the broader main/release Docker survivor remains separate.
 
 Full `main` CI and cache warming are [hourly by default](/ci/scheduled-workflows#hourly-main-ci); `OPENCLAW_CI_ON_PUSH=true` restores their existing per-push admission. CodeQL, Workflow Sanity, and CI's `security-fast` keep their existing main-push scopes. Docs-only `main` pushes still skip the CI workflow and push-triggered cache warming. The cache warmer publishes dependencies independently of long builds and maintains a bounded hosted seed in hybrid mode. Every admitted upstream `main` run exercises one published-driver × candidate Docker upgrade; ordinary manual/release validation adds the other five Docker seed lanes. QA Smoke, real-Gateway browser checks, and named process proofs retain their selected `main` coverage and manual/release validation. Pull requests and exact-head PR fallback dispatches run static correctness gates, owner-bounded tests, transitive import consumers, protected regressions, and a six-file runtime smoke set. Node rows target at most 150 estimated test seconds. Single files and indivisible standard groups can exceed that target; setup, builds, and queues are separate from test time. Node shards selecting sandbox container E2E cases prepare the Docker sandbox image when the runner does not already have it. Missing or unbounded runtime selection fails preflight instead of falling back to every test. Windows, browser, Docker, QA Smoke, packaging, contract, and extension families opt in through their existing owners; individual built-process proofs have independent owner flags. Full static fallback does not widen them. The [PR-exempt integration tier](/ci/scope-and-routing/node-test-lanes) retains measured slow tests in hourly `main` and Full Release Validation, with PR opt-in when their tests or subjects change. The existing Plugin Prerelease workflow owns complete extension runtime coverage hourly and in Full Release Validation; normal CI selects affected extension owners on PRs. Windows retains its complete inventory across five measured file shards on hourly main and ordinary manual/release validation; Windows-owner PRs retain that complete inventory.
 
@@ -610,6 +612,10 @@ controls, reject a wrong pin and wrong hostname before an origin request, and
 reject the verified incident OV G3C intermediate in both trust modes. The report
 reducer requires all twelve TLS class/method identities exactly once, separately
 from the existing Access case and packaged-library checks.
+
+These rows use the Android toolchain action's filtered dependency install for
+native resource generation. They skip the full workspace pnpm store cache so the
+hosted runner has space to unpack the Android system image.
 
 Platform-root incident cases require either exact Conscrypt key rejection or
 OkHttp's specific blocklist rejection after verifying the raw peer chain and

@@ -26,6 +26,7 @@ const identitySensitiveRegistrations = new Set([
   "registerCompactionProvider",
   "registerDecisionProvider",
   "registerGatewayAccessPolicy",
+  "registerRepositoryIntegration",
   "registerHttpRoute",
   "registerImageGenerationProvider",
   "registerMediaUnderstandingProvider",

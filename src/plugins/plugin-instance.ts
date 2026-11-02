@@ -1,4 +1,5 @@
 import { raceWithTimeout } from "../../packages/retry/src/index.js";
+import { materializeErrorStack } from "../infra/error-graph-internal.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { AsyncWorkScope, trackAsyncWork } from "../shared/async-work-scope.js";
@@ -56,6 +57,7 @@ export class PluginInstance {
   readonly lifecycle: PluginInstanceLifecycle;
   toolRegistrationComplete = false;
   controlPlaneInitialized = false;
+  setupPreparationFailure?: Error;
   sourceDigest?: string;
   private moduleLoader?: (source: string) => unknown;
   private setupCache?: PluginCache;
@@ -783,6 +785,7 @@ export class PluginInstance {
       pluginInvocationContext.exit(() =>
         work.run(() => this.controller.abort(new Error(`Plugin ${this.pluginId} is retiring`))),
       );
+      materializeErrorStack(this.controller.signal.reason);
     }
   }
 }
