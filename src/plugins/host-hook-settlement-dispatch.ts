@@ -66,7 +66,7 @@ export function dispatchSettlements(
       const delivery = Promise.resolve()
         .then(async () => {
           for (const { event, sessionId, lifecycleRevision } of batch) {
-            if (!isCurrent() || !sessionId) {
+            if (!isCurrent() || !sessionId || !lifecycleRevision) {
               continue;
             }
             const entry = await readResolvedSessionEntryInWorker(scope);
@@ -79,9 +79,17 @@ export function dispatchSettlements(
             }
             const notice = { ...event, sessionKey: scope.sessionKey };
             try {
-              const result = instance
-                ? instance.runInRegistry(registry, () => registration.handler(notice))
-                : registration.handler(notice);
+              let result: void | Promise<void> = undefined;
+              if (instance) {
+                // A best-effort async notice must not retain a managed call lease
+                // after its timeout. The callback's synchronous entry is scoped;
+                // continuations cannot reuse the released instance authority.
+                instance.runInRegistry(registry, () => {
+                  result = registration.handler(notice);
+                });
+              } else {
+                result = registration.handler(notice);
+              }
               let timer: ReturnType<typeof setTimeout> | undefined;
               const timeout = new Promise<"timeout">((resolve) => {
                 timer = setTimeout(() => resolve("timeout"), HANDLER_TIMEOUT_MS);

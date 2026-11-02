@@ -71,6 +71,23 @@ describe("next-turn injection admission fence", () => {
     ).toBeUndefined();
   }, 15_000);
 
+  it("persists prototype-named plugin queues as own keys", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:prototype-owner");
+    await writeEntry(scope, { sessionId: "prototype-owner", updatedAt: 1 });
+    expect(
+      await enqueuePluginNextTurnInjection({
+        cfg,
+        pluginId: "__proto__",
+        injection: { ...scope, text: "persisted", idempotencyKey: "prototype-key" },
+      }),
+    ).toMatchObject({ enqueued: true });
+    const queues = readEntry(scope)?.pluginNextTurnInjections;
+    expect(Object.hasOwn(queues ?? {}, "__proto__")).toBe(true);
+    const pluginId = "__proto__";
+    expect(queues?.[pluginId]).toMatchObject([{ text: "persisted" }]);
+  });
+
   it("requires a current identity tuple for subagent admission but not generic main/channel callers", async () => {
     const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
     for (const suffix of ["subagent:local", "main", "channel:chat"]) {

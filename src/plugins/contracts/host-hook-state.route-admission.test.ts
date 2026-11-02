@@ -107,6 +107,21 @@ for (const routeChange of ["binding", "placement"] as const) {
       }
     });
 
+    it("rechecks a route that changes after preflight", async () => {
+      if (routeChange === "binding") {
+        listBindings.mockResolvedValueOnce([]).mockResolvedValueOnce([binding] as never);
+      } else {
+        readProjection.mockResolvedValueOnce({ placements: new Map() }).mockResolvedValueOnce({
+          placements: new Map([[sessionId, { ...localPlacement, state: "active" }]]),
+        });
+      }
+      expect(await enqueue("must not commit")).toMatchObject({
+        enqueued: false,
+        reason: "unsupported_route",
+      });
+      expect(loadSessionEntryReadOnly(scope)?.pluginNextTurnInjections).toBeUndefined();
+    });
+
     it("holds a queued injection after a route change before drain", async () => {
       expect((await enqueue("must stay local")).enqueued).toBe(true);
       changeRoute();

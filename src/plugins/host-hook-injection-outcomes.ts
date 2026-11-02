@@ -12,6 +12,22 @@ export function ownOutcome(entry: SessionEntry | undefined, pluginId: string, ke
   return owned && Object.hasOwn(owned, key) ? owned[key] : undefined;
 }
 
+export function retainInjection(
+  queues: NonNullable<SessionEntry["pluginNextTurnInjections"]>,
+  pluginId: string,
+  record: PluginNextTurnInjectionRecord,
+): void {
+  if (!Object.hasOwn(queues, pluginId)) {
+    Object.defineProperty(queues, pluginId, {
+      value: [],
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  }
+  queues[pluginId]!.push(record);
+}
+
 export function settle(
   entry: SessionEntry,
   pluginId: string,
@@ -66,7 +82,12 @@ export function pruneOutcomes(entry: SessionEntry, pluginId: string, now: number
     return;
   }
   for (const [key, outcome] of Object.entries(outcomes)) {
-    if (!outcome || typeof outcome.retainUntil !== "number" || outcome.retainUntil <= now) {
+    if (
+      !outcome ||
+      typeof outcome !== "object" ||
+      typeof outcome.retainUntil !== "number" ||
+      outcome.retainUntil <= now
+    ) {
       delete outcomes[key];
     }
   }

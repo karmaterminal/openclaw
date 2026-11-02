@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { isPromiseLike } from "@openclaw/normalization-core/promise-like";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import type { SessionEntry } from "../config/sessions.js";
-import { readResolvedSessionEntryInWorker } from "../config/sessions/session-accessor.entry.js";
 import { updateResolvedSessionEntry } from "../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -11,11 +10,12 @@ import {
   ownOutcome,
   pruneOutcomes,
   reconcileLateExpiredInjections,
+  retainInjection,
   settle,
 } from "./host-hook-injection-outcomes.js";
 import {
   injectionRouteAdmissionReason,
-  isUnsupportedInjectionRoute,
+  isUnsupportedInjectionRouteNow,
   matchesInjectionRouteGeneration,
   prepareInjectionRoute,
 } from "./host-hook-injection-route.js";
@@ -57,6 +57,7 @@ const MAX_OUTCOMES_PER_PLUGIN_SESSION = 256;
 const MAX_OUTCOME_RETENTION_MS = 86_400_000;
 type MutableSessionEntry = SessionEntry & Record<string, unknown>;
 export { getPluginNextTurnInjectionState } from "./host-hook-injection-query.js";
+export { getPluginSessionExtensionState } from "./host-hook-session-extension-state.js";
 export async function withdrawPluginNextTurnInjection(params: {
   cfg: OpenClawConfig;
   pluginId: string;
@@ -233,7 +234,7 @@ export async function enqueuePluginNextTurnInjection(params: {
   if (!selected?.entry) {
     return { enqueued: false, id: "", sessionKey, reason: "missing_session" };
   }
-  const updated = await updateResolvedSessionEntry(scope, (entry, context) => {
+  const updated = await updateResolvedSessionEntry(scope, async (entry, context) => {
     if (isExpired(record, params.now ?? Date.now())) {
       return { enqueued: false, id: "", reason: "expired" as const };
     }
@@ -247,7 +248,9 @@ export async function enqueuePluginNextTurnInjection(params: {
       entry,
       expectedSessionId: requested.expectedSessionId,
       expectedLifecycleRevision: requested.expectedLifecycleRevision,
-      unsupportedRoute,
+      unsupportedRoute:
+        unsupportedRoute ||
+        (await isUnsupportedInjectionRouteNow(context.canonicalKey, context.agentId, entry)),
     });
     if (routeReason) {
       return { enqueued: false, id: "", reason: routeReason };
@@ -293,9 +296,12 @@ export async function enqueuePluginNextTurnInjection(params: {
     if (enqueued && predecessor) {
       settle(entry, params.pluginId, predecessor, "withdrawn", now, notices);
     }
-    injections[params.pluginId] = enqueued
-      ? [...existing.filter((item) => item !== predecessor), record]
-      : existing;
+    Object.defineProperty(injections, params.pluginId, {
+      value: enqueued ? [...existing.filter((item) => item !== predecessor), record] : existing,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
     entry.pluginNextTurnInjections = injections;
     if (enqueued) {
       entry.updatedAt = now;
@@ -351,7 +357,7 @@ async function drainPluginNextTurnInjections(
     return { records: [], notices: [], canonicalKey: sessionKey };
   }
   const notices: SettlementNotice[] = [];
-  const updated = await updateResolvedSessionEntry(scope, (entry, context) => {
+  const updated = await updateResolvedSessionEntry(scope, async (entry, context) => {
     if (!matchesInjectionRouteGeneration(selected, context.canonicalKey, entry)) {
       return {
         records: [],
@@ -359,7 +365,10 @@ async function drainPluginNextTurnInjections(
         lifecycleRevision: entry.lifecycleRevision,
       };
     }
-    if (unsupportedRoute || isUnsupportedInjectionRoute(context.canonicalKey, entry)) {
+    if (
+      unsupportedRoute ||
+      (await isUnsupportedInjectionRouteNow(context.canonicalKey, context.agentId, entry))
+    ) {
       return {
         records: [],
         sessionId: entry.sessionId,
@@ -414,13 +423,13 @@ async function drainPluginNextTurnInjections(
           settle(entry, pluginId, candidate, "expired", now, notices);
         } else if (!allowed) {
           if (candidate.expiresAt !== undefined) {
-            (retained[pluginId] ??= []).push(candidate);
+            retainInjection(retained, pluginId, candidate);
           } else {
             settle(entry, pluginId, candidate, "discarded", now, notices);
           }
         } else if (candidate.notBefore !== undefined && now < candidate.notBefore) {
           budgetBlocked = true;
-          (retained[pluginId] ??= []).push(candidate);
+          retainInjection(retained, pluginId, candidate);
         } else {
           const renderedBytes = Buffer.byteLength(renderInjection(candidate), "utf8");
           const pluginBytes = renderedBytes + (pluginPlacements.has(candidate.placement) ? 2 : 0);
@@ -439,7 +448,7 @@ async function drainPluginNextTurnInjections(
             totalBytes + aggregateBytes > DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN
           ) {
             budgetBlocked = true;
-            (retained[pluginId] ??= []).push(candidate);
+            retainInjection(retained, pluginId, candidate);
             continue;
           }
           drained.push(candidate);
@@ -477,7 +486,6 @@ async function drainPluginNextTurnInjections(
     lifecycleRevision: updated.found ? updated.result.lifecycleRevision : undefined,
   };
 }
-
 export async function drainPluginNextTurnInjectionContext(params: {
   cfg: OpenClawConfig;
   sessionKey?: string;
@@ -515,27 +523,6 @@ export async function drainPluginNextTurnInjectionContext(params: {
     ...buildPluginAgentTurnPrepareContext({ queuedInjections }),
   };
 }
-
-export async function getPluginSessionExtensionState(params: {
-  cfg: OpenClawConfig;
-  pluginId: string;
-  sessionKey?: string;
-  agentId?: string;
-}): Promise<Record<string, PluginJsonValue> | undefined> {
-  const pluginId = params.pluginId.trim();
-  const sessionKey = normalizeOptionalString(params.sessionKey);
-  if (!pluginId || !sessionKey) {
-    return undefined;
-  }
-  const entry = await readResolvedSessionEntryInWorker({
-    cfg: params.cfg,
-    sessionKey,
-    agentId: params.agentId,
-  });
-  const value = entry?.pluginExtensions?.[pluginId] as Record<string, PluginJsonValue> | undefined;
-  return value ? structuredClone(value) : undefined;
-}
-
 export async function patchPluginSessionExtension(params: {
   cfg: OpenClawConfig;
   sessionKey: string;
@@ -640,7 +627,6 @@ export async function patchPluginSessionExtension(params: {
   }
   return { ok: true, key: updated.canonicalKey, value: updated.result };
 }
-
 export function projectPluginSessionExtensionsSync(params: {
   sessionKey: string;
   entry: SessionEntry;
@@ -673,7 +659,6 @@ export function projectPluginSessionExtensionsSync(params: {
   }
   return projections;
 }
-
 function projectSessionExtensionValue(params: {
   pluginId: string;
   namespace: string;
