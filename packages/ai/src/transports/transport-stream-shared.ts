@@ -611,6 +611,11 @@ export function finalizeTransportStream(params: {
 type TransportFailureDiagnostic = {
   abortReason?: string;
   incompleteReason?: string;
+  // Content-free labels a provider parsed from an HTTP 4xx body; never its prose.
+  bodyHash?: string;
+  param?: string;
+  paramShape?: "invalid";
+  detailClass?: string;
 };
 
 /** Assign terminal fields and record silent transport failures before partial-call cleanup. */

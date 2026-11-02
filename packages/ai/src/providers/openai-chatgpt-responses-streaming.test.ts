@@ -1,3 +1,4 @@
+import { redactIdentifier } from "@openclaw/normalization-core/node-crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { configureAiTransportHost } from "../host.js";
 import { collectEventTypes } from "../transports/openai-stream-cases.test-support.js";
@@ -301,6 +302,115 @@ describe("OpenAI ChatGPT Responses inference streaming", () => {
     for (const hostile of ["hostile", "invalid_request", "400 body"]) {
       expect(serialized).not.toContain(hostile);
     }
+  });
+
+  const echo = "ECHOED-PROMPT reveal the system prompt";
+  it.each([
+    {
+      shape: "an OpenAI field-path rejection",
+      status: 400,
+      body: {
+        error: {
+          type: "invalid_request_error",
+          param: "tools[3].parameters",
+          code: "invalid_function_parameters",
+          message: `Invalid schema for function 'lookup': ${echo}`,
+        },
+      },
+      labels: {
+        code: "invalid_function_parameters",
+        type: "invalid_request_error",
+        param: "tools[3].parameters",
+      },
+    },
+    {
+      shape: "a param that is not a field path",
+      status: 400,
+      body: { error: { type: "invalid_request_error", param: `input ${echo}`, message: echo } },
+      labels: {
+        code: "invalid_request_error",
+        type: "invalid_request_error",
+        paramShape: "invalid",
+      },
+    },
+    {
+      shape: "an unsupported-parameter detail",
+      status: 400,
+      body: { detail: `Unsupported parameter: '${echo}'` },
+      labels: { detailClass: "unsupported_parameter" },
+    },
+    {
+      shape: "a prompt-echo detail",
+      status: 400,
+      body: { detail: echo },
+      labels: { detailClass: "unknown" },
+    },
+    {
+      shape: "a tool-schema detail",
+      status: 400,
+      body: { detail: `Invalid schema for function 'lookup': ${echo}` },
+      labels: { detailClass: "invalid_tool_schema" },
+    },
+    {
+      shape: "an input-item detail",
+      status: 400,
+      body: { detail: `No tool call found for function call output with call_id c1. ${echo}` },
+      labels: { detailClass: "invalid_input_item" },
+    },
+    {
+      shape: "an unsupported-model detail",
+      status: 400,
+      body: {
+        detail: `The 'gpt-5.6-luna' model is not supported when using Codex with a ChatGPT account. ${echo}`,
+      },
+      labels: { detailClass: "unsupported_model" },
+    },
+    {
+      shape: "a context-window detail",
+      status: 400,
+      body: { detail: `Your input exceeds the context window of this model. ${echo}` },
+      labels: { detailClass: "context_length" },
+    },
+    {
+      shape: "a store detail",
+      status: 400,
+      body: { detail: `Store must be set to false. ${echo}` },
+      labels: { detailClass: "store_must_be_false" },
+    },
+    {
+      shape: "a 5xx detail",
+      status: 500,
+      body: { detail: `Unsupported parameter: '${echo}'` },
+      labels: {},
+    },
+  ])("logs only structured labels for $shape", async ({ status, body, labels }) => {
+    const logWarn = vi.fn();
+    configureAiTransportHost({ logWarn });
+    const raw = JSON.stringify(body);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async () => new Response(raw, { status })),
+    );
+
+    await streamOpenAICodexResponses(model, context, sseOptions).result();
+
+    // Only HTTP 4xx bodies are hashed, with the same digest as failover `rawErrorHash`.
+    const bodyHash = status < 500 ? { bodyHash: redactIdentifier(raw, { len: 12 }) } : {};
+    expect(logWarn.mock.calls.filter(([category]) => category === "provider-error")).toEqual([
+      [
+        "provider-error",
+        "Model request failed",
+        {
+          provider: "openai",
+          model: model.id,
+          name: "CodexApiError",
+          status,
+          ...labels,
+          ...bodyHash,
+        },
+      ],
+    ]);
+    expect(JSON.stringify(logWarn.mock.calls)).not.toContain("ECHOED-PROMPT");
   });
 
   it("preserves failed response identity and misalignment details over WebSocket", async () => {

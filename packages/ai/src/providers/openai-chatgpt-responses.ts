@@ -646,7 +646,12 @@ export const streamOpenAICodexResponses: StreamFunction<
           },
         });
       }
-      const terminal = assignTransportErrorDetails(output, normalizedError, options?.signal);
+      const terminal = assignTransportErrorDetails(
+        output,
+        normalizedError,
+        options?.signal,
+        normalizedError instanceof CodexApiError ? normalizedError.rejection : undefined,
+      );
       // Log only locally-derived facts: timing and a fixed failure category. No
       // projected provider field (message, body, code, type, name) is logged —
       // all of them are provider-controlled text that can carry prompt- or
