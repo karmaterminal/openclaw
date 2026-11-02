@@ -171,7 +171,7 @@ describe("exact plugin local session route proof", () => {
     const key = "agent:main:subagent:abc";
     entry(key);
     listBindings.mockRejectedValueOnce(new Error("binding owner unavailable"));
-    expect(await resolve(key)).toMatchObject({ exists: false, onHost: false });
+    expect(await resolve(key)).toMatchObject({ exists: true, onHost: false, sessionId: "s1" });
     expect(readProjection).not.toHaveBeenCalled();
   });
 
@@ -197,7 +197,7 @@ describe("exact plugin local session route proof", () => {
     });
     expect(await resolve(key)).toMatchObject({ exists: true, onHost: false });
     readProjection.mockRejectedValueOnce(new Error("placement unavailable"));
-    expect(await resolve(key)).toMatchObject({ exists: false, onHost: false });
+    expect(await resolve(key)).toMatchObject({ exists: true, onHost: false, sessionId: "s1" });
   });
 
   it("accepts locally owned remote-exec placements but rejects worker-owned turns", async () => {
@@ -230,6 +230,33 @@ describe("exact plugin local session route proof", () => {
     expect(read).toHaveBeenCalledWith(expect.objectContaining({ sessionKey: key }));
   });
 
+  it("preserves legacy row presence without a session ID", async () => {
+    const key = "agent:main:subagent:legacy";
+    read.mockResolvedValue({ updatedAt: 1 });
+    expect(await resolve(key)).toEqual({
+      sessionKey: key,
+      exists: true,
+      onHost: false,
+      sessionId: null,
+      lifecycleRevision: null,
+    });
+    expect(listBindings).not.toHaveBeenCalled();
+  });
+
+  it("ignores terminal bindings and accepts reclaimed exact placements", async () => {
+    const key = "agent:main:subagent:abc";
+    entry(key);
+    listBindings.mockResolvedValueOnce([{ status: "ended" }, { status: "ending" }] as Awaited<
+      ReturnType<typeof listSessionBindingsBySessionAsync>
+    >);
+    readProjection.mockResolvedValueOnce({
+      placements: new Map([
+        ["s1", { sessionId: "s1", sessionKey: key, agentId: "main", state: "reclaimed" }],
+      ]),
+    });
+    expect(await resolve(key)).toMatchObject({ exists: true, onHost: true });
+  });
+
   it("fails closed for cron, hook, and identity-incomplete rows", async () => {
     for (const key of ["agent:main:cron:job", "agent:main:hook:event"]) {
       entry(key);
@@ -246,18 +273,18 @@ describe("exact plugin local session route proof", () => {
     });
   });
 
-  it("keeps concurrent reads bound to their own exact lifecycle row", async () => {
+  it("rejects a positive locality proof when the row is replaced during auxiliary reads", async () => {
     const key = "agent:main:subagent:abc";
     read
       .mockResolvedValueOnce({ sessionId: "old", lifecycleRevision: "revision-old", updatedAt: 1 })
       .mockResolvedValue({ sessionId: "new", lifecycleRevision: "revision-new", updatedAt: 2 });
-    const [first, second] = await Promise.all([resolve(key), resolve(key)]);
-    expect(first).toMatchObject({
-      onHost: true,
-      sessionId: "old",
-      lifecycleRevision: "revision-old",
+    expect(await resolve(key)).toMatchObject({
+      exists: true,
+      onHost: false,
+      sessionId: "new",
+      lifecycleRevision: "revision-new",
     });
-    expect(second).toMatchObject({
+    expect(await resolve(key)).toMatchObject({
       onHost: true,
       sessionId: "new",
       lifecycleRevision: "revision-new",
