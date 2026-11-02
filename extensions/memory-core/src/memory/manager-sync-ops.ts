@@ -352,6 +352,7 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerReindexOps {
       ) {
         // A worker heap OOM repeats on the same corpus, so no automatic path may start
         // another full rebuild before its cooldown. An explicit CLI index still may.
+        await this.persistReindexResourceFailure();
         this.requestSessionIndexRetry();
         return MEMORY_SYNC_DEFERRED;
       }

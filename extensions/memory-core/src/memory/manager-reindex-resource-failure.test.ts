@@ -115,13 +115,14 @@ describe("memory reindex worker memory failures", () => {
     expect(status.status().custom?.reindexFailure).toEqual(failure);
   });
 
-  it("keeps blocking in process when the worker OOM also loses its record write", async () => {
+  it("keeps blocking when the worker OOM also loses its record write, then records it", async () => {
     const { manager, time, openShadow } = await failingRebuild();
-    vi.spyOn(MemoryIndexDatabase.prototype, "writeReindexFailure").mockRejectedValue(
+    vi.spyOn(MemoryIndexDatabase.prototype, "writeReindexFailure").mockRejectedValueOnce(
       workerHeapOutOfMemory(),
     );
 
     await expect(manager.sync()).rejects.toThrow("JS heap out of memory");
+    expect(readPersistedFailure(manager)).toBeNull();
     time.now += 30_001;
     const deferred = await manager.sync().then(
       () => undefined,
@@ -129,7 +130,8 @@ describe("memory reindex worker memory failures", () => {
     );
     expect(openShadow).toHaveBeenCalledTimes(1);
     expect(deferred).toBeUndefined();
-    expect(readPersistedFailure(manager)).toBeNull();
+    // The deferred sync retried the write, so a restart keeps the cooldown too.
+    expect(readPersistedFailure(manager)).toMatchObject({ attempts: 1 });
     expect(manager.status().custom?.reindexFailure).toMatchObject({ attempts: 1 });
   });
 

@@ -127,12 +127,19 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
     this.fullReindexRetryBackoff.resourceFailure = failure;
     const { state, fix } = describeMemoryReindexResourceFailure(failure, this.agentId);
     log.warn(`memory reindex ${state}. ${fix}`);
+    await this.persistReindexResourceFailure();
+  }
+
+  /** Best effort: deferred syncs retry until the held failure survives a restart. */
+  protected async persistReindexResourceFailure(): Promise<void> {
+    const failure = this.fullReindexRetryBackoff.resourceFailure;
+    if (!failure || failure.failedAt === this.publishedDatabase.facts.reindexFailure?.failedAt) {
+      return;
+    }
     try {
       await this.publishedDatabase.writeReindexFailure(failure);
     } catch (err) {
-      log.warn(
-        `memory reindex failure is held until restart; recording it failed: ${formatErrorMessage(err)}`,
-      );
+      log.warn(`failed to record memory reindex resource failure: ${formatErrorMessage(err)}`);
     }
   }
 

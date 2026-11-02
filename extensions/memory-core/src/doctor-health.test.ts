@@ -336,3 +336,18 @@ describe("managed local embedding setup health check", () => {
     ]);
   });
 });
+
+describe("memory reindex resource failure health check", () => {
+  it("reports nothing for an agent without a memory index", async () => {
+    const stateDir = await createState(false);
+    const checks = new Map<string, HealthCheck>();
+    registerMemoryCoreDoctorChecks({
+      registerHealthCheck: (check) => checks.set(check.id, check),
+      getHealthCheck: (id) => checks.get(id),
+      inspectEmbeddingProviderSetup: async () => undefined,
+      memoryCoreActive: true,
+    });
+    const check = checks.get(MEMORY_REINDEX_RESOURCE_FAILURE_CHECK_ID);
+    await expect(check?.detect(context(stateDir, "openai"))).resolves.toEqual([]);
+  });
+});
