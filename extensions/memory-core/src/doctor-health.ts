@@ -292,18 +292,23 @@ function createReindexResourceFailureCheck(state: MemoryCoreDoctorRegistrationSt
         return [];
       }
       const stateDir = resolveStateDir(ctx.env ?? process.env);
+      const indexes = listConfiguredAgentIds(ctx.cfg)
+        .map((agentId) => ({
+          agentId,
+          databasePath: resolveAgentMemoryDatabasePath(stateDir, agentId),
+        }))
+        .filter(({ databasePath }) => fs.existsSync(databasePath));
+      if (indexes.length === 0) {
+        return [];
+      }
+      // The read-only index worker reads one admission snapshot; no database copy is made.
+      const [{ runMemoryDatabaseAdmission }, { describeMemoryReindexResourceFailure }] =
+        await Promise.all([
+          import("./memory/manager-cpu-worker-runtime.js"),
+          import("./memory/manager-reindex-failure.js"),
+        ]);
       const findings: HealthFinding[] = [];
-      for (const agentId of listConfiguredAgentIds(ctx.cfg)) {
-        const databasePath = resolveAgentMemoryDatabasePath(stateDir, agentId);
-        if (!fs.existsSync(databasePath)) {
-          continue;
-        }
-        // The read-only index worker reads one admission snapshot; no database copy is made.
-        const [{ runMemoryDatabaseAdmission }, { describeMemoryReindexResourceFailure }] =
-          await Promise.all([
-            import("./memory/manager-cpu-worker-runtime.js"),
-            import("./memory/manager-reindex-failure.js"),
-          ]);
+      for (const { agentId, databasePath } of indexes) {
         let failure;
         try {
           failure = (await runMemoryDatabaseAdmission({ agentId, databasePath })).facts

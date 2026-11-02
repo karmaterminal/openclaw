@@ -17,6 +17,7 @@ import { withMemoryWorkspaceLock } from "../memory-workspace-lock.js";
 import { MemoryIndexDatabase } from "./manager-database-context.js";
 import {
   cleanupOrphanMemoryReindexShadows,
+  releaseLiveMemoryReindexShadow,
   removeMemoryDatabaseFiles,
   retainLiveMemoryReindexShadow,
 } from "./manager-db.js";
@@ -62,7 +63,6 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
   private reindexState?: {
     shadow: MemoryIndexDatabase;
     tempDbPath: string;
-    releaseShadow: () => void;
     originalDatabase: MemoryIndexDatabase;
     originalRevision: number;
     originalRetryState: MemoryReindexRetryState;
@@ -90,8 +90,8 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
       if (!state.shadow.postgresStageId) {
         state.shadow.assertShadowPath();
         await removeMemoryDatabaseFiles(state.tempDbPath);
+        releaseLiveMemoryReindexShadow(state.tempDbPath);
       }
-      state.releaseShadow();
     }
   }
 
@@ -177,9 +177,10 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
     const dbPath = resolveUserPath(this.settings.store.databasePath);
     const resuming = this.reindexState;
     const tempDbPath = resuming?.tempDbPath ?? `${dbPath}.memory-reindex-${randomUUID()}`;
-    // Registered before the file exists, so orphan cleanup never removes a live shadow.
-    let releaseShadow =
-      resuming || postgresStage ? undefined : retainLiveMemoryReindexShadow(tempDbPath);
+    if (!resuming && !postgresStage) {
+      // Registered before the file exists, so orphan cleanup never removes a live shadow.
+      retainLiveMemoryReindexShadow(tempDbPath);
+    }
     const originalDatabase = resuming?.originalDatabase ?? this.database;
     const originalRetryState = resuming?.originalRetryState ?? this.snapshotReindexRetryState();
     const withEmbeddings = this.syncProviderGeneration?.kind === "semantic";
@@ -198,7 +199,6 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
       const state = (this.reindexState ??= {
         shadow,
         tempDbPath,
-        releaseShadow: releaseShadow ?? (() => {}),
         originalDatabase,
         originalRevision,
         originalRetryState,
@@ -213,8 +213,6 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
           yielded: false,
         },
       });
-      // The retained state owns the registration now; discardReindex releases it.
-      releaseShadow = undefined;
       state.progress.yielded = false;
       if (!resuming) {
         shadow.vector.enabled = this.vector.enabled;
@@ -370,7 +368,10 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
       } catch (err) {
         log.warn(`failed to remove memory reindex shadow database: ${formatErrorMessage(err)}`);
       }
-      releaseShadow?.();
+      // A shadow that failed before its state existed has no later discard.
+      if (this.reindexState?.tempDbPath !== tempDbPath) {
+        releaseLiveMemoryReindexShadow(tempDbPath);
+      }
     }
   }
 }

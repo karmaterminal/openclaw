@@ -189,13 +189,13 @@ export async function removeMemoryDatabaseFiles(dbPath: string): Promise<void> {
   }
 }
 
-/** Keep orphan cleanup away from a shadow path until the returned release runs. */
-export function retainLiveMemoryReindexShadow(shadowPath: string): () => void {
-  const key = path.resolve(shadowPath);
-  liveMemoryReindexShadows.add(key);
-  return () => {
-    liveMemoryReindexShadows.delete(key);
-  };
+/** Keep orphan cleanup away from a shadow path until it is released. */
+export function retainLiveMemoryReindexShadow(shadowPath: string): void {
+  liveMemoryReindexShadows.add(path.resolve(shadowPath));
+}
+
+export function releaseLiveMemoryReindexShadow(shadowPath: string): void {
+  liveMemoryReindexShadows.delete(path.resolve(shadowPath));
 }
 
 /**

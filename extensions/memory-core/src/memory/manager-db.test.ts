@@ -22,6 +22,7 @@ import {
   cleanupOrphanMemoryReindexShadows,
   closeMemoryDatabase,
   openMemoryDatabaseAtPath,
+  releaseLiveMemoryReindexShadow,
   resetMemoryDatabase,
   retainLiveMemoryReindexShadow,
 } from "./manager-db.js";
@@ -555,12 +556,12 @@ describe("memory manager database publication", () => {
       await fs.utimes(`${oldShadow}${suffix}`, old, old);
     }
     await fs.writeFile(youngShadow, "orphan");
-    const release = retainLiveMemoryReindexShadow(liveShadow);
+    retainLiveMemoryReindexShadow(liveShadow);
     await fs.writeFile(liveShadow, "active");
     try {
       await expect(cleanupOrphanMemoryReindexShadows(databasePath)).resolves.toBe(2);
     } finally {
-      release();
+      releaseLiveMemoryReindexShadow(liveShadow);
     }
 
     await expectPathMissing(oldShadow);
