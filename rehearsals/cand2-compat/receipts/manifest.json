@@ -1,0 +1,251 @@
+{
+  "writeSha": "15aa7e9333a242debb32586afacd09a3bad816ce",
+  "writeCheckoutHead": "a25695ba17af993d302684f7705b1d632323350f",
+  "writtenAt": "2026-11-02T02:34:27.494Z",
+  "surfaces": {
+    "discord-ingress": {
+      "stateDir": "/home/figs/flesh_beast_best_beast/source/WORKTREES/cand2-compat-tmp/rehearsal/fixtures/discord-ingress/state",
+      "validIds": [
+        "1300000000000000001",
+        "1300000000000000002",
+        "1300000000000000003",
+        "1300000000000000004"
+      ],
+      "pendingIds": [
+        "1300000000000000001",
+        "1300000000000000002",
+        "1300000000000000003",
+        "1300000000000000009"
+      ],
+      "claimedIds": [
+        "1300000000000000004"
+      ],
+      "corruptId": "1300000000000000009",
+      "botUserId": "1400000000000000001",
+      "storedPayloadShape": [
+        "version",
+        "receivedAt",
+        "rawMessage"
+      ],
+      "storedRawMessageKeys": [
+        "attachments",
+        "author",
+        "channel_id",
+        "content",
+        "edited_timestamp",
+        "embeds",
+        "guild_id",
+        "id",
+        "member",
+        "mention_everyone",
+        "mention_roles",
+        "mentions",
+        "pinned",
+        "timestamp",
+        "tts",
+        "type"
+      ]
+    },
+    "pending-input-aggregate": {
+      "stateDir": "/home/figs/flesh_beast_best_beast/source/WORKTREES/cand2-compat-tmp/rehearsal/fixtures/pending-input-aggregate/state",
+      "scope": {
+        "agentId": "main",
+        "sessionKey": "agent:main:discord:channel:cand2-compat-room",
+        "sessionId": "cand2-compat-room-session"
+      },
+      "committedScope": {
+        "agentId": "main",
+        "sessionKey": "agent:main:discord:channel:cand2-compat-committed-room",
+        "sessionId": "cand2-compat-committed-session"
+      },
+      "committedEventKeys": [
+        "id",
+        "message",
+        "parentId",
+        "timestamp",
+        "type"
+      ],
+      "staged": [
+        {
+          "runId": "cand2-compat-aggregate-run",
+          "idempotencyKey": "followup-collect:queue-test:session pending input of an ambient owner aggregate > stages the aggregate's collected user turn and leaves it interrupted:540772633968ec04e251473ba2bae6f9e19f46c145b72e8a37ae201c4367092b",
+          "message": {
+            "role": "user",
+            "content": "[Queued messages while agent was busy]\n\n---\nQueued #1 (from peer-a)\nroom message a1\n\n---\nQueued #2 (from peer-b)\nroom message a2\n\n---\nQueued #3 (from peer-c)\nroom message a3",
+            "timestamp": 1793586867697,
+            "idempotencyKey": "followup-collect:queue-test:session pending input of an ambient owner aggregate > stages the aggregate's collected user turn and leaves it interrupted:540772633968ec04e251473ba2bae6f9e19f46c145b72e8a37ae201c4367092b",
+            "__openclaw": {
+              "senderIsOwner": false,
+              "requesterOrigin": {
+                "sessionKey": "agent:main:discord:channel:room",
+                "messageProvider": "discord",
+                "accountId": "default",
+                "chatType": "channel",
+                "conversationId": "channel:room",
+                "groupId": "room",
+                "groupChannel": "#room"
+              }
+            }
+          }
+        },
+        {
+          "runId": "cand2-compat-member-run",
+          "idempotencyKey": "baa5077e-2f39-426d-a057-16de695e5879:user",
+          "message": {
+            "role": "user",
+            "content": "room message a1",
+            "timestamp": 1793586867686,
+            "__openclaw": {
+              "senderIsOwner": true,
+              "requesterOrigin": {
+                "sessionKey": "agent:main:discord:channel:room",
+                "messageProvider": "discord",
+                "accountId": "default",
+                "chatType": "channel",
+                "conversationId": "channel:room",
+                "groupId": "room",
+                "groupChannel": "#room",
+                "senderId": "peer-a",
+                "senderName": "peer-a",
+                "senderUsername": "peer-a-handle"
+              }
+            },
+            "idempotencyKey": "baa5077e-2f39-426d-a057-16de695e5879:user"
+          }
+        }
+      ],
+      "aggregateRequesterOrigin": {
+        "sessionKey": "agent:main:discord:channel:room",
+        "messageProvider": "discord",
+        "accountId": "default",
+        "chatType": "channel",
+        "conversationId": "channel:room",
+        "groupId": "room",
+        "groupChannel": "#room"
+      },
+      "memberRequesterOriginSenderId": "peer-a",
+      "webhook": {
+        "runId": "cand2-compat-webhook-run",
+        "message": {
+          "role": "user",
+          "content": "synthetic webhook relay post",
+          "timestamp": 1793586868430,
+          "idempotencyKey": "channel-user:v1:dc9883d9eb796e0c1f6125f00c9db5cd17ab3dc5f3e68dcfdcb9b09c303b5595",
+          "__openclaw": {
+            "senderIsOwner": false,
+            "senderId": "1500000000000000001",
+            "senderName": "relay",
+            "senderUsername": "relay",
+            "senderIdentity": {
+              "type": "observation",
+              "id": "1500000000000000001",
+              "pluginId": "discord",
+              "accountId": "default",
+              "senderKind": "unknown"
+            }
+          }
+        },
+        "idempotencyKey": "channel-user:v1:dc9883d9eb796e0c1f6125f00c9db5cd17ab3dc5f3e68dcfdcb9b09c303b5595"
+      }
+    },
+    "codex-registration": {
+      "bin": "/home/figs/flesh_beast_best_beast/source/WORKTREES/cand2-compat-tmp/rehearsal/fixtures/codex-registration/bin",
+      "perReader": {
+        "cand2-15aa7e93": {
+          "stateDir": "/home/figs/flesh_beast_best_beast/source/WORKTREES/cand2-compat-tmp/rehearsal/fixtures/codex-registration/cand2-15aa7e93/state",
+          "pid": 2520946,
+          "startedAt": "ef5fdaa6-25a2-4f76-a58c-db9b3f114ef8:71964015",
+          "commandFingerprint": "2d0c3d971196d8ab18744cd88923e8a849381414eac8ed6683d954e711ddb3ba",
+          "codexCommand": "/home/figs/.cache/openclaw/bun/openclaw-v1.4.4-20261024-807211511f-webkit-a2976f02e6/linux-arm64/bin/bun /home/figs/flesh_beast_best_beast/source/WORKTREES/cand2-compat-tmp/rehearsal/fixtures/codex-registration/bin/codex app-server",
+          "entryKeys": [
+            "child",
+            "parent"
+          ],
+          "childKeys": [
+            "commandFingerprint",
+            "pgid",
+            "pid",
+            "startedAt"
+          ]
+        },
+        "old-22f49a43": {
+          "stateDir": "/home/figs/flesh_beast_best_beast/source/WORKTREES/cand2-compat-tmp/rehearsal/fixtures/codex-registration/old-22f49a43/state",
+          "pid": 2520978,
+          "startedAt": "ef5fdaa6-25a2-4f76-a58c-db9b3f114ef8:71964034",
+          "commandFingerprint": "2d0c3d971196d8ab18744cd88923e8a849381414eac8ed6683d954e711ddb3ba",
+          "codexCommand": "/home/figs/.cache/openclaw/bun/openclaw-v1.4.4-20261024-807211511f-webkit-a2976f02e6/linux-arm64/bin/bun /home/figs/flesh_beast_best_beast/source/WORKTREES/cand2-compat-tmp/rehearsal/fixtures/codex-registration/bin/codex app-server",
+          "entryKeys": [
+            "child",
+            "parent"
+          ],
+          "childKeys": [
+            "commandFingerprint",
+            "pgid",
+            "pid",
+            "startedAt"
+          ]
+        },
+        "old-3d3364dd": {
+          "stateDir": "/home/figs/flesh_beast_best_beast/source/WORKTREES/cand2-compat-tmp/rehearsal/fixtures/codex-registration/old-3d3364dd/state",
+          "pid": 2520991,
+          "startedAt": "ef5fdaa6-25a2-4f76-a58c-db9b3f114ef8:71964048",
+          "commandFingerprint": "2d0c3d971196d8ab18744cd88923e8a849381414eac8ed6683d954e711ddb3ba",
+          "codexCommand": "/home/figs/.cache/openclaw/bun/openclaw-v1.4.4-20261024-807211511f-webkit-a2976f02e6/linux-arm64/bin/bun /home/figs/flesh_beast_best_beast/source/WORKTREES/cand2-compat-tmp/rehearsal/fixtures/codex-registration/bin/codex app-server",
+          "entryKeys": [
+            "child",
+            "parent"
+          ],
+          "childKeys": [
+            "commandFingerprint",
+            "pgid",
+            "pid",
+            "startedAt"
+          ]
+        }
+      },
+      "controlStateDir": "/home/figs/flesh_beast_best_beast/source/WORKTREES/cand2-compat-tmp/rehearsal/fixtures/codex-registration/control-corrupt/state"
+    },
+    "room-history-watermark": {
+      "stateDir": "/home/figs/flesh_beast_best_beast/source/WORKTREES/cand2-compat-tmp/rehearsal/fixtures/room-history-watermark/state",
+      "filesAfterTurn": {}
+    }
+  },
+  "sealedAt": "2026-11-02T02:34:30.710Z",
+  "sealed": {
+    "/home/figs/flesh_beast_best_beast/source/WORKTREES/cand2-compat-tmp/rehearsal/fixtures/codex-registration/cand2-15aa7e93/state": {
+      "client/credentials.sqlite": "55b834e001b0a91c9987f4befdd3f6ac13cad4cc58c021c82dfa8fa14329183f",
+      "state/openclaw.sqlite": "292f595daa9fa78239561bdb9ad1b5176ebb938096fce0bea737fce0c980cdbf",
+      "state/openclaw.sqlite.seal": "b79f9cede2ac6c9c6a9affa0857c89e0f6cb2135cda8a5d938c2022bbf6f482a"
+    },
+    "/home/figs/flesh_beast_best_beast/source/WORKTREES/cand2-compat-tmp/rehearsal/fixtures/codex-registration/control-corrupt/state": {
+      "client/credentials.sqlite": "9fd61368b7716ab2449da9bc4af1db0387d33c576dc1baf2f13219c62f73e8ee",
+      "state/openclaw.sqlite": "40c5276041d39c9cb13e0c3a98db36aede11610e7bfdb975da6ec9d5398e2241",
+      "state/openclaw.sqlite.seal": "8b2d699214faaebc5d4d3311df6c79d121d3be2a2343ab808488242716ac043b"
+    },
+    "/home/figs/flesh_beast_best_beast/source/WORKTREES/cand2-compat-tmp/rehearsal/fixtures/codex-registration/old-22f49a43/state": {
+      "client/credentials.sqlite": "658f49609791c3e70b61a470f69161208224c284a7be8d8928f36f0291a83e0f",
+      "state/openclaw.sqlite": "23359abddee1766389b19b130e2207fcc27827787b9df81cf3fd4a1864dedb11",
+      "state/openclaw.sqlite.seal": "041cde35733b65c9a73e29a8d82ea57a290ba4f4202610ce65fa8f9b8095aefc"
+    },
+    "/home/figs/flesh_beast_best_beast/source/WORKTREES/cand2-compat-tmp/rehearsal/fixtures/codex-registration/old-3d3364dd/state": {
+      "client/credentials.sqlite": "6ed9d4c939e0ec92118dc52185140c76fbe1eaf50820100ec037838b4c24281b",
+      "state/openclaw.sqlite": "5b4e0ab671ed881747c154300485675ab708fbda3106990d826488030f721aab",
+      "state/openclaw.sqlite.seal": "903c6b337e021eb0a5cf32d28c3789c0fc882d2d888f19cc88f64d9fd10656cb"
+    },
+    "/home/figs/flesh_beast_best_beast/source/WORKTREES/cand2-compat-tmp/rehearsal/fixtures/discord-ingress/state": {
+      "client/credentials.sqlite": "7ba3cb2a7cf9775d18db8a65e32d8b8afdb4ee2d3533de7e9aa771312166aed5",
+      "state/openclaw.sqlite": "953846fc2615b251e0d77c384de030cbdf1ba335910eedcd27848681affda1a5",
+      "state/openclaw.sqlite.seal": "7695733f6eadce10b8c563caa7aa1ab1938a5ddc75370149d0cac2d667afc2fd"
+    },
+    "/home/figs/flesh_beast_best_beast/source/WORKTREES/cand2-compat-tmp/rehearsal/fixtures/pending-input-aggregate/state": {
+      "agents/main/agent/openclaw-agent.sqlite": "5f4d3cade57c98161fb291d73ddee280dc63acf4c742db3bff9f2af50d991706",
+      "agents/main/agent/openclaw-agent.sqlite.seal": "12d28f7d779635d6a4e49ce4c3097a8a6bdc24db6ebfea6be24d74dbdcd4ef50",
+      "client/credentials.sqlite": "37c157baca998ab7279032cbef9715aa5b60049154653340d180a7a4312cdf3a",
+      "state/openclaw-quarantine.sqlite": "6cd0878fb3629a2ed5fb9fdd12fcf0418b0a6b6999a66015ce435e17c1b1b7ab",
+      "state/openclaw.sqlite": "67f8fa28e84c68f794046d8268459d3f5e2ae846271e2e52015a3d3921f0f457",
+      "state/openclaw.sqlite-shm": "b81a63b996f921d4f0587bfc4d2576472bb415a06cd11372ab9ada6898863a97",
+      "state/openclaw.sqlite-wal": "e6e08706179b9f047bbbbd0bf298ffbb87298367dd656ca961c22a640710b83d"
+    },
+    "/home/figs/flesh_beast_best_beast/source/WORKTREES/cand2-compat-tmp/rehearsal/fixtures/room-history-watermark/state": {}
+  }
+}

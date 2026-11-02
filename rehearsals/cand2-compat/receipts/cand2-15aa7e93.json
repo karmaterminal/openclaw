@@ -1,0 +1,157 @@
+{
+  "readSha": "15aa7e9333a242debb32586afacd09a3bad816ce",
+  "readCheckoutHead": "a25695ba17af993d302684f7705b1d632323350f",
+  "rows": [
+    {
+      "surface": "discord-ingress",
+      "test": "discord durable ingress rows > recovers, decodes, delivers and settles CAND2's rows; dead-letters the corrupt control",
+      "writeSha": "15aa7e9333a242debb32586afacd09a3bad816ce",
+      "outcome": "decoded-and-delivered",
+      "delivered": [
+        {
+          "id": "1300000000000000001",
+          "channelId": "1200000000000000001",
+          "guildId": "1100000000000000001",
+          "authorBot": true,
+          "memberRoles": [],
+          "mentionIds": [],
+          "content": "synthetic message 1300000000000000001"
+        },
+        {
+          "id": "1300000000000000002",
+          "channelId": "1200000000000000001",
+          "guildId": "1100000000000000001",
+          "memberRoles": [],
+          "mentionIds": [
+            "1400000000000000001"
+          ],
+          "content": "synthetic message 1300000000000000002"
+        },
+        {
+          "id": "1300000000000000003",
+          "channelId": "1200000000000000001",
+          "guildId": "1100000000000000001",
+          "webhookId": "1500000000000000001",
+          "authorBot": true,
+          "memberRoles": [],
+          "mentionIds": [],
+          "content": "synthetic message 1300000000000000003"
+        },
+        {
+          "id": "1300000000000000004",
+          "channelId": "1200000000000000001",
+          "guildId": "1100000000000000001",
+          "authorBot": true,
+          "memberRoles": [],
+          "mentionIds": [],
+          "content": "synthetic message 1300000000000000004"
+        }
+      ],
+      "control": [
+        {
+          "id": "1300000000000000009",
+          "reason": "invalid-event",
+          "message": "Discord ingress payload 1300000000000000009 is invalid"
+        }
+      ],
+      "drainErrors": [
+        "discord ingress: spooled update 1300000000000000009 failed with non-retryable invalid-event: Discord ingress payload 1300000000000000009 is invalid; dead-lettered"
+      ]
+    },
+    {
+      "surface": "pending-input-aggregate",
+      "test": "session pending input of an ambient owner aggregate > lists, reads and replays CAND2's interrupted aggregate turn; refuses a changed replay",
+      "writeSha": "15aa7e9333a242debb32586afacd09a3bad816ce",
+      "outcome": "listed-read-replayed",
+      "listed": [
+        {
+          "runId": "cand2-compat-aggregate-run",
+          "state": "interrupted"
+        },
+        {
+          "runId": "cand2-compat-member-run",
+          "state": "interrupted"
+        },
+        {
+          "runId": "cand2-compat-webhook-run",
+          "state": "interrupted"
+        }
+      ],
+      "submittedSource": "pending",
+      "replayRequesterOrigin": {
+        "sessionKey": "agent:main:discord:channel:room",
+        "messageProvider": "discord",
+        "accountId": "default",
+        "chatType": "channel",
+        "conversationId": "channel:room",
+        "groupId": "room",
+        "groupChannel": "#room"
+      },
+      "replayPrincipalKey": null,
+      "control": "Error: Pending input idempotency key conflicts with the accepted input"
+    },
+    {
+      "surface": "pending-input-aggregate",
+      "test": "session pending input of an ambient owner aggregate > refuses a corrupted pending user turn (control)",
+      "writeSha": "15aa7e9333a242debb32586afacd09a3bad816ce",
+      "outcome": "control-refused",
+      "error": "Error: Pending input has an invalid persisted user message"
+    },
+    {
+      "surface": "pending-input-aggregate",
+      "test": "pending channel turn of a Discord webhook post > reads CAND2's webhook turn; only a reused run id would make re-staging byte-sensitive",
+      "writeSha": "15aa7e9333a242debb32586afacd09a3bad816ce",
+      "outcome": "read; re-stage outcomes recorded",
+      "storedSenderKind": "unknown",
+      "readerExcludesWebhookFromIsBot": true,
+      "readerOwnBytesMatchCand2": true,
+      "restageFreshRunIdCand2Bytes": "Error: Pending input idempotency key conflicts with the accepted input",
+      "restageAcceptedRunIdReaderBytes": "accepted",
+      "restageAcceptedRunIdCand2Bytes": "accepted"
+    },
+    {
+      "surface": "pending-input-aggregate",
+      "test": "transcript user turn of an ambient owner aggregate > loads CAND2's committed aggregate turn from the transcript",
+      "writeSha": "15aa7e9333a242debb32586afacd09a3bad816ce",
+      "outcome": "transcript-loaded",
+      "events": 2,
+      "submittedSource": "transcript",
+      "committedOpenClawFacts": {
+        "senderIsOwner": false,
+        "requesterOrigin": {
+          "sessionKey": "agent:main:discord:channel:room",
+          "messageProvider": "discord",
+          "accountId": "default",
+          "chatType": "channel",
+          "conversationId": "channel:room",
+          "groupId": "room",
+          "groupChannel": "#room"
+        }
+      }
+    },
+    {
+      "surface": "pending-input-aggregate",
+      "test": "transcript user turn of an ambient owner aggregate > refuses a corrupted transcript event (control)",
+      "writeSha": "15aa7e9333a242debb32586afacd09a3bad816ce",
+      "outcome": "control-refused",
+      "error": "SyntaxError: JSON Parse error: Unexpected EOF"
+    },
+    {
+      "surface": "codex-registration",
+      "test": "codex app-server process registrations > reaps this reader's live CAND2-registered scoped Codex orphan",
+      "writeSha": "15aa7e9333a242debb32586afacd09a3bad816ce",
+      "outcome": "decoded-and-reaped",
+      "pid": 2520946,
+      "entriesBefore": 1,
+      "entriesAfter": 0,
+      "orphanAliveAfter": false
+    },
+    {
+      "surface": "codex-registration",
+      "test": "codex app-server process registrations > refuses a registration its strict schema rejects (control)",
+      "writeSha": "15aa7e9333a242debb32586afacd09a3bad816ce",
+      "outcome": "control-refused",
+      "error": "ZodError: [\n  {\n    \"code\": \"unrecognized_keys\",\n    \"keys\": [\n      \"unexpected\"\n    ],\n    \"path\": [],\n    \"message\": \"Unrecognized key: \\\"unexpected\\\"\"\n  }\n]"
+    }
+  ]
+}

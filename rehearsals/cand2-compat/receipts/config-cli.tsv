@@ -1,0 +1,21 @@
+cand2-15aa7e93	a-clean	exit=0	plain_exit=0	config_unchanged=yes	state=none	valid=true 
+cand2-15aa7e93	b1-process-only	exit=0	plain_exit=0	config_unchanged=yes	state=none	valid=true 
+cand2-15aa7e93	b2-groupchat-only	exit=0	plain_exit=0	config_unchanged=yes	state=none	valid=true 
+cand2-15aa7e93	b3-agent-groupchat-only	exit=0	plain_exit=0	config_unchanged=yes	state=none	valid=true 
+cand2-15aa7e93	b4-disabled-values	exit=0	plain_exit=0	config_unchanged=yes	state=none	valid=true 
+cand2-15aa7e93	b-both	exit=0	plain_exit=0	config_unchanged=yes	state=none	valid=true 
+cand2-15aa7e93	control-corrupt	exit=1	plain_exit=1	config_unchanged=yes	state=none	valid=false gateway.mode: Invalid input (allowed: "local", "remote")
+old-22f49a43	a-clean	exit=0	plain_exit=0	config_unchanged=yes	state=none	valid=true 
+old-22f49a43	b1-process-only	exit=1	plain_exit=1	config_unchanged=yes	state=none	valid=false <root>: Unrecognized key: "process"
+old-22f49a43	b2-groupchat-only	exit=1	plain_exit=1	config_unchanged=yes	state=none	valid=false messages.groupChat: Unrecognized keys: "ambientOwnerAggregate", "ambientOwnerAggregatePeers"
+old-22f49a43	b3-agent-groupchat-only	exit=1	plain_exit=1	config_unchanged=yes	state=none	valid=false agents.entries.main.groupChat: Unrecognized keys: "ambientOwnerAggregate", "ambientOwnerAggregatePeers"
+old-22f49a43	b4-disabled-values	exit=1	plain_exit=1	config_unchanged=yes	state=none	valid=false messages.groupChat: Unrecognized key: "ambientOwnerAggregate" | <root>: Unrecognized key: "process"
+old-22f49a43	b-both	exit=1	plain_exit=1	config_unchanged=yes	state=none	valid=false messages.groupChat: Unrecognized keys: "ambientOwnerAggregate", "ambientOwnerAggregatePeers" | <root>: Unrecognized key: "process"
+old-22f49a43	control-corrupt	exit=1	plain_exit=1	config_unchanged=yes	state=none	valid=false gateway.mode: Invalid input (allowed: "local", "remote")
+old-3d3364dd	a-clean	exit=0	plain_exit=0	config_unchanged=yes	state=none	valid=true 
+old-3d3364dd	b1-process-only	exit=1	plain_exit=1	config_unchanged=yes	state=none	valid=false <root>: Unrecognized key: "process"
+old-3d3364dd	b2-groupchat-only	exit=1	plain_exit=1	config_unchanged=yes	state=none	valid=false messages.groupChat: Unrecognized keys: "ambientOwnerAggregate", "ambientOwnerAggregatePeers"
+old-3d3364dd	b3-agent-groupchat-only	exit=1	plain_exit=1	config_unchanged=yes	state=none	valid=false agents.entries.main.groupChat: Unrecognized keys: "ambientOwnerAggregate", "ambientOwnerAggregatePeers"
+old-3d3364dd	b4-disabled-values	exit=1	plain_exit=1	config_unchanged=yes	state=none	valid=false messages.groupChat: Unrecognized key: "ambientOwnerAggregate" | <root>: Unrecognized key: "process"
+old-3d3364dd	b-both	exit=1	plain_exit=1	config_unchanged=yes	state=none	valid=false messages.groupChat: Unrecognized keys: "ambientOwnerAggregate", "ambientOwnerAggregatePeers" | <root>: Unrecognized key: "process"
+old-3d3364dd	control-corrupt	exit=1	plain_exit=1	config_unchanged=yes	state=none	valid=false gateway.mode: Invalid input (allowed: "local", "remote")
