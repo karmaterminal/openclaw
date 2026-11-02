@@ -137,7 +137,12 @@ function readCodexHttpRejection(
     // Digest of the size-bounded body read, computed like failover `rawErrorHash` (same
     // function, different input), so identical rejections correlate across hosts.
     ...(raw.trim() ? { bodyHash: redactIdentifier(raw, { len: 12 }) } : {}),
-    ...(fieldPath ? { param } : param == null ? {} : { paramShape: "invalid" }),
+    // Index values are dropped: chained `[n]` segments could otherwise spell out digits.
+    ...(fieldPath
+      ? { param: param.replace(/\[[0-9]+\]/g, "[]") }
+      : param == null
+        ? {}
+        : { paramShape: "invalid" }),
     ...(payload?.detail === undefined
       ? {}
       : { detailClass: classifyCodexRejectionDetail(payload.detail) }),

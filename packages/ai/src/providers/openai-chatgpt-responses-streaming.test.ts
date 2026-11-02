@@ -320,7 +320,7 @@ describe("OpenAI ChatGPT Responses inference streaming", () => {
       labels: {
         code: "invalid_function_parameters",
         type: "invalid_request_error",
-        param: "tools[3].parameters",
+        param: "tools[].parameters",
       },
     },
     {
@@ -367,7 +367,13 @@ describe("OpenAI ChatGPT Responses inference streaming", () => {
       shape: "a nested request field path",
       status: 400,
       body: { error: { code: "x", param: "input[12].content[0].text", message: echo } },
-      labels: { code: "x", param: "input[12].content[0].text" },
+      labels: { code: "x", param: "input[].content[].text" },
+    },
+    {
+      shape: "chained indexes spelling out digits",
+      status: 400,
+      body: { error: { code: "x", param: "input[4111][1111][1111][1111].content", message: echo } },
+      labels: { code: "x", param: "input[][][][].content" },
     },
     {
       shape: "a reasoning field path",

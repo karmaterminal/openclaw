@@ -297,7 +297,8 @@ same warning also carries labels parsed from the response body, never its text:
 
 - `param`: the rejected field when it is a request field path of at most 80
   characters built only from known request-schema names and short indexes,
-  such as `tools[3].parameters` or `reasoning.effort`. Any other non-null
+  such as `tools[3].parameters` or `reasoning.effort`. Index values are
+  dropped from the logged path (`tools[].parameters`). Any other non-null
   value, including identifier-shaped tokens, is dropped and logged as
   `paramShape: "invalid"`.
 - `detailClass`: the class of a `{"detail": ...}` body: `unsupported_parameter`,
