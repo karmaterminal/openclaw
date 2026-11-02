@@ -31,6 +31,14 @@ function workerHeapOutOfMemory(): Error {
   );
 }
 
+// The same broker shape without the heap-limit cause: a worker that stopped for another reason.
+function workerExited(): Error {
+  return Object.assign(
+    new Error("SQLite worker stopped before its result was received: worker exited with code 1"),
+    { name: "SqliteWorkerError", code: "outcome-unknown" },
+  );
+}
+
 function failShadowWritesWithWorkerOom() {
   // oxlint-disable-next-line typescript/unbound-method -- Called with the intercepted owner.
   const replaceSource = MemoryIndexDatabase.prototype.replaceSource;
@@ -200,6 +208,110 @@ describe("memory reindex worker memory failures", () => {
     expect(readPersistedFailure(manager)).toBeNull();
     expect(manager.status().custom?.reindexFailure).toBeUndefined();
     expect(await doctor!.detect(context)).toEqual([]);
+  });
+
+  async function failingSessionBootstrap(failure: () => Error, site: "read" | "write" = "write") {
+    fixture.provider.forceNoProvider = true;
+    const cfg = fixture.createConfig({
+      provider: "none",
+      sources: ["sessions"],
+      sessionMemory: true,
+      vectorEnabled: false,
+    });
+    const manager = await fixture.getFreshManager(cfg, "cli");
+    await manager.sync({ reason: "cli", force: true });
+    // Valid metadata over an empty index: a search bootstraps by reading every transcript,
+    // without the full-session retry flag a failed rebuild would have set.
+    expect(manager.status().custom?.indexIdentity).toEqual({ status: "valid" });
+    expect(manager.status().chunks).toBe(0);
+    expect(Reflect.get(manager, "sessionsFullRetryDirty")).toBe(false);
+    for (let index = 0; index < 3; index++) {
+      await fixture.seedSessionTranscript({
+        sessionId: `bootstrap-${index}`,
+        messages: [{ role: "user", timestamp: Date.now(), content: `bootstrap marker ${index}` }],
+      });
+    }
+    const time = { now: Date.now() };
+    vi.spyOn(Date, "now").mockImplementation(() => time.now);
+    const openShadow = vi.spyOn(MemoryIndexDatabase, "openShadow");
+    const prototype = Object.getPrototypeOf(manager) as {
+      listSessionCorpusEntries(): Promise<unknown[]>;
+    };
+    // oxlint-disable-next-line typescript/unbound-method -- Called with the intercepted owner.
+    const listSessionCorpusEntries = prototype.listSessionCorpusEntries;
+    // On the prototype, so a restarted manager's reads count too.
+    const corpusReads = vi.spyOn(prototype, "listSessionCorpusEntries");
+    if (site === "read") {
+      // Fails before any transcript write, so nothing marks the full-session retry.
+      corpusReads.mockImplementation(async function (this: unknown) {
+        await listSessionCorpusEntries.call(this);
+        throw failure();
+      });
+    } else {
+      // The #1536 signature: the SQLite worker dies while replacing transcript rows.
+      vi.spyOn(MemoryIndexDatabase.prototype, "replaceSource").mockImplementation(async () => {
+        throw failure();
+      });
+    }
+    return { cfg, manager, time, openShadow, corpusReads };
+  }
+
+  it.each(["write", "read"] as const)(
+    "records a search bootstrap's worker OOM at the transcript %s so later searches defer instead of re-reading transcripts",
+    async (site) => {
+      const { cfg, manager, time, openShadow, corpusReads } = await failingSessionBootstrap(
+        workerHeapOutOfMemory,
+        site,
+      );
+      const failedAt = time.now;
+
+      // Search keeps the bootstrap error to itself and returns no hits.
+      await expect(manager.search("bootstrap marker")).resolves.toEqual([]);
+      expect(corpusReads).toHaveBeenCalledTimes(1);
+      time.now += 30_001;
+      await expect(manager.search("bootstrap marker")).resolves.toEqual([]);
+      expect(corpusReads).toHaveBeenCalledTimes(1);
+      // A deferred pass keeps the failure that still owns the work; a completed pass clears it.
+      expect(manager.status().lastSyncError).toContain("JS heap out of memory");
+      const failure = {
+        kind: "worker-out-of-memory",
+        sources: ["sessions"],
+        attempts: 1,
+        failedAt,
+        retryAt: failedAt + HOUR_MS,
+      };
+      expect(readPersistedFailure(manager)).toEqual(failure);
+
+      // One retry after the cooldown; its OOM counts once and starts the longer cooldown.
+      time.now = failure.retryAt;
+      await expect(manager.search("bootstrap marker")).resolves.toEqual([]);
+      expect(corpusReads).toHaveBeenCalledTimes(2);
+      const retried = {
+        ...failure,
+        attempts: 2,
+        failedAt: time.now,
+        retryAt: time.now + 6 * HOUR_MS,
+      };
+      expect(readPersistedFailure(manager)).toEqual(retried);
+
+      await manager.close();
+      time.now += 30_001;
+      const restarted = await fixture.getFreshManager(cfg, "cli");
+      await expect(restarted.search("bootstrap marker")).resolves.toEqual([]);
+      expect(corpusReads).toHaveBeenCalledTimes(2);
+      expect(restarted.status().custom?.reindexFailure).toEqual(retried);
+      expect(openShadow).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not record a search bootstrap failure that is not a worker OOM", async () => {
+    const { manager, corpusReads } = await failingSessionBootstrap(workerExited);
+
+    await expect(manager.search("bootstrap marker")).resolves.toEqual([]);
+    expect(corpusReads).toHaveBeenCalledTimes(1);
+    expect(manager.status().lastSyncError).toContain("worker exited with code 1");
+    expect(readPersistedFailure(manager)).toBeNull();
+    expect(manager.status().custom?.reindexFailure).toBeUndefined();
   });
 
   async function writeCrashLeftShadow(databasePath: string): Promise<string> {

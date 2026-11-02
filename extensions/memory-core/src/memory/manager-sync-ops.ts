@@ -177,6 +177,7 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerReindexOps {
     const progress = params?.progress ? this.createSyncProgress(params.progress) : undefined;
     let hasTargetArchiveFiles = hasTargetSessionRequest;
     let recoveringSessionFullRetry = false;
+    let syncingFullSessionCorpus = false;
     let syncingSources = false;
     try {
       if (await this.resumeReindex(params)) {
@@ -350,8 +351,9 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerReindexOps {
           Date.now(),
         )
       ) {
-        // A worker heap OOM repeats on the same corpus, so no automatic path may start
-        // another full rebuild before its cooldown. An explicit CLI index still may.
+        // A worker heap OOM repeats on the same corpus, so no automatic path may start another
+        // full rebuild or full session sync, search bootstrap included, before its cooldown.
+        // An explicit CLI index still may.
         await this.persistReindexResourceFailure();
         this.requestSessionIndexRetry();
         return MEMORY_SYNC_DEFERRED;
@@ -390,6 +392,9 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerReindexOps {
       const shouldSyncMemory = this.sources.has("memory") && (this.dirty || isSearchBootstrap);
       const shouldSyncSessions = this.shouldSyncSessions(params, needsFullSessionReindex);
       recoveringSessionFullRetry = this.sessionsFullRetryDirty && shouldSyncSessions;
+      // A full session read repeats its worker OOM whether a retry or a first search
+      // bootstrap started it.
+      syncingFullSessionCorpus = needsFullSessionReindex && shouldSyncSessions;
 
       await this.executeSourceSync({
         shouldSyncMemory,
@@ -411,7 +416,7 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerReindexOps {
         this.markFailedFullReindexRetry({ memory: false, sessions: true });
         this.recordFullReindexFailure(syncProvider !== null);
       }
-      if (recoveringSessionFullRetry && isMemoryWorkerOutOfMemoryError(err)) {
+      if (syncingFullSessionCorpus && isMemoryWorkerOutOfMemoryError(err)) {
         await this.recordReindexResourceFailure();
       }
       const reason = formatErrorMessage(err);
