@@ -930,9 +930,7 @@ describe("host-hook fixture plugin contract", () => {
               expect(result.queuedInjections.map((entry) => entry.pluginId)).toEqual([
                 "scoped-owner",
               ]);
-              expect(Object.keys(readEntry().pluginNextTurnInjections ?? {})).toEqual([
-                "global-owner",
-              ]);
+              expect(readEntry().pluginNextTurnInjections).toBeUndefined();
             }
           });
           try {

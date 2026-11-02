@@ -462,7 +462,7 @@ async function drainPluginNextTurnInjections(
       }
     }
     drained.sort((left, right) => left.createdAt - right.createdAt);
-    // Inactive entries with deadlines remain queued; legacy undated entries are discarded.
+    // Inactive owners retain only entries with an explicit deadline; undated entries are discarded.
     if (Object.keys(retained).length) {
       entry.pluginNextTurnInjections = retained;
     } else {

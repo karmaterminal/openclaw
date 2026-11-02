@@ -400,6 +400,9 @@ them from a pinned compatible host.
 Entries with absolute `expiresAt` are never rendered after expiry. A `notBefore`
 time is checked at drain. Pending entries may be conditionally superseded by
 `supersedeKey` and `expectedSupersededKey`, or withdrawn by idempotency key.
+Enqueue does not assign a default deadline. If the owning plugin is inactive at
+drain, an entry without `expiresAt` or `ttlMs` is discarded; an entry with an
+explicit deadline stays queued until the owner returns or the deadline passes.
 Settled idempotency keys remain tombstoned through their configured outcome
 retention; duplicates are refused rather than re-enqueued. Reset and plugin
 disable preserve these outcomes while clearing pending entries. Query the

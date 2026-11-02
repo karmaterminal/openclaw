@@ -71,6 +71,46 @@ describe("next-turn injection admission fence", () => {
     ).toBeUndefined();
   }, 15_000);
 
+  it("discards undated entries but retains explicitly timed entries across owner reload", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:main");
+    await writeEntry(scope, { sessionId: "main", updatedAt: 1 });
+    for (const [idempotencyKey, ttlMs] of [
+      ["undated", undefined],
+      ["timed", 60_000],
+    ] as const) {
+      expect(
+        await enqueuePluginNextTurnInjection({
+          cfg,
+          pluginId: "owner-fixture",
+          injection: {
+            ...scope,
+            text: idempotencyKey,
+            idempotencyKey,
+            ...(ttlMs === undefined ? {} : { ttlMs }),
+          },
+        }),
+      ).toMatchObject({ enqueued: true });
+    }
+    setActivePluginRegistry(createEmptyPluginRegistry());
+    expect((await drainPluginNextTurnInjectionContext({ cfg, ...scope })).queuedInjections).toEqual(
+      [],
+    );
+    const afterInactiveDrain = readEntry(scope);
+    expect(afterInactiveDrain?.pluginNextTurnInjections?.["owner-fixture"]).toMatchObject([
+      { idempotencyKey: "timed", ttlMs: 60_000 },
+    ]);
+    expect(
+      afterInactiveDrain?.pluginNextTurnInjectionOutcomes?.["owner-fixture"]?.undated,
+    ).toMatchObject({ state: "discarded" });
+    const active = createEmptyPluginRegistry();
+    active.plugins.push(createPluginRecord({ id: "owner-fixture", status: "loaded" }));
+    setActivePluginRegistry(active);
+    expect(
+      (await drainPluginNextTurnInjectionContext({ cfg, ...scope })).queuedInjections,
+    ).toMatchObject([{ idempotencyKey: "timed", text: "timed" }]);
+  }, 15_000);
+
   it("persists prototype-named plugin queues as own keys", async () => {
     const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
     const scope = sessionScope(cfg, "main", "agent:main:prototype-owner");
