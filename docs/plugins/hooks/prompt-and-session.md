@@ -70,10 +70,11 @@ Use the phase-specific hooks for new plugins:
   It adds monitoring context without changing user-initiated turns. It does not
   run as a generic prompt-preparation hook or create a separate heartbeat turn.
 
-On embedded, CLI, and harness runtime prompt-preparation paths (including
-ACPX, Agents API, Codex, and Copilot), ordering is: drain queued injections →
-`agent_turn_prepare` → ordinary
+On embedded and supported CLI prompt-preparation paths, ordering is: drain queued
+injections → `agent_turn_prepare` → ordinary
 `before_prompt_build` → finalized tool policy → authorized prompt enrichment.
+On Codex and Copilot prompt-preparation paths, ordering starts with
+`agent_turn_prepare`; these harnesses do not drain queued injections.
 
 For multiple registrations, the first defined provider/model/fallback override and
 `systemPrompt` win. Context additions concatenate in priority order, and tool
@@ -389,17 +390,30 @@ the `api.session.state` namespace.
 Use `api.session.workflow.enqueueNextTurnInjection(...)` when a plugin needs
 durable context queued for the next prompt build (the top-level
 `api.enqueueNextTurnInjection(...)` is a deprecated alias with the same
-behavior). OpenClaw drains queued injections before prompt hooks on embedded,
-CLI, and harness runtime paths, even when no prompt hooks are registered.
-It drops expired entries and entries
-whose plugin is inactive or has prompt injection disabled. `idempotencyKey`
-deduplicates unexpired pending entries for the same plugin and session; the
-key can be reused after consumption. Drained entries are reused across retries
-within the active run, but consuming an entry is not a receipt that the model
-saw it: a later failure can prevent submission. This is the right hook for
-approval resumes, policy summaries, background monitor
-deltas, and command continuations that should be visible to the model on the
-next turn but should not become permanent system prompt text.
+behavior). OpenClaw drains queued injections before prompt hooks on embedded and supported CLI paths,
+even when no prompt hooks are registered. Codex and Copilot sessions do not drain
+these entries; enqueue refuses them with `reason: "harness_does_not_drain"`.
+Workflow API v2 advertises `api.session.workflow.apiVersion === 2` and adds
+state query, settlement notices, and withdrawal. These methods remain optional
+on the legacy `OpenClawPluginApi` type; use `OpenClawPluginApiV2` when requiring
+them from a pinned compatible host.
+Entries with absolute `expiresAt` are never rendered after expiry. A `notBefore`
+time is checked at drain. Pending entries may be conditionally superseded by
+`supersedeKey` and `expectedSupersededKey`, or withdrawn by idempotency key.
+Enqueue does not assign a default deadline. If the owning plugin is inactive at
+drain, an entry without `expiresAt` or `ttlMs` is discarded; an entry with an
+explicit deadline stays queued until the owner returns or the deadline passes.
+Settled idempotency keys remain tombstoned through their configured outcome
+retention; duplicates are refused rather than re-enqueued. Reset and plugin
+disable preserve these outcomes while clearing pending entries. Query the
+entry with `api.session.workflow.getNextTurnInjectionState(...)` for its
+authoritative `pending`, settled, or `unknown` state. A plugin may register
+`api.session.workflow.onNextTurnInjectionSettled(handler)` for a metadata-only
+post-commit notice (`sessionKey`, `idempotencyKey`, `state`, `settledAt`);
+notifications are best-effort and may be missed during reload, so reconcile
+with the query. Neither surface requires conversation access. Drained entries
+are reused across retries within the active run; consumption means prompt
+assembly, not confirmation that the model saw the entry.
 
 Pass `agentId` with an unscoped `sessionKey`, such as `global`, when multiple
 agents are configured. Enqueueing, consumption, and plugin session state stay in

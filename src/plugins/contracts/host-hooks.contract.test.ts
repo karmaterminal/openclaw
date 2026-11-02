@@ -924,7 +924,9 @@ describe("host-hook fixture plugin contract", () => {
                 cfg: tempConfig,
                 sessionKey,
               });
-              expect(result.prependContext).toBe("scoped context");
+              expect(result.prependContext).toContain("Plugin external data (scoped-owner):");
+              expect(result.prependContext).toContain("<<<EXTERNAL_UNTRUSTED_CONTENT");
+              expect(result.prependContext).toContain("scoped context");
               expect(result.queuedInjections.map((entry) => entry.pluginId)).toEqual([
                 "scoped-owner",
               ]);
@@ -1177,7 +1179,9 @@ describe("host-hook fixture plugin contract", () => {
       ],
     });
 
-    expect(queuedContext).toEqual({ appendContext: "approval workflow resumed" });
+    expect(queuedContext.appendContext).toContain("Plugin external data (approval-plugin):");
+    expect(queuedContext.appendContext).toContain("<<<EXTERNAL_UNTRUSTED_CONTENT");
+    expect(queuedContext.appendContext).toContain("approval workflow resumed");
   });
 
   it("rejects malformed next-turn injection input before persisting records", async () => {

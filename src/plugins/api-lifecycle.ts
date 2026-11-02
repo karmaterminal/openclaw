@@ -5,16 +5,19 @@ import { getPluginValueInstance } from "./plugin-instance-scope.js";
 import type { OpenClawPluginApi, OpenClawPluginDefinition } from "./types.js";
 
 const LATE_CALLABLE_PLUGIN_API_METHODS: ReadonlySet<string> = new Set<
-  keyof OpenClawPluginApiWithoutFacades
+  keyof OpenClawPluginApiWithoutFacades | keyof OpenClawPluginApi["session"]["state"]
 >([
   "clearRunContext",
   "emitAgentEvent",
   "enqueueNextTurnInjection",
+  "getNextTurnInjectionState",
+  "withdrawNextTurnInjection",
   "steerActiveRun",
   "getRunContext",
-  // Registered callbacks still need these pure utilities after register() returns.
+  // Registered callbacks still need these runtime methods after register() returns.
   "inlineView",
   "resolvePath",
+  "resolveLocalSessionRoute",
   "sendSessionAttachment",
   "scheduleSessionTurn",
   "setRunContext",
@@ -34,6 +37,39 @@ function createGuardedPluginRegistrationApi(api: OpenClawPluginApi): {
         return value;
       }
       if (typeof prop === "string" && LATE_CALLABLE_PLUGIN_API_METHODS.has(prop)) {
+        if (prop === "resolveLocalSessionRoute" && owner) {
+          return async (sessionKey: string) => {
+            const absent = {
+              sessionKey,
+              exists: false,
+              onHost: false,
+              sessionId: null,
+              lifecycleRevision: null,
+            };
+            const current = () =>
+              !owner.owner?.revoked && owner.acceptingCalls && !owner.lifecycle.signal.aborted;
+            if (!current()) {
+              return absent;
+            }
+            const { getRuntimeConfigSnapshot } = await import("../config/runtime-snapshot.js");
+            // Managed callbacks need a published host config, not their registration snapshot.
+            if (!getRuntimeConfigSnapshot() || !current()) {
+              return absent;
+            }
+            const result = (await Reflect.apply(value, target, [sessionKey])) as Awaited<
+              ReturnType<OpenClawPluginApi["session"]["state"]["resolveLocalSessionRoute"]>
+            >;
+            return current()
+              ? result
+              : {
+                  sessionKey: result.sessionKey,
+                  exists: false,
+                  onHost: false,
+                  sessionId: null,
+                  lifecycleRevision: null,
+                };
+          };
+        }
         return (...args: unknown[]) => Reflect.apply(value, target, args);
       }
       return (...args: unknown[]) => {

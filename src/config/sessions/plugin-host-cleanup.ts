@@ -23,6 +23,8 @@ export type PluginHostSessionCleanupStoreParams = {
   storePath: string;
   /** Cancels the cleanup before persistence when host lifecycle state changes. */
   shouldCleanup?: () => boolean;
+  /** Reset/disable retain settled injection tombstones across plugin teardown. */
+  preserveInjectionOutcomes?: boolean;
 };
 
 function collectPromotedSessionEntrySlotKeys(
@@ -88,18 +90,97 @@ function clearPromotedSessionEntrySlots(
   }
 }
 
+/** Preserve live tombstones and settle pending injections inside the reset entry transaction. */
+export function preserveResetPluginInjectionOutcomes(
+  entry: SessionEntry,
+  now: number,
+): SessionEntry["pluginNextTurnInjectionOutcomes"] {
+  const copy: SessionEntry = {
+    ...entry,
+    pluginNextTurnInjectionOutcomes: Object.fromEntries(
+      Object.entries(entry.pluginNextTurnInjectionOutcomes ?? {}).map(([owner, outcomes]) => [
+        owner,
+        Object.fromEntries(
+          Object.entries(outcomes)
+            .filter(
+              ([, outcome]) =>
+                outcome && typeof outcome.retainUntil === "number" && outcome.retainUntil > now,
+            )
+            .map(([key, { lateExpiryToken: _lateExpiryToken, ...outcome }]) => [key, outcome]),
+        ),
+      ]),
+    ),
+  };
+  settlePendingPluginInjections(copy, now);
+  return copy.pluginNextTurnInjectionOutcomes;
+}
+
+function settlePendingPluginInjections(entry: SessionEntry, now: number, pluginId?: string): void {
+  for (const [owner, records] of Object.entries(entry.pluginNextTurnInjections ?? {})) {
+    if (pluginId && owner !== pluginId) {
+      continue;
+    }
+    if (!Array.isArray(records)) {
+      continue;
+    }
+    for (const record of records) {
+      if (typeof record?.idempotencyKey !== "string" || !record.idempotencyKey) {
+        continue;
+      }
+      const outcomes = (entry.pluginNextTurnInjectionOutcomes ??= {});
+      if (!Object.hasOwn(outcomes, owner)) {
+        Object.defineProperty(outcomes, owner, {
+          value: {},
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+      }
+      const owned = outcomes[owner]!;
+      if (Object.hasOwn(owned, record.idempotencyKey)) {
+        continue;
+      }
+      Object.defineProperty(owned, record.idempotencyKey, {
+        enumerable: true,
+        writable: true,
+        configurable: true,
+        value: {
+          state:
+            (typeof record.expiresAt === "number" && now >= record.expiresAt) ||
+            (typeof record.ttlMs === "number" && now - record.createdAt > record.ttlMs)
+              ? "expired"
+              : "discarded",
+          settledAt: now,
+          retainUntil: Math.min(
+            Math.max(now, record.expiresAt ?? 0, record.outcomeRetainUntil ?? 0) + 5_000,
+            now + 86_400_000,
+          ),
+        },
+      });
+    }
+  }
+}
+
 /** Clears plugin-owned extension state from one session entry. */
 export function clearPluginOwnedSessionState(
   entry: SessionEntry,
   pluginId?: string,
   sessionEntrySlotKeys?: ReadonlySet<string>,
+  preserveInjectionOutcomes = false,
 ): void {
   clearPromotedSessionEntrySlots(entry, pluginId, sessionEntrySlotKeys);
+  if (preserveInjectionOutcomes) {
+    settlePendingPluginInjections(entry, Date.now(), pluginId);
+  }
   for (const field of [
     "pluginExtensions",
     "pluginExtensionSlotKeys",
     "pluginNextTurnInjections",
+    "pluginNextTurnInjectionOutcomes",
   ] as const) {
+    if (field === "pluginNextTurnInjectionOutcomes" && preserveInjectionOutcomes) {
+      continue;
+    }
     const state = entry[field];
     if (!pluginId) {
       delete entry[field];
@@ -158,9 +239,12 @@ export function hasPluginHostCleanupTarget(
   return (
     hasPromotedSessionEntrySlot(entry, params.pluginId, params.sessionEntrySlotKeys) ||
     (params.mode === "plugin-owned-state" &&
-      [entry.pluginExtensions, entry.pluginExtensionSlotKeys, entry.pluginNextTurnInjections].some(
-        (state) => Boolean(params.pluginId ? state?.[params.pluginId] : state),
-      ))
+      [
+        entry.pluginExtensions,
+        entry.pluginExtensionSlotKeys,
+        entry.pluginNextTurnInjections,
+        ...(params.preserveInjectionOutcomes ? [] : [entry.pluginNextTurnInjectionOutcomes]),
+      ].some((state) => Boolean(params.pluginId ? state?.[params.pluginId] : state)))
   );
 }
 
@@ -186,5 +270,10 @@ export function clearPluginHostCleanupTarget(
     });
     return;
   }
-  clearPluginOwnedSessionState(entry, params.pluginId, params.sessionEntrySlotKeys);
+  clearPluginOwnedSessionState(
+    entry,
+    params.pluginId,
+    params.sessionEntrySlotKeys,
+    params.preserveInjectionOutcomes,
+  );
 }

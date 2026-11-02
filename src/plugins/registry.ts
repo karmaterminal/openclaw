@@ -348,6 +348,46 @@ export function createPluginRegistry(registryOptions: PluginRegistryParams) {
                   pluginId: record.id,
                   pluginName: record.name,
                   injection,
+                  shouldEnqueue: () =>
+                    registryParams.activateGlobalSideEffects !== false &&
+                    shouldCommitWorkflowSideEffect(),
+                });
+              },
+              onNextTurnInjectionSettled: (handler) => bound.onNextTurnInjectionSettled(handler),
+              getNextTurnInjectionState: async (input) => {
+                const shouldQuery = () =>
+                  registryParams.activateGlobalSideEffects !== false &&
+                  shouldCommitWorkflowSideEffect();
+                if (!shouldQuery()) {
+                  return { ...input, state: "unknown" };
+                }
+                const { getPluginNextTurnInjectionState } = await loadHookState();
+                if (!shouldQuery()) {
+                  return { ...input, state: "unknown" };
+                }
+                return getPluginNextTurnInjectionState({
+                  ...input,
+                  cfg: registryParams.runtime.config.current() as OpenClawConfig,
+                  pluginId: record.id,
+                  shouldQuery,
+                });
+              },
+              withdrawNextTurnInjection: async (input) => {
+                const shouldWithdraw = () =>
+                  registryParams.activateGlobalSideEffects !== false &&
+                  shouldCommitWorkflowSideEffect();
+                if (!shouldWithdraw()) {
+                  return { ...input, state: "unknown" };
+                }
+                const { withdrawPluginNextTurnInjection } = await loadHookState();
+                if (!shouldWithdraw()) {
+                  return { ...input, state: "unknown" };
+                }
+                return withdrawPluginNextTurnInjection({
+                  ...input,
+                  cfg: registryParams.runtime.config.current() as OpenClawConfig,
+                  pluginId: record.id,
+                  shouldWithdraw,
                 });
               },
               steerActiveRun: async (input) => {

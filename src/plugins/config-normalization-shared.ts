@@ -88,11 +88,25 @@ function normalizePluginHooks(value: unknown): NormalizedPluginEntry["hooks"] {
   }
   const timeoutMs = normalizeHookTimeoutMs(value.timeoutMs);
   const timeouts = normalizeHookTimeouts(value.timeouts);
+  const drainMaxEntries = asSafeIntegerInRange(value.nextTurnInjectionDrainMaxEntries, {
+    min: 1,
+    max: 32,
+  });
+  const drainMaxBytes = asSafeIntegerInRange(value.nextTurnInjectionDrainMaxBytes, {
+    min: 1,
+    max: 64 * 1024,
+  });
   if (timeoutMs !== undefined) {
     hooks.timeoutMs = timeoutMs;
   }
   if (timeouts !== undefined) {
     hooks.timeouts = timeouts;
+  }
+  if (drainMaxEntries !== undefined) {
+    hooks.nextTurnInjectionDrainMaxEntries = drainMaxEntries;
+  }
+  if (drainMaxBytes !== undefined) {
+    hooks.nextTurnInjectionDrainMaxBytes = drainMaxBytes;
   }
   return Object.keys(hooks).length > 0 ? hooks : undefined;
 }

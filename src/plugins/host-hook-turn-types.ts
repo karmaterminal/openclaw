@@ -8,17 +8,31 @@ export type PluginNextTurnInjection = {
   sessionKey: string;
   /** Selected owner when the session key is unscoped, such as global. */
   agentId?: string;
+  /** Exact row from resolveLocalSessionRoute; required together for subagent targets. */
+  expectedSessionId?: string;
+  expectedLifecycleRevision?: string;
   text: string;
   idempotencyKey?: string;
   placement?: PluginNextTurnInjectionPlacement;
   ttlMs?: number;
+  /** Absolute UTC milliseconds; never extended by replay. */
+  expiresAt?: number;
+  notBefore?: number;
+  /** Replace only an entry owned by this plugin in this session. */
+  supersedeKey?: string;
+  /** Conditional replacement: this key must still be pending. */
+  expectedSupersededKey?: string;
+  /** Absolute UTC milliseconds, at most 24 hours after admission. */
+  outcomeRetainUntil?: number;
+  /** Render as external data with a host-authored provenance banner. */
+  provenance?: { source: string };
   metadata?: PluginJsonValue;
 };
 
 /** Stored next-turn injection after session/plugin metadata is attached. */
 export type PluginNextTurnInjectionRecord = Omit<
   PluginNextTurnInjection,
-  "sessionKey" | "agentId"
+  "sessionKey" | "agentId" | "expectedSessionId" | "expectedLifecycleRevision"
 > & {
   id: string;
   pluginId: string;
@@ -32,6 +46,39 @@ export type PluginNextTurnInjectionEnqueueResult = {
   enqueued: boolean;
   id: string;
   sessionKey: string;
+  reason?:
+    | "invalid"
+    | "expired"
+    | "duplicate"
+    | "capacity"
+    | "missing_session"
+    | "supersede_conflict"
+    | "harness_does_not_drain"
+    | "stale_session"
+    | "unsupported_route";
+  state?: PluginNextTurnInjectionState;
+};
+
+export type PluginNextTurnInjectionState =
+  | "pending"
+  | "consumed"
+  | "withdrawn"
+  | "expired"
+  | "discarded"
+  | "unknown";
+export type PluginNextTurnInjectionStateResult = {
+  sessionKey: string;
+  idempotencyKey: string;
+  state: PluginNextTurnInjectionState;
+  settledAt?: number;
+};
+
+/** Metadata-only post-commit notice. Query remains authoritative. */
+export type PluginNextTurnInjectionSettlement = {
+  sessionKey: string;
+  idempotencyKey: string;
+  state: "consumed" | "withdrawn" | "expired" | "discarded";
+  settledAt: number;
 };
 
 /** Event passed to plugins before an agent turn is prepared. */

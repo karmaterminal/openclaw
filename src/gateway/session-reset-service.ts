@@ -33,9 +33,8 @@ import {
   resetSessionEntryLifecycle,
 } from "../config/sessions.js";
 import { rebindCliSessionReseedReceiptsForReset } from "../config/sessions/cli-session-binding.js";
-import { formatSqliteSessionFileMarker } from "../config/sessions/legacy-sqlite-marker.js";
-import { preserveResetSessionPresentation } from "../config/sessions/reset-preserved-presentation.js";
 import { resolveResetPreservedSelection } from "../config/sessions/reset-preserved-selection.js";
+import { preserveResetSessionState } from "../config/sessions/reset-preserved-state.js";
 import { withSessionActorStorage } from "../config/sessions/session-actor-storage-acquisition.js";
 import { getSessionActorStorageBinding } from "../config/sessions/session-actor-storage-binding.js";
 import { createSessionDiffBaselineCaptureClaim } from "../config/sessions/session-diff-baseline-capture.js";
@@ -48,12 +47,12 @@ import {
 import { withSessionEntryReadOnlyInWorker } from "../config/sessions/session-entry-read-runtime.js";
 import { createSessionResetBoundaryId } from "../config/sessions/session-reset-boundary-event.js";
 import type { SessionAcpMeta } from "../config/sessions/types.js";
-import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { logVerbose } from "../globals.js";
 import { createInternalHookEvent, triggerInternalHook } from "../hooks/internal-hooks.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import { runPluginHostCleanup } from "../plugins/host-hook-cleanup.js";
+import { dispatchResetInjectionSettlements } from "../plugins/host-hook-reset-settlements.js";
 import { getActivePluginRegistry } from "../plugins/runtime.js";
 import { isIncognitoSessionKey, isSubagentSessionKey } from "../routing/session-key.js";
 import { resolveMissingAgentHarnessSessionError } from "../sessions/agent-harness-session-key.js";
@@ -100,6 +99,7 @@ import {
   closeAcpRuntimeForSession,
   closeChildAcpRuntimesForParent,
 } from "./session-reset-acp.js";
+import { emitGatewayBeforeResetPluginHook } from "./session-reset-before-hook.js";
 import { deleteIncognitoSessionForReset } from "./session-reset-incognito.js";
 import { notifyGatewaySessionReset } from "./session-reset-notifications.js";
 import { ensureSessionRuntimeCleanup } from "./session-reset-runtime-cleanup.js";
@@ -107,7 +107,6 @@ import { resolveSessionResetTarget } from "./session-reset-target.js";
 import { readGatewayBeforeResetPluginHookMessages } from "./session-reset-transcript.js";
 import { buildResetWorkspaceFields } from "./session-reset-workspace.js";
 import { withGatewaySessionEntryReadOnly } from "./session-utils-read-lifetime.js";
-import type { GatewaySessionStoreTarget } from "./session-utils-store.types.js";
 import {
   readSessionWorkerPlacementAsync,
   resolveSessionWorkerPlacementMutationError,
@@ -121,55 +120,7 @@ export {
   emitSessionUnboundLifecycleEvent,
 } from "./session-lifecycle-cleanup.js";
 
-export async function emitGatewayBeforeResetPluginHook(params: {
-  cfg: OpenClawConfig;
-  key: string;
-  messages?: unknown[];
-  target: GatewaySessionStoreTarget;
-  storePath: string;
-  entry?: SessionEntry;
-  reason: "new" | "reset";
-}): Promise<void> {
-  const hookRunner = getGlobalHookRunner();
-  if (!hookRunner?.hasHooks("before_reset")) {
-    return;
-  }
-
-  const sessionKey = params.target.canonicalKey;
-  const sessionId = params.entry?.sessionId;
-  const agentId = params.target.agentId;
-  const sessionFile = sessionId
-    ? formatSqliteSessionFileMarker({ agentId, sessionId, storePath: params.storePath })
-    : undefined;
-  const workspaceDir = resolveAgentWorkspaceDir(params.cfg, agentId);
-  const messages =
-    params.messages ??
-    (await readGatewayBeforeResetPluginHookMessages({
-      agentId,
-      entry: params.entry,
-      sessionId,
-      sessionKey,
-      storePath: params.storePath,
-    }));
-
-  void hookRunner
-    .runBeforeReset(
-      {
-        sessionFile,
-        messages,
-        reason: params.reason,
-      },
-      {
-        agentId,
-        sessionKey,
-        sessionId,
-        workspaceDir,
-      },
-    )
-    .catch((err: unknown) => {
-      logVerbose(`before_reset hook failed: ${String(err)}`);
-    });
-}
+export { emitGatewayBeforeResetPluginHook };
 
 export async function performGatewaySessionReset(
   params: SessionLifecycle.GatewaySessionResetParams,
@@ -860,7 +811,7 @@ async function performPreparedGatewaySessionReset({
                   }
                 : {}),
               responseUsage: currentEntry?.responseUsage,
-              ...preserveResetSessionPresentation(currentEntry),
+              ...preserveResetSessionState(currentEntry, now),
               // Resets should keep the user's explicit selection, but clear any
               // temporary fallback model that was pinned during the previous run.
               ...resetPreservedSelection,
@@ -946,6 +897,13 @@ async function performPreparedGatewaySessionReset({
               },
               async () => {
                 const resetSessionKey = target.canonicalKey;
+                dispatchResetInjectionSettlements({
+                  cfg,
+                  sessionKey: resetSessionKey,
+                  agentId: target.agentId,
+                  previousEntry: mutation.previousEntry,
+                  nextEntry: mutation.nextEntry,
+                });
                 await handleSessionStateSessionReset(resetSessionKey);
                 notifyGatewaySessionReset(resetSessionKey, target.agentId);
                 emitGatewaySessionEndPluginHook({

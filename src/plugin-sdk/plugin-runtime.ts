@@ -22,6 +22,7 @@ export { startLazyPluginServiceModule } from "../plugins/lazy-service-module.js"
 export type { LazyPluginServiceHandle } from "../plugins/lazy-service-module.js";
 export type {
   OpenClawPluginApi,
+  OpenClawPluginApiV2,
   PluginConversationBinding,
   PluginConversationBindingRequestParams,
   PluginConversationBindingRequestResult,

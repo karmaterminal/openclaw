@@ -35,6 +35,10 @@ export const AGENT_FIELD_HELP: Record<string, string> = {
     "Per-plugin typed hook policy controls for core-enforced safety gates. Use this to constrain high-impact hook categories without disabling the entire plugin.",
   "plugins.entries.*.hooks.allowPromptInjection":
     "Controls whether this plugin may mutate prompts through typed hooks. Set false to block `before_prompt_build`.",
+  "plugins.entries.*.hooks.nextTurnInjectionDrainMaxEntries":
+    "Operator-owned maximum next-turn injections this plugin may consume in one session drain (default 32, maximum 32). Excess pending entries remain queued for a later turn.",
+  "plugins.entries.*.hooks.nextTurnInjectionDrainMaxBytes":
+    "Operator-owned maximum UTF-8 payload bytes this plugin may consume in one session drain (default 65536, maximum 65536). Excess pending entries remain queued for a later turn.",
   "plugins.entries.*.hooks.allowConversationAccess":
     "Controls whether this plugin may read raw conversation content from typed hooks such as `before_agent_run`, `before_model_resolve`, `before_agent_reply`, `llm_input`, `llm_output`, `before_agent_finalize`, and `agent_end`. Non-bundled plugins must opt in explicitly.",
   "plugins.entries.*.hooks.timeoutMs":

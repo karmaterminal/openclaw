@@ -79,6 +79,26 @@ export function createHostRegistrars(state: PluginRegistryState) {
     return true;
   };
 
+  const onNextTurnInjectionSettled = (
+    record: PluginRecord,
+    handler: (
+      event: import("./host-hook-turn-types.js").PluginNextTurnInjectionSettlement,
+    ) => void | Promise<void>,
+  ) => {
+    if (typeof handler !== "function") {
+      reportRegistrationError(record, "next-turn settlement handler must be a function");
+      return;
+    }
+    if (
+      registry.nextTurnInjectionSettlementHandlers.filter((item) => item.pluginId === record.id)
+        .length >= 8
+    ) {
+      reportRegistrationError(record, "next-turn settlement handler limit (8) exceeded");
+      return;
+    }
+    registry.nextTurnInjectionSettlementHandlers.push(createRegistration(record, { handler }));
+  };
+
   const registerSessionExtension = (
     record: PluginRecord,
     extension: PluginSessionExtensionRegistration,
@@ -473,6 +493,7 @@ export function createHostRegistrars(state: PluginRegistryState) {
   };
 
   return {
+    onNextTurnInjectionSettled,
     registerSessionExtension,
     registerTrustedToolPolicy,
     registerToolMetadata,

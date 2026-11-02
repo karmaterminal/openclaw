@@ -15,7 +15,10 @@ const log = createSubsystemLogger("agents/plugin-turn-context");
 
 // Draining consumes durable injections. Retain them for retries of the same run.
 const PROMPT_BUILD_DRAIN_CACHE_MAX = 256;
-const promptBuildDrainCache = new Map<string, PluginNextTurnInjectionRecord[]>();
+const promptBuildDrainCache = new Map<
+  string,
+  PluginAgentTurnPrepareResult & { queuedInjections: PluginNextTurnInjectionRecord[] }
+>();
 
 /** Release at run termination so active retries retain cache headroom. */
 export function forgetPromptBuildDrainCacheForRun(runId: string | undefined): void {
@@ -42,21 +45,27 @@ export async function resolvePluginTurnContext(params: {
     return {};
   }
   const runId = params.hookCtx.runId;
-  const cachedInjections = runId ? promptBuildDrainCache.get(runId) : undefined;
-  const queuedContext = cachedInjections
-    ? {
-        queuedInjections: cachedInjections,
-        ...buildPluginAgentTurnPrepareContext({ queuedInjections: cachedInjections }),
-      }
+  const cachedContext = runId ? promptBuildDrainCache.get(runId) : undefined;
+  const queuedContext = cachedContext
+    ? cachedContext.queuedInjections.some(
+        (entry) => entry.expiresAt !== undefined && entry.expiresAt <= Date.now(),
+      )
+      ? (() => {
+          const queuedInjections = cachedContext.queuedInjections.filter(
+            (entry) => entry.expiresAt === undefined || entry.expiresAt > Date.now(),
+          );
+          return { ...buildPluginAgentTurnPrepareContext({ queuedInjections }), queuedInjections };
+        })()
+      : cachedContext
     : await drainPluginNextTurnInjectionContext({
         cfg: params.config,
         sessionKey: params.hookCtx.sessionKey,
         agentId: params.hookCtx.agentId,
       });
-  if (runId && !cachedInjections) {
+  if (runId && queuedContext !== cachedContext) {
     promptBuildDrainCache.delete(runId);
     pruneMapToMaxSize(promptBuildDrainCache, PROMPT_BUILD_DRAIN_CACHE_MAX - 1);
-    promptBuildDrainCache.set(runId, queuedContext.queuedInjections);
+    promptBuildDrainCache.set(runId, queuedContext);
   }
   const turnPrepareResult =
     params.hookRunner?.runAgentTurnPrepare && params.hookRunner.hasHooks("agent_turn_prepare")
