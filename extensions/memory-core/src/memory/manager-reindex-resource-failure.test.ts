@@ -94,12 +94,16 @@ describe("memory reindex worker memory failures", () => {
       failedAt: time.now,
       retryAt: time.now + HOUR_MS,
     };
-    expect(readPersistedFailure(manager)).toEqual(failure);
 
     // The generic 30s rebuild backoff has elapsed; only the persisted cooldown remains.
     time.now += 30_001;
-    await manager.sync();
+    const deferred = await manager.sync().then(
+      () => undefined,
+      (error: unknown) => error,
+    );
     expect(openShadow).toHaveBeenCalledTimes(1);
+    expect(deferred).toBeUndefined();
+    expect(readPersistedFailure(manager)).toEqual(failure);
 
     const databasePath = manager.status().dbPath!;
     await manager.close();
