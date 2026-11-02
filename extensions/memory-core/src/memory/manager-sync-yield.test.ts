@@ -89,6 +89,11 @@ class SessionSyncYieldHarness extends MemorySyncTestHarness {
 
   protected async sync(): Promise<void> {}
 
+  // Real transcript sizing would yield on I/O and hide a missing scheduler yield.
+  protected override async readSessionTranscriptBytes(): Promise<Map<string, number>> {
+    return new Map();
+  }
+
   protected getIndexConcurrency(): number {
     return this.indexConcurrency;
   }

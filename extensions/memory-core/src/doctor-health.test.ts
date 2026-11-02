@@ -10,6 +10,7 @@ import { openNodeSqliteDatabase } from "openclaw/plugin-sdk/sqlite-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MEMORY_MANAGED_LOCAL_EMBEDDING_SETUP_CHECK_ID,
+  MEMORY_REINDEX_RESOURCE_FAILURE_CHECK_ID,
   registerMemoryCoreDoctorChecks,
 } from "./doctor-health.js";
 
@@ -124,7 +125,12 @@ describe("managed local embedding setup health check", () => {
     }
 
     register(currentInspect);
-    expect(registerHealthCheck).toHaveBeenCalledOnce();
+    const memoryCoreCheckIds = [
+      MEMORY_MANAGED_LOCAL_EMBEDDING_SETUP_CHECK_ID,
+      MEMORY_REINDEX_RESOURCE_FAILURE_CHECK_ID,
+    ];
+    const registeredIds = () => registerHealthCheck.mock.calls.map(([registered]) => registered.id);
+    expect(registeredIds()).toEqual(memoryCoreCheckIds);
     await expect(check.detect(context(stateDir, "local"))).resolves.toEqual(expectedSetupFinding());
     expect(staleInspect).not.toHaveBeenCalled();
     expect(currentInspect).toHaveBeenCalledOnce();
@@ -132,7 +138,7 @@ describe("managed local embedding setup health check", () => {
     checks.clear();
     register(currentInspect);
     expect(checks.get(MEMORY_MANAGED_LOCAL_EMBEDDING_SETUP_CHECK_ID)).toBe(check);
-    expect(registerHealthCheck).toHaveBeenCalledTimes(2);
+    expect(registeredIds()).toEqual([...memoryCoreCheckIds, ...memoryCoreCheckIds]);
   });
 
   it("snapshots only local agents while preserving their setup findings", async () => {
