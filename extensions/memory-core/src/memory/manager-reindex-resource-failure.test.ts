@@ -293,6 +293,7 @@ describe("memory reindex worker memory failures", () => {
         retryAt: time.now + 6 * HOUR_MS,
       };
       expect(readPersistedFailure(manager)).toEqual(retried);
+      expect(manager.status().custom?.reindexFailure).toEqual(retried);
 
       await manager.close();
       time.now += 30_001;
