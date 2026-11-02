@@ -4,6 +4,7 @@ import {
   admitModelTurn,
   completionConfig,
 } from "../../agents/bash-tools.lifecycle.test-support.js";
+import { handleRetryLimitExhaustion } from "../../agents/embedded-agent-runner/run/retry-limit.js";
 import { runEmbeddedAgent } from "../../agents/embedded-agent.js";
 import { FailoverError } from "../../agents/failover-error.js";
 import { PROVIDER_SCHEMA_REJECTION_USER_TEXT } from "../../agents/failover/assistant-request-failure-copy.js";
@@ -140,14 +141,28 @@ function runScheduledRoomTurn(cfg: OpenClawConfig, signal: AbortSignal) {
   });
 }
 
-it.for([{ failure: "thrown" }, { failure: "payload" }] as const)(
-  "records a scheduled room-session provider rejection ($failure) without a room message",
+it.for([{ failure: "thrown" }, { failure: "payload" }, { failure: "retry_limit" }] as const)(
+  "records a scheduled room-session run failure ($failure) without a room message",
   async ({ failure }, { signal }) => {
     await withRoomSession(signal, async (sendText, cfg) => {
       model.mockReset().mockImplementation(async (params) => {
         await admitModelTurn(params);
         if (failure === "thrown") {
           throw schemaRejection();
+        }
+        if (failure === "retry_limit") {
+          return handleRetryLimitExhaustion({
+            message: "internal retry diagnostic",
+            decision: { action: "return_error_payload" },
+            provider: "mock-openai",
+            model: "gpt-5.6-luna",
+            durationMs: 1,
+            agentMeta: {
+              sessionId: "room-session",
+              provider: "mock-openai",
+              model: "gpt-5.6-luna",
+            },
+          });
         }
         return {
           payloads: [
@@ -170,7 +185,9 @@ it.for([{ failure: "thrown" }, { failure: "payload" }] as const)(
         deliveryAttempted: false,
       });
       // Run history and diagnostics keep the failure that the room never hears.
-      expect(outcome.error).toContain("The AI service couldn");
+      expect(outcome.error).toContain(
+        failure === "retry_limit" ? "internal retry diagnostic" : "The AI service couldn",
+      );
       expect(outcome.diagnostics?.entries).toContainEqual(
         expect.objectContaining({ severity: "error" }),
       );
