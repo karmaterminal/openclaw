@@ -14,6 +14,7 @@ import { createStdioTransport } from "../../extensions/codex/src/app-server/tran
 import { createDiscordIngressMonitor } from "../../extensions/discord/src/monitor/ingress.js";
 import { createDiscordRoomHistoryWatermarks } from "../../extensions/discord/src/monitor/room-history-watermark.js";
 import { installDiscordIngressTestRuntime } from "../../extensions/discord/src/test-support/ingress-runtime.js";
+import { buildAgentRunTerminalOutcome } from "../../src/agents/agent-run-terminal-outcome.js";
 import { resolveRequesterPrincipalKey } from "../../src/agents/requester-origin.js";
 import {
   aggregated,
@@ -28,7 +29,11 @@ import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
 } from "../../src/config/runtime-snapshot.js";
-import { upsertSessionEntryCore } from "../../src/config/sessions/session-accessor.js";
+import {
+  appendTranscriptMessageSync,
+  loadTranscriptEvents,
+  upsertSessionEntryCore,
+} from "../../src/config/sessions/session-accessor.js";
 import { stageSessionPendingInput } from "../../src/config/sessions/session-accessor.pending-inputs.js";
 import {
   closeOpenClawStateDatabaseForTest,
@@ -210,6 +215,12 @@ const SESSION = {
   sessionKey: "agent:main:discord:channel:cand2-compat-room",
   sessionId: "cand2-compat-room-session",
 };
+// A second room session whose aggregate turn ran before the stop: its input is in the transcript.
+const COMMITTED_SESSION = {
+  agentId: "main",
+  sessionKey: "agent:main:discord:channel:cand2-compat-committed-room",
+  sessionId: "cand2-compat-committed-session",
+};
 
 describe("session pending input of an ambient owner aggregate", () => {
   it("stages the aggregate's collected user turn and leaves it interrupted", async () => {
@@ -271,10 +282,37 @@ describe("session pending input of an ambient owner aggregate", () => {
       await receipt!.settled?.();
       staged.push({ runId, idempotencyKey: input.idempotencyKey, message: input });
     }
+    // The run that executed the aggregate promotes its accepted input into the transcript (the
+    // production consumption path) and completes.
+    const committedScope = { ...COMMITTED_SESSION, storePath: scope.storePath };
+    await upsertSessionEntryCore(committedScope, {
+      sessionId: COMMITTED_SESSION.sessionId,
+      updatedAt: 1,
+    });
+    const committed = await stageSessionPendingInput(committedScope, {
+      runId: "cand2-compat-committed-run",
+      message: message as never,
+      trackCompletion: true,
+      assertCurrent: () => {},
+    });
+    expect(committed).toBeDefined();
+    committed!.run(() =>
+      appendTranscriptMessageSync(committedScope, { message: committed!.message }),
+    );
+    await committed!.completeAsync?.(buildAgentRunTerminalOutcome({ status: "ok" }));
+    committed!.finish("interrupted");
+    await committed!.settled?.();
+    const transcript = await loadTranscriptEvents(committedScope);
+    const committedEvent = transcript.find((event) =>
+      JSON.stringify(event).includes(message.idempotencyKey),
+    );
+    expect(committedEvent).toBeDefined();
     await closeOpenClawAgentDatabasesAsync();
     writeManifestSurface(root, SURFACES.pendingInput, {
       stateDir,
       scope: SESSION,
+      committedScope: COMMITTED_SESSION,
+      committedEventKeys: Object.keys(committedEvent as object).toSorted(),
       staged,
       aggregateRequesterOrigin: origin,
       memberRequesterOriginSenderId: memberMessage.__openclaw?.requesterOrigin?.senderId,

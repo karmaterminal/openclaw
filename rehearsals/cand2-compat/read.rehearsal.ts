@@ -12,6 +12,7 @@ import { prepareCodexAppServerProcessRegistration } from "../../extensions/codex
 import { createDiscordIngressMonitor } from "../../extensions/discord/src/monitor/ingress.js";
 import { installDiscordIngressTestRuntime } from "../../extensions/discord/src/test-support/ingress-runtime.js";
 import { resolveRequesterPrincipalKey } from "../../src/agents/requester-origin.js";
+import { loadTranscriptEvents } from "../../src/config/sessions/session-accessor.js";
 import {
   readSessionPendingInputRequesterOrigin,
   readSessionSubmittedInput,
@@ -170,6 +171,7 @@ describe("discord durable ingress rows", () => {
 type PendingFixture = {
   stateDir: string;
   scope: { agentId: string; sessionKey: string; sessionId: string };
+  committedScope: { agentId: string; sessionKey: string; sessionId: string };
   staged: Array<{
     runId: string;
     idempotencyKey: string;
@@ -178,12 +180,26 @@ type PendingFixture = {
   aggregateRequesterOrigin: Record<string, unknown>;
 };
 
-function pendingScope(fixture: PendingFixture, stateDir: string) {
+function pendingScope(
+  fixture: PendingFixture,
+  stateDir: string,
+  session: PendingFixture["scope"] = fixture.scope,
+) {
   vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
   return {
-    ...fixture.scope,
+    ...session,
     storePath: path.join(stateDir, "agents", "main", "sessions", "sessions.json"),
   };
+}
+
+type UserMessageEvent = {
+  message?: { role?: string; idempotencyKey?: string; content?: unknown; __openclaw?: unknown };
+};
+
+function findCommittedTurn(events: readonly unknown[], idempotencyKey: string) {
+  return (events as UserMessageEvent[]).find(
+    (event) => event.message?.role === "user" && event.message.idempotencyKey === idempotencyKey,
+  );
 }
 
 describe("session pending input of an ambient owner aggregate", () => {
@@ -282,6 +298,67 @@ describe("session pending input of an ambient owner aggregate", () => {
     record(SURFACES.pendingInput, expect.getState().currentTestName!, {
       outcome: "control-refused",
       error: refusal,
+    });
+  });
+});
+
+describe("transcript user turn of an ambient owner aggregate", () => {
+  it("loads CAND2's committed aggregate turn from the transcript", async () => {
+    const fixture = surface<PendingFixture>(SURFACES.pendingInput);
+    const stateDir = path.join(readerDir(root, reader, SURFACES.pendingInput), "state-transcript");
+    copySealed(fixture.stateDir, stateDir);
+    const scope = pendingScope(fixture, stateDir, fixture.committedScope);
+    const [aggregate] = fixture.staged;
+    const name = expect.getState().currentTestName!;
+    try {
+      const events = await loadTranscriptEvents(scope);
+      const turn = findCommittedTurn(events, aggregate!.idempotencyKey);
+      expect(turn?.message?.content).toEqual(aggregate!.message.content);
+      expect(turn?.message?.__openclaw).toEqual(aggregate!.message.__openclaw);
+      const submitted = await readSessionSubmittedInput(scope, aggregate!.idempotencyKey, {
+        includeSource: true,
+      });
+      expect(submitted?.source).toBe("transcript");
+      record(SURFACES.pendingInput, name, {
+        outcome: "transcript-loaded",
+        events: events.length,
+        submittedSource: submitted?.source,
+        committedOpenClawFacts: turn?.message?.__openclaw,
+      });
+    } catch (error) {
+      record(SURFACES.pendingInput, name, { outcome: "FAILED", error: errorText(error) });
+      throw error;
+    }
+  });
+
+  it("refuses a corrupted transcript event (control)", async () => {
+    const fixture = surface<PendingFixture>(SURFACES.pendingInput);
+    const stateDir = path.join(
+      readerDir(root, reader, SURFACES.pendingInput),
+      "state-transcript-corrupt",
+    );
+    copySealed(fixture.stateDir, stateDir);
+    const database = new DatabaseSync(
+      path.join(stateDir, "agents", "main", "agent", "openclaw-agent.sqlite"),
+    );
+    const changed = database
+      .prepare(
+        "UPDATE transcript_events SET event_json = ? WHERE session_id = ? AND message_role = 'user'",
+      )
+      .run('{"type":"message","message":', fixture.committedScope.sessionId);
+    database.close();
+    expect(changed.changes).toBe(1);
+    const scope = pendingScope(fixture, stateDir, fixture.committedScope);
+    let refusal = "";
+    await expect(
+      loadTranscriptEvents(scope).catch((error: unknown) => {
+        refusal = errorText(error);
+        throw error;
+      }),
+    ).rejects.toThrow();
+    record(SURFACES.pendingInput, expect.getState().currentTestName!, {
+      outcome: "control-refused",
+      error: refusal.slice(0, 400),
     });
   });
 });
