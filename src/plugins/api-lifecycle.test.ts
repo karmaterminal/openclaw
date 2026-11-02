@@ -87,7 +87,9 @@ it("keeps session route inspection callable after registration and reads each li
   const read = vi.mocked(readSessionEntryReadOnlyInWorker);
   read.mockReset();
   const api = captureRegisteredPluginApi({});
-  read.mockResolvedValueOnce({ sessionId: "before", lifecycleRevision: "r1", updatedAt: 1 });
+  const firstRow = { sessionId: "before", lifecycleRevision: "r1", updatedAt: 1 };
+  // Positive locality is revalidated after binding and placement reads.
+  read.mockResolvedValueOnce(firstRow).mockResolvedValueOnce(firstRow);
   expect(await api.session.state.resolveLocalSessionRoute(key)).toEqual({
     sessionKey: key,
     exists: true,
@@ -95,6 +97,7 @@ it("keeps session route inspection callable after registration and reads each li
     sessionId: "before",
     lifecycleRevision: "r1",
   });
+  expect(read).toHaveBeenCalledTimes(2);
   read.mockResolvedValueOnce(undefined);
   expect(await api.session.state.resolveLocalSessionRoute(key)).toEqual({
     sessionKey: key,
@@ -103,7 +106,7 @@ it("keeps session route inspection callable after registration and reads each li
     sessionId: null,
     lifecycleRevision: null,
   });
-  expect(read).toHaveBeenCalledTimes(2);
+  expect(read).toHaveBeenCalledTimes(3);
 });
 
 it("fails closed when a retained route callback's owner retires", async () => {
@@ -130,7 +133,8 @@ it("fails closed when a retained route callback's owner retires", async () => {
       sessionId: null,
       lifecycleRevision: null,
     });
-    expect(read).toHaveBeenCalledTimes(1);
+    // The first call reads and revalidates the row; retirement prevents any more reads.
+    expect(read).toHaveBeenCalledTimes(2);
   } finally {
     snapshot.mockRestore();
   }
