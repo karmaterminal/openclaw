@@ -63,7 +63,7 @@ async function isRegularFile(filePath: string): Promise<boolean> {
   }
 }
 
-/** Newest change across a shadow's files; undefined when any of them cannot be read. */
+/** Newest change across a shadow's files; undefined when one cannot be read or none exists. */
 async function readMemoryReindexShadowChangedAtMs(shadowPath: string): Promise<number | undefined> {
   let changedAtMs: number | undefined;
   for (const suffix of MEMORY_DATABASE_FILE_SUFFIXES) {
