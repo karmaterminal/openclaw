@@ -7,6 +7,7 @@ import {
   resolveSessionStoreAgentId,
   resolveSessionStoreKey,
 } from "../gateway/session-store-key.js";
+import { placementTurnOwner } from "../gateway/worker-environments/placement-record.js";
 import { createWorkerSessionPlacementStore } from "../gateway/worker-environments/placement-store.js";
 import { listSessionBindingsBySessionAsync } from "../infra/outbound/session-binding-service.js";
 
@@ -117,7 +118,9 @@ export async function resolvePluginLocalSessionRoute(params: {
         (placement.sessionId === existing.sessionId &&
           placement.sessionKey === sessionKey &&
           placement.agentId === agentId &&
-          placement.state === "local");
+          (placement.state === "local" ||
+            ((placement.state === "active" || placement.state === "draining") &&
+              placementTurnOwner(placement).kind === "local")));
     }
     return {
       sessionKey,

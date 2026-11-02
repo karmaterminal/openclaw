@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readSessionEntryReadOnlyInWorker } from "../config/sessions/session-entry-read-runtime.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { placementTurnOwner } from "../gateway/worker-environments/placement-record.js";
 import { createWorkerSessionPlacementStore } from "../gateway/worker-environments/placement-store.js";
 import { listSessionBindingsBySessionAsync } from "../infra/outbound/session-binding-service.js";
 import { resolvePluginLocalSessionRoute } from "./local-session-route.js";
@@ -197,6 +198,30 @@ describe("exact plugin local session route proof", () => {
     expect(await resolve(key)).toMatchObject({ exists: true, onHost: false });
     readProjection.mockRejectedValueOnce(new Error("placement unavailable"));
     expect(await resolve(key)).toMatchObject({ exists: false, onHost: false });
+  });
+
+  it("accepts locally owned remote-exec placements but rejects worker-owned turns", async () => {
+    const key = "agent:main:subagent:remote-exec";
+    entry(key);
+    const active = {
+      sessionId: "s1",
+      sessionKey: key,
+      agentId: "main",
+      state: "active",
+      environmentId: "remote-worker",
+      activeOwnerEpoch: 1,
+    } as const;
+    for (const state of ["active", "draining"] as const) {
+      const remoteExec = { ...active, state, executionMode: "remote-exec" } as const;
+      expect(placementTurnOwner(remoteExec).kind).toBe("local");
+      readProjection.mockResolvedValueOnce({ placements: new Map([["s1", remoteExec]]) });
+      expect(await resolve(key)).toMatchObject({ exists: true, onHost: true });
+    }
+
+    const workerTurn = { ...active, executionMode: "worker-turn" } as const;
+    expect(placementTurnOwner(workerTurn).kind).toBe("worker");
+    readProjection.mockResolvedValueOnce({ placements: new Map([["s1", workerTurn]]) });
+    expect(await resolve(key)).toMatchObject({ exists: true, onHost: false });
   });
 
   it("preserves case-distinct opaque peer identities on exact lookup", async () => {
