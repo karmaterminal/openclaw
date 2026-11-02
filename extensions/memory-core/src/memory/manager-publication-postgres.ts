@@ -39,6 +39,7 @@ import type {
   MemoryPublicationResult,
 } from "./manager-publication-task.js";
 import { MEMORY_EMBEDDING_CACHE_WRITE_SCOPE } from "./manager-publication-task.js";
+import { writeMemoryReindexFailure } from "./manager-reindex-failure.js";
 import type { MemoryIndexMeta } from "./manager-reindex-state.js";
 import { readMemoryDatabaseFacts, type MemoryDatabaseFacts } from "./manager-retrieval-read.js";
 import { memoryTextSearchSchema, memoryVectorSearchSchema } from "./manager-search-schema.js";
@@ -434,6 +435,7 @@ export function bindPostgresMemoryPublication(
             fts: { enabled: true, available: true },
           }).replaceGroup(sources());
           writeMemoryIndexMetadata(db, metadata);
+          writeMemoryReindexFailure(db, null);
           if (command.input.vectorIndexComplete) {
             markMemoryVectorIndexClean(db);
           }
@@ -509,6 +511,10 @@ export function bindPostgresMemoryPublication(
         },
         { publishFacts: true },
       );
+    }
+    if (command.type === "index.writeReindexFailure") {
+      // The record describes the published index, never a connection-local stage.
+      return write(() => writeMemoryReindexFailure(db, command.input), { publishFacts: true });
     }
     if (command.type === "source.refresh" || command.type === "source.delete") {
       return rebuilding

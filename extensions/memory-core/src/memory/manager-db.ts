@@ -1,4 +1,4 @@
-import type { Dirent, Stats } from "node:fs";
+import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
@@ -29,7 +29,8 @@ import { waitForMemoryReindexLock } from "./manager-reindex-lock.js";
 const MEMORY_DATABASE_FILE_SUFFIXES = ["", "-wal", "-shm", "-journal"] as const;
 const MEMORY_REINDEX_UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const MEMORY_REINDEX_ORPHAN_MIN_AGE_MS = 24 * 60 * 60_000;
+// Shadows owned by builds in this process, including suspended ones between syncs.
+const liveMemoryReindexShadows = new Set<string>();
 
 function resolveMemoryReindexBaseName(
   databaseBaseName: string,
@@ -188,11 +189,22 @@ export async function removeMemoryDatabaseFiles(dbPath: string): Promise<void> {
   }
 }
 
-/** Remove crash-left shadows while the caller owns the reindex lease. */
-export async function cleanupAgedMemoryReindexTempFiles(dbPath: string): Promise<void> {
-  const nowMs = Date.now();
+/** Keep orphan cleanup away from a shadow path until the returned release runs. */
+export function retainLiveMemoryReindexShadow(shadowPath: string): () => void {
+  const key = path.resolve(shadowPath);
+  liveMemoryReindexShadows.add(key);
+  return () => {
+    liveMemoryReindexShadows.delete(key);
+  };
+}
+
+/**
+ * Remove shadows left by a crashed run. The Gateway, or one offline CLI, owns the
+ * state directory exclusively, so a shadow this process does not hold has no live writer.
+ */
+export async function cleanupOrphanMemoryReindexShadows(dbPath: string): Promise<number> {
   if (!(await isRegularFile(dbPath))) {
-    return;
+    return 0;
   }
   const dir = path.dirname(dbPath);
   const databaseBaseName = path.basename(dbPath);
@@ -201,7 +213,7 @@ export async function cleanupAgedMemoryReindexTempFiles(dbPath: string): Promise
   try {
     entries = await fs.readdir(dir, { withFileTypes: true });
   } catch {
-    return;
+    return 0;
   }
 
   for (const entry of entries) {
@@ -214,33 +226,19 @@ export async function cleanupAgedMemoryReindexTempFiles(dbPath: string): Promise
     }
   }
 
+  let removed = 0;
   for (const shadowBaseName of shadowBaseNames) {
-    const filePaths = MEMORY_DATABASE_FILE_SUFFIXES.map((suffix) =>
-      path.join(dir, `${shadowBaseName}${suffix}`),
-    );
-    let stats: Stats[] | undefined = [];
-    for (const filePath of filePaths) {
-      try {
-        stats.push(await fs.stat(filePath));
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-          stats = undefined;
-          break;
-        }
-      }
-    }
-    if (!stats?.length) {
+    const shadowPath = path.join(dir, shadowBaseName);
+    // Registration precedes file creation, so a shadow listed above is either held or orphaned.
+    if (liveMemoryReindexShadows.has(path.resolve(shadowPath))) {
       continue;
     }
-    if (nowMs - Math.max(...stats.map((stat) => stat.mtimeMs)) < MEMORY_REINDEX_ORPHAN_MIN_AGE_MS) {
-      continue;
-    }
-    for (const filePath of filePaths) {
-      try {
-        await fs.rm(filePath, { force: true });
-      } catch {}
-    }
+    try {
+      await removeMemoryDatabaseFiles(shadowPath);
+      removed += 1;
+    } catch {}
   }
+  return removed;
 }
 
 export function openMemoryDatabaseAtPath(

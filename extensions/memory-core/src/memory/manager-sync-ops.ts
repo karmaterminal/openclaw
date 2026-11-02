@@ -20,7 +20,8 @@ import {
   resolveMemoryPrimaryProviderRequest,
 } from "./manager-provider-state.js";
 import type { MemoryManagerProviderFactory } from "./manager-registry.js";
-import { MemoryManagerReindexOps } from "./manager-reindex-ops.js";
+import { isMemoryReindexResourceFailureBlocking } from "./manager-reindex-failure.js";
+import { isMemoryWorkerOutOfMemoryError, MemoryManagerReindexOps } from "./manager-reindex-ops.js";
 import {
   canUpgradeMemoryIndexProviderKey,
   resolveConfiguredSourcesForMeta,
@@ -339,6 +340,21 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerReindexOps {
         needsFullReindex ||
         (this.sessionsFullRetryDirty && !hasTargetArchiveFiles && !deferAutomaticFullReindex) ||
         isSearchBootstrap;
+      if (
+        !hasTargetArchiveFiles &&
+        needsFullSessionReindex &&
+        params?.reason !== "cli" &&
+        isMemoryReindexResourceFailureBlocking(
+          this.database.facts.reindexFailure,
+          resolveConfiguredSourcesForMeta(this.sources),
+          Date.now(),
+        )
+      ) {
+        // A worker heap OOM repeats on the same corpus, so no automatic path may start
+        // another full rebuild before its cooldown. An explicit CLI index still may.
+        this.requestSessionIndexRetry();
+        return MEMORY_SYNC_DEFERRED;
+      }
       if (indexIdentity.status !== "valid" && !needsFullReindex) {
         this.dirty = true;
         const sessionsDirty = this.markTargetArchiveFilesDirty(targetArchiveFiles);
@@ -393,6 +409,9 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerReindexOps {
       if (recoveringSessionFullRetry && !this.memoryFullRetryDirty) {
         this.markFailedFullReindexRetry({ memory: false, sessions: true });
         this.recordFullReindexFailure(syncProvider !== null);
+      }
+      if (recoveringSessionFullRetry && isMemoryWorkerOutOfMemoryError(err)) {
+        await this.recordReindexResourceFailure();
       }
       const reason = formatErrorMessage(err);
       const shouldFallback = isMemoryEmbeddingOperationError(err);

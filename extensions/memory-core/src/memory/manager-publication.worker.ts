@@ -65,6 +65,7 @@ import {
   MEMORY_EMBEDDING_CACHE_WRITE_SCOPE,
   MEMORY_INDEX_WRITE_SCOPE,
 } from "./manager-publication-task.js";
+import { writeMemoryReindexFailure } from "./manager-reindex-failure.js";
 import { readMemoryDatabaseFacts } from "./manager-retrieval-read.js";
 import { admitMemoryVectorIndex } from "./manager-search-knn.js";
 import { memoryVectorSearchSchema } from "./manager-search-schema.js";
@@ -447,6 +448,9 @@ function createPublicationBackend(
       }
       if (command.type === "index.writeMetadata") {
         return withFacts(writeSingleStatement(() => writeMemoryIndexMetadata(db, command.input)));
+      }
+      if (command.type === "index.writeReindexFailure") {
+        return withFacts(writeSingleStatement(() => writeMemoryReindexFailure(db, command.input)));
       }
       if (command.type === "source.refresh") {
         return withFacts(

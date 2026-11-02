@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
+import {
+  collectErrorGraphCandidates,
+  extractErrorCode,
+  formatErrorMessage,
+} from "openclaw/plugin-sdk/error-runtime";
 import { resolveEmbeddingInputFormatVersion } from "openclaw/plugin-sdk/memory-core-host-engine-embeddings";
 import {
   createSubsystemLogger,
@@ -11,12 +15,20 @@ import {
 } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
 import { withMemoryWorkspaceLock } from "../memory-workspace-lock.js";
 import { MemoryIndexDatabase } from "./manager-database-context.js";
-import { cleanupAgedMemoryReindexTempFiles, removeMemoryDatabaseFiles } from "./manager-db.js";
+import {
+  cleanupOrphanMemoryReindexShadows,
+  removeMemoryDatabaseFiles,
+  retainLiveMemoryReindexShadow,
+} from "./manager-db.js";
 import { withMemoryIndexGeneration } from "./manager-index-generation-lease.js";
 import {
   publishPostgresMemoryStage,
   withPostgresMemoryReindex,
 } from "./manager-postgres-reindex.js";
+import {
+  describeMemoryReindexResourceFailure,
+  nextMemoryReindexResourceFailure,
+} from "./manager-reindex-failure.js";
 import {
   MEMORY_INDEX_PROVENANCE_VERSION,
   resolveConfiguredSourcesForMeta,
@@ -38,10 +50,19 @@ import {
 
 const log = createSubsystemLogger("memory");
 
+/** Node reports a Worker heap limit as ERR_WORKER_OUT_OF_MEMORY; pools keep it as a cause. */
+export function isMemoryWorkerOutOfMemoryError(error: unknown): boolean {
+  return collectErrorGraphCandidates(error, (current) => [
+    current.cause,
+    ...(Array.isArray(current.errors) ? current.errors : []),
+  ]).some((candidate) => extractErrorCode(candidate) === "ERR_WORKER_OUT_OF_MEMORY");
+}
+
 export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps {
   private reindexState?: {
     shadow: MemoryIndexDatabase;
     tempDbPath: string;
+    releaseShadow: () => void;
     originalDatabase: MemoryIndexDatabase;
     originalRevision: number;
     originalRetryState: MemoryReindexRetryState;
@@ -70,7 +91,39 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
         state.shadow.assertShadowPath();
         await removeMemoryDatabaseFiles(state.tempDbPath);
       }
+      state.releaseShadow();
     }
+  }
+
+  /** Remove shadows a crashed run left behind; shadows owned by this process stay. */
+  protected async cleanupOrphanReindexShadows(): Promise<void> {
+    if (this.publishedDatabase.admission?.engine === "postgres") {
+      return;
+    }
+    const removed = await cleanupOrphanMemoryReindexShadows(
+      resolveUserPath(this.settings.store.databasePath),
+    );
+    if (removed > 0) {
+      log.info(`removed ${removed} orphaned memory reindex shadow database(s)`);
+    }
+  }
+
+  /** Persist a worker heap OOM so restarts and other managers keep its cooldown. */
+  protected async recordReindexResourceFailure(): Promise<void> {
+    const database = this.publishedDatabase;
+    const failure = nextMemoryReindexResourceFailure(
+      database.facts.reindexFailure,
+      resolveConfiguredSourcesForMeta(this.sources),
+      Date.now(),
+    );
+    try {
+      await database.writeReindexFailure(failure);
+    } catch (err) {
+      log.warn(`failed to record memory reindex resource failure: ${formatErrorMessage(err)}`);
+      return;
+    }
+    const { state, fix } = describeMemoryReindexResourceFailure(failure, this.agentId);
+    log.warn(`memory reindex ${state}. ${fix}`);
   }
 
   protected async resumeReindex(params?: MemorySyncParams): Promise<boolean> {
@@ -115,6 +168,9 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
     const dbPath = resolveUserPath(this.settings.store.databasePath);
     const resuming = this.reindexState;
     const tempDbPath = resuming?.tempDbPath ?? `${dbPath}.memory-reindex-${randomUUID()}`;
+    // Registered before the file exists, so orphan cleanup never removes a live shadow.
+    let releaseShadow =
+      resuming || postgresStage ? undefined : retainLiveMemoryReindexShadow(tempDbPath);
     const originalDatabase = resuming?.originalDatabase ?? this.database;
     const originalRetryState = resuming?.originalRetryState ?? this.snapshotReindexRetryState();
     const withEmbeddings = this.syncProviderGeneration?.kind === "semantic";
@@ -123,7 +179,7 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
     let suspended = false;
     try {
       if (!postgresStage && !resuming) {
-        await cleanupAgedMemoryReindexTempFiles(dbPath);
+        await this.cleanupOrphanReindexShadows();
       }
       const originalRevision = resuming?.originalRevision ?? this.database.facts.revision;
       const shadow =
@@ -133,6 +189,7 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
       const state = (this.reindexState ??= {
         shadow,
         tempDbPath,
+        releaseShadow: releaseShadow ?? (() => {}),
         originalDatabase,
         originalRevision,
         originalRetryState,
@@ -147,6 +204,8 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
           yielded: false,
         },
       });
+      // The retained state owns the registration now; discardReindex releases it.
+      releaseShadow = undefined;
       state.progress.yielded = false;
       if (!resuming) {
         shadow.vector.enabled = this.vector.enabled;
@@ -290,6 +349,9 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
       if (!(err instanceof MemoryBackgroundRebuildInterruptedError)) {
         this.recordFullReindexFailure(withEmbeddings);
       }
+      if (isMemoryWorkerOutOfMemoryError(err)) {
+        await this.recordReindexResourceFailure();
+      }
       throw err;
     } finally {
       try {
@@ -299,6 +361,7 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
       } catch (err) {
         log.warn(`failed to remove memory reindex shadow database: ${formatErrorMessage(err)}`);
       }
+      releaseShadow?.();
     }
   }
 }
