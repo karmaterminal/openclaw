@@ -7,6 +7,7 @@ import {
   resolveSessionStoreAgentId,
   resolveSessionStoreKey,
 } from "../gateway/session-store-key.js";
+import { placementTurnOwner } from "../gateway/worker-environments/placement-record.js";
 import { createWorkerSessionPlacementStore } from "../gateway/worker-environments/placement-store.js";
 import { listSessionBindingsBySessionAsync } from "../infra/outbound/session-binding-service.js";
 
@@ -83,30 +84,35 @@ export async function resolvePluginLocalSessionRoute(params: {
       sessionKey,
       projection: "list",
     });
-    if (!existing || !existing.sessionId) {
+    if (!existing) {
       return absent;
     }
+    const present = (
+      onHost: boolean,
+      row: InternalSessionEntry = existing,
+    ): PluginLocalSessionRoute => ({
+      sessionKey,
+      exists: true,
+      onHost,
+      sessionId: row.sessionId ?? null,
+      lifecycleRevision: row.lifecycleRevision ?? null,
+    });
     // The session row does not own worker locality. Read the current placement
     // projection for this exact row before claiming it is executable here.
     let onHost = false;
-    try {
-      if (
-        existing.lifecycleRevision &&
-        sessionKey !== "global" &&
-        !hasOffHostRoute(params.cfg, sessionKey, agentId, existing)
-      ) {
-        // A thread-bound child can have internal row delivery while its active
-        // conversation binding routes replies directly to the external thread.
-        // Row fields alone cannot establish a host-local route.
+    if (
+      existing.sessionId &&
+      existing.lifecycleRevision &&
+      sessionKey !== "global" &&
+      !hasOffHostRoute(params.cfg, sessionKey, agentId, existing)
+    ) {
+      // A thread-bound child can have internal row delivery while its active
+      // conversation binding routes replies directly to the external thread.
+      // Row fields alone cannot establish a host-local route.
+      try {
         const bindings = await listSessionBindingsBySessionAsync(sessionKey);
-        if (bindings.length > 0) {
-          return {
-            sessionKey,
-            exists: true,
-            onHost: false,
-            sessionId: existing.sessionId,
-            lifecycleRevision: existing.lifecycleRevision,
-          };
+        if (bindings.some((binding) => binding.status === "active")) {
+          return present(false);
         }
         const placement = (
           await createWorkerSessionPlacementStore().readProjection([existing.sessionId], {
@@ -118,18 +124,34 @@ export async function resolvePluginLocalSessionRoute(params: {
           (placement.sessionId === existing.sessionId &&
             placement.sessionKey === sessionKey &&
             placement.agentId === agentId &&
-            placement.state === "local");
+            (placement.state === "local" ||
+              placement.state === "reclaimed" ||
+              ((placement.state === "active" || placement.state === "draining") &&
+                placementTurnOwner(placement).kind === "local")));
+        if (onHost) {
+          // Auxiliary reads may yield while this key is reset or replaced.
+          const current = await readSessionEntryReadOnlyInWorker({
+            agentId,
+            storePath,
+            sessionKey,
+            projection: "list",
+          });
+          if (!current) {
+            return absent;
+          }
+          if (
+            current.sessionId !== existing.sessionId ||
+            current.lifecycleRevision !== existing.lifecycleRevision
+          ) {
+            return present(false, current);
+          }
+        }
+      } catch {
+        // Keep the proven row identity when an auxiliary owner is unavailable.
+        return present(false);
       }
-    } catch {
-      onHost = false;
     }
-    return {
-      sessionKey,
-      exists: true,
-      onHost,
-      sessionId: existing.sessionId,
-      lifecycleRevision: existing.lifecycleRevision ?? null,
-    };
+    return present(onHost);
   } catch {
     // An unreadable/transient store cannot prove that a target is local.
     return {
