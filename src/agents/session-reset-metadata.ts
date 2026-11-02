@@ -1,5 +1,6 @@
 import type { InternalSessionEntry } from "../config/sessions/types.js";
 import { settle } from "../plugins/host-hook-injection-outcomes.js";
+import { isPluginNextTurnInjectionRecord } from "../plugins/host-hook-injection-validation.js";
 import { clearAllCliSessions } from "./cli-session.js";
 
 export function clearRotatedSessionMetadata(entry: InternalSessionEntry): InternalSessionEntry {
@@ -27,7 +28,9 @@ export function clearRotatedSessionMetadata(entry: InternalSessionEntry): Intern
       continue;
     }
     for (const record of records) {
-      settle(next, pluginId, record, "discarded", Date.now());
+      if (isPluginNextTurnInjectionRecord(record)) {
+        settle(next, pluginId, record, "discarded", Date.now());
+      }
     }
   }
   clearAllCliSessions(next);

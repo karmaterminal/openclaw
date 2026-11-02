@@ -89,35 +89,39 @@ export async function resolvePluginLocalSessionRoute(params: {
     // The session row does not own worker locality. Read the current placement
     // projection for this exact row before claiming it is executable here.
     let onHost = false;
-    if (
-      existing.lifecycleRevision &&
-      sessionKey !== "global" &&
-      !hasOffHostRoute(params.cfg, sessionKey, agentId, existing)
-    ) {
-      // A thread-bound child can have internal row delivery while its active
-      // conversation binding routes replies directly to the external thread.
-      // Row fields alone cannot establish a host-local route.
-      const bindings = await listSessionBindingsBySessionAsync(sessionKey);
-      if (bindings.length > 0) {
-        return {
-          sessionKey,
-          exists: true,
-          onHost: false,
-          sessionId: existing.sessionId,
-          lifecycleRevision: existing.lifecycleRevision,
-        };
+    try {
+      if (
+        existing.lifecycleRevision &&
+        sessionKey !== "global" &&
+        !hasOffHostRoute(params.cfg, sessionKey, agentId, existing)
+      ) {
+        // A thread-bound child can have internal row delivery while its active
+        // conversation binding routes replies directly to the external thread.
+        // Row fields alone cannot establish a host-local route.
+        const bindings = await listSessionBindingsBySessionAsync(sessionKey);
+        if (bindings.length > 0) {
+          return {
+            sessionKey,
+            exists: true,
+            onHost: false,
+            sessionId: existing.sessionId,
+            lifecycleRevision: existing.lifecycleRevision,
+          };
+        }
+        const placement = (
+          await createWorkerSessionPlacementStore().readProjection([existing.sessionId], {
+            current: true,
+          })
+        ).placements.get(existing.sessionId);
+        onHost =
+          !placement ||
+          (placement.sessionId === existing.sessionId &&
+            placement.sessionKey === sessionKey &&
+            placement.agentId === agentId &&
+            placement.state === "local");
       }
-      const placement = (
-        await createWorkerSessionPlacementStore().readProjection([existing.sessionId], {
-          current: true,
-        })
-      ).placements.get(existing.sessionId);
-      onHost =
-        !placement ||
-        (placement.sessionId === existing.sessionId &&
-          placement.sessionKey === sessionKey &&
-          placement.agentId === agentId &&
-          placement.state === "local");
+    } catch {
+      onHost = false;
     }
     return {
       sessionKey,

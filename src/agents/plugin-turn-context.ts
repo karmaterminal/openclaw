@@ -62,7 +62,7 @@ export async function resolvePluginTurnContext(params: {
         sessionKey: params.hookCtx.sessionKey,
         agentId: params.hookCtx.agentId,
       });
-  if (runId && !cachedContext) {
+  if (runId && queuedContext !== cachedContext) {
     promptBuildDrainCache.delete(runId);
     pruneMapToMaxSize(promptBuildDrainCache, PROMPT_BUILD_DRAIN_CACHE_MAX - 1);
     promptBuildDrainCache.set(runId, queuedContext);

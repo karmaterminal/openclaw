@@ -34,7 +34,7 @@ describe("next-turn injection admission fence", () => {
     await state.cleanup();
   });
 
-  it("bounds explicit expiry to the replay horizon and defaults missing expiry", async () => {
+  it("bounds explicit expiry to the replay horizon and preserves missing expiry", async () => {
     const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
     const scope = sessionScope(cfg, "main", "agent:main:main");
     await writeEntry(scope, { sessionId: "main", updatedAt: 1 });
@@ -66,9 +66,9 @@ describe("next-turn injection admission fence", () => {
         },
       }),
     ).toMatchObject({ enqueued: true });
-    expect(readEntry(scope)?.pluginNextTurnInjections?.["owner-fixture"]?.[0]?.expiresAt).toBe(
-      now + 86_395_000,
-    );
+    expect(
+      readEntry(scope)?.pluginNextTurnInjections?.["owner-fixture"]?.[0]?.expiresAt,
+    ).toBeUndefined();
   }, 15_000);
 
   it("requires a current identity tuple for subagent admission but not generic main/channel callers", async () => {

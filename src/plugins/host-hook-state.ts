@@ -79,11 +79,11 @@ export async function withdrawPluginNextTurnInjection(params: {
       state: "unknown",
     };
   }
-  const now = Date.now();
   const notices: SettlementNotice[] = [];
   const updated = await updateResolvedSessionEntry(
     { cfg: params.cfg, sessionKey: params.sessionKey, agentId: params.agentId },
     (entry) => {
+      const now = Date.now();
       if (params.shouldWithdraw && !params.shouldWithdraw()) {
         return { state: "unknown" as const, settledAt: undefined };
       }
@@ -153,9 +153,6 @@ export async function enqueuePluginNextTurnInjection(params: {
       params.injection.expectedLifecycleRevision,
     ) ||
     text.length > MAX_PLUGIN_NEXT_TURN_INJECTION_TEXT_LENGTH ||
-    Buffer.byteLength(text, "utf8") >
-      (params.cfg.plugins?.entries?.[params.pluginId]?.hooks?.nextTurnInjectionDrainMaxBytes ??
-        DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN) ||
     (params.injection.metadata !== undefined && !isPluginJsonValue(params.injection.metadata)) ||
     (params.injection.idempotencyKey !== undefined &&
       (typeof params.injection.idempotencyKey !== "string" ||
@@ -204,34 +201,43 @@ export async function enqueuePluginNextTurnInjection(params: {
         requested.expiresAt !== undefined && requested.expiresAt <= now ? "expired" : "invalid",
     };
   }
-  const injection = { ...params.injection };
-  const expectedSupersededKey = injection.expectedSupersededKey?.trim();
+  const expectedSupersededKey = requested.expectedSupersededKey?.trim();
   const record: PluginNextTurnInjectionRecord = {
-    id: injection.idempotencyKey?.trim() || randomUUID(),
+    id: requested.idempotencyKey?.trim() || randomUUID(),
     pluginId: params.pluginId,
     pluginName: params.pluginName,
     text,
-    idempotencyKey: injection.idempotencyKey?.trim() || undefined,
-    placement: injection.placement ?? "prepend_context",
-    ttlMs: injection.ttlMs,
-    expiresAt: injection.expiresAt ?? now + MAX_OUTCOME_RETENTION_MS - 5_000,
-    notBefore: injection.notBefore,
-    supersedeKey: injection.supersedeKey,
-    outcomeRetainUntil: injection.outcomeRetainUntil,
-    provenance: injection.provenance,
+    idempotencyKey: requested.idempotencyKey?.trim() || undefined,
+    placement: requested.placement ?? "prepend_context",
+    ttlMs: requested.ttlMs,
+    expiresAt: requested.expiresAt,
+    notBefore: requested.notBefore,
+    supersedeKey: requested.supersedeKey,
+    outcomeRetainUntil: requested.outcomeRetainUntil,
+    provenance: requested.provenance,
     createdAt: now,
-    metadata: injection.metadata,
+    metadata: requested.metadata,
   };
+  if (
+    Buffer.byteLength(renderInjection(record), "utf8") >
+    Math.min(
+      DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN,
+      params.cfg.plugins?.entries?.[params.pluginId]?.hooks?.nextTurnInjectionDrainMaxBytes ??
+        DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN,
+    )
+  ) {
+    return { enqueued: false, id: "", sessionKey, reason: "capacity" };
+  }
   const scope = { cfg: params.cfg, sessionKey, agentId: params.injection.agentId };
   const notices: SettlementNotice[] = [];
-  // Broker reads cannot be nested inside a session-row mutation. Binding or
-  // placement may still change after this read without changing row identity.
   const { selected, unsupportedRoute } = await prepareInjectionRoute(scope);
-  const selectedEntry = selected?.entry;
-  if (!selected || !selectedEntry) {
+  if (!selected?.entry) {
     return { enqueued: false, id: "", sessionKey, reason: "missing_session" };
   }
   const updated = await updateResolvedSessionEntry(scope, (entry, context) => {
+    if (isExpired(record, params.now ?? Date.now())) {
+      return { enqueued: false, id: "", reason: "expired" as const };
+    }
     if (params.shouldEnqueue && !params.shouldEnqueue()) {
       return { enqueued: false, id: "", reason: "invalid" as const };
     }
@@ -240,8 +246,8 @@ export async function enqueuePluginNextTurnInjection(params: {
       canonicalKey: context.canonicalKey,
       requestedKey: sessionKey,
       entry,
-      expectedSessionId: injection.expectedSessionId,
-      expectedLifecycleRevision: injection.expectedLifecycleRevision,
+      expectedSessionId: requested.expectedSessionId,
+      expectedLifecycleRevision: requested.expectedLifecycleRevision,
       unsupportedRoute,
     });
     if (routeReason) {
@@ -321,7 +327,6 @@ export async function enqueuePluginNextTurnInjection(params: {
   });
   return { ...updated.result, sessionKey: updated.canonicalKey };
 }
-
 async function drainPluginNextTurnInjections(
   params: Parameters<typeof drainPluginNextTurnInjectionContext>[0],
 ): Promise<{
@@ -384,8 +389,7 @@ async function drainPluginNextTurnInjections(
       totalBytes = 0;
     const totalPlacements = new Set<PluginNextTurnInjectionRecord["placement"]>();
     for (const [pluginId, entries] of Object.entries(entry.pluginNextTurnInjections)) {
-      // Guard against malformed/hand-edited persisted state — a non-array value
-      // here would crash .filter and break prompt-building for the session.
+      // Ignore malformed persisted queues to preserve prompt-building.
       if (!Array.isArray(entries)) {
         continue;
       }

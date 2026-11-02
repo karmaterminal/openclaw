@@ -722,7 +722,7 @@ describe("next-turn injection identity", () => {
     );
   });
 
-  it("prunes expired outcomes on query and drain without returning settlement metadata", async () => {
+  it("hides expired outcomes on read-only query and prunes them on drain", async () => {
     const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
     const scope = sessionScope(cfg, "main", "agent:main:oc0-prune");
     const expired = { state: "consumed" as const, settledAt: 1, retainUntil: 2 };
@@ -742,7 +742,9 @@ describe("next-turn injection identity", () => {
         idempotencyKey: "queried",
       }),
     ).toEqual({ sessionKey: scope.sessionKey, idempotencyKey: "queried", state: "unknown" });
-    expect(readEntry(scope)?.pluginNextTurnInjectionOutcomes?.["owner-fixture"]).toBeUndefined();
+    expect(readEntry(scope)?.pluginNextTurnInjectionOutcomes?.["owner-fixture"]?.queried).toEqual(
+      expired,
+    );
     await drain({ cfg, ...scope });
     expect(readEntry(scope)?.pluginNextTurnInjectionOutcomes).toBeUndefined();
   });

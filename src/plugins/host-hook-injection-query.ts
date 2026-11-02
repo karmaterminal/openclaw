@@ -1,7 +1,11 @@
-import { updateResolvedSessionEntry } from "../config/sessions/session-accessor.js";
+import { readResolvedSessionEntryInWorker } from "../config/sessions/session-accessor.entry.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { ownOutcome, pruneOutcomes } from "./host-hook-injection-outcomes.js";
-import { isExpired, isPluginNextTurnInjectionRecord } from "./host-hook-injection-validation.js";
+import { ownOutcome } from "./host-hook-injection-outcomes.js";
+import {
+  hasValidInjectionGenerationFence,
+  isExpired,
+  isPluginNextTurnInjectionRecord,
+} from "./host-hook-injection-validation.js";
 import type { PluginNextTurnInjectionStateResult } from "./host-hook-turn-types.js";
 
 export async function getPluginNextTurnInjectionState(params: {
@@ -20,50 +24,54 @@ export async function getPluginNextTurnInjectionState(params: {
     idempotencyKey,
     state: "unknown",
   };
-  if (params.shouldQuery && !params.shouldQuery()) {
+  if (
+    (params.shouldQuery && !params.shouldQuery()) ||
+    !hasValidInjectionGenerationFence(params.expectedSessionId, params.expectedLifecycleRevision)
+  ) {
     return unknown;
   }
-  const updated = await updateResolvedSessionEntry(
-    { cfg: params.cfg, sessionKey: params.sessionKey, agentId: params.agentId },
-    (entry) => {
-      if (params.shouldQuery && !params.shouldQuery()) {
-        return unknown;
-      }
-      if (
-        params.expectedSessionId !== undefined &&
-        (entry.sessionId !== params.expectedSessionId ||
-          entry.lifecycleRevision !== params.expectedLifecycleRevision)
-      ) {
-        return unknown;
-      }
-      const now = Date.now();
-      pruneOutcomes(entry, params.pluginId, now);
-      const queue = entry.pluginNextTurnInjections?.[params.pluginId];
-      const pending = Array.isArray(queue)
-        ? queue.find(
-            (item) =>
-              isPluginNextTurnInjectionRecord(item) && item.idempotencyKey === idempotencyKey,
-          )
-        : undefined;
-      const outcome = ownOutcome(entry, params.pluginId, idempotencyKey);
-      return {
-        sessionKey: params.sessionKey,
-        idempotencyKey,
-        state:
-          pending && !isExpired(pending, now)
-            ? "pending"
-            : outcome
-              ? outcome.state
-              : pending
-                ? "expired"
-                : "unknown",
-        ...(outcome ? { settledAt: outcome.settledAt } : {}),
-      } as PluginNextTurnInjectionStateResult;
-    },
-  );
-  return params.shouldQuery && !params.shouldQuery()
-    ? unknown
-    : updated.found
-      ? updated.result
-      : unknown;
+  const entry = await readResolvedSessionEntryInWorker({
+    cfg: params.cfg,
+    sessionKey: params.sessionKey,
+    agentId: params.agentId,
+  });
+  if (!entry) {
+    return unknown;
+  }
+  const result = (() => {
+    if (params.shouldQuery && !params.shouldQuery()) {
+      return unknown;
+    }
+    if (
+      params.expectedSessionId !== undefined &&
+      (entry.sessionId !== params.expectedSessionId ||
+        entry.lifecycleRevision !== params.expectedLifecycleRevision)
+    ) {
+      return unknown;
+    }
+    const now = Date.now();
+    const queue = entry.pluginNextTurnInjections?.[params.pluginId];
+    const pending = Array.isArray(queue)
+      ? queue.find(
+          (item) => isPluginNextTurnInjectionRecord(item) && item.idempotencyKey === idempotencyKey,
+        )
+      : undefined;
+    const retainedOutcome = ownOutcome(entry, params.pluginId, idempotencyKey);
+    const outcome =
+      retainedOutcome && retainedOutcome.retainUntil > now ? retainedOutcome : undefined;
+    return {
+      sessionKey: params.sessionKey,
+      idempotencyKey,
+      state:
+        pending && !isExpired(pending, now)
+          ? "pending"
+          : outcome
+            ? outcome.state
+            : pending
+              ? "expired"
+              : "unknown",
+      ...(outcome ? { settledAt: outcome.settledAt } : {}),
+    } as PluginNextTurnInjectionStateResult;
+  })();
+  return params.shouldQuery && !params.shouldQuery() ? unknown : result;
 }
