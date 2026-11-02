@@ -44,7 +44,7 @@ import type {
   SessionEventOutcome,
   SessionEventReceipt,
 } from "./session-event-contract.js";
-import { prepareSessionEventDelivery } from "./session-event-delivery.js";
+import { isDeliveryWithheld, prepareSessionEventDelivery } from "./session-event-delivery.js";
 import { narrowSessionEventSettings } from "./session-event-policy.js";
 import {
   assertSessionEventTargetCurrent,
@@ -437,7 +437,7 @@ export function enqueueSessionEventForHost(
     if (kind === "final" && payload.text) {
       summary ??= truncateUtf16Safe(payload.text, 2000);
     }
-    if (options.deliver === false || target?.deliver === false) {
+    if (isDeliveryWithheld(options, target, payload)) {
       return;
     }
     if (kind === "final" && sourceDeliveryOutcome?.satisfiesSourceDelivery) {

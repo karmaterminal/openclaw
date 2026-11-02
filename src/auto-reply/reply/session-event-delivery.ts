@@ -1,4 +1,7 @@
+import type { ReplyPayload } from "../../shared/reply-payload.types.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
+import { isAgentRunFailurePayload } from "../reply-payload.js";
+import type { SessionEventOptions, SessionEventTarget } from "./session-event-contract.js";
 
 type RouteReplyParams = Parameters<typeof import("./route-reply.js").routeReply>[0];
 type SessionEventDeliveryParams = Pick<
@@ -12,6 +15,23 @@ type SessionEventDeliveryParams = Pick<
   | "beforeDeliver"
   | "assertCurrent"
 >;
+
+/**
+ * Producer opt-outs keep a session event off its transport route. A scheduled turn also keeps
+ * its run-failure copy off the route: that copy is interactive recovery advice, not the job's
+ * result, and Cron records the failed run and owns its failure alerts (#1447).
+ */
+export function isDeliveryWithheld(
+  options: Pick<SessionEventOptions, "deliver" | "scheduledAutomation">,
+  target: Pick<SessionEventTarget, "deliver"> | undefined,
+  payload: ReplyPayload,
+): boolean {
+  return (
+    options.deliver === false ||
+    target?.deliver === false ||
+    (options.scheduledAutomation !== undefined && isAgentRunFailurePayload(payload))
+  );
+}
 
 export async function prepareSessionEventDelivery(
   route: DeliveryContext,
