@@ -313,12 +313,7 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
             log.warn("memory session startup catch-up failed: " + String(err));
           },
         );
-        // A crashed run's shadow can hold gigabytes; reclaim it before any rebuild is due.
-        void this.runInBackgroundContext(() =>
-          this.withManagerOperation(() => this.cleanupOrphanReindexShadows()),
-        ).catch((err: unknown) => {
-          log.warn(`memory reindex shadow cleanup failed: ${formatErrorMessage(err)}`);
-        });
+        this.startOrphanReindexShadowCleanup();
       });
     }
   }

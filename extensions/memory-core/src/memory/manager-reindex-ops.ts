@@ -95,6 +95,15 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
     }
   }
 
+  /** A crashed run's shadow can hold gigabytes; reclaim it at startup, before any rebuild is due. */
+  protected startOrphanReindexShadowCleanup(): void {
+    void this.runInBackgroundContext(() =>
+      this.withManagerOperation(() => this.cleanupOrphanReindexShadows()),
+    ).catch((err: unknown) => {
+      log.warn(`memory reindex shadow cleanup failed: ${formatErrorMessage(err)}`);
+    });
+  }
+
   /** Remove shadows a crashed run left behind; shadows owned by this process stay. */
   protected async cleanupOrphanReindexShadows(): Promise<void> {
     if (this.publishedDatabase.admission?.engine === "postgres") {

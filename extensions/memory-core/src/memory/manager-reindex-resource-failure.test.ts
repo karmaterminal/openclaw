@@ -32,6 +32,7 @@ function workerHeapOutOfMemory(): Error {
 }
 
 function failShadowWritesWithWorkerOom() {
+  // oxlint-disable-next-line typescript/unbound-method -- Called with the intercepted owner.
   const replaceSource = MemoryIndexDatabase.prototype.replaceSource;
   return vi.spyOn(MemoryIndexDatabase.prototype, "replaceSource").mockImplementation(function (
     this: MemoryIndexDatabase,
@@ -216,6 +217,7 @@ describe("memory reindex worker memory failures", () => {
     });
     const owner = await fixture.getFreshManager(cfg);
     let suspended = false;
+    // oxlint-disable-next-line typescript/unbound-method -- Called with the intercepted owner.
     const replaceSource = MemoryIndexDatabase.prototype.replaceSource;
     vi.spyOn(MemoryIndexDatabase.prototype, "replaceSource").mockImplementation(async function (
       this: MemoryIndexDatabase,
