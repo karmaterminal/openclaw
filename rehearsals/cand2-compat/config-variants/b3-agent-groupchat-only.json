@@ -1,0 +1,1 @@
+{ "gateway": { "mode": "local" }, "agents": { "entries": { "main": { "groupChat": { "ambientOwnerAggregate": true, "ambientOwnerAggregatePeers": ["123456789012345678"] } } } } }

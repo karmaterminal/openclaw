@@ -1,0 +1,1 @@
+{ "gateway": { "mode": "local" }, "process": { "childScope": { "enabled": false } }, "messages": { "groupChat": { "ambientOwnerAggregate": false } } }

@@ -1,0 +1,1 @@
+{ "gateway": { "mode": "local" }, "messages": { "groupChat": { "unmentionedInbound": "room_event" } } }

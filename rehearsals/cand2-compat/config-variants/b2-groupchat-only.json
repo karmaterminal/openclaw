@@ -1,0 +1,1 @@
+{ "gateway": { "mode": "local" }, "messages": { "groupChat": { "ambientOwnerAggregate": true, "ambientOwnerAggregatePeers": ["123456789012345678"] } } }

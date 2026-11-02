@@ -1,0 +1,3 @@
+{ "gateway": { "mode": "local" },
+  "process": { "childScope": { "enabled": true, "memoryMax": "5G", "memorySwapMax": "2G" } },
+  "messages": { "groupChat": { "unmentionedInbound": "room_event", "ambientOwnerAggregate": true, "ambientOwnerAggregatePeers": ["123456789012345678", "discord:223456789012345678"] } } }
