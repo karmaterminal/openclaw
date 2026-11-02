@@ -3,8 +3,10 @@ import { createPluginRuntimeMock } from "openclaw/plugin-sdk/channel-test-helper
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import type { GetReplyOptions } from "openclaw/plugin-sdk/reply-runtime";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { discordPlugin } from "../channel.js";
 import { setDiscordRuntime } from "../runtime.js";
 import { createDiscordMessageDispatcher } from "./message-dispatcher.js";
+import { createDiscordMessageHandler } from "./message-handler.js";
 import {
   createDiscordMessage,
   createGuildEvent,
@@ -54,9 +56,9 @@ function createChannel(channelId: string) {
         pinned: false,
       } satisfies APIMessage);
     },
-    get: async (_route: string, query: { before: string; limit: number }) =>
+    get: async (_route: string, query: { before?: string; limit: number }) =>
       timeline
-        .filter((row) => BigInt(row.id) < BigInt(query.before))
+        .filter((row) => query.before === undefined || BigInt(row.id) < BigInt(query.before))
         .toReversed()
         .slice(0, query.limit),
   };
@@ -75,6 +77,7 @@ async function turnContext(params: {
   kind?: "room_event" | "user_request";
   thread?: { parentId: string };
   abortSignal?: AbortSignal;
+  isPolicyCurrent?: () => boolean;
 }) {
   const agentId = params.agentId ?? "main";
   const sessionKey = `agent:${agentId}:discord:channel:${params.channel.channelId}`;
@@ -118,6 +121,7 @@ async function turnContext(params: {
         }
       : {}),
     ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
+    ...(params.isPolicyCurrent ? { isPolicyCurrent: params.isPolicyCurrent } : {}),
   });
 }
 
@@ -166,6 +170,91 @@ const completes = (options: GetReplyOptions | undefined) => {
   options?.onAgentRunTerminalOutcome?.("completed");
   return notQueued();
 };
+
+/**
+ * A message dispatcher for the channel's guild, built from the provider's and the public message
+ * handler's options: transport and policy only. `send` posts a message, dispatches it as a room
+ * turn whose agent run completes, and returns the history that turn rendered.
+ */
+function createRoomDispatcher(channel: Channel) {
+  setDiscordRuntime(createPluginRuntimeMock());
+  const client = Object.assign(createGuildTextClient(channel.channelId), {
+    fetchGuild: async () => null,
+    rest: { get: channel.get },
+  });
+  const discordConfig = { groupPolicy: "allowlist" as const };
+  // The allowlist matches users by snowflake.
+  const userIds: Record<string, string> = { figs: "1001", cael: "1002" };
+  const runtimeError = vi.fn();
+  const threadBindings = createNoopThreadBindingManager("default");
+  onTestFinished(() => threadBindings.stop());
+  const params: Parameters<typeof createDiscordMessageDispatcher>[0] = {
+    cfg: {
+      channels: { discord: discordConfig },
+      messages: { inbound: { debounceMs: 0 }, groupChat: { unmentionedInbound: "room_event" } },
+    },
+    discordConfig,
+    accountId: "default",
+    token: "token",
+    runtime: {
+      log: vi.fn(),
+      error: runtimeError,
+      exit: (code: number): never => {
+        throw new Error(`exit ${code}`);
+      },
+    },
+    botUserId: "bot-1",
+    guildHistories: new Map(),
+    historyLimit: 20,
+    mediaMaxBytes: 1_000,
+    textLimit: 2_000,
+    replyToMode: "off",
+    dmEnabled: false,
+    groupDmEnabled: false,
+    dmPolicy: "disabled",
+    guildEntries: { g1: { users: Object.values(userIds), requireMention: false } },
+    threadBindings,
+  };
+  const dispatcher = createDiscordMessageDispatcher(params);
+  onTestFinished(() => dispatcher.deactivate());
+  const send = async (id: number, author: string, content: string) => {
+    channel.post(id, author, content);
+    let history: [Mark, string][] | undefined;
+    dispatch.mockImplementationOnce(async (dispatchParams) => {
+      history = marks(dispatchParams?.ctx?.InboundHistory);
+      return completes(dispatchParams?.replyOptions);
+    });
+    const sender = { id: userIds[author]!, bot: false, username: author };
+    const message = createDiscordMessage(
+      {
+        id: String(id),
+        channelId: channel.channelId,
+        content,
+        author: sender,
+        timestamp: at(id),
+      },
+      client,
+    );
+    await dispatcher(
+      createGuildEvent({
+        channelId: channel.channelId,
+        guildId: "g1",
+        author: message.author,
+        message,
+      }),
+      client,
+    );
+    return history;
+  };
+
+  return {
+    dispatcher,
+    send,
+    runtimeError,
+    /** Starts another message handler, with its own dispatcher, for the same account. */
+    startHandler: () => createDiscordMessageHandler({ ...params, client }),
+  };
+}
 
 describe("Discord room-history watermark", () => {
   it("marks earlier burst messages and the question being handled as already seen", async () => {
@@ -397,77 +486,9 @@ describe("Discord room-history watermark", () => {
   });
 
   it("keeps one watermark per message dispatcher, which its callers never supply", async () => {
-    setDiscordRuntime(createPluginRuntimeMock());
     const channel = createChannel("c1");
     channel.post(99, "rune", "morning, all");
-    const client = Object.assign(createGuildTextClient(channel.channelId), {
-      fetchGuild: async () => null,
-      rest: { get: channel.get },
-    });
-    const discordConfig = { groupPolicy: "allowlist" as const };
-    // The allowlist matches users by snowflake.
-    const userIds: Record<string, string> = { figs: "1001", cael: "1002" };
-    const runtimeError = vi.fn();
-    const threadBindings = createNoopThreadBindingManager("default");
-    onTestFinished(() => threadBindings.stop());
-    // The provider's and the public message handler's options: transport and policy only.
-    const dispatcher = createDiscordMessageDispatcher({
-      cfg: {
-        channels: { discord: discordConfig },
-        messages: { inbound: { debounceMs: 0 }, groupChat: { unmentionedInbound: "room_event" } },
-      },
-      discordConfig,
-      accountId: "default",
-      token: "token",
-      runtime: {
-        log: vi.fn(),
-        error: runtimeError,
-        exit: (code: number): never => {
-          throw new Error(`exit ${code}`);
-        },
-      },
-      botUserId: "bot-1",
-      guildHistories: new Map(),
-      historyLimit: 20,
-      mediaMaxBytes: 1_000,
-      textLimit: 2_000,
-      replyToMode: "off",
-      dmEnabled: false,
-      groupDmEnabled: false,
-      dmPolicy: "disabled",
-      guildEntries: { g1: { users: Object.values(userIds), requireMention: false } },
-      threadBindings,
-    });
-    onTestFinished(() => dispatcher.deactivate());
-    const send = async (id: number, author: string, content: string) => {
-      channel.post(id, author, content);
-      let history: [Mark, string][] | undefined;
-      dispatch.mockImplementationOnce(async (dispatchParams) => {
-        history = marks(dispatchParams?.ctx?.InboundHistory);
-        return completes(dispatchParams?.replyOptions);
-      });
-      const sender = { id: userIds[author]!, bot: false, username: author };
-      const message = createDiscordMessage(
-        {
-          id: String(id),
-          channelId: channel.channelId,
-          content,
-          author: sender,
-          timestamp: at(id),
-        },
-        client,
-      );
-      await dispatcher(
-        createGuildEvent({
-          channelId: channel.channelId,
-          guildId: "g1",
-          author: message.author,
-          message,
-        }),
-        client,
-      );
-      return history;
-    };
+    const { send, runtimeError } = createRoomDispatcher(channel);
 
     const first = await send(100, "figs", "does the release build pass?");
     const second = await send(101, "cael", "it passes");
@@ -475,6 +496,134 @@ describe("Discord room-history watermark", () => {
     expect(runtimeError).not.toHaveBeenCalled();
     expect(first).toEqual([["unmarked", "morning, all"]]);
     expect(second).toEqual([
+      ["seen", "morning, all"],
+      ["seen", "does the release build pass?"],
+    ]);
+  });
+});
+
+// Frond (karmaterminal, #1415): a scheduled turn in the room session, such as its heartbeat.
+describe("Discord room history for a scheduled turn", () => {
+  const roomSession = { sessionKey: "agent:main:discord:channel:c1", channelId: "c1" };
+  const readRoom = async () => {
+    const history = await discordPlugin.heartbeat!.readRoomHistory!({
+      cfg: {},
+      sessionKey: roomSession.sessionKey,
+      to: "channel:c1",
+      accountId: "default",
+    });
+    return history && marks(history);
+  };
+
+  it("marks what room turns handled as seen and leaves the watermark where they put it", async () => {
+    const watermarks = createDiscordRoomHistoryWatermarks();
+    const channel = createChannel("c1");
+    await turn(
+      { watermarks, channel, id: 800, author: "figs", content: "what's for breakfast?" },
+      completes,
+    );
+    channel.post(801, "cael", "the backup on silas failed");
+
+    const scheduled = marks(await watermarks.readScheduledHistory(roomSession));
+    const next = await turn(
+      { watermarks, channel, id: 802, author: "rune", content: "next" },
+      completes,
+    );
+
+    expect(scheduled).toEqual([
+      ["seen", "what's for breakfast?"],
+      ["new", "the backup on silas failed"],
+    ]);
+    // Reading handled nothing: the next room turn still gets the unhandled message as new.
+    expect(next.history).toEqual([
+      ["seen", "what's for breakfast?"],
+      ["new", "the backup on silas failed"],
+    ]);
+  });
+
+  it("counts a room turn still queued ahead of the scheduled turn as handling its message", async () => {
+    const watermarks = createDiscordRoomHistoryWatermarks();
+    const channel = createChannel("c1");
+    await turn({ watermarks, channel, id: 900, author: "figs", content: "q" }, completes);
+    await turn({ watermarks, channel, id: 901, author: "cael", content: "queued" }, queued);
+
+    expect(marks(await watermarks.readScheduledHistory(roomSession))).toEqual([
+      ["seen", "q"],
+      ["seen", "queued"],
+    ]);
+  });
+
+  it("reads nothing without a room turn in this session under the current policy", async () => {
+    const watermarks = createDiscordRoomHistoryWatermarks();
+    const channel = createChannel("c1");
+    let policyCurrent = true;
+    await turn(
+      {
+        watermarks,
+        channel,
+        id: 1000,
+        author: "figs",
+        content: "q",
+        isPolicyCurrent: () => policyCurrent,
+      },
+      completes,
+    );
+
+    // Another session in the channel, or the same one after a restart, has no room turn to follow.
+    expect(
+      await watermarks.readScheduledHistory({ sessionKey: "agent:main:main", channelId: "c1" }),
+    ).toBeUndefined();
+    expect(
+      await createDiscordRoomHistoryWatermarks().readScheduledHistory(roomSession),
+    ).toBeUndefined();
+    await expect(watermarks.readScheduledHistory(roomSession)).resolves.toHaveLength(1);
+    policyCurrent = false;
+    await expect(watermarks.readScheduledHistory(roomSession)).resolves.toBeUndefined();
+  });
+
+  it("reads the room through the account's live message dispatcher until it shuts down", async () => {
+    const channel = createChannel("c1");
+    channel.post(99, "rune", "morning, all");
+    const first = createRoomDispatcher(channel);
+    await first.send(100, "figs", "does the release build pass?");
+    const firstView = await readRoom();
+    // A replacement monitor can start while the one it replaces is still shutting down.
+    const second = createRoomDispatcher(channel);
+    await second.send(101, "cael", "it passes");
+    const secondView = await readRoom();
+    await second.dispatcher.deactivate();
+    const afterSecondShutdown = await readRoom();
+    await first.dispatcher.deactivate();
+
+    expect(firstView).toEqual([
+      ["seen", "morning, all"],
+      ["seen", "does the release build pass?"],
+    ]);
+    // The newest dispatcher is read.
+    expect(secondView).toEqual([
+      ["seen", "morning, all"],
+      ["seen", "does the release build pass?"],
+      ["seen", "it passes"],
+    ]);
+    // Its shutdown released only its own set: the first dispatcher's marks read again.
+    expect(afterSecondShutdown).toEqual([
+      ["seen", "morning, all"],
+      ["seen", "does the release build pass?"],
+      ["new", "it passes"],
+    ]);
+    await expect(readRoom()).resolves.toBeUndefined();
+  });
+
+  it("releases the watermarks of a dispatcher whose message handler fails to start", async () => {
+    const channel = createChannel("c1");
+    channel.post(99, "rune", "morning, all");
+    const live = createRoomDispatcher(channel);
+    await live.send(100, "figs", "does the release build pass?");
+
+    // The mock runtime has no ingress queue store: the handler fails after creating its dispatcher.
+    expect(live.startHandler).toThrow("openChannelIngressQueue mock is not configured");
+    // That dispatcher never ran a turn, so it must not hide the live dispatcher's marks.
+    await expect(readRoom()).resolves.toEqual([
       ["seen", "morning, all"],
       ["seen", "does the release build pass?"],
     ]);

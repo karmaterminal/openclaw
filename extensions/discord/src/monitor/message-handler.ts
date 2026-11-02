@@ -13,16 +13,24 @@ export function createDiscordMessageHandler(
   params: DiscordMessageHandlerParams & { client: Client },
 ): DiscordMessageHandlerWithLifecycle {
   const dispatcher = createDiscordMessageDispatcher(params);
-  const ingress = createDiscordIngressMonitor({
-    ...params,
-    readPolicy: dispatcher.readPolicy,
-    dispatch: (event, lifecycle) =>
-      dispatcher(event, params.client, {
-        abortSignal: lifecycle.abortSignal,
-        turnAdoptionLifecycle: lifecycle,
-      }),
-  });
-  ingress.start();
+  let ingress: ReturnType<typeof createDiscordIngressMonitor>;
+  try {
+    ingress = createDiscordIngressMonitor({
+      ...params,
+      readPolicy: dispatcher.readPolicy,
+      dispatch: (event, lifecycle) =>
+        dispatcher(event, params.client, {
+          abortSignal: lifecycle.abortSignal,
+          turnAdoptionLifecycle: lifecycle,
+        }),
+    });
+    ingress.start();
+  } catch (error) {
+    // No caller gets this handler to deactivate. The dispatcher has run no turn, and its
+    // deactivate releases the account's room-history watermarks before its first await.
+    void dispatcher.deactivate();
+    throw error;
+  }
   const activeAdmissions = new Set<Promise<void>>();
   let accepting = true;
 
