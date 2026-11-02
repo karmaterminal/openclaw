@@ -19,14 +19,14 @@ import {
   MemoryIndexRevisionConflictError,
 } from "./manager-db-kernel.js";
 import {
-  cleanupAgedMemoryReindexTempFiles,
+  cleanupOrphanMemoryReindexShadows,
   closeMemoryDatabase,
   openMemoryDatabaseAtPath,
   resetMemoryDatabase,
+  retainLiveMemoryReindexShadow,
 } from "./manager-db.js";
 import { observePublishedSql } from "./manager-publication-observer.test-support.js";
 import { bindSqliteWorkerBackend } from "./manager-publication.worker.js";
-import { waitForMemoryReindexLock } from "./manager-reindex-lock.js";
 
 function ensureTestMemorySchema(db: DatabaseSync, cacheEnabled = true, ftsEnabled = false): void {
   ensureMemoryIndexSchema({ db, cacheEnabled, ftsEnabled });
@@ -541,30 +541,35 @@ describe("memory manager database publication", () => {
     ]);
   });
 
-  it("removes aged orphan shadows under the maintenance lease but preserves young shadows", async () => {
+  it("removes every crash-left shadow, aged or young, but keeps one this process holds", async () => {
     const databasePath = path.join(fixtureRoot, "agent.sqlite");
     const database = new DatabaseSync(databasePath);
     database.close();
     const oldShadow = `${databasePath}.memory-reindex-11111111-2222-3333-4444-555555555555`;
     const youngShadow = `${databasePath}.memory-reindex-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee`;
+    const liveShadow = `${databasePath}.memory-reindex-99999999-8888-7777-6666-555555555555`;
     const old = new Date(Date.now() - 48 * 60 * 60_000);
 
     for (const suffix of ["", "-wal", "-journal"]) {
       await fs.writeFile(`${oldShadow}${suffix}`, "orphan");
       await fs.utimes(`${oldShadow}${suffix}`, old, old);
     }
-    await fs.writeFile(youngShadow, "active");
-
-    const lock = await waitForMemoryReindexLock(databasePath);
+    await fs.writeFile(youngShadow, "orphan");
+    const release = retainLiveMemoryReindexShadow(liveShadow);
+    await fs.writeFile(liveShadow, "active");
     try {
-      await cleanupAgedMemoryReindexTempFiles(databasePath);
+      await expect(cleanupOrphanMemoryReindexShadows(databasePath)).resolves.toBe(2);
     } finally {
-      await lock.release();
+      release();
     }
 
     await expectPathMissing(oldShadow);
     await expectPathMissing(`${oldShadow}-wal`);
     await expectPathMissing(`${oldShadow}-journal`);
-    await fs.access(youngShadow);
+    await expectPathMissing(youngShadow);
+    await fs.access(liveShadow);
+    // Once released, nothing owns the file.
+    await expect(cleanupOrphanMemoryReindexShadows(databasePath)).resolves.toBe(1);
+    await expectPathMissing(liveShadow);
   });
 });
