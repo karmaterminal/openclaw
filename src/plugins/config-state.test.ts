@@ -135,6 +135,17 @@ describe("normalizePluginsConfig", () => {
   ] as const)("normalizes hook policy: %s", (_name, hooks, expected) => {
     expect(normalizeEntry({ hooks })?.hooks).toEqual(expected);
   });
+  it("preserves next-turn drain caps through an aliased plugin policy", () => {
+    expect(
+      normalizePluginsConfig({
+        entries: {
+          "google-gemini-cli": {
+            hooks: { nextTurnInjectionDrainMaxEntries: 1, nextTurnInjectionDrainMaxBytes: 500 },
+          },
+        },
+      }).entries.google?.hooks,
+    ).toMatchObject({ nextTurnInjectionDrainMaxEntries: 1, nextTurnInjectionDrainMaxBytes: 500 });
+  });
   it.each([
     [
       "trimmed model allowlist",

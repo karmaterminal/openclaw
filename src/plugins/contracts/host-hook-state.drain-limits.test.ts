@@ -52,6 +52,67 @@ describe("next-turn injection drain limits", () => {
     ]);
   });
 
+  it("applies an aliased owner's normalized entry cap at drain", async () => {
+    const cfg: OpenClawConfig = {
+      agents: { entries: { main: {} } },
+      plugins: {
+        entries: { "google-gemini-cli": { hooks: { nextTurnInjectionDrainMaxEntries: 1 } } },
+      },
+    };
+    const scope = sessionScope(cfg, "main", "agent:main:alias-cap");
+    const registry = createEmptyPluginRegistry();
+    registry.plugins.push(createPluginRecord({ id: "google", status: "loaded" }));
+    setActivePluginRegistry(registry);
+    await writeEntry(scope, {
+      sessionId: "alias-cap",
+      updatedAt: 1,
+      pluginNextTurnInjections: {
+        google: ["first", "second"].map((text, index) => ({
+          id: text,
+          pluginId: "google",
+          text,
+          placement: "prepend_context" as const,
+          createdAt: index,
+        })),
+      },
+    });
+    expect((await drain({ cfg, ...scope })).queuedInjections.map((item) => item.id)).toEqual([
+      "first",
+    ]);
+    expect(readEntry(scope)?.pluginNextTurnInjections?.google).toHaveLength(1);
+  });
+
+  it("retains live TTL-only records until an unavailable owner returns", async () => {
+    const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
+    const scope = sessionScope(cfg, "main", "agent:main:ttl-owner-outage");
+    await writeEntry(scope, {
+      sessionId: "ttl-owner-outage",
+      updatedAt: 1,
+      pluginNextTurnInjections: {
+        "owner-fixture": [
+          {
+            id: "pending",
+            pluginId: "owner-fixture",
+            text: "later",
+            placement: "prepend_context",
+            createdAt: Date.now(),
+            ttlMs: 60_000,
+            idempotencyKey: "pending",
+          },
+        ],
+      },
+    });
+    setActivePluginRegistry(createEmptyPluginRegistry());
+    expect((await drain({ cfg, ...scope })).queuedInjections).toEqual([]);
+    expect(readEntry(scope)?.pluginNextTurnInjections?.["owner-fixture"]).toHaveLength(1);
+    const registry = createEmptyPluginRegistry();
+    registry.plugins.push(createPluginRecord({ id: "owner-fixture", status: "loaded" }));
+    setActivePluginRegistry(registry);
+    expect((await drain({ cfg, ...scope })).queuedInjections.map((item) => item.id)).toEqual([
+      "pending",
+    ]);
+  });
+
   it("bounds one turn across plugin owners", async () => {
     const cfg: OpenClawConfig = { agents: { entries: { main: {} } } };
     const scope = sessionScope(cfg, "main", "agent:main:aggregate-budget");

@@ -13,6 +13,7 @@ import {
   retainInjection,
   settle,
 } from "./host-hook-injection-outcomes.js";
+import { resolveInjectionHookPolicy } from "./host-hook-injection-policy.js";
 import {
   injectionRouteAdmissionReason,
   isUnsupportedInjectionRouteNow,
@@ -222,7 +223,7 @@ export async function enqueuePluginNextTurnInjection(params: {
     Buffer.byteLength(renderInjection(record), "utf8") >
     Math.min(
       DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN,
-      params.cfg.plugins?.entries?.[params.pluginId]?.hooks?.nextTurnInjectionDrainMaxBytes ??
+      resolveInjectionHookPolicy(params.cfg, params.pluginId)?.nextTurnInjectionDrainMaxBytes ??
         DEFAULT_DRAINED_NEXT_TURN_INJECTION_BYTES_PER_PLUGIN,
     )
   ) {
@@ -401,10 +402,8 @@ async function drainPluginNextTurnInjections(
       if (!Array.isArray(entries)) {
         continue;
       }
-      const allowed =
-        activePluginIds.has(pluginId) &&
-        resolvePromptInjectionAllowed(params.cfg.plugins?.entries?.[pluginId]?.hooks);
-      const drainLimits = params.cfg.plugins?.entries?.[pluginId]?.hooks;
+      const drainLimits = resolveInjectionHookPolicy(params.cfg, pluginId);
+      const allowed = activePluginIds.has(pluginId) && resolvePromptInjectionAllowed(drainLimits);
       const maxEntries =
         drainLimits?.nextTurnInjectionDrainMaxEntries ??
         DEFAULT_DRAINED_NEXT_TURN_INJECTIONS_PER_PLUGIN;
@@ -422,7 +421,7 @@ async function drainPluginNextTurnInjections(
         if (isExpired(candidate, now)) {
           settle(entry, pluginId, candidate, "expired", now, notices);
         } else if (!allowed) {
-          if (candidate.expiresAt !== undefined) {
+          if (candidate.expiresAt !== undefined || candidate.ttlMs !== undefined) {
             retainInjection(retained, pluginId, candidate);
           } else {
             settle(entry, pluginId, candidate, "discarded", now, notices);
