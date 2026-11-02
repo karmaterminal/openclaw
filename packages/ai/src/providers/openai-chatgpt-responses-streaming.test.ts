@@ -346,6 +346,36 @@ describe("OpenAI ChatGPT Responses inference streaming", () => {
       labels: { code: "x" },
     },
     {
+      shape: "an identifier-shaped secret param",
+      status: 400,
+      body: { error: { code: "x", param: "sk_test_1234567890abcdef", message: echo } },
+      labels: { code: "x", paramShape: "invalid" },
+    },
+    {
+      shape: "a secret-shaped field under a request root",
+      status: 400,
+      body: { error: { code: "x", param: "input.secret_1234567890abcdef", message: echo } },
+      labels: { code: "x", paramShape: "invalid" },
+    },
+    {
+      shape: "a long numeric index",
+      status: 400,
+      body: { error: { code: "x", param: "input[4111111111111111].content", message: echo } },
+      labels: { code: "x", paramShape: "invalid" },
+    },
+    {
+      shape: "a nested request field path",
+      status: 400,
+      body: { error: { code: "x", param: "input[12].content[0].text", message: echo } },
+      labels: { code: "x", param: "input[12].content[0].text" },
+    },
+    {
+      shape: "a reasoning field path",
+      status: 400,
+      body: { error: { code: "x", param: "reasoning.effort", message: echo } },
+      labels: { code: "x", param: "reasoning.effort" },
+    },
+    {
       shape: "an unsupported-parameter detail",
       status: 400,
       body: { detail: `Unsupported parameter: '${echo}'` },

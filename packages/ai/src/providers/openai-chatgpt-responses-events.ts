@@ -19,7 +19,63 @@ const CODEX_DETAIL_CLASSES = [
   ["unsupported_model", /^the '[^']+' model is not supported when using codex\b/i],
   ["store_must_be_false", /^store must be set to false\b/i],
 ] as const;
-const CODEX_REJECTION_PARAM_RE = /^[A-Za-z0-9_]+(?:\[[0-9]+\]|\.[A-Za-z0-9_]+)*$/;
+// A logged `param` is built only from request-schema words and short indexes, so a
+// provider-chosen value (a key, a token, prompt text) can never pass through as a "field".
+const CODEX_REJECTION_PARAM_ROOTS = new Set([
+  "include",
+  "input",
+  "instructions",
+  "max_output_tokens",
+  "metadata",
+  "model",
+  "parallel_tool_calls",
+  "previous_response_id",
+  "prompt_cache_key",
+  "reasoning",
+  "service_tier",
+  "store",
+  "stream",
+  "temperature",
+  "text",
+  "tool_choice",
+  "tools",
+  "top_p",
+  "truncation",
+]);
+const CODEX_REJECTION_PARAM_FIELDS = new Set([
+  "arguments",
+  "call_id",
+  "content",
+  "description",
+  "effort",
+  "encrypted_content",
+  "format",
+  "function",
+  "id",
+  "image_url",
+  "name",
+  "output",
+  "parameters",
+  "role",
+  "schema",
+  "status",
+  "strict",
+  "summary",
+  "text",
+  "type",
+  "verbosity",
+]);
+const CODEX_REJECTION_PARAM_RE = /^([a-z_]+)((?:\[[0-9]{1,4}\]|\.[a-z_]+)*)$/;
+
+function isRequestFieldPath(param: string): boolean {
+  const match = CODEX_REJECTION_PARAM_RE.exec(param);
+  if (!match?.[1] || !CODEX_REJECTION_PARAM_ROOTS.has(match[1])) {
+    return false;
+  }
+  return [...(match[2] ?? "").matchAll(/\.([a-z_]+)/g)].every(([, field]) =>
+    CODEX_REJECTION_PARAM_FIELDS.has(field ?? ""),
+  );
+}
 
 type CodexRejectionDetailClass =
   | (typeof CODEX_DETAIL_CLASSES)[number][0]
@@ -76,10 +132,10 @@ function readCodexHttpRejection(
   payload: Record<string, unknown> | undefined,
 ): CodexHttpRejection {
   const param = isRecord(payload?.error) ? payload.error.param : undefined;
-  const fieldPath =
-    typeof param === "string" && param.length <= 80 && CODEX_REJECTION_PARAM_RE.test(param);
+  const fieldPath = typeof param === "string" && param.length <= 80 && isRequestFieldPath(param);
   return {
-    // Same digest as failover `rawErrorHash`, so hosts correlate a rejection without its text.
+    // Digest of the size-bounded body read, computed like failover `rawErrorHash` (same
+    // function, different input), so identical rejections correlate across hosts.
     ...(raw.trim() ? { bodyHash: redactIdentifier(raw, { len: 12 }) } : {}),
     ...(fieldPath ? { param } : param == null ? {} : { paramShape: "invalid" }),
     ...(payload?.detail === undefined

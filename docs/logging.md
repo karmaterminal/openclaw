@@ -295,15 +295,18 @@ sensitive. Log exports retain their existing redaction policy.
 When the OpenAI ChatGPT Responses backend rejects a request with HTTP 4xx, the
 same warning also carries labels parsed from the response body, never its text:
 
-- `param`: the rejected field when it is a plain field path of at most 80
-  characters, such as `tools[3].parameters`. Any other non-null value is
-  dropped and logged as `paramShape: "invalid"`.
+- `param`: the rejected field when it is a request field path of at most 80
+  characters built only from known request-schema names and short indexes,
+  such as `tools[3].parameters` or `reasoning.effort`. Any other non-null
+  value, including identifier-shaped tokens, is dropped and logged as
+  `paramShape: "invalid"`.
 - `detailClass`: the class of a `{"detail": ...}` body: `unsupported_parameter`,
   `invalid_tool_schema`, `invalid_input_item`, `unsupported_model`,
   `store_must_be_false`, `context_length`, or `unknown`.
-- `bodyHash`: a `sha256:` digest prefix of the body, computed like
-  `rawErrorHash` in `embedded run failover decision` logs, so identical
-  rejections correlate across hosts.
+- `bodyHash`: a `sha256:` digest prefix of the size-bounded body read,
+  computed with the same function as `rawErrorHash` in `embedded run failover
+  decision` logs (over a different input), so identical rejections correlate
+  across hosts.
 
 HTTP 5xx bodies get none of these labels.
 
