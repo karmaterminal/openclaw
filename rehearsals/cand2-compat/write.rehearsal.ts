@@ -40,7 +40,7 @@ import { closeOpenClawAgentDatabasesAsync } from "../../src/state/openclaw-agent
 import {
   fixtureDir,
   hashTree,
-  headSha,
+  productSha,
   READERS,
   requireRoot,
   SURFACES,
@@ -66,8 +66,8 @@ function freshDir(dir: string): string {
   return dir;
 }
 
-it("runs on CAND2 only", () => {
-  expect(headSha()).toBe(CAND2);
+it("runs on CAND2's product tree only", () => {
+  expect(productSha()).toBe(CAND2);
 });
 
 // --- Discord durable ingress (channel_ingress_events) -------------------------------------
@@ -196,7 +196,6 @@ describe("discord durable ingress rows", () => {
       storedRawMessageKeys: Object.keys(
         (pending[0]?.payload as { rawMessage?: object }).rawMessage ?? {},
       ).toSorted(),
-      files: hashTree(stateDir),
     });
   });
 });
@@ -279,7 +278,6 @@ describe("session pending input of an ambient owner aggregate", () => {
       staged,
       aggregateRequesterOrigin: origin,
       memberRequesterOriginSenderId: memberMessage.__openclaw?.requesterOrigin?.senderId,
-      files: hashTree(stateDir),
     });
   });
 });
@@ -414,7 +412,6 @@ describe.skipIf(process.platform !== "linux")("codex app-server process registra
         codexCommand,
         entryKeys: Object.keys(value).toSorted(),
         childKeys: Object.keys(value.child).toSorted(),
-        files: hashTree(stateDir),
       };
     }
 
@@ -431,7 +428,6 @@ describe.skipIf(process.platform !== "linux")("codex app-server process registra
       bin,
       perReader,
       controlStateDir: controlDir,
-      controlFiles: hashTree(controlDir),
     });
   });
 });

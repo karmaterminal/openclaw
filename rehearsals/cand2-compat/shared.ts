@@ -17,6 +17,13 @@ export const SURFACES = {
 export const READERS = ["cand2-15aa7e93", "old-22f49a43", "old-3d3364dd"] as const;
 export type ReaderLabel = (typeof READERS)[number];
 
+/** The exact product commit each label names. */
+export const PRODUCT_SHAS: Record<ReaderLabel, string> = {
+  "cand2-15aa7e93": "15aa7e9333a242debb32586afacd09a3bad816ce",
+  "old-22f49a43": "22f49a43a118f86dfd8c95dd5b2850420aa8bcad",
+  "old-3d3364dd": "3d3364ddc5a88282b9d1cc71d8a529e83c18f0b0",
+};
+
 export function requireRoot(): string {
   const root = process.env.CAND2_COMPAT_ROOT?.trim();
   if (!root || !path.isAbsolute(root)) {
@@ -35,6 +42,36 @@ export function readerDir(root: string, reader: string, surface: string): string
 
 export function headSha(): string {
   return execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+}
+
+function gitSucceeds(args: string[]): boolean {
+  try {
+    execFileSync("git", args, { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The product commit this checkout runs: HEAD descends from it and differs from it only under
+ * rehearsals/ (the lane branch carries rehearsal-only commits on top of CAND2; old readers are
+ * detached at their exact SHA with the rehearsal copied in untracked).
+ */
+export function productSha(): string {
+  const match = Object.values(PRODUCT_SHAS).find(
+    (sha) =>
+      gitSucceeds(["merge-base", "--is-ancestor", sha, "HEAD"]) &&
+      gitSucceeds(["diff", "--quiet", sha, "HEAD", "--", ".", ":(exclude)rehearsals"]),
+  );
+  if (!match) {
+    throw new Error(`HEAD ${headSha()} is not a rehearsal-only descendant of a named product SHA`);
+  }
+  // Tracked files outside rehearsals/ must also be unmodified in the working tree.
+  if (!gitSucceeds(["diff", "--quiet", "HEAD", "--", ".", ":(exclude)rehearsals"])) {
+    throw new Error("the checkout has tracked modifications outside rehearsals/");
+  }
+  return match;
 }
 
 /** sha256 of every regular file under dir, keyed by its relative path. */
@@ -68,6 +105,7 @@ export function copyFixture(source: string, destination: string): Record<string,
 
 export type Manifest = {
   writeSha: string;
+  writeCheckoutHead: string;
   writtenAt: string;
   surfaces: Record<string, unknown>;
 };
@@ -84,8 +122,13 @@ export function writeManifestSurface(root: string, surface: string, value: unkno
   const file = manifestPath(root);
   const manifest: Manifest = fs.existsSync(file)
     ? readManifest(root)
-    : { writeSha: headSha(), writtenAt: new Date().toISOString(), surfaces: {} };
-  if (manifest.writeSha !== headSha()) {
+    : {
+        writeSha: productSha(),
+        writeCheckoutHead: headSha(),
+        writtenAt: new Date().toISOString(),
+        surfaces: {},
+      };
+  if (manifest.writeSha !== productSha()) {
     throw new Error(`manifest was written by ${manifest.writeSha}, not this checkout`);
   }
   manifest.surfaces[surface] = value;
@@ -104,8 +147,8 @@ export function recordResult(
   const file = path.join(root, "results", `${reader}.json`);
   const results = fs.existsSync(file)
     ? (JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>)
-    : { readSha: headSha(), rows: [] };
-  if (results.readSha !== headSha()) {
+    : { readSha: productSha(), readCheckoutHead: headSha(), rows: [] };
+  if (results.readSha !== productSha()) {
     throw new Error(`results for ${reader} were recorded by ${String(results.readSha)}`);
   }
   (results.rows as unknown[]).push({ surface, test, ...outcome });
