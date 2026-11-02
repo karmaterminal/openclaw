@@ -21,13 +21,13 @@ const CODEX_DETAIL_CLASSES = [
 ] as const;
 const CODEX_REJECTION_PARAM_RE = /^[A-Za-z0-9_]+(?:\[[0-9]+\]|\.[A-Za-z0-9_]+)*$/;
 
-export type CodexRejectionDetailClass =
+type CodexRejectionDetailClass =
   | (typeof CODEX_DETAIL_CLASSES)[number][0]
   | "context_length"
   | "unknown";
 
 /** Content-free labels from an HTTP 4xx body. Provider prose never enters here. */
-export type CodexHttpRejection = {
+type CodexHttpRejection = {
   bodyHash?: string;
   param?: string;
   paramShape?: "invalid";
@@ -79,7 +79,7 @@ function readCodexHttpRejection(
   const fieldPath =
     typeof param === "string" && param.length <= 80 && CODEX_REJECTION_PARAM_RE.test(param);
   return {
-    // Same digest as failover `rawErrorHash`, so seats correlate without content.
+    // Same digest as failover `rawErrorHash`, so hosts correlate a rejection without its text.
     ...(raw.trim() ? { bodyHash: redactIdentifier(raw, { len: 12 }) } : {}),
     ...(fieldPath ? { param } : param == null ? {} : { paramShape: "invalid" }),
     ...(payload?.detail === undefined
