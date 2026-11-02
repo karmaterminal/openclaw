@@ -119,6 +119,48 @@ describe("runCronIsolatedAgentTurn - meta.error status propagation", () => {
     );
   });
 
+  it("records a provider failure without announcing its generic error to the room", async () => {
+    await useRealOutcome();
+    const sourceSessionKey = "agent:default:messagechat:channel:room";
+    harness.resolveCronSessionMock.mockReturnValue(
+      harness.makeCronSession({
+        store: {
+          [sourceSessionKey]: harness.makeCronSessionEntry({ sessionId: "source-session" }),
+        },
+      }),
+    );
+    harness.resolveCronDeliveryPlanMock.mockReturnValue({
+      requested: true,
+      mode: "announce",
+      channel: "messagechat",
+      to: "room",
+    });
+    const error =
+      "The AI service couldn't accept this request. Try a new conversation with /new, or choose another model in the Control UI.";
+    mockAgentRun({
+      provider: "openai",
+      model: "gpt-5.4",
+      payloads: [{ text: "Partial answer" }],
+      meta: { error: { kind: "provider_error", message: error } },
+    });
+
+    const result = await runTurn({
+      job: {
+        sessionTarget: "current",
+        sessionKey: sourceSessionKey,
+        delivery: { mode: "announce", channel: "messagechat", to: "room" },
+      },
+    });
+
+    expectObjectFields(result, {
+      status: "error",
+      error: `cron isolated run failed: ${error}`,
+      delivered: false,
+      deliveryAttempted: false,
+    });
+    expect(harness.dispatchCronDeliveryMock).not.toHaveBeenCalled();
+  });
+
   it.each([false, true])(
     "preserves tool-error status for silent replies (error: %s)",
     async (failed) => {

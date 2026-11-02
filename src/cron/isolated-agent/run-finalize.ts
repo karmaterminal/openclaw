@@ -212,8 +212,7 @@ export async function finalizeCronRun(params: {
       ...telemetry,
     });
   }
-  const { deliveryDisposition, hasFatalStructuredErrorPayload, pendingPresentationWarningError } =
-    cronPayloadOutcome;
+  const { deliveryDisposition, pendingPresentationWarningError } = cronPayloadOutcome;
   let {
     synthesizedText,
     deliveryPayloads,
@@ -331,9 +330,10 @@ export async function finalizeCronRun(params: {
     messageToolSentTargets: finalRunResult.messagingToolSentTargets,
   });
   const hasIntentionalSilentReply = replyDisposition === "silent";
-  if (hasFatalStructuredErrorPayload && prepared.deliveryRequested) {
-    // Structured run error payloads belong in cron state and failure alerts,
-    // not the normal completion announce path where provider JSON can leak.
+  if (hasFatalErrorPayload && prepared.deliveryRequested) {
+    // Terminal run errors belong in cron state and failure alerts, not the
+    // normal completion announce path. This includes provider failures whose
+    // generic user-facing copy would otherwise be posted to a room.
     await cleanupRunSession("cron-delete-after-run-fatal-error");
     const deliveryTrace = buildCronDeliveryTrace({
       deliveryPlan: prepared.deliveryPlan,

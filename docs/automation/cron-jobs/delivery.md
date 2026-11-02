@@ -36,6 +36,8 @@ footer.
 
 With `announce`, the chat that receives the result owns it. The result is added to the conversation after the channel confirms delivery, using the content actually sent after channel transforms and hooks. OpenClaw writes one assistant message into that chat's transcript so the next reply can use it as context. The result records its job and run; retries do not duplicate it, and it can commit while a turn is running. Transcript writes remain ordered, and the running turn keeps ownership of its reply. Destination creation and remembered-route updates happen only after confirmed delivery; newly created destinations inherit the source session's required sandbox policy.
 
+For isolated agent jobs, terminal execution errors stay in run history and use the configured failure-alert route; they do not become normal completion announcements in the chat. This includes provider request failures. A message the agent already sent directly with the `message` tool cannot be recalled by this rule.
+
 A newly committed visible result refreshes the destination's idle freshness, so a reply within the idle window retains the scheduled question. Replaying the same result, silent runs, and failed or uncertain deliveries do not refresh it. Recurring visible results can keep the destination idle-fresh; daily reset still uses the session start time.
 
 - Delivery to the creating chat writes the result there.
