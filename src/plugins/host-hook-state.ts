@@ -22,6 +22,7 @@ import {
 import {
   hasEnhancedNextTurnInjectionFields,
   hasValidInjectionGenerationFence,
+  hasValidInjectionNotBefore,
   isExpired,
   isPluginNextTurnInjectionPlacement,
   isPluginNextTurnInjectionRecord,
@@ -174,9 +175,7 @@ export async function enqueuePluginNextTurnInjection(params: {
       (!Number.isFinite(requested.expiresAt) ||
         requested.expiresAt <= now ||
         requested.expiresAt > now + MAX_OUTCOME_RETENTION_MS)) ||
-    (requested.notBefore !== undefined &&
-      (!Number.isFinite(requested.notBefore) ||
-        requested.notBefore >= (requested.expiresAt ?? now + MAX_OUTCOME_RETENTION_MS - 5_000))) ||
+    !hasValidInjectionNotBefore(requested, now) ||
     (requested.outcomeRetainUntil !== undefined &&
       (!Number.isFinite(requested.outcomeRetainUntil) ||
         requested.outcomeRetainUntil > now + MAX_OUTCOME_RETENTION_MS)) ||
@@ -455,8 +454,7 @@ async function drainPluginNextTurnInjections(
       }
     }
     drained.sort((left, right) => left.createdAt - right.createdAt);
-    // A drain is the consume boundary for this session queue. Inactive plugin
-    // records are stale owner state and are discarded with expired records.
+    // Inactive entries with deadlines remain queued; legacy undated entries are discarded.
     if (Object.keys(retained).length) {
       entry.pluginNextTurnInjections = retained;
     } else {

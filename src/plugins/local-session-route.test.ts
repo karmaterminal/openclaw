@@ -170,7 +170,12 @@ describe("exact plugin local session route proof", () => {
     const key = "agent:main:subagent:abc";
     entry(key);
     listBindings.mockRejectedValueOnce(new Error("binding owner unavailable"));
-    expect(await resolve(key)).toMatchObject({ exists: false, onHost: false });
+    expect(await resolve(key)).toMatchObject({
+      exists: true,
+      onHost: false,
+      sessionId: "s1",
+      lifecycleRevision: "r1",
+    });
     expect(readProjection).not.toHaveBeenCalled();
   });
 
@@ -196,7 +201,12 @@ describe("exact plugin local session route proof", () => {
     });
     expect(await resolve(key)).toMatchObject({ exists: true, onHost: false });
     readProjection.mockRejectedValueOnce(new Error("placement unavailable"));
-    expect(await resolve(key)).toMatchObject({ exists: false, onHost: false });
+    expect(await resolve(key)).toMatchObject({
+      exists: true,
+      onHost: false,
+      sessionId: "s1",
+      lifecycleRevision: "r1",
+    });
   });
 
   it("preserves case-distinct opaque peer identities on exact lookup", async () => {

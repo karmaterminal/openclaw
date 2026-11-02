@@ -102,7 +102,10 @@ export function preserveResetPluginInjectionOutcomes(
         owner,
         Object.fromEntries(
           Object.entries(outcomes)
-            .filter(([, outcome]) => outcome.retainUntil > now)
+            .filter(
+              ([, outcome]) =>
+                outcome && typeof outcome.retainUntil === "number" && outcome.retainUntil > now,
+            )
             .map(([key, { lateExpiryToken: _lateExpiryToken, ...outcome }]) => [key, outcome]),
         ),
       ]),

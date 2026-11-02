@@ -66,7 +66,7 @@ export function pruneOutcomes(entry: SessionEntry, pluginId: string, now: number
     return;
   }
   for (const [key, outcome] of Object.entries(outcomes)) {
-    if (outcome.retainUntil <= now) {
+    if (!outcome || typeof outcome.retainUntil !== "number" || outcome.retainUntil <= now) {
       delete outcomes[key];
     }
   }

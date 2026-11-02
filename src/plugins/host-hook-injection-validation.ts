@@ -13,6 +13,20 @@ export function hasValidInjectionGenerationFence(
   );
 }
 
+export function hasValidInjectionNotBefore(
+  injection: PluginNextTurnInjection,
+  now: number,
+): boolean {
+  if (injection.notBefore === undefined) {
+    return true;
+  }
+  return (
+    Number.isFinite(injection.notBefore) &&
+    injection.notBefore < (injection.expiresAt ?? now + 86_400_000 - 5_000) &&
+    (injection.ttlMs === undefined || injection.notBefore <= now + injection.ttlMs)
+  );
+}
+
 export function isPluginNextTurnInjectionPlacement(
   value: unknown,
 ): value is PluginNextTurnInjectionRecord["placement"] {

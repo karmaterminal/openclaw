@@ -66,7 +66,7 @@ export function dispatchSettlements(
       const delivery = Promise.resolve()
         .then(async () => {
           for (const { event, sessionId, lifecycleRevision } of batch) {
-            if (!isCurrent() || !sessionId || !lifecycleRevision) {
+            if (!isCurrent() || !sessionId) {
               continue;
             }
             const entry = await readResolvedSessionEntryInWorker(scope);
