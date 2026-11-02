@@ -283,10 +283,11 @@ that wrap a cancellation error.
 
 ### Provider request failures
 
-Model transport failures emit `Model request failed` at warning level with the
-provider, model, error name, available HTTP status, code, type, cause name and
-code, and request and response IDs. Each provider-supplied field is logged only
-when it is a short classification label. Provider messages, error bodies,
+Model transport failures emit `Model request failed` at warning level with
+fields such as the provider, model, error name, available HTTP status, code,
+type, cause name and code, request and response IDs, and transport abort or
+incomplete reasons. Each provider-supplied field is logged only when it is a
+short classification label. Provider messages, error bodies,
 generated response content, and request payloads are never logged, because
 provider text can echo prompts and tool results. Treat these local logs as
 sensitive. Log exports retain their existing redaction policy.
@@ -294,9 +295,9 @@ sensitive. Log exports retain their existing redaction policy.
 When the OpenAI ChatGPT Responses backend rejects a request with HTTP 4xx, the
 same warning also carries labels parsed from the response body, never its text:
 
-- `param`: the rejected field when it is a plain field path such as
-  `tools[3].parameters`. Any other value is dropped and logged as
-  `paramShape: "invalid"`.
+- `param`: the rejected field when it is a plain field path of at most 80
+  characters, such as `tools[3].parameters`. Any other non-null value is
+  dropped and logged as `paramShape: "invalid"`.
 - `detailClass`: the class of a `{"detail": ...}` body: `unsupported_parameter`,
   `invalid_tool_schema`, `invalid_input_item`, `unsupported_model`,
   `store_must_be_false`, `context_length`, or `unknown`.

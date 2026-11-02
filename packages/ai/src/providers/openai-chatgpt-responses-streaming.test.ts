@@ -334,6 +334,18 @@ describe("OpenAI ChatGPT Responses inference streaming", () => {
       },
     },
     {
+      shape: "a field path over 80 characters",
+      status: 400,
+      body: { error: { code: "x", param: `tools[0].${"p".repeat(72)}`, message: echo } },
+      labels: { code: "x", paramShape: "invalid" },
+    },
+    {
+      shape: "a null param",
+      status: 400,
+      body: { error: { code: "x", param: null, message: echo } },
+      labels: { code: "x" },
+    },
+    {
       shape: "an unsupported-parameter detail",
       status: 400,
       body: { detail: `Unsupported parameter: '${echo}'` },
