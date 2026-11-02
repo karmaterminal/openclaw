@@ -1543,7 +1543,10 @@ export const single = {
         runPlan("contracts-plugin"),
         runPlan(
           "infra",
-          testFiles("src/plugins/contracts", "host-hook-state.identity host-hooks.contract"),
+          testFiles(
+            "src/plugins/contracts",
+            "host-hook-state.identity host-hook-state.real-route host-hook-state.admission host-hooks.contract",
+          ),
         ),
       ],
     },
