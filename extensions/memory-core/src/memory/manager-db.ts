@@ -200,7 +200,10 @@ export function releaseLiveMemoryReindexShadow(shadowPath: string): void {
 
 /**
  * Remove shadows left by a crashed run. The Gateway, or one offline CLI, owns the
- * state directory exclusively, so a shadow this process does not hold has no live writer.
+ * state directory exclusively (`openclaw memory` writers admit through
+ * runWithLocalStateOwner, which refuses while a Gateway owns it), so a shadow this
+ * process does not hold has no live writer. No age floor: a supervised restart follows
+ * its crash within seconds, and startup must reclaim that run's shadow.
  */
 export async function cleanupOrphanMemoryReindexShadows(dbPath: string): Promise<number> {
   if (!(await isRegularFile(dbPath))) {
