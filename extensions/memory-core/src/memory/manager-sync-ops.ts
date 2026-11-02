@@ -392,8 +392,8 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerReindexOps {
       const shouldSyncMemory = this.sources.has("memory") && (this.dirty || isSearchBootstrap);
       const shouldSyncSessions = this.shouldSyncSessions(params, needsFullSessionReindex);
       recoveringSessionFullRetry = this.sessionsFullRetryDirty && shouldSyncSessions;
-      // A full session read repeats its worker OOM whether a retry or a first search
-      // bootstrap started it.
+      // A full session read repeats its worker OOM whether a retry or a search bootstrap
+      // started it; a bootstrap need not carry the retry flag.
       syncingFullSessionCorpus = needsFullSessionReindex && shouldSyncSessions;
 
       await this.executeSourceSync({
