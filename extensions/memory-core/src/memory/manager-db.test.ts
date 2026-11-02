@@ -45,6 +45,10 @@ function readSourceSchema(db: DatabaseSync) {
   };
 }
 
+async function expectPathMissing(targetPath: string): Promise<void> {
+  await expect(fs.access(targetPath)).rejects.toThrow("ENOENT");
+}
+
 async function publishPreparedMemoryDatabase(
   params: Parameters<typeof publishMemoryDatabaseTables>[0] & {
     vectorExtensionPath?: string;
@@ -538,89 +542,35 @@ describe("memory manager database publication", () => {
     ]);
   });
 
-  describe("orphan reindex shadow cleanup", () => {
-    const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000);
-    /** Writes one file per suffix, each last changed at its given time. */
-    async function writeShadowFiles(shadowPath: string, changedAt: Record<string, Date>) {
-      for (const [suffix, time] of Object.entries(changedAt)) {
-        await fs.writeFile(`${shadowPath}${suffix}`, "shadow");
-        await fs.utimes(`${shadowPath}${suffix}`, time, time);
-      }
+  it("removes every crash-left shadow, aged or young, but keeps one this process holds", async () => {
+    const databasePath = path.join(fixtureRoot, "agent.sqlite");
+    const database = new DatabaseSync(databasePath);
+    database.close();
+    const oldShadow = `${databasePath}.memory-reindex-11111111-2222-3333-4444-555555555555`;
+    const youngShadow = `${databasePath}.memory-reindex-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee`;
+    const liveShadow = `${databasePath}.memory-reindex-99999999-8888-7777-6666-555555555555`;
+    const old = new Date(Date.now() - 48 * 60 * 60_000);
+
+    for (const suffix of ["", "-wal", "-journal"]) {
+      await fs.writeFile(`${oldShadow}${suffix}`, "orphan");
+      await fs.utimes(`${oldShadow}${suffix}`, old, old);
     }
-    function createDatabase() {
-      const databasePath = path.join(fixtureRoot, "agent.sqlite");
-      new DatabaseSync(databasePath).close();
-      return { databasePath, shadow: (id: string) => `${databasePath}.memory-reindex-${id}` };
+    await fs.writeFile(youngShadow, "orphan");
+    retainLiveMemoryReindexShadow(liveShadow);
+    await fs.writeFile(liveShadow, "active");
+    try {
+      await expect(cleanupOrphanMemoryReindexShadows(databasePath)).resolves.toBe(2);
+    } finally {
+      releaseLiveMemoryReindexShadow(liveShadow);
     }
 
-    it("keeps a shadow another process changed within the quiet floor, judged by its newest file", async () => {
-      const { databasePath, shadow } = createDatabase();
-      const freshShadow = shadow("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
-      // A WAL-mode build changes its -wal long before a checkpoint touches the database file.
-      const walWriterShadow = shadow("11111111-2222-3333-4444-555555555555");
-      await writeShadowFiles(freshShadow, { "": new Date() });
-      await writeShadowFiles(walWriterShadow, {
-        "": minutesAgo(60),
-        "-wal": minutesAgo(1),
-        "-shm": minutesAgo(60),
-      });
-      const before = (await fs.readdir(fixtureRoot)).toSorted();
-
-      await expect(cleanupOrphanMemoryReindexShadows(databasePath)).resolves.toBe(0);
-
-      expect((await fs.readdir(fixtureRoot)).toSorted()).toEqual(before);
-    });
-
-    it("removes a shadow nobody holds once every file has been quiet past the floor", async () => {
-      const { databasePath, shadow } = createDatabase();
-      const crashedShadow = shadow("99999999-8888-7777-6666-555555555555");
-      await writeShadowFiles(crashedShadow, {
-        "": minutesAgo(16),
-        "-wal": minutesAgo(16),
-        "-shm": minutesAgo(16),
-        "-journal": minutesAgo(16),
-      });
-
-      await expect(cleanupOrphanMemoryReindexShadows(databasePath)).resolves.toBe(1);
-
-      expect(await fs.readdir(fixtureRoot)).toEqual(["agent.sqlite"]);
-    });
-
-    it("keeps a shadow this process holds at any age until it is released", async () => {
-      const { databasePath, shadow } = createDatabase();
-      const liveShadow = shadow("12345678-90ab-cdef-1234-567890abcdef");
-      retainLiveMemoryReindexShadow(liveShadow);
-      try {
-        await writeShadowFiles(liveShadow, {
-          "": minutesAgo(48 * 60),
-          "-wal": minutesAgo(48 * 60),
-        });
-        await expect(cleanupOrphanMemoryReindexShadows(databasePath)).resolves.toBe(0);
-        await fs.access(liveShadow);
-        await fs.access(`${liveShadow}-wal`);
-      } finally {
-        releaseLiveMemoryReindexShadow(liveShadow);
-      }
-
-      // Once released, nothing owns the quiet files.
-      await expect(cleanupOrphanMemoryReindexShadows(databasePath)).resolves.toBe(1);
-      expect(await fs.readdir(fixtureRoot)).toEqual(["agent.sqlite"]);
-    });
-
-    it.skipIf(process.platform === "win32")(
-      "keeps a quiet shadow whose file state cannot be read",
-      async () => {
-        const { databasePath, shadow } = createDatabase();
-        const unreadableShadow = shadow("fedcba98-7654-3210-fedc-ba9876543210");
-        await writeShadowFiles(unreadableShadow, { "": minutesAgo(60) });
-        // A self-referencing link fails stat with ELOOP; a failed read is no proof the writer stopped.
-        await fs.symlink(path.basename(`${unreadableShadow}-wal`), `${unreadableShadow}-wal`);
-
-        await expect(cleanupOrphanMemoryReindexShadows(databasePath)).resolves.toBe(0);
-
-        await fs.access(unreadableShadow);
-        await fs.lstat(`${unreadableShadow}-wal`);
-      },
-    );
+    await expectPathMissing(oldShadow);
+    await expectPathMissing(`${oldShadow}-wal`);
+    await expectPathMissing(`${oldShadow}-journal`);
+    await expectPathMissing(youngShadow);
+    await fs.access(liveShadow);
+    // Once released, nothing owns the file.
+    await expect(cleanupOrphanMemoryReindexShadows(databasePath)).resolves.toBe(1);
+    await expectPathMissing(liveShadow);
   });
 });

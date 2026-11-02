@@ -2,7 +2,6 @@ import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
-import { extractErrorCode } from "openclaw/plugin-sdk/error-runtime";
 import {
   closeMemorySqliteWalMaintenance,
   configureMemorySqliteWalMaintenance,
@@ -30,14 +29,6 @@ import { waitForMemoryReindexLock } from "./manager-reindex-lock.js";
 const MEMORY_DATABASE_FILE_SUFFIXES = ["", "-wal", "-shm", "-journal"] as const;
 const MEMORY_REINDEX_UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-// Another process (the Gateway beside `openclaw memory index`) can own a shadow this
-// process does not hold. A running build changes its files with every indexed batch,
-// while a crashed run's files stop changing, so a shadow is orphaned only once quiet
-// this long. A quarter hour clears ordinary write gaps yet still reclaims a restart
-// loop's gigabytes promptly. Accepted edge: a peer build that stays quiet longer (a
-// provider batch-embedding wait, or a rebuild suspended through a long agent turn) can
-// lose its shadow; its next shadow access fails the identity check and it rebuilds later.
-const MEMORY_REINDEX_ORPHAN_QUIET_MS = 15 * 60_000;
 // Shadows owned by builds in this process, including suspended ones between syncs.
 const liveMemoryReindexShadows = new Set<string>();
 
@@ -61,23 +52,6 @@ async function isRegularFile(filePath: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/** Newest change across a shadow's files; undefined when one cannot be read or none exists. */
-async function readMemoryReindexShadowChangedAtMs(shadowPath: string): Promise<number | undefined> {
-  let changedAtMs: number | undefined;
-  for (const suffix of MEMORY_DATABASE_FILE_SUFFIXES) {
-    try {
-      const { mtimeMs } = await fs.stat(`${shadowPath}${suffix}`);
-      changedAtMs = Math.max(changedAtMs ?? mtimeMs, mtimeMs);
-    } catch (err) {
-      // A failed read is no proof the writer stopped.
-      if (extractErrorCode(err) !== "ENOENT") {
-        return undefined;
-      }
-    }
-  }
-  return changedAtMs;
 }
 
 function hasSqliteVecExtension(db: DatabaseSync): boolean {
@@ -225,11 +199,10 @@ export function releaseLiveMemoryReindexShadow(shadowPath: string): void {
 }
 
 /**
- * Remove shadows left by a crashed run: never one this process holds, and another
- * process's only after every file has been quiet past the orphan floor.
+ * Remove shadows left by a crashed run. The Gateway, or one offline CLI, owns the
+ * state directory exclusively, so a shadow this process does not hold has no live writer.
  */
 export async function cleanupOrphanMemoryReindexShadows(dbPath: string): Promise<number> {
-  const nowMs = Date.now();
   if (!(await isRegularFile(dbPath))) {
     return 0;
   }
@@ -256,12 +229,8 @@ export async function cleanupOrphanMemoryReindexShadows(dbPath: string): Promise
   let removed = 0;
   for (const shadowBaseName of shadowBaseNames) {
     const shadowPath = path.join(dir, shadowBaseName);
-    // Registration precedes file creation, so this process never removes its own build.
+    // Registration precedes file creation, so a shadow listed above is either held or orphaned.
     if (liveMemoryReindexShadows.has(path.resolve(shadowPath))) {
-      continue;
-    }
-    const changedAtMs = await readMemoryReindexShadowChangedAtMs(shadowPath);
-    if (changedAtMs === undefined || nowMs - changedAtMs < MEMORY_REINDEX_ORPHAN_QUIET_MS) {
       continue;
     }
     try {

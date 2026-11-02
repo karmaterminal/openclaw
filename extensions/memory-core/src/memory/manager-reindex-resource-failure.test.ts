@@ -203,13 +203,10 @@ describe("memory reindex worker memory failures", () => {
   });
 
   async function writeCrashLeftShadow(databasePath: string): Promise<string> {
-    // A crashed run's files stop changing; an hour of quiet marks them orphaned.
+    // A crash leaves fresh files behind; their age proves nothing about ownership.
     const name = `${path.basename(databasePath)}.memory-reindex-${randomUUID()}`;
-    const quietSince = new Date(Date.now() - HOUR_MS);
     for (const suffix of ["", "-wal", "-shm"]) {
-      const filePath = path.join(path.dirname(databasePath), `${name}${suffix}`);
-      await fs.writeFile(filePath, "crash");
-      await fs.utimes(filePath, quietSince, quietSince);
+      await fs.writeFile(path.join(path.dirname(databasePath), `${name}${suffix}`), "crash");
     }
     return name;
   }
