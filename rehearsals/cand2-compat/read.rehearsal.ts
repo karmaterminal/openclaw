@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { isDeepStrictEqual } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { prepareCodexAppServerProcessRegistration } from "../../extensions/codex/src/app-server/transport-process-registration.js";
 import { createDiscordIngressMonitor } from "../../extensions/discord/src/monitor/ingress.js";
@@ -361,7 +362,12 @@ describe("pending channel turn of a Discord webhook post", () => {
           SenderIsBot: excludesWebhook ? undefined : true,
         } as never),
       });
-      const ownBytesMatch = JSON.stringify(own) === JSON.stringify(webhook.message);
+      // The builder stamps the current time; the accepted request hash excludes that stamp.
+      const withoutTimestamp = (message: object) => ({ ...message, timestamp: undefined });
+      const ownBytesMatch = isDeepStrictEqual(
+        withoutTimestamp(own),
+        withoutTimestamp(webhook.message),
+      );
       // Discord turns stage with a fresh random run id (reply-source-admission.ts), so a
       // re-processed post never reuses the accepted run id: that conflicts on run identity alone,
       // in a same-build restart and in a rollback alike.
