@@ -28,6 +28,7 @@ import {
   resolveMemoryPrimaryProviderRequest,
   type MemoryProviderLifecycleState,
 } from "./manager-provider-state.js";
+import type { MemoryReindexResourceFailure } from "./manager-reindex-failure.js";
 import {
   resolveConfiguredScopeHash,
   resolveConfiguredSourcesForMeta,
@@ -113,6 +114,8 @@ type MemoryFullReindexRetryBackoff = {
   attempts: number;
   retryAt: number;
   failedWithEmbeddings: boolean;
+  // A worker OOM can also take down the write that persists its record; keep blocking anyway.
+  resourceFailure: MemoryReindexResourceFailure | null;
 };
 
 const VECTOR_LOAD_TIMEOUT_MS = 30_000;
@@ -218,6 +221,7 @@ export abstract class MemoryManagerSyncBase {
     attempts: 0,
     retryAt: 0,
     failedWithEmbeddings: false,
+    resourceFailure: null,
   };
   protected sessionsDirty = false;
   // Failed full reindexes can start with no per-file dirty set. Keep a
@@ -368,6 +372,14 @@ export abstract class MemoryManagerSyncBase {
     this.fullReindexRetryBackoff.attempts = 0;
     this.fullReindexRetryBackoff.retryAt = 0;
     this.fullReindexRetryBackoff.failedWithEmbeddings = false;
+    this.fullReindexRetryBackoff.resourceFailure = null;
+  }
+
+  /** The persisted record survives restarts; this process may hold a newer unwritten one. */
+  protected get reindexResourceFailure(): MemoryReindexResourceFailure | null {
+    return (
+      this.fullReindexRetryBackoff.resourceFailure ?? this.publishedDatabase.facts.reindexFailure
+    );
   }
 
   protected clearSessionRetryState(): void {

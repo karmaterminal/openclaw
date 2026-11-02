@@ -115,6 +115,24 @@ describe("memory reindex worker memory failures", () => {
     expect(status.status().custom?.reindexFailure).toEqual(failure);
   });
 
+  it("keeps blocking in process when the worker OOM also loses its record write", async () => {
+    const { manager, time, openShadow } = await failingRebuild();
+    vi.spyOn(MemoryIndexDatabase.prototype, "writeReindexFailure").mockRejectedValue(
+      workerHeapOutOfMemory(),
+    );
+
+    await expect(manager.sync()).rejects.toThrow("JS heap out of memory");
+    time.now += 30_001;
+    const deferred = await manager.sync().then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(openShadow).toHaveBeenCalledTimes(1);
+    expect(deferred).toBeUndefined();
+    expect(readPersistedFailure(manager)).toBeNull();
+    expect(manager.status().custom?.reindexFailure).toMatchObject({ attempts: 1 });
+  });
+
   it("retries after each cooldown, stops after the last attempt, and resumes on an explicit index", async () => {
     const { cfg, manager, time, openShadow, oom } = await failingRebuild();
 

@@ -660,7 +660,7 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
         providerUnavailableReason: this.providerUnavailableReason,
         indexIdentity: this.indexIdentityState,
         automaticRebuildNotice: this.automaticRebuildNotice,
-        reindexFailure: this.database.facts.reindexFailure ?? undefined,
+        reindexFailure: this.reindexResourceFailure ?? undefined,
       },
     };
   }

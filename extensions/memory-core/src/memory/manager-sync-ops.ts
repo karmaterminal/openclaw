@@ -345,7 +345,7 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerReindexOps {
         needsFullSessionReindex &&
         params?.reason !== "cli" &&
         isMemoryReindexResourceFailureBlocking(
-          this.database.facts.reindexFailure,
+          this.reindexResourceFailure,
           resolveConfiguredSourcesForMeta(this.sources),
           Date.now(),
         )

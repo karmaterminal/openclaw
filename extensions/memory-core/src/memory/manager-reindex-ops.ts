@@ -119,20 +119,21 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
 
   /** Persist a worker heap OOM so restarts and other managers keep its cooldown. */
   protected async recordReindexResourceFailure(): Promise<void> {
-    const database = this.publishedDatabase;
     const failure = nextMemoryReindexResourceFailure(
-      database.facts.reindexFailure,
+      this.reindexResourceFailure,
       resolveConfiguredSourcesForMeta(this.sources),
       Date.now(),
     );
-    try {
-      await database.writeReindexFailure(failure);
-    } catch (err) {
-      log.warn(`failed to record memory reindex resource failure: ${formatErrorMessage(err)}`);
-      return;
-    }
+    this.fullReindexRetryBackoff.resourceFailure = failure;
     const { state, fix } = describeMemoryReindexResourceFailure(failure, this.agentId);
     log.warn(`memory reindex ${state}. ${fix}`);
+    try {
+      await this.publishedDatabase.writeReindexFailure(failure);
+    } catch (err) {
+      log.warn(
+        `memory reindex failure is held until restart; recording it failed: ${formatErrorMessage(err)}`,
+      );
+    }
   }
 
   protected async resumeReindex(params?: MemorySyncParams): Promise<boolean> {
