@@ -4,10 +4,14 @@ import {
   admitModelTurn,
   completionConfig,
 } from "../../agents/bash-tools.lifecycle.test-support.js";
+import { buildEmbeddedRunBlockedResult } from "../../agents/embedded-agent-runner/run/blocked-run-result.js";
 import { handleRetryLimitExhaustion } from "../../agents/embedded-agent-runner/run/retry-limit.js";
+import { makeTerminalInput } from "../../agents/embedded-agent-runner/run/terminal-resolution.test-support.js";
+import { resolveEmbeddedRunTerminalTimeout } from "../../agents/embedded-agent-runner/run/terminal-timeout.js";
 import { runEmbeddedAgent } from "../../agents/embedded-agent.js";
 import { FailoverError } from "../../agents/failover-error.js";
 import { PROVIDER_SCHEMA_REJECTION_USER_TEXT } from "../../agents/failover/assistant-request-failure-copy.js";
+import { makeEmbeddedRunnerAttempt } from "../../agents/test-helpers/embedded-agent-runner-e2e-fixtures.js";
 import { buildChannelInboundEventContext } from "../../channels/inbound-event/context.js";
 import type { ChannelOutboundAdapter } from "../../channels/plugins/outbound.types.js";
 import type { ChannelPlugin } from "../../channels/plugins/types.public.js";
@@ -141,7 +145,13 @@ function runScheduledRoomTurn(cfg: OpenClawConfig, signal: AbortSignal) {
   });
 }
 
-it.for([{ failure: "thrown" }, { failure: "payload" }, { failure: "retry_limit" }] as const)(
+it.for([
+  { failure: "thrown" },
+  { failure: "payload" },
+  { failure: "retry_limit" },
+  { failure: "terminal_timeout" },
+  { failure: "blocked_run" },
+] as const)(
   "records a scheduled room-session run failure ($failure) without a room message",
   async ({ failure }, { signal }) => {
     await withRoomSession(signal, async (sendText, cfg) => {
@@ -162,6 +172,33 @@ it.for([{ failure: "thrown" }, { failure: "payload" }, { failure: "retry_limit" 
               provider: "mock-openai",
               model: "gpt-5.6-luna",
             },
+          });
+        }
+        if (failure === "terminal_timeout") {
+          const attempt = makeEmbeddedRunnerAttempt({
+            terminal: { kind: "timeout", phase: "prompt", source: "runtime", aborted: true },
+            promptTimeoutOutcome: { replayInvalid: true },
+          });
+          const input = makeTerminalInput({ attempt });
+          input.prepared.timedOutDuringPrompt = true;
+          const result = resolveEmbeddedRunTerminalTimeout({
+            ...input,
+            terminalPrepared: input.prepared,
+          });
+          return expectDefined(result, "terminal timeout result");
+        }
+        if (failure === "blocked_run") {
+          return buildEmbeddedRunBlockedResult({
+            text: "The run was blocked by a hook.",
+            errorKind: "hook_block",
+            errorMessage: "internal hook diagnostic",
+            durationMs: 1,
+            agentMeta: {
+              sessionId: "room-session",
+              provider: "mock-openai",
+              model: "gpt-5.6-luna",
+            },
+            replayInvalid: false,
           });
         }
         return {
@@ -186,7 +223,13 @@ it.for([{ failure: "thrown" }, { failure: "payload" }, { failure: "retry_limit" 
       });
       // Run history and diagnostics keep the failure that the room never hears.
       expect(outcome.error).toContain(
-        failure === "retry_limit" ? "internal retry diagnostic" : "The AI service couldn",
+        failure === "retry_limit"
+          ? "internal retry diagnostic"
+          : failure === "terminal_timeout"
+            ? "timed out"
+            : failure === "blocked_run"
+              ? "internal hook diagnostic"
+              : "The AI service couldn",
       );
       expect(outcome.diagnostics?.entries).toContainEqual(
         expect.objectContaining({ severity: "error" }),
