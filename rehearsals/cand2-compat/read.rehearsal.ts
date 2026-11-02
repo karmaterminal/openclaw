@@ -24,6 +24,8 @@ import {
   createChannelIngressQueueForTests,
 } from "../../src/plugin-sdk/channel-ingress-test-runtime.js";
 import { createPluginStateKeyedStore } from "../../src/plugin-sdk/plugin-state-store-runtime.js";
+import { buildPersistedUserTurnMessage } from "../../src/sessions/user-turn-transcript.message.js";
+import { buildChannelUserTurnSender } from "../../src/sessions/user-turn-transcript.metadata.js";
 import { closeOpenClawAgentDatabasesAsync } from "../../src/state/openclaw-agent-db.js";
 import {
   copyFixture,
@@ -178,6 +180,7 @@ type PendingFixture = {
     message: { content: unknown; __openclaw?: { requesterOrigin?: Record<string, unknown> } };
   }>;
   aggregateRequesterOrigin: Record<string, unknown>;
+  webhook: { runId: string; idempotencyKey: string; message: Record<string, unknown> };
 };
 
 function pendingScope(
@@ -211,13 +214,13 @@ describe("session pending input of an ambient owner aggregate", () => {
     const [aggregate, member] = fixture.staged;
     const name = expect.getState().currentTestName!;
     try {
-      // Chat history / prompt context read.
+      // Chat history / prompt context read (the webhook row is read in its own test below).
       const page = await listSessionPendingInputs(scope);
       const listed = page.items
         .map((item) => ({ runId: item.runId, state: item.state }))
         .toSorted((a, b) => a.runId.localeCompare(b.runId));
       expect(listed).toEqual(
-        [aggregate!, member!]
+        [aggregate!, member!, fixture.webhook]
           .map((row) => ({ runId: row.runId, state: "interrupted" }))
           .toSorted((a, b) => a.runId.localeCompare(b.runId)),
       );
@@ -299,6 +302,91 @@ describe("session pending input of an ambient owner aggregate", () => {
       outcome: "control-refused",
       error: refusal,
     });
+  });
+});
+
+describe("pending channel turn of a Discord webhook post", () => {
+  it("reads CAND2's webhook turn; only a reused run id would make re-staging byte-sensitive", async () => {
+    const fixture = surface<PendingFixture>(SURFACES.pendingInput);
+    const stateDir = path.join(readerDir(root, reader, SURFACES.pendingInput), "state-webhook");
+    copySealed(fixture.stateDir, stateDir);
+    const scope = pendingScope(fixture, stateDir);
+    const { webhook } = fixture;
+    const name = expect.getState().currentTestName!;
+    const stage = (runId: string, message: unknown) =>
+      stageSessionPendingInput(scope, {
+        runId,
+        message: message as never,
+        trackCompletion: true,
+        assertCurrent: () => {},
+      });
+    const outcomeOf = async (runId: string, message: unknown) => {
+      try {
+        const receipt = await stage(runId, message);
+        receipt!.finish("interrupted");
+        await receipt!.settled?.();
+        return "accepted";
+      } catch (error) {
+        return errorText(error);
+      }
+    };
+    try {
+      const submitted = await readSessionSubmittedInput(scope, webhook.idempotencyKey, {
+        includeSource: true,
+      });
+      expect(submitted).toMatchObject({ source: "pending", message: webhook.message });
+      const storedKind = (
+        submitted?.message as { __openclaw?: { senderIdentity?: { senderKind?: string } } }
+      ).__openclaw?.senderIdentity?.senderKind;
+      expect(storedKind).toBe("unknown");
+      // What this checkout's own Discord context reports for the same webhook post, read from its
+      // source: CAND2 excludes webhook posts from isBot; 22f49a43 and 3d3364dd do not.
+      const context = fs.readFileSync(
+        "extensions/discord/src/monitor/message-handler.context.ts",
+        "utf8",
+      );
+      const excludesWebhook = /!sender\.isPluralKit && !resolveDiscordWebhookId\(message\)/.test(
+        context,
+      );
+      const own = buildPersistedUserTurnMessage({
+        text: "synthetic webhook relay post",
+        idempotencyKey: webhook.idempotencyKey,
+        senderIsOwner: false,
+        sender: buildChannelUserTurnSender({
+          Provider: "discord",
+          AccountId: "default",
+          SenderId: "1500000000000000001",
+          SenderName: "relay",
+          SenderUsername: "relay",
+          SenderIsBot: excludesWebhook ? undefined : true,
+        } as never),
+      });
+      const ownBytesMatch = JSON.stringify(own) === JSON.stringify(webhook.message);
+      // Discord turns stage with a fresh random run id (reply-source-admission.ts), so a
+      // re-processed post never reuses the accepted run id: that conflicts on run identity alone,
+      // in a same-build restart and in a rollback alike.
+      const freshRunId = await outcomeOf("reader-fresh-run-id", webhook.message);
+      expect(freshRunId).toMatch(/conflicts with the accepted input/);
+      // Bytes matter only under the accepted run id.
+      const ownBytes = await outcomeOf(webhook.runId, own);
+      expect(ownBytes).toEqual(
+        ownBytesMatch ? "accepted" : expect.stringMatching(/conflicts with the accepted input/),
+      );
+      const sameBytes = await outcomeOf(webhook.runId, webhook.message);
+      expect(sameBytes).toBe("accepted");
+      record(SURFACES.pendingInput, name, {
+        outcome: "read; re-stage outcomes recorded",
+        storedSenderKind: storedKind,
+        readerExcludesWebhookFromIsBot: excludesWebhook,
+        readerOwnBytesMatchCand2: ownBytesMatch,
+        restageFreshRunIdCand2Bytes: freshRunId,
+        restageAcceptedRunIdReaderBytes: ownBytes,
+        restageAcceptedRunIdCand2Bytes: sameBytes,
+      });
+    } catch (error) {
+      record(SURFACES.pendingInput, name, { outcome: "FAILED", error: errorText(error) });
+      throw error;
+    }
   });
 });
 

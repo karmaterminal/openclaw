@@ -25,6 +25,7 @@ import {
   type Row,
 } from "../../src/auto-reply/reply/queue.room-event-collect.test-support.js";
 import { installQueueRuntimeErrorSilencer } from "../../src/auto-reply/reply/queue.test-helpers.js";
+import { buildChannelSourceTurnId } from "../../src/auto-reply/reply/source-turn-id.js";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
@@ -41,6 +42,8 @@ import {
 } from "../../src/plugin-sdk/channel-ingress-test-runtime.js";
 import { createPluginStateKeyedStore } from "../../src/plugin-sdk/plugin-state-store-runtime.js";
 import { testing as controllerTesting } from "../../src/sessions/session-controller.test-support.js";
+import { buildPersistedUserTurnMessage } from "../../src/sessions/user-turn-transcript.message.js";
+import { buildChannelUserTurnSender } from "../../src/sessions/user-turn-transcript.metadata.js";
 import { closeOpenClawAgentDatabasesAsync } from "../../src/state/openclaw-agent-db.js";
 import {
   fixtureDir,
@@ -282,6 +285,44 @@ describe("session pending input of an ambient owner aggregate", () => {
       await receipt!.settled?.();
       staged.push({ runId, idempotencyKey: input.idempotencyKey, message: input });
     }
+    // A Discord webhook post's channel turn, accepted and interrupted at the stop. CAND2's Discord
+    // context no longer reports a webhook author as a bot (message-handler.context.ts), so the
+    // persisted sender identity reads "unknown" where 22f49a43 wrote "bot". The key is the
+    // deterministic route-scoped source turn id the channel path uses.
+    const webhook = {
+      runId: "cand2-compat-webhook-run",
+      message: buildPersistedUserTurnMessage({
+        text: "synthetic webhook relay post",
+        idempotencyKey: buildChannelSourceTurnId({
+          provider: "discord",
+          accountId: "default",
+          conversationId: `channel:${CHANNEL}`,
+          messageId: "1300000000000000003",
+        }),
+        senderIsOwner: false,
+        sender: buildChannelUserTurnSender({
+          Provider: "discord",
+          AccountId: "default",
+          SenderId: "1500000000000000001",
+          SenderName: "relay",
+          SenderUsername: "relay",
+          SenderIsBot: undefined,
+        } as never),
+      }),
+    };
+    const webhookIdentity = (
+      webhook.message as { __openclaw?: { senderIdentity?: { senderKind?: string } } }
+    ).__openclaw?.senderIdentity;
+    expect(webhookIdentity?.senderKind).toBe("unknown");
+    const webhookReceipt = await stageSessionPendingInput(scope, {
+      runId: webhook.runId,
+      message: webhook.message,
+      trackCompletion: true,
+      assertCurrent: () => {},
+    });
+    expect(webhookReceipt).toBeDefined();
+    webhookReceipt!.finish("interrupted");
+    await webhookReceipt!.settled?.();
     // The run that executed the aggregate promotes its accepted input into the transcript (the
     // production consumption path) and completes.
     const committedScope = { ...COMMITTED_SESSION, storePath: scope.storePath };
@@ -316,6 +357,7 @@ describe("session pending input of an ambient owner aggregate", () => {
       staged,
       aggregateRequesterOrigin: origin,
       memberRequesterOriginSenderId: memberMessage.__openclaw?.requesterOrigin?.senderId,
+      webhook: { ...webhook, idempotencyKey: webhook.message.idempotencyKey },
     });
   });
 });

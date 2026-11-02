@@ -10,21 +10,26 @@
 # systemd user manager; gateway URL/credential variables are unset and OPENCLAW_GATEWAY_PORT points
 # at an unused port, so no probe can reach a live Gateway on this host's default port.
 #
-#   doctor-migrate.sh <checkout> <label> <out-dir>
+#   doctor-migrate.sh <checkout> <label> <expected-product-sha> <out-dir>
 set -euo pipefail
 umask 0022
 checkout=$1
 label=$2
-out=$3/$label
+expected=$3
+out=$4/$label
 variants=$(cd "$(dirname "$0")/config-variants" && pwd)
 mkdir -p "$out"
-echo "checkout=$checkout HEAD=$(git -C "$checkout" rev-parse HEAD)" >"$out/HEAD"
+dist_commit=$(node -e 'process.stdout.write(require(process.argv[1]).commit ?? "")' "$checkout/dist/build-info.json")
+git -C "$checkout" merge-base --is-ancestor "$expected" "$dist_commit"
+git -C "$checkout" diff --quiet "$expected" "$dist_commit" -- . ':(exclude)rehearsals'
+echo "checkout=$checkout HEAD=$(git -C "$checkout" rev-parse HEAD) dist_commit=$dist_commit product=$expected" >"$out/HEAD"
 fence=$(mktemp -d "$out/fence-XXXXXX")
 for tool in systemctl loginctl; do
   printf '#!/bin/sh\necho "%s fenced by the CAND2 rehearsal" >&2\nexit 1\n' "$tool" >"$fence/$tool"
   chmod 755 "$fence/$tool"
 done
-for variant in a-clean b-both b1-process-only b2-groupchat-only b3-agent-groupchat-only b4-disabled-values; do
+# control-corrupt (gateway.mode: 42) is the control: the step must be able to fail.
+for variant in a-clean b-both b1-process-only b2-groupchat-only b3-agent-groupchat-only b4-disabled-values control-corrupt; do
   home=$(mktemp -d "$out/home-$variant-XXXXXX")
   staged="$home/openclaw.json.deploy-migrated"
   state="$home/config-migration-state"
