@@ -160,8 +160,9 @@ indexing. The next sync resumes the rebuild, incorporating source changes before
 publishing the complete index. Closing the memory owner or restarting the Gateway
 discards this unfinished work. PostgreSQL rebuilds restart after an interruption.
 Temporary rebuild files that a crashed or killed process left behind are removed
-when the memory owner next starts and before the next full rebuild. Files that a
-running or suspended rebuild still owns are kept.
+when the memory owner next starts and before the next full rebuild, once they have
+gone 15 minutes without changing. Files that a running or suspended rebuild still
+owns are kept.
 
 When an embedding provider rate-limits indexing, each embedding operation gets
 up to five attempts. Retries honor valid provider cooldown hints, capped at
