@@ -1,4 +1,3 @@
-import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import { prepareAgentDeletionBlocked } from "../../agents/agent-lifecycle-registry.js";
 import { resolveConfiguredAgentId } from "../../agents/agent-scope-config.js";
 import { resolveAgentRunErrorLifecycleFields } from "../../agents/run-termination.js";
@@ -25,12 +24,13 @@ import type { UserTurnTranscriptRecorder } from "../../sessions/user-turn-transc
 import { createDeferredCore } from "../../shared/deferred.js";
 import type { ReplyPayload } from "../../shared/reply-payload.types.js";
 import { readAgentDeletionJournalStatusInWorker } from "../../state/agent-deletion-journal.read.js";
-import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
 import type { NormalizeReplySkipReason } from "./normalize-reply-skip-reason.js";
 import {
   prepareCronRunContinuationCleanup,
   prepareScheduledAutomationStart,
   resolveSessionEventReplyOptions,
+  resolveSessionEventSummary,
+  shouldSkipSessionEventDelivery,
   settleSessionEventTurn,
   type ScheduledAutomationAdmission,
 } from "./session-event-automation.js";
@@ -427,25 +427,21 @@ export function enqueueSessionEventForHost(
     }
   };
   const onAbort = () => {
-    // Started admission owns native preparation and reply settlement, even before model start.
-    if (!operation && !admissionStarted) {
-      finish();
-    }
+    if (!operation && !admissionStarted) finish();
   };
   const deliver = async (payload: ReplyPayload, kind: "tool" | "block" | "final") => {
     await prepareCurrent();
-    if (kind === "final" && payload.text) {
-      summary ??= truncateUtf16Safe(payload.text, 2000);
-    }
-    if (options.deliver === false || target?.deliver === false) {
-      return;
-    }
-    if (kind === "final" && sourceDeliveryOutcome?.satisfiesSourceDelivery) {
-      return;
-    }
-    if (!route?.channel || route.channel === INTERNAL_MESSAGE_CHANNEL) {
-      // The normal transcript remains the result for internal/WebChat turns.
-      // This is not evidence of a transport send.
+    summary ??= resolveSessionEventSummary(payload, kind);
+    if (
+      shouldSkipSessionEventDelivery(
+        options,
+        payload,
+        kind,
+        target?.deliver,
+        sourceDeliveryOutcome?.satisfiesSourceDelivery,
+        route?.channel,
+      )
+    ) {
       return;
     }
     const deliverReply = await prepareSessionEventDelivery(route, assertCurrent);

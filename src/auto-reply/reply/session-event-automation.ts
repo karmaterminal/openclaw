@@ -1,3 +1,4 @@
+import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { hasPendingAutomationContinuation } from "../../cron/automation-result.js";
 import {
@@ -13,6 +14,7 @@ import type { ReplyOperationObservation } from "../../sessions/reply-operation-s
 import { runWithSessionControllerCleanup } from "../../sessions/session-controller.cleanup-context.js";
 import { isCronRunSessionKey } from "../../sessions/session-key-utils.js";
 import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
+import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
 import type { GetReplyOptions } from "../get-reply-options.types.js";
 import {
   getReplyPayloadMetadata,
@@ -96,6 +98,34 @@ export type ScheduledAutomationAdmission = Pick<
   SessionEventOutcome,
   "admissionDeferred" | "admissionDeferredReason"
 >;
+
+export function resolveSessionEventSummary(
+  payload: { text?: string },
+  kind: "tool" | "block" | "final",
+): string | undefined {
+  return kind === "final" && payload.text ? truncateUtf16Safe(payload.text, 2000) : undefined;
+}
+
+/** Cron failures stay in run state and the configured failure route, not the shared room. */
+export function shouldSkipSessionEventDelivery(
+  options: SessionEventOptions,
+  payload: { isError?: boolean },
+  kind: "tool" | "block" | "final",
+  targetDeliver?: boolean,
+  sourceSatisfied?: boolean,
+  routeChannel?: string,
+): boolean {
+  return (
+    options.deliver === false ||
+    targetDeliver === false ||
+    (options.source === "cron" &&
+      options.scheduledAutomation !== undefined &&
+      payload.isError === true) ||
+    (kind === "final" && sourceSatisfied === true) ||
+    !routeChannel ||
+    routeChannel === INTERNAL_MESSAGE_CHANNEL
+  );
+}
 
 /** Wait behind foreground work, then recheck the same automation's current start policy. */
 export async function prepareScheduledAutomationStart(params: {

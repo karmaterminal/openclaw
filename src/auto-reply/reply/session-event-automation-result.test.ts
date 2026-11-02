@@ -38,7 +38,8 @@ import { setReplyPayloadMetadata } from "../reply-payload.js";
 vi.mock("../../agents/embedded-agent-runner/run.js", () => ({ runEmbeddedAgent: vi.fn() }));
 const model = vi.mocked(runEmbeddedAgent);
 const summary = "Report ready.";
-const failure = "Synthetic automation failed.";
+const failure =
+  "The AI service couldn't accept this request. Try a new conversation with /new, or choose another model in the Control UI.";
 const request = "Check the synthetic report.";
 await Promise.all([
   import("../dispatch.js"),
@@ -219,7 +220,8 @@ it.for([
             });
             expect(sendText).not.toHaveBeenCalled();
           } else {
-            expect(sendText.mock.calls.some(([sent]) => sent.text.includes(failure))).toBe(true);
+            expect(outcome).toMatchObject({ delivered: false, deliveryAttempted: false });
+            expect(sendText).not.toHaveBeenCalled();
           }
         } finally {
           await drainGlobalSingletonLifecycleState("restart");
