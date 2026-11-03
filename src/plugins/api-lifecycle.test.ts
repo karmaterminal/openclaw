@@ -1,8 +1,33 @@
-import { expect, it, vi } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
+import * as runtimeSnapshot from "../config/runtime-snapshot.js";
+import { readSessionEntryReadOnlyInWorker } from "../config/sessions/session-entry-read-runtime.js";
+import { createWorkerSessionPlacementStore } from "../gateway/worker-environments/placement-store.js";
+import { listSessionBindingsBySessionAsync } from "../infra/outbound/session-binding-service.js";
 import { buildPluginApi } from "./api-builder.js";
+import { instrumentPluginInstanceApi } from "./api-facades.js";
 import { runPluginRegistration } from "./api-lifecycle.js";
+import { createOwnedInstance } from "./plugin-instance.test-support.js";
 import type { PluginRuntime } from "./runtime/types.js";
 import type { OpenClawPluginApi } from "./types.js";
+
+vi.mock("../config/sessions/session-entry-read-runtime.js", () => ({
+  readSessionEntryReadOnlyInWorker: vi.fn(),
+}));
+vi.mock("../gateway/worker-environments/placement-store.js", () => ({
+  createWorkerSessionPlacementStore: vi.fn(),
+}));
+vi.mock("../infra/outbound/session-binding-service.js", () => ({
+  listSessionBindingsBySessionAsync: vi.fn(),
+}));
+
+beforeEach(() => {
+  vi.mocked(listSessionBindingsBySessionAsync).mockReset().mockResolvedValue([]);
+  vi.mocked(createWorkerSessionPlacementStore)
+    .mockReset()
+    .mockReturnValue({
+      readProjection: vi.fn().mockResolvedValue({ placements: new Map() }),
+    } as never);
+});
 
 function createPluginApi(handlers: Parameters<typeof buildPluginApi>[0]["handlers"] = {}) {
   return buildPluginApi({
@@ -55,6 +80,64 @@ it("lets registered callbacks construct inline view results", () => {
       },
     },
   });
+});
+
+it("keeps session route inspection callable after registration and reads each lifecycle anew", async () => {
+  const key = "agent:main:subagent:abc";
+  const read = vi.mocked(readSessionEntryReadOnlyInWorker);
+  read.mockReset();
+  const api = captureRegisteredPluginApi({});
+  const firstRow = { sessionId: "before", lifecycleRevision: "r1", updatedAt: 1 };
+  // Positive locality is revalidated after binding and placement reads.
+  read.mockResolvedValueOnce(firstRow).mockResolvedValueOnce(firstRow);
+  expect(await api.session.state.resolveLocalSessionRoute(key)).toEqual({
+    sessionKey: key,
+    exists: true,
+    onHost: true,
+    sessionId: "before",
+    lifecycleRevision: "r1",
+  });
+  expect(read).toHaveBeenCalledTimes(2);
+  read.mockResolvedValueOnce(undefined);
+  expect(await api.session.state.resolveLocalSessionRoute(key)).toEqual({
+    sessionKey: key,
+    exists: false,
+    onHost: false,
+    sessionId: null,
+    lifecycleRevision: null,
+  });
+  expect(read).toHaveBeenCalledTimes(3);
+});
+
+it("fails closed when a retained route callback's owner retires", async () => {
+  const config = { session: { store: "/tmp/route-owner-test.json" } };
+  const snapshot = vi.spyOn(runtimeSnapshot, "getRuntimeConfigSnapshot").mockReturnValue(config);
+  const { instance } = createOwnedInstance("route-owner-test");
+  const api = instrumentPluginInstanceApi(createPluginApi({}), instance);
+  let retained!: OpenClawPluginApi["session"]["state"]["resolveLocalSessionRoute"];
+  runPluginRegistration((registered) => {
+    retained = registered.session.state.resolveLocalSessionRoute;
+  }, api);
+  const key = "agent:main:subagent:abc";
+  const read = vi.mocked(readSessionEntryReadOnlyInWorker);
+  read
+    .mockReset()
+    .mockResolvedValue({ sessionId: "owned", lifecycleRevision: "owned-revision", updatedAt: 1 });
+  try {
+    expect((await retained(key)).onHost).toBe(true);
+    await instance.dispose();
+    expect(await retained(key)).toEqual({
+      sessionKey: key,
+      exists: false,
+      onHost: false,
+      sessionId: null,
+      lifecycleRevision: null,
+    });
+    // The first call reads and revalidates the row; retirement prevents any more reads.
+    expect(read).toHaveBeenCalledTimes(2);
+  } finally {
+    snapshot.mockRestore();
+  }
 });
 
 it.each<[string, unknown, boolean]>([
