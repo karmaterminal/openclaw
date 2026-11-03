@@ -271,6 +271,44 @@ it("still answers an unscheduled room-session turn with its failure reply", asyn
   });
 });
 
+it("withholds a cron wake failure without scheduledAutomation", async ({ signal }) => {
+  await withRoomSession(signal, async (sendText) => {
+    model.mockReset().mockImplementation(async (params) => {
+      await admitModelTurn(params);
+      throw schemaRejection();
+    });
+    // Main-session wake() uses the gateway adapter, which supplies source: cron but no
+    // scheduledAutomation. It must receive the same room boundary as session: jobs.
+    const outcome = await enqueueSessionEventForHost(request, {
+      ...scope,
+      source: "cron",
+      deliveryContext: route,
+      abortSignal: signal,
+    }).settled;
+    expect(outcome.status).toBe("failed");
+    expect(outcome.error).toContain("The AI service couldn");
+    expect(sendText).not.toHaveBeenCalled();
+  });
+});
+
+it("still delivers a human-awaited tool handoff failure", async ({ signal }) => {
+  await withRoomSession(signal, async (sendText) => {
+    model.mockReset().mockImplementation(async (params) => {
+      await admitModelTurn(params);
+      throw schemaRejection();
+    });
+    await enqueueSessionEventForHost(request, {
+      ...scope,
+      source: "tool_handoff",
+      deliveryContext: route,
+      abortSignal: signal,
+    }).settled;
+    expect(sendText.mock.calls.map(([sent]) => sent.text)).toEqual([
+      expect.stringContaining("The AI service couldn"),
+    ]);
+  });
+});
+
 it("still answers a human room request with its failure reply", async ({ signal }) => {
   await withRoomSession(signal, async (_sendText, cfg) => {
     model.mockReset().mockImplementation(async (params) => {
