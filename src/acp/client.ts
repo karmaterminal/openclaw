@@ -25,7 +25,7 @@ import { sanitizeTerminalText } from "../../packages/terminal-core/src/safe-text
 import { resolveOpenClawCliEntryPath } from "../infra/openclaw-cli-invocation.js";
 import { ensureOpenClawCliOnPath } from "../infra/path-env.js";
 import { resolveExternalPackageRuntimeEntrypointUrl } from "../infra/runtime-process-url.js";
-import { resolveRuntimeArgs } from "../infra/runtime-worker-url.js";
+import { resolveRuntimeCompilerArgs } from "../infra/runtime-worker-url.js";
 import {
   materializeWindowsSpawnProgram,
   resolveWindowsSpawnProgram,
@@ -209,7 +209,7 @@ async function createAcpClient(opts: AcpClientOptions = {}) {
       ? resolveOpenClawCliInvocation({
           entryPath,
           args: serverArgs,
-          execArgv: resolveRuntimeArgs(),
+          execArgv: resolveRuntimeCompilerArgs(),
         })
       : { command: "openclaw", args: serverArgs };
   const defaultServerCommand = defaultInvocation.command;

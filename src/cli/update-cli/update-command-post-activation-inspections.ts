@@ -7,7 +7,7 @@ import {
 } from "../../commands/doctor/shared/update-phase.js";
 import { resolveStateDir } from "../../config/paths.js";
 import { resolveGatewayInstallEntrypoint } from "../../daemon/gateway-entrypoint.js";
-import { resolveRuntimeArgs } from "../../infra/runtime-worker-url.js";
+import { resolveRuntimeCompilerArgs } from "../../infra/runtime-worker-url.js";
 import { parseUpdateDoctorLintReport } from "../../infra/update-doctor-lint.js";
 import {
   UPDATE_POST_INSTALL_DOCTOR_RESULT_PATH_ENV,
@@ -110,7 +110,7 @@ export async function runPostActivationInspections(params: {
       const invocation = resolveOpenClawCliInvocation({
         execPath: nodeRunner,
         entryPath,
-        execArgv: resolveRuntimeArgs(nodeRunner),
+        execArgv: resolveRuntimeCompilerArgs(nodeRunner),
         args,
       });
       return runUtf8CommandWithTimeout([invocation.command, ...invocation.args], {

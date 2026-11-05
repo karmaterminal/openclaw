@@ -15,7 +15,7 @@ import { PackageUpdateActivationError } from "../../infra/package-update-swap-co
 import { deferPackageStateVerification } from "../../infra/package-update-verification-step.js";
 import { runtimeProcessEntrypoints } from "../../infra/runtime-process-entrypoints.js";
 import {
-  resolveRuntimeArgs,
+  resolveRuntimeCompilerArgs,
   resolveRuntimeWorkerArgv,
   resolveRuntimeWorkerUrl,
 } from "../../infra/runtime-worker-url.js";
@@ -167,7 +167,7 @@ export async function runPackageUpdateDoctor(params: PackageDoctorOptions) {
     const invocation = resolveOpenClawCliInvocation({
       execPath: nodeRunner,
       entryPath,
-      execArgv: resolveRuntimeArgs(nodeRunner),
+      execArgv: resolveRuntimeCompilerArgs(nodeRunner),
       args: [
         "doctor",
         "--non-interactive",

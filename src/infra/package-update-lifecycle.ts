@@ -13,7 +13,7 @@ import type { StagedPackageInstall } from "./package-update-swap-contract.js";
 import { mergePathPrepend } from "./path-prepend.js";
 import { resolveEnvironmentValue } from "./process-env.js";
 import { resolveExternalPackageRuntimeEntrypointUrl } from "./runtime-process-url.js";
-import { resolveRuntimeArgs } from "./runtime-worker-url.js";
+import { resolveRuntimeCompilerArgs } from "./runtime-worker-url.js";
 import { verifyPackageUpdateRecovery, type ResolvedGlobalInstallTarget } from "./update-global.js";
 import { recordManagedUpdatePackageStage } from "./update-handoff-recovery.js";
 import { prepareNativePackageStage } from "./update-native-package-stage.js";
@@ -71,7 +71,7 @@ export async function runPackageUpdateLifecycle(params: {
           name: `${params.manager}-package-${script.name}`,
           argv: [
             nodeRunner,
-            ...resolveRuntimeArgs(nodeRunner),
+            ...resolveRuntimeCompilerArgs(nodeRunner),
             fileURLToPath(
               resolveExternalPackageRuntimeEntrypointUrl(script.name, params.packageRoot),
             ),

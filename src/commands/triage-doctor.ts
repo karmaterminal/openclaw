@@ -2,7 +2,7 @@ import { z } from "zod";
 import { resolveOpenClawCliInvocation } from "../../cli-invocation.mjs";
 import { resolveGatewayInstallEntrypoint } from "../daemon/gateway-entrypoint.js";
 import { isNodeRuntime } from "../daemon/runtime-binary.js";
-import { resolveRuntimeArgs } from "../infra/runtime-worker-url.js";
+import { resolveRuntimeCompilerArgs } from "../infra/runtime-worker-url.js";
 import type { UpdateRepairValidation } from "../infra/update-repair-protocol.js";
 import {
   redactSupportString,
@@ -35,7 +35,7 @@ export async function validateTriageDoctor(params: {
   const invocation = resolveOpenClawCliInvocation({
     execPath,
     entryPath: entrypoint,
-    execArgv: resolveRuntimeArgs(execPath),
+    execArgv: resolveRuntimeCompilerArgs(execPath),
     args: ["doctor", "--lint", "--json", "--severity-min", "error"],
   });
   const doctorCommand = await runUtf8CommandWithTimeout([invocation.command, ...invocation.args], {

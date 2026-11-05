@@ -12,7 +12,7 @@ import {
   type runtimeProcessSealedManifest,
 } from "./runtime-process-manifest.js";
 import {
-  resolveRuntimeArgs,
+  resolveRuntimeCompilerArgs,
   resolveRuntimeWorkerArgv,
   resolveRuntimeWorkerUrl,
 } from "./runtime-worker-url.js";
@@ -84,7 +84,7 @@ export function prepareRuntimeProcessScriptInvocation(
   }
   const file = createRuntimeProcessScriptFile(name, options);
   // Probes describe the bare candidate runtime; OpenClaw's own scripts keep its launch flags.
-  const runtimeArgs = name.endsWith("Probe") ? [] : resolveRuntimeArgs(execPath);
+  const runtimeArgs = name.endsWith("Probe") ? [] : resolveRuntimeCompilerArgs(execPath);
   return {
     argv: [execPath, ...runtimeArgs, fileURLToPath(file.url)],
     dispose: () => file.dispose(),

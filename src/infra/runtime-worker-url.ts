@@ -56,9 +56,14 @@ export function resolveRuntimeInstallPolicyArgs(execPath = process.execPath): st
   return isBunTargetRuntime(execPath) ? ["--no-install"] : [];
 }
 
-/** Launch flags for an OpenClaw-owned child started now; Node children keep the parent's compiler policy. */
+/** The parent's reviewed compiler flags for an OpenClaw-owned Node child started now. */
+export function resolveRuntimeCompilerArgs(execPath = process.execPath): string[] {
+  return isBunTargetRuntime(execPath) ? [] : resolveForwardedNodeCompilerArgs();
+}
+
+/** Both launch policies for an OpenClaw-owned child started now. */
 export function resolveRuntimeArgs(execPath = process.execPath): string[] {
-  return isBunTargetRuntime(execPath) ? ["--no-install"] : resolveForwardedNodeCompilerArgs();
+  return [...resolveRuntimeInstallPolicyArgs(execPath), ...resolveRuntimeCompilerArgs(execPath)];
 }
 
 /** Whether a source TypeScript module needs Node's tsx loader; Bun runs TypeScript natively. */

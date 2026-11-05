@@ -1,14 +1,23 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import type { OpenClawPluginToolContext } from "openclaw/plugin-sdk/plugin-entry";
-import { runCommandWithTimeout } from "openclaw/plugin-sdk/process-runtime";
+import {
+  resolveRuntimeWorkerArgv,
+  runCommandWithTimeout,
+} from "openclaw/plugin-sdk/process-runtime";
 import { assert, beforeEach, expect, it, vi } from "vitest";
 import { commandResult } from "../../test-support/command-result.test-support.js";
 import { createAutoReviewTool } from "./tool.js";
 
 // mock-isolation: Exercise tool admission without starting host child processes.
-vi.mock("openclaw/plugin-sdk/process-runtime", () => ({ runCommandWithTimeout: vi.fn() }));
+vi.mock("openclaw/plugin-sdk/process-runtime", async (importOriginal) => ({
+  resolveRuntimeWorkerArgv: (
+    await importOriginal<typeof import("openclaw/plugin-sdk/process-runtime")>()
+  ).resolveRuntimeWorkerArgv,
+  runCommandWithTimeout: vi.fn(),
+}));
 type CommandOptions = Exclude<Parameters<typeof runCommandWithTimeout>[1], number>;
 type Tool = NonNullable<ReturnType<typeof createAutoReviewTool>>;
 const command = vi.mocked(runCommandWithTimeout);
@@ -127,7 +136,11 @@ it("preserves settings, isolation, and complete output", async () => {
   expect(response).toMatchObject({ status: "done", output, model: "fixture/preferred" });
   const overrides = /^(--model|--thinking|--engine-timeout-seconds|--max-review-passes)$/;
   expect(helperArgv?.filter((arg) => overrides.test(arg))).toEqual([]);
-  const [argv, options] = command.mock.calls[0]!;
+  const [launched, options] = command.mock.calls[0]!;
+  // The host CLI child keeps the host's runtime launch policy ahead of its entry.
+  const launch = resolveRuntimeWorkerArgv(pathToFileURL("/host/openclaw/openclaw.mjs"));
+  expect(launched.slice(0, launch.length + 1)).toEqual([process.execPath, ...launch]);
+  const argv = [launched[0]!, ...launched.slice(launch.length)];
   expect(argv.slice(0, 10).join(" ")).toBe(
     `${process.execPath} /host/openclaw/openclaw.mjs agent exec --json --code-mode direct --message-file - --config-override`,
   );

@@ -20,7 +20,7 @@ import { readJsonIfExists, writeJson } from "../../infra/json-files.js";
 import { mergeProcessEnv } from "../../infra/process-env.js";
 import { runtimeProcessEntrypoints } from "../../infra/runtime-process-entrypoints.js";
 import {
-  resolveRuntimeArgs,
+  resolveRuntimeCompilerArgs,
   resolveRuntimeWorkerArgv,
   resolveRuntimeWorkerUrl,
 } from "../../infra/runtime-worker-url.js";
@@ -526,7 +526,7 @@ export async function continuePostCoreUpdateInFreshProcess(params: {
     const invocation = resolveOpenClawCliInvocation({
       execPath: nodeRunner,
       entryPath,
-      execArgv: resolveRuntimeArgs(nodeRunner),
+      execArgv: resolveRuntimeCompilerArgs(nodeRunner),
       args: argv.slice(1),
     });
     const child = spawn(invocation.command, invocation.args, {
