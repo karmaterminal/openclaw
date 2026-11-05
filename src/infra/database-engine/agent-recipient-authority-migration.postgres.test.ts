@@ -1,6 +1,7 @@
-// Continuation (karmaterminal): recipient authority is agent schema 40, above upstream's
-// PostgreSQL-only steps 34-36 and 38, the cold-archive chunk step 37 and the cold-navigation step
-// 39. These cases run that ladder in place through the agent owner and refuse earlier candidates.
+// Continuation (karmaterminal): recipient authority is agent schema 41, above upstream's
+// PostgreSQL-only steps 34-36 and 38, the cold-archive chunk step 37, the cold-navigation step 39
+// and the creation-receipt step 40. These cases run that ladder in place through the agent owner
+// and refuse earlier candidates.
 import { channel } from "node:diagnostics_channel";
 import path from "node:path";
 import { getEnvironmentData } from "node:worker_threads";
@@ -10,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { withoutAgentPostgresColdArchiveChunks } from "../../state/openclaw-agent-cold-archive-chunks-schema.js";
 import { withoutAgentPostgresColdNavigation } from "../../state/openclaw-agent-cold-navigation-schema.js";
+import { withoutAgentPostgresCreationOperations } from "../../state/openclaw-agent-creation-operations-schema.js";
 import { agentEngineSchema, openAgentEngineStore } from "../../state/openclaw-agent-db-engine.js";
 import { runWithAgentDatabaseMaintenanceAuthority } from "../../state/openclaw-agent-db-lease.js";
 import { withLegacyAgentPostgresMemoryPaths } from "../../state/openclaw-agent-memory-path-migration.js";
@@ -38,6 +40,9 @@ const step = (version: number) =>
   agentEngineSchema.postgresMigrations!.find((migration) => migration.version === version)!;
 type Predecessor = ReturnType<typeof step>["fromSchema"];
 /** A historical layout; search versions it omits stay historical instead of inheriting current. */
+// The current schema without upstream's 40 creation receipts: an earlier candidate's layout.
+const upstream39WithAuthority = () =>
+  withoutAgentPostgresCreationOperations(agentEngineSchema.postgres!);
 const historical = (version: number, from: Predecessor): StoreSchema => ({
   ...agentEngineSchema,
   ...from,
@@ -210,7 +215,7 @@ describe.skipIf(!connection)("PostgreSQL agent recipient-authority migration", (
     };
   }
 
-  it("migrates a populated schema-34 store through 35-40 in place and re-admits it without DDL", async () => {
+  it("migrates a populated schema-34 store through 35-41 in place and re-admits it without DDL", async () => {
     const root = dirs.make("pg-authority-chain-");
     const anchorPath = path.join(root, "openclaw-agent.sqlite");
     const namespace = install(historical(34, step(35).fromSchema), anchorPath);
@@ -247,10 +252,11 @@ describe.skipIf(!connection)("PostgreSQL agent recipient-authority migration", (
       ...retained,
       schema_meta: after.tables.schema_meta,
       openclaw_schema_meta: after.tables.openclaw_schema_meta,
+      session_creation_operations: "[]",
       session_recipient_authority: "[]",
       session_transcript_cold_archive_chunks: "[]",
     });
-    // The in-place result is the catalog a fresh schema-40 store bootstraps.
+    // The in-place result is the catalog a fresh schema-41 store bootstraps.
     expect(after.catalog).toEqual(await catalog(reference));
     // Step 35 rebuilds only its own indexes; every other relation keeps its storage.
     const rebuilt = before.relations
@@ -283,11 +289,11 @@ describe.skipIf(!connection)("PostgreSQL agent recipient-authority migration", (
     expect(await snapshot(namespace)).toEqual(after);
   });
 
-  // Upstream's own 35-39 stores reach 40 in place and gain only the empty authority table
-  // (and, below 37, the empty cold-archive chunk table). 38 is upstream's text-search split and
-  // 39 its widened transcript payload constraint.
-  it.each([35, 36, 37, 38, 39])(
-    "migrates upstream's populated schema-%i store to 40 in place and re-admits it without DDL",
+  // Upstream's own 35-40 stores reach 41 in place and gain only the empty authority table (and,
+  // below 37 and 40, the empty cold-archive chunk and creation-receipt tables). 38 is upstream's
+  // text-search split, 39 its widened transcript payload constraint and 40 its creation receipts.
+  it.each([35, 36, 37, 38, 39, 40])(
+    "migrates upstream's populated schema-%i store to 41 in place and re-admits it without DDL",
     async (version) => {
       const root = dirs.make(`pg-authority-upstream-${version}-`);
       const anchorPath = path.join(root, "openclaw-agent.sqlite");
@@ -308,6 +314,7 @@ describe.skipIf(!connection)("PostgreSQL agent recipient-authority migration", (
         ...retained,
         schema_meta: after.tables.schema_meta,
         openclaw_schema_meta: after.tables.openclaw_schema_meta,
+        session_creation_operations: "[]",
         session_recipient_authority: "[]",
         session_transcript_cold_archive_chunks: "[]",
       });
@@ -323,14 +330,14 @@ describe.skipIf(!connection)("PostgreSQL agent recipient-authority migration", (
     },
   );
 
-  // The jump-8 candidate numbered recipient authority 38: upstream's 37 plus the authority table,
-  // without upstream's 38 text search. Step 40's alternate cannot carry it across upstream's 39,
-  // which yields no authority table, so step 39 refuses it unchanged (Doctor's export already did).
+  // The jump-8 candidate (the deployed fleet's build) numbered recipient authority 38: upstream's 37
+  // plus the authority table, without upstream's 38 text search. Upstream's 39 has no authority
+  // table, so step 39 refuses it unchanged (Doctor's export already did). The fleet runs SQLite.
   it("refuses the jump-8 candidate's populated schema-38 store before step 39, unchanged", async () => {
     const anchorPath = path.join(dirs.make("pg-authority-jump8-"), "openclaw-agent.sqlite");
     const namespace = install(
       historical(38, {
-        postgres: withoutAgentPostgresColdNavigation(agentEngineSchema.postgres!),
+        postgres: withoutAgentPostgresColdNavigation(upstream39WithAuthority()),
         postgresVectorDecoderVersion: 2,
         postgresVectorSearchVersion: 2,
       }),
@@ -353,7 +360,7 @@ describe.skipIf(!connection)("PostgreSQL agent recipient-authority migration", (
     const namespace = install(
       historical(38, {
         ...step(39).fromSchema,
-        postgres: withoutAgentPostgresColdNavigation(agentEngineSchema.postgres!),
+        postgres: withoutAgentPostgresColdNavigation(upstream39WithAuthority()),
       }),
       anchorPath,
     );
@@ -376,19 +383,39 @@ describe.skipIf(!connection)("PostgreSQL agent recipient-authority migration", (
   });
 
   // Earlier candidates numbered recipient authority 35 (upstream's 34 plus the authority table,
-  // without upstream's 35 index ordering) and 36 (jump 6: upstream's 35 plus the table, without
-  // upstream's 36 exact-path indexes). Neither is an upstream schema, so the owner refuses it.
+  // without upstream's 35 index ordering), 36 (jump 6: upstream's 35 plus the table, without
+  // upstream's 36 exact-path indexes), 39 (jumps 9-12: upstream's 38 plus the table, without its
+  // 39 payload constraint) and 40 (j12: upstream's 39 plus the table, without its 40 receipts).
+  // None is an upstream schema, so the owner refuses it.
   const earlier36 = withLegacyAgentPostgresMemoryPaths(
     withoutAgentPostgresColdArchiveChunks(
-      withoutAgentPostgresColdNavigation(agentEngineSchema.postgres!),
+      withoutAgentPostgresColdNavigation(upstream39WithAuthority()),
     ),
   );
+  // Each pattern names DDL only a later step writes: the source check builds its predecessor's DDL
+  // in a rolled-back scratch schema, and from 37 that DDL holds the cold-archive chunk table.
+  const laterSteps =
+    /"session_recipient_authority"|"session_transcript_cold_archive_chunks"|\bUPDATE (?:openclaw_)?schema_meta\b/u;
   it.each([
-    { version: 35, ddl: withLegacyPostgresIndexOrdering(earlier36, "schema-nullability") },
-    { version: 36, ddl: earlier36 },
+    {
+      version: 35,
+      ddl: withLegacyPostgresIndexOrdering(earlier36, "schema-nullability"),
+      next: laterSteps,
+    },
+    { version: 36, ddl: earlier36, next: laterSteps },
+    {
+      version: 39,
+      ddl: withoutAgentPostgresColdNavigation(upstream39WithAuthority()),
+      next: /"session_creation_operations"|"session_recipient_authority"|\bUPDATE (?:openclaw_)?schema_meta\b/u,
+    },
+    {
+      version: 40,
+      ddl: upstream39WithAuthority(),
+      next: /"session_recipient_authority"|\bUPDATE (?:openclaw_)?schema_meta\b/u,
+    },
   ])(
     "refuses an earlier candidate's schema-$version store before the next step, leaving it byte-unchanged",
-    async ({ version, ddl }) => {
+    async ({ version, ddl, next }) => {
       expect(ddl).toContain(sessionRecipientAuthorityPostgresSql(agentEngineSchema.postgres!));
       expect(withoutSessionRecipientAuthorityPostgresSchema(ddl)).toBe(
         step(version).fromSchema.postgres,
@@ -414,13 +441,7 @@ describe.skipIf(!connection)("PostgreSQL agent recipient-authority migration", (
             "PostgreSQL schema drift detected against generated DDL. Use a compatible OpenClaw binary or restore the matching PostgreSQL schema and anchor; do not edit schema metadata.",
         });
         // The source check refuses before the next step's DDL or any version or seal write runs.
-        expect(
-          observation.statements.filter((sql) =>
-            /"session_recipient_authority"|"session_transcript_cold_archive_chunks"|\bUPDATE (?:openclaw_)?schema_meta\b/u.test(
-              sql,
-            ),
-          ),
-        ).toEqual([]);
+        expect(observation.statements.filter((sql) => next.test(sql))).toEqual([]);
       }
       expect(await snapshot(namespace)).toEqual(before);
       expect(
