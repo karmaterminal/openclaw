@@ -93,7 +93,7 @@ it("uses embedded self dispatch while keeping external runtime scripts physical"
   {
     using _ = { [Symbol.dispose]: () => external.dispose() };
     expect(external.argv[0]).toBe("/external/node");
-    expect(fs.existsSync(expectDefined(external.argv[1], "physical script entry"))).toBe(true);
+    expect(fs.existsSync(expectDefined(external.argv.at(-1), "physical script entry"))).toBe(true);
   }
   expect(fs.readdirSync(root)).toEqual([]);
 });

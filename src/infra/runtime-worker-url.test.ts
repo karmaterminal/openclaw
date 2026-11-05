@@ -40,7 +40,7 @@ function expectRuntimeArgs(
   const url = pathToFileURL(path.resolve(`worker fixture.${extension}`));
   const needsLoader = node && extension.endsWith("ts");
   expect(resolveRuntimeWorkerArgv(url, runtime)).toEqual([
-    ...(node ? [] : ["--no-install"]),
+    ...(node ? process.execArgv.filter(isNodeCompilerArg) : ["--no-install"]),
     ...(needsLoader ? ["--import", loader] : []),
     fileURLToPath(url),
   ]);
@@ -175,6 +175,7 @@ describe("resolveRuntimeWorkerArgv", () => {
     const currentExecutable = path.resolve("current-runtime-fixture", executable);
     try {
       Object.defineProperties(process, {
+        execArgv: { configurable: true, value: ["--no-opt", "--inspect"] },
         execPath: { configurable: true, value: currentExecutable },
         versions: { configurable: true, value: { ...process.versions, bun } },
       });
@@ -190,6 +191,7 @@ describe("resolveRuntimeWorkerArgv", () => {
       }
     } finally {
       Object.defineProperties(process, {
+        execArgv: descriptors.execArgv,
         execPath: descriptors.execPath,
         versions: descriptors.versions,
       });

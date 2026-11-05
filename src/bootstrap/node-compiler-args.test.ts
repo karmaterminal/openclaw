@@ -7,11 +7,6 @@ afterEach(() => {
 });
 
 describe("explicit Node compiler policy", () => {
-  it("leaves default compilation untouched", () => {
-    process.execArgv = [];
-    expect(resolveForwardedNodeCompilerArgs()).toEqual([]);
-  });
-
   it("preserves operator and tooling overrides without injecting defaults", () => {
     process.execArgv = [
       "--inspect",

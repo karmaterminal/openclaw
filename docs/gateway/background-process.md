@@ -296,8 +296,9 @@ keep their instrumentation environment. Node rejects V8 compiler flags in
 `NODE_OPTIONS`, so start the Gateway or CLI as `node --no-opt …` (likewise
 `--[no-]maglev` and `--[no-]concurrent-sparkplug`) to apply them; OpenClaw's own Node
 children, including those started from worker threads, receive exactly those flags.
-Service definitions never copy them from the installing process, and runtime probes
-and executed commands run without them. An explicit source loader needed to run
+Doctor's Gateway runtime probe receives them as well (a Bun runtime receives none).
+Service definitions never copy them from the installing process, and executed
+commands run without them. An explicit source loader needed to run
 an unbuilt helper still prevents it from claiming Linux child ownership.
 Admission uses the runtime's standalone identity and startup hooks, including
 `--import`, `--require`, and loader flags in argv or `NODE_OPTIONS`. A TypeScript

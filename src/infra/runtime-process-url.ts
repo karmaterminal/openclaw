@@ -83,7 +83,7 @@ export function prepareRuntimeProcessScriptInvocation(
     }
   }
   const file = createRuntimeProcessScriptFile(name, options);
-  // Probes too: each script is a child in this process tree and keeps its compiler policy.
+  // Probes included: a Node target keeps this process's reviewed compiler flags; Bun takes none.
   return {
     argv: [execPath, ...resolveRuntimeCompilerArgs(execPath), fileURLToPath(file.url)],
     dispose: () => file.dispose(),

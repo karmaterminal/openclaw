@@ -293,8 +293,8 @@ describe.skipIf(process.platform === "win32")("Doctor native repair authority or
     });
     edges.runtimeProbe.mockImplementation(async (file, args) => {
       if (
-        path.basename(args[0] ?? "") !== "daemon-runtime-probe.mjs" ||
-        !isDeepStrictEqual(args.slice(1), ["node", ""])
+        path.basename(args.at(-3) ?? "") !== "daemon-runtime-probe.mjs" ||
+        !isDeepStrictEqual(args.slice(-2), ["node", ""])
       ) {
         unexpectedProcesses.push("unexpected runtime process");
         throw new Error("Unexpected fixture runtime process");

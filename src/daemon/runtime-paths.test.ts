@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { isNodeCompilerArg } from "../../node-runtime-env.mjs";
 
 // Platform fixtures do not create host files; the generated bootstrap has separate process proof.
 vi.mock("../../runtime-process-scripts.generated.mjs", async (importOriginal) => ({
@@ -29,6 +30,8 @@ import {
   resolvePreferredNodePath,
   resolveSystemNodeInfo,
 } from "./runtime-paths.js";
+
+const compilerArgs = process.execArgv.filter(isNodeCompilerArg);
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -240,7 +243,7 @@ describe("resolvePreferredNodePath", () => {
     expect(execFile).toHaveBeenCalledTimes(1);
     expect(execFile).toHaveBeenCalledWith(
       darwinNode,
-      [expect.stringMatching(/daemon-runtime-probe\.mjs$/), "node", ""],
+      [...compilerArgs, expect.stringMatching(/daemon-runtime-probe\.mjs$/), "node", ""],
       { logOutput: false, timeoutMs: 5_000, baseEnv: expect.any(Object) },
     );
   });
@@ -390,7 +393,7 @@ describe("resolveSystemNodeInfo", () => {
     expect(execFile).toHaveBeenCalledTimes(1);
     expect(execFile).toHaveBeenCalledWith(
       homebrewOptNode,
-      [expect.stringMatching(/daemon-runtime-probe\.mjs$/), "node", ""],
+      [...compilerArgs, expect.stringMatching(/daemon-runtime-probe\.mjs$/), "node", ""],
       { logOutput: false, timeoutMs: 5_000, baseEnv: expect.any(Object) },
     );
   });
