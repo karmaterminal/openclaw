@@ -19,7 +19,7 @@ import {
   reportText,
   USER_TAG,
 } from "./continuation-forest.model.test-support.js";
-import type { ContinuationForest } from "./continuation-forest.test-support.js";
+import type { ForestWorld } from "./continuation-forest.world.test-support.js";
 import { SUBAGENT_ENDED_REASON_KILLED } from "./subagent-lifecycle-events.js";
 import { subagentRuns } from "./subagent-registry-memory.js";
 import { mutateSubagentRuns } from "./subagent-registry-persistence.js";
@@ -29,7 +29,7 @@ import { writeChildSession } from "./subagent-registry.persistence.test-support.
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 
 /** A clone folds: attempt, one second, the bit flips, then it reports. */
-export function foldCrane(forest: ContinuationForest, election: AnnexElection): void {
+export function foldCrane(forest: ForestWorld, election: AnnexElection): void {
   forest.logAttempt(election.id, "attempt");
   void (async () => {
     await new Promise<void>((resolve) => {
@@ -47,10 +47,7 @@ export function foldCrane(forest: ContinuationForest, election: AnnexElection): 
 }
 
 /** The child's continuation return through the production router, as the announce flow runs it. */
-export async function reportElection(
-  forest: ContinuationForest,
-  election: AnnexElection,
-): Promise<void> {
+export async function reportElection(forest: ForestWorld, election: AnnexElection): Promise<void> {
   const runId = forest.runIdOf(election);
   const entry = subagentRuns.get(runId);
   // A child the Gateway stopped never completes: its report is never made.
@@ -131,7 +128,7 @@ async function persistBinding(
  * runner reports to the room that elected it; a node to its parent, plus its target across, or to
  * every room but its own (`all`).
  */
-function intendedRecipients(forest: ContinuationForest, election: AnnexElection): string[] {
+function intendedRecipients(forest: ForestWorld, election: AnnexElection): string[] {
   if (election.owner) {
     return [election.owner.sessionKey];
   }
@@ -148,7 +145,7 @@ function intendedRecipients(forest: ContinuationForest, election: AnnexElection)
  * fields production builds from the spawn request, then the runner folds its crane.
  */
 export async function admitRunner(
-  forest: ContinuationForest,
+  forest: ForestWorld,
   params: Parameters<typeof spawnSubagentDirect>[0],
   context: Parameters<typeof spawnSubagentDirect>[1],
 ): ReturnType<typeof spawnSubagentDirect> {
@@ -203,14 +200,14 @@ export async function admitRunner(
 }
 
 /** The attic election a continue_work wake's text names, if any. */
-function atticOf(forest: ContinuationForest, text: string): AnnexElection | undefined {
+function atticOf(forest: ForestWorld, text: string): AnnexElection | undefined {
   const flowId = /\bFlow: ([\w-]+)/.exec(text)?.[1];
   const election = flowId ? forest.elections.get(flowId) : undefined;
   return election?.kind === "attic" ? election : undefined;
 }
 
 /** The inspector checks the attic: the attempt, then the effect. */
-function inspectAttic(forest: ContinuationForest, election: AnnexElection): void {
+function inspectAttic(forest: ForestWorld, election: AnnexElection): void {
   forest.logAttempt(election.id, "attempt");
   forest.bits.set(election.id, 1);
   forest.logAttempt(election.id, "effect");
@@ -218,7 +215,7 @@ function inspectAttic(forest: ContinuationForest, election: AnnexElection): void
 
 /** The reply owner's double: a continue_work wake turn, in which the inspector checks the attic. */
 export async function checkAttic(
-  forest: ContinuationForest,
+  forest: ForestWorld,
   ...[ctx, opts]: Parameters<typeof getReplyFromConfig>
 ): ReturnType<typeof getReplyFromConfig> {
   const body = typeof ctx.Body === "string" ? ctx.Body : "";
@@ -240,7 +237,7 @@ export async function checkAttic(
  * (`[annex:user <who>]`) takes its time at the barrier `turn:<who>`.
  */
 export async function provideTurn(
-  forest: ContinuationForest,
+  forest: ForestWorld,
   params: Parameters<typeof runEmbeddedAgent>[0],
 ): Promise<EmbeddedAgentRunResult> {
   await params.onAgentEvent?.({ stream: "lifecycle", data: { phase: "start" } });

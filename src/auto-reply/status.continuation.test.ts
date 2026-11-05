@@ -5,6 +5,7 @@ import { normalizeTestText } from "../../test/helpers/normalize-text.js";
 import { testing as cliBackendsTesting } from "../agents/cli-backends.test-support.js";
 import { getContextWindowCaches } from "../agents/context-cache.js";
 import type { OpenClawConfig } from "../config/config.js";
+import { SESSION_TOTAL_TOKENS_VERSION } from "../config/sessions/types.js";
 import {
   buildStatusMessage as buildStatusMessageRaw,
   type buildStatusMessage as BuildStatusMessage,
@@ -131,7 +132,7 @@ describe("buildStatusMessage", () => {
         outputTokens: 800,
         totalTokens: 16_000,
         totalTokensFresh: true,
-        totalTokensVersion: 1 as const,
+        totalTokensVersion: SESSION_TOTAL_TOKENS_VERSION,
         contextTokens: 32_000,
         thinkingLevel: "low",
         verboseLevel: "on",

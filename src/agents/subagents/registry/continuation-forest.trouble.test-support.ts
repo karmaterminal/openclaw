@@ -37,10 +37,10 @@ import {
   OWNER_B,
   userText,
 } from "./continuation-forest.model.test-support.js";
-import type { ContinuationForest } from "./continuation-forest.test-support.js";
+import type { ForestWorld } from "./continuation-forest.world.test-support.js";
 
 /** The prince changes 🎽🩲: a chat /new on the prince's own room. */
-export async function changesClothes(forest: ContinuationForest, prince: AnnexNode): Promise<void> {
+export async function changesClothes(forest: ForestWorld, prince: AnnexNode): Promise<void> {
   forest.recordDrops([prince.sessionKey]);
   const result = await initSessionState({
     ctx: finalizeInboundContext({
@@ -61,7 +61,7 @@ export async function changesClothes(forest: ContinuationForest, prince: AnnexNo
 
 /** A same-owner Gateway reset (`sessions.reset`) of any room. */
 export async function resetRoom(
-  forest: ContinuationForest,
+  forest: ForestWorld,
   node: AnnexNode,
   reason: "new" | "reset" = "reset",
 ): Promise<void> {
@@ -80,7 +80,7 @@ export async function resetRoom(
 
 /** A real handover of the room: its row deleted and recreated, or its owner changed. */
 export async function handOver(
-  forest: ContinuationForest,
+  forest: ForestWorld,
   node: AnnexNode,
   how: Handover["how"] = "delete and recreate",
 ): Promise<void> {
@@ -110,7 +110,7 @@ export async function handOver(
  * deliveries (spaced 250 ms apart), then arms every pending row; 1.4 s in, custody boot and the
  * pending reset-retention marks. A due time that falls before the boot fires at the boot.
  */
-export async function restartGateway(forest: ContinuationForest): Promise<void> {
+export async function restartGateway(forest: ForestWorld): Promise<void> {
   await forest.stopDeliveryRuntime?.();
   forest.stopDeliveryRuntime = undefined;
   forest.recordDrops(forest.rooms);
@@ -162,7 +162,7 @@ export async function restartGateway(forest: ContinuationForest): Promise<void> 
  * world's `workMarks` seam.
  */
 export async function crashMidWake(
-  forest: ContinuationForest,
+  forest: ForestWorld,
   attic: AnnexElection,
   after: "effect" | "delivered mark",
 ): Promise<void> {
@@ -192,7 +192,7 @@ export async function crashMidWake(
  * A user's message to a room running the real reply owner, as a world operation: its turn runs now,
  * or queues as a follow-up behind a running one.
  */
-export function userSays(forest: ContinuationForest, node: AnnexNode, who: string) {
+export function userSays(forest: ForestWorld, node: AnnexNode, who: string) {
   return forest.run(() =>
     getReplyFromConfig(
       finalizeInboundContext({
@@ -208,7 +208,7 @@ export function userSays(forest: ContinuationForest, node: AnnexNode, who: strin
 
 /** The owner's explicit `/continuations cancel <id...>`, through its decision owner. */
 export async function cancelElections(
-  forest: ContinuationForest,
+  forest: ForestWorld,
   owner: AnnexNode,
   electionIds: string[],
 ) {

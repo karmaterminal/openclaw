@@ -31,7 +31,7 @@ import {
   OWNER_A,
   princeKey,
 } from "./continuation-forest.model.test-support.js";
-import type { ContinuationForest } from "./continuation-forest.test-support.js";
+import type { ForestWorld } from "./continuation-forest.world.test-support.js";
 import { mutateSubagentRuns } from "./subagent-registry-persistence.js";
 import { markSubagentRunPausedAfterYield } from "./subagent-registry-run-pause.js";
 import { registerSubagentRun } from "./subagent-registry.js";
@@ -50,7 +50,7 @@ export function sessionScope(sessionKey: string) {
  * children. Each prince's first child returns home, the second reports to the first crane of the
  * next tree as well (across), the third shouts to every room (`all`).
  */
-export async function buildForest(forest: ContinuationForest, shape: AnnexShape): Promise<void> {
+export async function buildForest(forest: ForestWorld, shape: AnnexShape): Promise<void> {
   for (let tree = 0; tree < shape.trees; tree += 1) {
     const prince: AnnexNode = {
       id: `t${tree}`,
@@ -83,12 +83,12 @@ export async function buildForest(forest: ContinuationForest, shape: AnnexShape)
   await writeRuns(forest);
 }
 
-function addNode(forest: ContinuationForest, node: AnnexNode): void {
+function addNode(forest: ForestWorld, node: AnnexNode): void {
   forest.nodes.set(node.id, node);
   forest.addRoom(node.sessionKey);
 }
 
-function grow(forest: ContinuationForest, parent: AnnexNode, generation: number): void {
+function grow(forest: ForestWorld, parent: AnnexNode, generation: number): void {
   if (generation >= forest.shape.depth) {
     return;
   }
@@ -122,7 +122,7 @@ function grow(forest: ContinuationForest, parent: AnnexNode, generation: number)
 }
 
 /** Each prince's room: owned by owner A, shared, with one member, its authority recorded. */
-async function writePrinces(forest: ContinuationForest): Promise<void> {
+async function writePrinces(forest: ForestWorld): Promise<void> {
   for (const prince of forest.princes) {
     const scope = sessionScope(prince.sessionKey);
     await upsertSessionEntryCore(scope, {
@@ -145,7 +145,7 @@ async function writePrinces(forest: ContinuationForest): Promise<void> {
  * subtree: one production registration, the rest written through the registry writer in batches,
  * each with its recipient authority bound at election.
  */
-async function writeRuns(forest: ContinuationForest): Promise<void> {
+async function writeRuns(forest: ForestWorld): Promise<void> {
   const nodes = [...forest.nodes.values()].filter((node) => node.role !== "prince");
   const [first] = nodes;
   if (!first) {
@@ -245,7 +245,7 @@ async function registerTemplate(node: AnnexNode): Promise<SubagentRunRecord> {
  * Lights the annex: every clone starts folding; each prince elects its late runner and its attic
  * wake, relay 0 of each tree its cellar runner, through the production election paths.
  */
-export async function lightAnnex(forest: ContinuationForest): Promise<void> {
+export async function lightAnnex(forest: ForestWorld): Promise<void> {
   forest.t0 = Date.now();
   for (const node of forest.nodes.values()) {
     if (node.role === "crane") {
@@ -274,7 +274,7 @@ export async function lightAnnex(forest: ContinuationForest): Promise<void> {
 
 /** A continue_delegate with a delay, enqueued and dispatched as its electing turn would. */
 async function electRunner(
-  forest: ContinuationForest,
+  forest: ForestWorld,
   owner: AnnexNode,
   name: string,
   delayMs: number,
@@ -306,7 +306,7 @@ async function electRunner(
 
 /** The prince's continue_work: `name` checks the attic again, after the minimum delay. */
 export async function electAttic(
-  forest: ContinuationForest,
+  forest: ForestWorld,
   prince: AnnexNode,
   name: string,
 ): Promise<AnnexElection> {

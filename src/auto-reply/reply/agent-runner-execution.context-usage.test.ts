@@ -13,6 +13,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionEntry } from "../../config/sessions.js";
+import { SESSION_TOTAL_TOKENS_VERSION } from "../../config/sessions/types.js";
 
 const state = vi.hoisted(() => ({
   resolveContextTokensForModelMock:
@@ -45,7 +46,7 @@ function makeEntry(overrides: Partial<SessionEntry> = {}): SessionEntry {
     sessionId: "session-id-default",
     updatedAt: 1,
     totalTokensFresh: true,
-    totalTokensVersion: 1,
+    totalTokensVersion: SESSION_TOTAL_TOKENS_VERSION,
     ...overrides,
   } as SessionEntry;
 }

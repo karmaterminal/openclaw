@@ -83,6 +83,7 @@ import {
   type WorkMark,
 } from "./continuation-forest.seams.test-support.js";
 import * as trouble from "./continuation-forest.trouble.test-support.js";
+import type { ForestWorld } from "./continuation-forest.world.test-support.js";
 import { observeRootWork } from "./subagent-registry.browser-cleanup.test-support.js";
 
 const DELIVERED_TO = /\[continuation:targeted-return\] Delivered to (\S+) from (\S+)/;
@@ -171,7 +172,7 @@ function withRealReplyOwner(config: OpenClawConfig): OpenClawConfig {
   });
 }
 
-export class ContinuationForest {
+export class ContinuationForest implements ForestWorld {
   readonly storePath: string;
   shape: AnnexShape = DEFAULT_ANNEX_SHAPE;
   /** When the fire was lit; story times are relative to it. */

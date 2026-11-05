@@ -12,13 +12,13 @@ import {
   type AttemptLogLine,
   type Report,
 } from "./continuation-forest.model.test-support.js";
-import type { ContinuationForest } from "./continuation-forest.test-support.js";
+import type { ForestWorld } from "./continuation-forest.world.test-support.js";
 import { subagentRuns } from "./subagent-registry-memory.js";
 
 /** The work store's failure reason for a wake whose turn started and whose delivery never did. */
 const WORK_TURN_INTERRUPTED_REASON = "turn-started-delivery-unconfirmed";
 
-export async function tellStories(forest: ContinuationForest): Promise<string[]> {
+export async function tellStories(forest: ForestWorld): Promise<string[]> {
   const stories = [...forest.failures];
   const records = new Map(
     (
@@ -54,7 +54,7 @@ export async function tellStories(forest: ContinuationForest): Promise<string[]>
  * must be refused there: the handover advanced the epoch it carries. An `all` report bound after
  * the handover belongs to the new occupant.
  */
-function deriveRefusalsFromHandovers(forest: ContinuationForest): void {
+function deriveRefusalsFromHandovers(forest: ForestWorld): void {
   const adoptedSeq = new Map<string, number>();
   for (const adoption of forest.adoptions) {
     const key = `${adoption.reportId}\u0000${adoption.sessionKey}`;
@@ -80,7 +80,7 @@ function deriveRefusalsFromHandovers(forest: ContinuationForest): void {
  * before it ever started.
  */
 function electionStories(
-  forest: ContinuationForest,
+  forest: ForestWorld,
   election: AnnexElection,
   record: ContinuationRecord | undefined,
 ): string[] {
@@ -177,7 +177,7 @@ function electionStories(
  * one notice naming it.
  */
 function interruptedStories(
-  forest: ContinuationForest,
+  forest: ForestWorld,
   election: AnnexElection,
   record: ContinuationRecord,
 ): string[] {
@@ -198,7 +198,7 @@ function interruptedStories(
 }
 
 /** At its due time, or, when the Gateway was down then, when the new process booted. */
-function firesOnTime(forest: ContinuationForest, dueAt: number, firedAt: number): boolean {
+function firesOnTime(forest: ForestWorld, dueAt: number, firedAt: number): boolean {
   const down = forest.downtimes.find((window) => dueAt >= window.from && dueAt < window.to);
   const expected = down ? down.to : dueAt;
   return firedAt >= dueAt && firedAt < expected + ANNEX_STEP_MS;
@@ -210,7 +210,7 @@ function firesOnTime(forest: ContinuationForest, dueAt: number, firedAt: number)
  * report it was never sent.
  */
 async function reportStories(
-  forest: ContinuationForest,
+  forest: ForestWorld,
   report: Report,
   adoptedRooms: ReadonlySet<string>,
   claimedLines: Set<object>,
@@ -273,7 +273,7 @@ async function reportStories(
   return stories;
 }
 
-async function receiptStatus(forest: ContinuationForest, id: string): Promise<string | undefined> {
+async function receiptStatus(forest: ForestWorld, id: string): Promise<string | undefined> {
   const context = captureDeliveryQueueStateContext(forest.stateDir);
   return (await inspectDeliveryQueueReceipt("session", id, false, context)).status;
 }
@@ -282,7 +282,7 @@ async function receiptStatus(forest: ContinuationForest, id: string): Promise<st
  * A row is woken once per queued copy (again only after a reset or restart dropped its copy), and
  * never adopted without a wake.
  */
-function wakeStories(forest: ContinuationForest): string[] {
+function wakeStories(forest: ForestWorld): string[] {
   const counts = new Map<string, number>();
   for (const wake of forest.wakes) {
     for (const id of wake.deliveryIds) {
@@ -308,7 +308,7 @@ function wakeStories(forest: ContinuationForest): string[] {
   return stories;
 }
 
-function describeRoom(forest: ContinuationForest, sessionKey: string): string {
+function describeRoom(forest: ForestWorld, sessionKey: string): string {
   for (const node of forest.nodes.values()) {
     if (node.sessionKey === sessionKey) {
       return `${node.name}'s room`;
