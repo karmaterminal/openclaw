@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { cleanupTempDirs, makeTempDir } from "../../test/helpers/temp-dir.js";
-import { requireNodeSqlite } from "../infra/node-sqlite.js";
+import { openNodeSqliteDatabase, requireNodeSqlite } from "../infra/node-sqlite.js";
 import type { EngineConnection } from "../infra/sql-connection.js";
 import { readSqliteUserVersion } from "../infra/sqlite-user-version.js";
 import { withoutAgentColdArchiveChunks } from "./openclaw-agent-cold-archive-chunks-schema.js";
@@ -12,6 +12,7 @@ import { withoutAgentColdNavigation } from "./openclaw-agent-cold-navigation-sch
 import { withoutAgentCreationOperations } from "./openclaw-agent-creation-operations-schema.js";
 import { agentEngineSchema } from "./openclaw-agent-db-engine.js";
 import { withAgentDatabaseMaintenanceLease } from "./openclaw-agent-db-maintenance-lease.js";
+import { ensureSessionKeyContractSchemaInTransaction } from "./openclaw-agent-db-schema-helpers.js";
 import { migrateSessionRecipientAuthorityInTransaction } from "./openclaw-agent-db-session-migrations.js";
 import {
   closeOpenClawAgentDatabasesForTest,
@@ -233,6 +234,16 @@ describe("openclaw agent database", () => {
         "\n\n\n",
       );
     }
+  });
+
+  // Stores below 41 take lazy additive ensures; none may install recipient authority outside its
+  // versioned step (Doctor's v16 repair refuses an unexpected table).
+  it("installs only the session-key contract on a store that lacks it", () => {
+    using database = openNodeSqliteDatabase(":memory:");
+    ensureSessionKeyContractSchemaInTransaction(database);
+    expect(
+      database.prepare("SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name").all(),
+    ).toEqual([{ name: "session_key_contract" }]);
   });
 
   it("creates a fresh database at schema 41 with recipient authority", () => {

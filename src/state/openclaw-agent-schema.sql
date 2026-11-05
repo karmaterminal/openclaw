@@ -137,15 +137,6 @@ CREATE TABLE IF NOT EXISTS session_key_contract (
 
 INSERT OR IGNORE INTO session_key_contract (id, main_key, updated_at) VALUES (1, 'main', 0);
 
--- Logical return authority survives session materialization and deletion. It has
--- no session_nodes foreign key because deletion is one of its generation edges.
-CREATE TABLE IF NOT EXISTS session_recipient_authority (
-  session_key TEXT NOT NULL PRIMARY KEY,
-  epoch TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
-) STRICT;
-
 CREATE TABLE IF NOT EXISTS session_windows (
   session_id TEXT NOT NULL PRIMARY KEY,
   session_key TEXT NOT NULL,
@@ -191,6 +182,17 @@ CREATE INDEX IF NOT EXISTS idx_agent_session_windows_created_at
 CREATE INDEX IF NOT EXISTS idx_agent_session_windows_conversation
   ON session_windows(primary_conversation_id)
   WHERE primary_conversation_id IS NOT NULL;
+
+-- Logical return authority survives session materialization and deletion. It has
+-- no session_nodes foreign key because deletion is one of its generation edges.
+-- It stays outside every marker-delimited table range that lazy ensures execute,
+-- so only its versioned step installs it.
+CREATE TABLE IF NOT EXISTS session_recipient_authority (
+  session_key TEXT NOT NULL PRIMARY KEY,
+  epoch TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+) STRICT;
 
 -- Offline imports and repairs queue explicit work; admission also settles keys
 -- removed during repair, so the queue deliberately has no node foreign key.
