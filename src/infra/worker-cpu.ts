@@ -98,13 +98,10 @@ export function createCpuTrackedWorker(
   options?: ConstructorParameters<typeof Worker>[1],
   requestClass?: () => string | undefined,
 ): Worker {
-  // Plugins pass resolveRuntimeWorkerArgv's child launch prefix as thread execArgv.
-  const threadOptions = options?.execArgv
-    ? { ...options, execArgv: withoutNodeCompilerArgs(options.execArgv) }
-    : options;
   const worker = runWithMainThreadTask(
     `worker:${workerScriptName(filename, options?.eval)}`,
-    () => new Worker(filename, threadOptions),
+    // Plugins pass resolveRuntimeWorkerArgv's child launch prefix as thread execArgv.
+    () => new Worker(filename, withoutNodeCompilerArgs(options)),
   );
   trackNativeWorkerForCpu(worker, filename, options?.eval);
   Object.assign(trackedWorkers.workers.get(worker)!, { internalMessages: true, requestClass });

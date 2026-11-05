@@ -1,4 +1,9 @@
-import { getEnvironmentData, isMainThread, setEnvironmentData } from "node:worker_threads";
+import {
+  getEnvironmentData,
+  isMainThread,
+  setEnvironmentData,
+  type WorkerOptions,
+} from "node:worker_threads";
 import { isNodeCompilerArg } from "../../node-runtime-env.mjs";
 
 // V8 flags are process-wide, but a Worker given its own execArgv cannot carry them.
@@ -15,8 +20,10 @@ export function resolveForwardedNodeCompilerArgs(): string[] {
 }
 
 /** Worker threads already run under the process's V8 flags, and Node rejects them in Worker execArgv. */
-export function withoutNodeCompilerArgs(execArgv: readonly string[]): string[] {
-  return execArgv.filter((arg) => !isNodeCompilerArg(arg));
+export function withoutNodeCompilerArgs(options?: WorkerOptions): WorkerOptions | undefined {
+  return options?.execArgv
+    ? { ...options, execArgv: options.execArgv.filter((arg) => !isNodeCompilerArg(arg)) }
+    : options;
 }
 
 // Every Worker copies this at construction; Worker launch owners import this module first.

@@ -25,7 +25,7 @@ describe("explicit Node compiler policy", () => {
     const actual = resolveForwardedNodeCompilerArgs();
     expect(actual).toEqual(["--maglev", "--no_concurrent_sparkplug", "--no-maglev", "--no-opt"]);
     // Node rejects V8 flags in Worker execArgv; threads already share the process flags.
-    expect(withoutNodeCompilerArgs(process.execArgv)).toEqual([
+    expect(withoutNodeCompilerArgs({ execArgv: process.execArgv })?.execArgv).toEqual([
       "--inspect",
       "--opt",
       "--stack-size=8192",
