@@ -57,6 +57,8 @@ export const CODEX_TOOL_POLICY_SAFE_DENY_NAMES = [
   "music_generate",
   "video_generate",
   "tts",
+  // Continuation's delegate tool has no Codex-native counterpart; leaf subagents deny it.
+  "continue_delegate",
   // Session, conversation and delegation tools. Their native counterparts are
   // Codex collaboration tools (spawn_agent, send_input, resume_agent, v2), which
   // can address other threads. A deny here is enforced by disabling native
