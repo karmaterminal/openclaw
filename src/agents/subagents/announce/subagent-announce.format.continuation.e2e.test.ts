@@ -3,7 +3,9 @@
 // runSubagentAnnounceFlow on the harness subagent-announce.format.e2e.test.ts uses: the
 // registry, Gateway calls, hook runner and session reads are scripted; announce,
 // delivery and output run for real.
+import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { createTempDirTracker } from "../../../../test/helpers/temp-dir.js";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
@@ -21,6 +23,7 @@ import * as sessionNativeRuntime from "../../../sessions/session-controller.nati
 import * as sessionQueries from "../../../sessions/session-controller.queries.js";
 import { captureSessionTarget } from "../../../sessions/session-controller.target.js";
 import { matchesTranscriptEvent } from "../../../sessions/transcript-visible-record.js";
+import { closeOpenClawAgentDatabasesAsync } from "../../../state/openclaw-agent-db.js";
 import {
   createChannelTestPluginBase,
   createTestRegistry,
@@ -49,10 +52,13 @@ const childKey = "agent:main:subagent:test";
 const requesterKey = "agent:main:main";
 const workerKey = "agent:main:subagent:worker";
 const minimalUsage = { inputTokens: 1, outputTokens: 1, totalTokens: 2 };
+// A private store root, as the format suite uses: the shared /tmp store holds other runs' databases.
+const tempDirs = createTempDirTracker();
+const sessionRoot = tempDirs.make("announce-continuation-");
 const sessionConfig = {
   mainKey: "main",
   scope: "per-sender",
-  store: "/tmp/sessions.json",
+  store: path.join(sessionRoot, "sessions.json"),
 } as const;
 const defaultOutcomeAnnounce = {
   childRunId: "run-default",
@@ -212,11 +218,13 @@ describe("subagent announce continuation trigger", () => {
     ({ runSubagentAnnounceFlow } = await import("./subagent-announce.js"));
   });
 
-  afterAll(() => {
+  afterAll(async () => {
     announceTesting.setDepsForTest();
     outputTesting.setDepsForTest();
     deliveryTesting.setDepsForTest();
     clearRuntimeConfigSnapshot();
+    await closeOpenClawAgentDatabasesAsync(sessionRoot);
+    tempDirs.cleanup();
     if (previousFastTestEnv === undefined) {
       delete process.env.OPENCLAW_TEST_FAST;
       return;
@@ -260,7 +268,7 @@ describe("subagent announce continuation trigger", () => {
       },
       ...gatewayDeps,
       readSubagentSessionEntry: (_storePath, sessionKey) => readSessionFixture(sessionKey),
-      resolveSessionStorePathCore: () => "/tmp/sessions.json",
+      resolveSessionStorePathCore: () => sessionConfig.store,
     });
     getGlobalHookRunnerSpy
       .mockReset()
