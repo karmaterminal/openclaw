@@ -206,8 +206,11 @@ module rather than starting its host module again or passing source with
 host entry inside a selected OpenClaw package. It prefers its built entry,
 including an entry embedded in a standalone executable, and falls back to the
 source entry in a checkout. A package missing both entries is rejected. Pass the
-result to `resolveRuntimeWorkerArgv` to retain the host's Node/Bun loader policy.
-Managed MCP bridges use this owner for their stdio entrypoints.
+result to `resolveRuntimeWorkerArgv` to retain the host's Node/Bun loader policy,
+including the explicit Node compiler flags (`--no-opt`, `--[no-]maglev`,
+`--[no-]concurrent-sparkplug`) the host was started with. Worker threads already
+share those process-wide flags, so `createCpuTrackedWorker` removes them from a
+Worker's `execArgv`. Managed MCP bridges use this owner for their stdio entrypoints.
 
 Dependency-owned child programs use
 `resolveRuntimeDependencyEntrypointUrl(name, import.meta.url)` from the same

@@ -292,7 +292,12 @@ share this ownership; source installations using one must build their process he
 Process helpers discard inherited instrumentation hooks (`--import`, `--require`,
 `-r`, `--loader`, and `--experimental-loader`) from `NODE_OPTIONS`, while retaining
 other options such as `--max-old-space-size`. The Gateway and executed commands
-keep their instrumentation environment. An explicit source loader needed to run
+keep their instrumentation environment. Node rejects V8 compiler flags in
+`NODE_OPTIONS`, so start the Gateway or CLI as `node --no-opt …` (likewise
+`--[no-]maglev` and `--[no-]concurrent-sparkplug`) to apply them; OpenClaw's own Node
+children, including those started from worker threads, receive exactly those flags.
+Service definitions never copy them from the installing process, and runtime probes
+and executed commands run without them. An explicit source loader needed to run
 an unbuilt helper still prevents it from claiming Linux child ownership.
 Admission uses the runtime's standalone identity and startup hooks, including
 `--import`, `--require`, and loader flags in argv or `NODE_OPTIONS`. A TypeScript
