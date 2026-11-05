@@ -394,7 +394,9 @@ export function buildExternalRunFailureReply(
 }
 
 export function markAgentRunFailureReplyPayload<T extends ReplyPayload>(payload: T): T {
-  const marked = markReplyPayloadForSourceSuppressionDelivery(payload);
+  const marked = setReplyPayloadMetadata(markReplyPayloadForSourceSuppressionDelivery(payload), {
+    agentRunFailure: true,
+  });
   marked.isError = true;
   return marked;
 }
