@@ -16,6 +16,7 @@ export const autoReplyReplySubtreeTestInclude = [
 ];
 
 export const tuiPtyTestFiles = [
+  "src/tui/tui-console-pty.e2e.test.ts",
   "src/tui/tui-auth-child-pty.e2e.test.ts",
   "src/tui/tui-pty-harness.e2e.test.ts",
   "src/tui/tui-session-identity-pty.e2e.test.ts",
@@ -30,6 +31,11 @@ export const tuiPtyTestFiles = [
 ];
 
 export const fullSuiteVitestShards = [
+  {
+    config: "test/vitest/vitest.markdown.config.ts",
+    name: "core-markdown",
+    projects: ["test/vitest/vitest.markdown.config.ts"],
+  },
   {
     config: "test/vitest/vitest.full-core-unit-fast.config.ts",
     name: "core-unit-fast",

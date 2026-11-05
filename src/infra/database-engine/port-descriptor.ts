@@ -41,20 +41,9 @@ export type DatabasePortPluginOwners = Record<
 >;
 
 type Endpoint = PortEndpoint;
-function selectFragments(declared: PortDescriptor, tables: ReadonlySet<string>): PortDescriptor {
-  if (declared.activeFragments) {
-    return declared;
-  }
-  const { alternates, ...descriptor } = declared;
-  // The tables only an alternate adds select it; the exact catalog check refuses any other shape.
-  const alternate = alternates?.find((layout) => {
-    const added = layout.tables.filter(
-      (table) => !descriptor.tables.some((known) => known.name === table.name),
-    );
-    return added.length > 0 && added.every((table) => tables.has(table.name));
-  });
-  if (alternate) {
-    return selectFragments(alternate, tables);
+function selectFragments(descriptor: PortDescriptor, tables: ReadonlySet<string>): PortDescriptor {
+  if (descriptor.activeFragments) {
+    return descriptor;
   }
   const active =
     descriptor.fragments?.filter((fragment) =>
@@ -144,6 +133,7 @@ export function inspectSqlitePortSchema(
   db: DatabaseSync,
   baseDescriptor: PortDescriptor,
   pendingColumns: Readonly<Record<string, readonly string[]>> = {},
+  pendingTables: readonly string[] = [],
 ): PortDescriptor {
   assertSqliteIntegrity(db, "Port SQLite source");
   admitSqliteSchema(db);
@@ -191,6 +181,9 @@ export function inspectSqlitePortSchema(
   }
   for (const table of descriptor.tables) {
     const columns = readTableColumns(db, table.name);
+    if (!columns.size && pendingTables.includes(table.name)) {
+      continue;
+    }
     const expected = new Set(table.columns.map((column) => column.name));
     const pending = pendingColumns[table.name] ?? [];
     if (
@@ -203,7 +196,11 @@ export function inspectSqlitePortSchema(
       );
     }
   }
-  if (descriptor.triggers?.some((trigger) => !facts.triggers.has(trigger.name))) {
+  if (
+    descriptor.triggers?.some(
+      (trigger) => !facts.triggers.has(trigger.name) && !pendingTables.includes(trigger.table),
+    )
+  ) {
     throw new DatabasePortDataError("Missing canonical SQLite trigger");
   }
   return {

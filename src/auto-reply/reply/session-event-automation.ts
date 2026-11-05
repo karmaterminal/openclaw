@@ -57,7 +57,7 @@ export function prepareCronRunContinuationCleanup(
 }
 
 function resolveScheduledSessionReplyOptions(
-  automation?: ScheduledSessionAutomation,
+  options: Pick<SessionEventOptions, "scheduledAutomation" | "replyExpectation">,
 ): Pick<
   GetReplyOptions,
   | "sourceReplyDeliveryMode"
@@ -65,9 +65,12 @@ function resolveScheduledSessionReplyOptions(
   | "timeoutOverrideSeconds"
   | "bootstrapContextMode"
 > &
-  Pick<ScheduledSessionAutomation, "operatorAuthority"> & { modelOverride?: string } {
+  Pick<ScheduledSessionAutomation, "operatorAuthority"> &
+  Pick<SessionEventOptions, "replyExpectation"> & { modelOverride?: string } {
+  const automation = options.scheduledAutomation;
   if (!automation) {
-    return {};
+    // A host producer's silence permission travels only through these host-owned options.
+    return options.replyExpectation ? { replyExpectation: options.replyExpectation } : {};
   }
   const payload = automation.job.payload;
   return {
@@ -87,7 +90,7 @@ function resolveScheduledSessionReplyOptions(
 /** Continuation (karmaterminal): a delegate return or notice keeps its trigger and parent run. */
 export function resolveSessionEventReplyOptions(options: SessionEventOptions) {
   return {
-    ...resolveScheduledSessionReplyOptions(options.scheduledAutomation),
+    ...resolveScheduledSessionReplyOptions(options),
     ...options.continuation,
   };
 }

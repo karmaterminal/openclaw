@@ -3,6 +3,7 @@ import type {
   AdmittedRunContext,
   AdmittedRunOperatorAuthority,
 } from "../../agents/admitted-run-context.js";
+import type { AgentRunTerminalOutcome } from "../../agents/agent-run-terminal-outcome.js";
 import type { MessagingToolSend } from "../../agents/embedded-agent-messaging.types.js";
 import type {
   EmbeddedAgentRunMeta,
@@ -44,6 +45,8 @@ export type SessionEventOutcome = {
   sourceDeliveryOutcome?: SourceDeliveryOutcome;
   automationResult?: CronRunTelemetry &
     Pick<CronRunOutcome, "replyDisposition" | "diagnostics" | "result">;
+  /** Recorded by the turn owner before delivery/cleanup can flatten its cause. */
+  terminalOutcome?: AgentRunTerminalOutcome;
   /** Recorded controller restart outcome, before the error is flattened. */
   interruptedByRestart?: boolean;
   error?: string;
@@ -60,7 +63,7 @@ export type SessionEventReceipt = {
   id: string;
   cancel: () => boolean;
   /** Resolves after ordinary turn adoption or committed follow-up queue admission. */
-  accepted: Promise<{ ok: true } | { ok: false; error: string }>;
+  accepted: Promise<{ ok: true } | { ok: false; error: string; cause?: Error }>;
   settled: Promise<SessionEventOutcome>;
 };
 
@@ -123,7 +126,10 @@ export type SessionEventOptions = {
   deliver?: boolean;
   /** Host-owned: runtime error payloads stay in the transcript, out of chat delivery. */
   suppressErrorDelivery?: true;
-  /** Producer-owned terminal policy; only explicit silent continuation wakes may opt out. */
+  /**
+   * Host-owned: the producer's prompt permits NO_REPLY; input provenance never selects it.
+   * Continuation sets it only for explicitly silent non-subagent wakes.
+   */
   replyExpectation?: "optional";
   /**
    * Continuation (karmaterminal): wake lineage the turn's reply options carry, so a delegate

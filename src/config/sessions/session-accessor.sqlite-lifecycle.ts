@@ -74,6 +74,8 @@ import {
   type ResolvedSqliteScope,
 } from "./session-accessor.sqlite-scope.js";
 import { deleteSessionEntryInWorker } from "./session-entry-deletion.js";
+import { readSessionEntryReadOnlyInWorker } from "./session-entry-read-runtime.js";
+import { prepareMessageCutLocalWorkspace } from "./session-message-cut-local-workspace.js";
 import { resetSessionEntryInWorker } from "./session-reset.js";
 import { applySessionResetInDatabase } from "./session-reset.kernel.js";
 import type { InternalSessionEntry as SessionEntry } from "./types.js";
@@ -87,11 +89,22 @@ function collectControllerIdentities(storePath: string): string[] {
 export async function resetSessionEntryLifecycle(
   params: ResetSessionEntryLifecycleParams,
 ): Promise<ResetSessionEntryLifecycleResult> {
+  const agentId = params.agentId ?? parseAgentSessionKey(params.target.canonicalKey)?.agentId;
+  const scope = { agentId, sessionKey: params.target.canonicalKey, storePath: params.storePath };
+  const current = await readSessionEntryReadOnlyInWorker(scope, () => params.commitGuard?.());
+  if (current?.localWorkspaceHandoff) {
+    if (!agentId) {
+      throw new Error("Local workspace handoff requires its original agent before reset");
+    }
+    // Reset must not erase the only durable receipt of an interrupted history cut.
+    await prepareMessageCutLocalWorkspace({ ...scope, agentId }, current, () =>
+      params.commitGuard?.(),
+    );
+  }
   const memory = resetMemorySessionEntryLifecycle(params);
   if (memory) {
     return memory;
   }
-  const agentId = params.agentId ?? parseAgentSessionKey(params.target.canonicalKey)?.agentId;
   return withPreparedSqliteScope(
     { agentId, env: params.env, sessionKey: "", storePath: params.storePath },
     (prepared) => {
@@ -156,6 +169,7 @@ async function resetSessionEntryLifecycleForMaintenance(
                 target: params.target,
                 prepared: targetSnapshot,
                 nextEntry,
+                creationOperation: params.creationOperation,
                 resetBoundary: params.resetBoundary,
               });
               recordCommit(transactionDb);

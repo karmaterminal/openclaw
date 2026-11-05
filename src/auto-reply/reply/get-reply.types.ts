@@ -23,6 +23,7 @@ import type { PreparedTtsPreferences } from "../../tts/tts-preferences.js";
 import { getCommandOwnerAuthority } from "../command-owner-authority.js";
 import type { GetReplyOptions } from "../get-reply-options.types.js";
 import type { ReplyPayload } from "../reply-payload.js";
+import { getRequesterProfile } from "../requester-profile.js";
 import type { MsgContext } from "../templating.js";
 import type { VerboseLevel } from "../thinking.js";
 import type { CommandSessionMetadataChange } from "./command-session-metadata.js";
@@ -73,6 +74,8 @@ type InternalReplySessionOptions = {
   modelOverride?: string;
   /** Host-owned scheduling authority retained through ordinary session execution. */
   scheduledAutomation?: ScheduledSessionAutomation;
+  /** Host-owned silence permission for a producer's turn; never derived from provenance. */
+  replyExpectation?: "optional";
   /** Producer callbacks follow this occurrence through queueing and delivery. */
   internalEventExecution?: SessionEventExecution;
   /** Continuation (karmaterminal): the returns a wake hands this event turn, with their runs. */
@@ -160,7 +163,10 @@ export function prepareInternalGetReplyOptions(
   opts: GetReplyOptions | undefined,
   context?: MsgContext,
 ): InternalGetReplyOptions | undefined {
-  const channelAuthority = context && getCommandOwnerAuthority(context)?.operatorAuthority;
+  const channelAuthority =
+    context &&
+    (getRequesterProfile(context)?.operatorAuthority ??
+      getCommandOwnerAuthority(context)?.operatorAuthority);
   if (!opts && !channelAuthority) {
     return undefined;
   }

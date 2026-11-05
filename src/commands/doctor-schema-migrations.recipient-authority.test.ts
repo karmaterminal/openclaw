@@ -1,14 +1,15 @@
-// Continuation (karmaterminal): agent schema 40 is recipient authority on top of upstream's 39.
+// Continuation (karmaterminal): agent schema 41 is recipient authority on top of upstream's 40.
 // Version 38 has two SQLite histories: upstream's (a metadata-only advance over 37) and the
 // jump-8 candidate's (upstream's 37 plus the authority table and its rows). Doctor's version
-// phase must take both, and an upstream 37 store, to 40 inside the declared backup scope, keep
-// authority rows, re-run as a no-op, and restore the exact predecessor from its backup.
+// phase must take both, an upstream 37 store and upstream's own 40, to 41 inside the declared
+// backup scope, keep authority rows, re-run as a no-op, and restore the exact predecessor.
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { expect, it } from "vitest";
 import { inspectScopedMigrationSnapshot } from "../infra/sqlite-migration-scoped-snapshot.js";
 import { withoutAgentColdNavigation } from "../state/openclaw-agent-cold-navigation-schema.js";
+import { withoutAgentCreationOperations } from "../state/openclaw-agent-creation-operations-schema.js";
 import { OPENCLAW_AGENT_SCHEMA_VERSION } from "../state/openclaw-agent-db-contract.js";
 import { withAgentDatabaseMaintenanceLease } from "../state/openclaw-agent-db-maintenance-lease.js";
 import { ensureOpenClawAgentDatabaseSchema } from "../state/openclaw-agent-db-schema.js";
@@ -34,13 +35,17 @@ const SHAPES = [
   { shape: "jump-8 candidate 38", version: 38, authority: true },
   { shape: "upstream 38", version: 38, authority: false },
   { shape: "upstream 37", version: 37, authority: false },
+  { shape: "upstream 40", version: 40, authority: false },
 ] as const;
 
 function stageAgentDatabase(pathname: string, version: number, authority: boolean) {
   fs.mkdirSync(path.dirname(pathname), { recursive: true });
   const database = new DatabaseSync(pathname);
-  // Both 38 histories predate upstream's 39 transcript payload constraint.
-  const schema = withoutAgentColdNavigation(OPENCLAW_AGENT_SCHEMA_SQL);
+  // Both 38 histories predate upstream's 39 transcript payload constraint and 40 receipt table.
+  const schema =
+    version < 40
+      ? withoutAgentColdNavigation(withoutAgentCreationOperations(OPENCLAW_AGENT_SCHEMA_SQL))
+      : OPENCLAW_AGENT_SCHEMA_SQL;
   database.exec(authority ? schema : withoutSessionRecipientAuthoritySchema(schema));
   database.exec(`
     PRAGMA user_version = ${version};
@@ -87,7 +92,7 @@ function readStore(database: DatabaseSync) {
 }
 
 it.each(SHAPES)(
-  "takes the $shape agent store to 40 through Doctor, re-runs as a no-op, and restores it",
+  "takes the $shape agent store to 41 through Doctor, re-runs as a no-op, and restores it",
   async ({ version, authority }) => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
       const stateDatabase = openOpenClawStateDatabase({ env: state.env });
@@ -125,8 +130,8 @@ it.each(SHAPES)(
 
       const migrated = readStore(database);
       expect(migrated).toMatchObject({
-        userVersion: 40,
-        schemaVersion: 40,
+        userVersion: OPENCLAW_AGENT_SCHEMA_VERSION,
+        schemaVersion: OPENCLAW_AGENT_SCHEMA_VERSION,
         authority: authority ? [AUTHORITY_ROW] : [],
         sessions: original.sessions,
       });

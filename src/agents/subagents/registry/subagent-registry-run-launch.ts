@@ -47,6 +47,7 @@ import {
 import { SubagentRecoveryManager } from "./subagent-registry-run-recovery.js";
 import * as spawnAcceptance from "./subagent-registry-spawn-acceptance.js";
 import { prepareSubagentRegistrationRows } from "./subagent-registry-state.js";
+import { startSubagentTyping } from "./subagent-registry-typing.js";
 import type {
   RegisterSubagentRunOptions,
   SubagentRegistrationOwnership,
@@ -249,7 +250,6 @@ export class SubagentLaunchManager extends SubagentRecoveryManager {
       const assertCurrent = () => {
         options.assertCurrent?.();
         authority?.assertCurrent();
-        authority?.signal.throwIfAborted();
         registrationOwnership.assertCurrent();
         if (!isAgentEventLifecycleGenerationCurrent(lifecycleGeneration)) {
           throw new SubagentRegistryMutationRejectedError(
@@ -453,7 +453,6 @@ export class SubagentLaunchManager extends SubagentRecoveryManager {
         options.assertCurrent?.();
         options.assertPublicationCurrent?.();
         authority?.assertCurrent();
-        authority?.signal.throwIfAborted();
         const current = currentEntry();
         if (
           !isAgentEventLifecycleGenerationCurrent(lifecycleGeneration) ||
@@ -476,6 +475,7 @@ export class SubagentLaunchManager extends SubagentRecoveryManager {
           current,
           this.options.resolveSubagentWaitTimeoutMs(cfg, registerParams.runTimeoutSeconds ?? 0),
         );
+        await startSubagentTyping(current, authority, currentEntry);
       }
       return {
         status: "new-row-committed",

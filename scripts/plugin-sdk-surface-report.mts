@@ -237,7 +237,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: approved lightweight nullable request-header projection for provider transports.
       // +1: approved shared automation tool-default selection before policy and approval.
       // +2: reconcile the accepted public entrypoint inventory after the cron budget update.
-      161,
+      // +1: settled execution lifecycle classifiers for plugin subscribers (#192413).
+      162,
       env,
     ),
     publicExports: readPluginSdkSurfaceBudgetEnv(
@@ -306,9 +307,16 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +2: explicit OpenAI Decision execution function and context type (#188228).
       // +1: lossless Decision V1 compatibility predicate (#188251).
       // +1: callable-tool prompt guidance for harnesses (#187661).
+      // +1: accepted diagnostic trace-context normalizer (#189133).
+      // +1: accepted WorkerResourceReceipt type on plugin-entry (#189019).
+      // +3: accepted WorkerRetention policy, operation, and observation types (#189346).
+      // +1: accepted pluginCommandResultContinuesAgent for native command continuation.
+      // +2: settled execution lifecycle classifiers on agent-lifecycle (#192413).
+      // +2: channel display-mention and mention-adapter types (#192473).
+      // +1: shared plugin-owned Control UI message translation.
       // +11: the continuation feature's public contracts (runtime, trace, channel-ingress,
-      // system-event, diagnostics), carried unchanged on upstream's 3853.
-      3864,
+      // system-event, diagnostics), carried unchanged on upstream's 3864.
+      3875,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -358,8 +366,12 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: the same shared automation tool-default resolver.
       // +12: reconcile the accepted callable export inventory after the cron budget update.
       // +3: Decision execution, V1 compatibility, and callable-tool prompt guidance.
-      // +4: the continuation feature's callable contracts, carried unchanged on upstream's 2230.
-      2234,
+      // +1: the same diagnostic trace-context normalizer (#189133).
+      // +1: the same plugin-command continuation classifier.
+      // +2: the same settled execution lifecycle classifiers (#192413).
+      // +1: the same Control UI message translator.
+      // +4: the continuation feature's callable contracts, carried unchanged on upstream's 2235.
+      2239,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(

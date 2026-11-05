@@ -6,6 +6,7 @@ import * as ts from "typescript/ast";
 import { afterAll, afterEach, expect, it, vi } from "vitest";
 import { createNativeTypeScriptParser } from "../../../scripts/lib/native-typescript.mts";
 import { awaitGateBeforeSettlement, createDeferred } from "../../../test/helpers/promise.js";
+import { readSessionArchiveText } from "../../../test/helpers/session-archive.js";
 import { listDirectoryTreeStrictSync } from "../../infra/directory-walk.js";
 import { openNodeSqliteDatabase } from "../../infra/node-sqlite.js";
 import * as queue from "../../shared/store-writer-queue.js";
@@ -27,7 +28,6 @@ import {
   createOpenClawTestState,
   type OpenClawTestState,
 } from "../../test-utils/openclaw-test-state.js";
-import { readSessionArchiveContentSync } from "./archive-compression.js";
 import { drainSessionDiskBudgetWorkers } from "./disk-budget-runtime.js";
 import * as diskBudget from "./disk-budget.js";
 import { appendTranscriptMessage, resetSessionEntryLifecycle } from "./session-accessor.js";
@@ -354,7 +354,7 @@ it.each([
       const result = await publish(...args);
       const saved = result.find((archive) => archive.sessionId === originalId);
       if (saved) {
-        expect(readSessionArchiveContentSync(saved.archivedPath)).toContain(marker);
+        expect(readSessionArchiveText(saved.archivedPath)).toContain(marker);
         order.push("archive file published");
       }
       return result;

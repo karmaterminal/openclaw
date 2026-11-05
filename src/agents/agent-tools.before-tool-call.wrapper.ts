@@ -85,15 +85,18 @@ import {
 } from "./code-mode-control-tools.js";
 import { createGatewayToolPolicyAssertion } from "./gateway-tool-policy.js";
 import { captureAgentPluginRuntimeRefresh } from "./plugin-runtime-refresh.js";
-import { markToolExecutionRefused } from "./tool-effect-receipt.js";
-import { buildToolMutationState } from "./tool-mutation.js";
-import { normalizeToolPolicyName } from "./tool-policy.js";
+import {
+  markToolExecutionNotStarted as registerTrustedToolNoStartError,
+  markToolExecutionRefused,
+} from "./tool-effect-receipt.js";
 import {
   formatToolExecutionErrorMessage,
   isTrustedToolExecutionPreflightError,
   protectNetworkToolExecutionError,
-  registerTrustedToolNoStartError,
-} from "./tool-result-error.js";
+} from "./tool-execution-error.js";
+import { buildToolMutationState } from "./tool-mutation.js";
+import { normalizeToolPolicyName } from "./tool-policy.js";
+import { createToolSkillUseRecorder } from "./tool-skill-use-scope.js";
 import type { AnyAgentTool } from "./tools/common.js";
 import { getGatewayToolCallerIdentity } from "./tools/gateway-caller-context.js";
 
@@ -455,6 +458,7 @@ export function wrapToolWithBeforeToolCallHook(
       const eventBase = buildEventBase(executeParams);
       const recordProgress = captureDiagnosticToolProgress(eventBase);
       let liveness: ReturnType<typeof startToolExecutionLiveness> | undefined;
+      let skillUse: ReturnType<typeof createToolSkillUseRecorder> | undefined;
       const startedAt = Date.now();
       let completed = false;
       try {
@@ -477,10 +481,17 @@ export function wrapToolWithBeforeToolCallHook(
                 ctx?.watchdogAttempt,
               );
               recordAdjustedParamsForToolCall(toolCallId, executeParams, ctx?.runId);
+              // Plugin-reported skill reads take this call's run facts, never caller input.
+              const skillUseScope = createToolSkillUseRecorder((match) =>
+                recordSkillUsed({ ctx, match, toolName: normalizedToolName, toolCallId }),
+              );
+              skillUse = skillUseScope;
               return liveness.run(() =>
-                trace
-                  ? runWithDiagnosticTraceContext(trace, () => forwardedExecute(...args))
-                  : forwardedExecute(...args),
+                skillUseScope.run(() =>
+                  trace
+                    ? runWithDiagnosticTraceContext(trace, () => forwardedExecute(...args))
+                    : forwardedExecute(...args),
+                ),
               );
             });
           result = outcome.ownerDecision
@@ -583,6 +594,7 @@ export function wrapToolWithBeforeToolCallHook(
         });
         throw err;
       } finally {
+        skillUse?.close();
         liveness?.close(completed);
       }
     },

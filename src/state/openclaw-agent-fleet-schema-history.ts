@@ -15,7 +15,7 @@ import {
   migrateSessionRecipientAuthorityInTransaction,
   readSqliteTableColumns,
 } from "./openclaw-agent-db-session-migrations.js";
-import { planAgentFork39Bridge } from "./openclaw-agent-fork39-bridge.js";
+import { planAgentFleet38Bridge } from "./openclaw-agent-fleet38-bridge.js";
 import { AGENT_JSON_PREDICATE_COLUMNS } from "./openclaw-agent-json-predicate-schema.js";
 import {
   AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
@@ -42,7 +42,7 @@ type AgentFleetSchemaHistoryPlan = {
   migrateInTransaction: (db: DatabaseSync) => void;
 };
 
-/** Reads which history a database at schema 25, 26 or 39 follows; mixed shapes are refused. */
+/** Reads which history a database at schema 25, 26 or 38-40 follows; mixed shapes are refused. */
 export function planAgentFleetSchemaHistory(
   db: DatabaseSync,
   pathname: string,
@@ -58,18 +58,16 @@ export function planAgentFleetSchemaHistory(
     reachesAuthority &&
     previousVersion === AGENT_JSON_PREDICATE_SCHEMA_VERSION &&
     readOpenClawAgentSchema26Shape(db, pathname) === "recipient-authority";
-  // Frond (karmaterminal): fork-39 bridge.
-  const fork39 = planAgentFork39Bridge(db, pathname, previousVersion, targetVersion);
-  const shapeVersion =
-    fork39?.shapeVersion ??
-    (fleetSchema25 || fleetSchema26 ? previousVersion - 1 : previousVersion);
+  // Frond (karmaterminal): fleet-38 bridge.
+  const fleet38 = planAgentFleet38Bridge(db, pathname, previousVersion, targetVersion);
+  const shapeVersion = fleetSchema25 || fleetSchema26 ? previousVersion - 1 : previousVersion;
   const addsRecipientAuthority =
     reachesAuthority && previousVersion < AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION;
   return {
     shapeVersion,
     crosses: (version) => shapeVersion < version && targetVersion >= version,
     previousSchema: () =>
-      fork39?.migrationSchema ??
+      fleet38?.migrationSchema ??
       (fleetSchema25
         ? getOpenClawAgentFleetSchema25MigrationSchema()
         : fleetSchema26

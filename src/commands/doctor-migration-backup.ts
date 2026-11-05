@@ -52,7 +52,6 @@ import { OPENCLAW_AGENT_SCHEMA_VERSION } from "../state/openclaw-agent-db-contra
 import { agentEngineInput } from "../state/openclaw-agent-db-engine.js";
 import { invalidateOpenClawAgentDatabaseIntegrityBeforeMutation } from "../state/openclaw-agent-db-lease.js";
 import { isAgentFleetSchema26Migration } from "../state/openclaw-agent-fleet-schema-history.js";
-import { withAgentFork39BackupCrossing } from "../state/openclaw-agent-fork39-bridge.js";
 import type { OpenClawDatabaseSchemaPreflight } from "../state/openclaw-database-preflight.types.js";
 import { getOpenClawDatabaseMaintenanceScope } from "../state/openclaw-state-db-async-lifecycle.js";
 import {
@@ -60,7 +59,8 @@ import {
   OPENCLAW_SQLITE_BUSY_TIMEOUT_MS,
   OPENCLAW_STATE_SCHEMA_VERSION,
 } from "../state/openclaw-state-db-contract.js";
-import { isStatePostgres, stateEngineInput } from "../state/openclaw-state-db-engine.js";
+import { stateEngineInput } from "../state/openclaw-state-db-engine-input.js";
+import { isStatePostgres } from "../state/openclaw-state-db-engine.js";
 import { needsOpenClawStateDatabaseSchemaRepair } from "../state/openclaw-state-db-fast-path.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
 import {
@@ -170,7 +170,7 @@ export async function backupDoctorMigrationDatabases(params: {
   if (
     !isStatePostgres() &&
     existsSync(sharedPath) &&
-    needsOpenClawStateDatabaseSchemaRepair(sharedPath)
+    (await needsOpenClawStateDatabaseSchemaRepair(sharedPath))
   ) {
     pending.add(sharedPath);
   }
@@ -263,8 +263,7 @@ export async function backupDoctorMigrationDatabases(params: {
       const tables =
         migration &&
         !isAgentFleetSchema26Migration(migration) &&
-        // Frond (karmaterminal): fork-39 bridge.
-        resolveSchemaMigrationBackupTables(withAgentFork39BackupCrossing(migration));
+        resolveSchemaMigrationBackupTables(migration);
       if (!tables) {
         migrationTables.clear();
         break;

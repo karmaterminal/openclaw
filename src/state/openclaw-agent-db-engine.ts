@@ -28,6 +28,11 @@ import {
   withoutAgentPostgresColdNavigation,
 } from "./openclaw-agent-cold-navigation-schema.js";
 import {
+  AGENT_CREATION_OPERATIONS_SCHEMA_VERSION,
+  withoutAgentPostgresCreationOperations,
+  agentCreationOperationsPostgresMigration,
+} from "./openclaw-agent-creation-operations-schema.js";
+import {
   AGENT_COLD_ARCHIVE_CHUNKS_SCHEMA_VERSION,
   AGENT_COLD_NAVIGATION_SCHEMA_VERSION,
   AGENT_INDEX_RETIREMENT_SCHEMA_VERSION,
@@ -45,7 +50,6 @@ import {
   readExistingAgentSchemaMeta,
 } from "./openclaw-agent-db-metadata.js";
 import { assertCurrentAgentSchemaMetadata } from "./openclaw-agent-db-schema-read.js";
-import { agentFork39PostgresSource } from "./openclaw-agent-fork39-bridge.js";
 import {
   AGENT_INDEX_RETIREMENT_SQL,
   withLegacyAgentPostgresIndexes,
@@ -111,8 +115,9 @@ export function admitAgentEngineSearchExtensions(
 }
 
 const agentPostgresSql = `${agentPostgresRuntime.sql}\n${agentSearchPostgresRuntime.sql}`;
-// Continuation's recipient authority (v40) sits above upstream's v39, its cold transcript navigation.
-const agentPostgresV39Sql = withoutSessionRecipientAuthorityPostgresSchema(agentPostgresSql);
+// Continuation's recipient authority (v41) sits above upstream's v40, its session creation receipts.
+const agentPostgresV40Sql = withoutSessionRecipientAuthorityPostgresSchema(agentPostgresSql);
+const agentPostgresV39Sql = withoutAgentPostgresCreationOperations(agentPostgresV40Sql);
 const agentPostgresV38Sql = withoutAgentPostgresColdNavigation(agentPostgresV39Sql);
 const agentPostgresV36Sql = withoutAgentPostgresColdArchiveChunks(agentPostgresV38Sql);
 const agentPostgresV35Sql = withLegacyAgentPostgresMemoryPaths(agentPostgresV36Sql);
@@ -124,12 +129,6 @@ const agentPostgresV33Sql = withLegacyPostgresIndexOrdering(agentPostgresV34Sql)
 const agentPostgresV30Sql = withLegacyAgentPostgresMemoryRevisionTriggers(agentPostgresV33Sql);
 const agentPostgresV29Sql = withLegacyAgentPostgresTrajectoryStorage(agentPostgresV30Sql);
 const agentPostgresV28Sql = withLegacyAgentPostgresIndexes(agentPostgresV29Sql);
-
-const recipientAuthorityMetaSql = `UPDATE schema_meta
-        SET schema_version = ${AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION},
-          app_version = '${VERSION.replaceAll("'", "''")}',
-          updated_at = CAST(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP) * 1000 AS bigint)
-        WHERE meta_key = 'primary';`;
 
 export const agentEngineSchema: StoreSchema = {
   id: "agent",
@@ -323,7 +322,7 @@ export const agentEngineSchema: StoreSchema = {
         postgresVectorSearchVersion: 2,
         postgresTextSearchVersion: 2,
       },
-      sql: `${agentColdNavigationPostgresMigration(agentPostgresSql)}
+      sql: `${agentColdNavigationPostgresMigration(agentPostgresV39Sql)}
         UPDATE schema_meta
         SET schema_version = ${AGENT_COLD_NAVIGATION_SCHEMA_VERSION},
           app_version = '${VERSION.replaceAll("'", "''")}',
@@ -331,9 +330,30 @@ export const agentEngineSchema: StoreSchema = {
         WHERE meta_key = 'primary';`,
     },
     {
-      version: AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
+      version: AGENT_CREATION_OPERATIONS_SCHEMA_VERSION,
       fromSchema: {
         postgres: agentPostgresV39Sql,
+        postgresVectorDecoderVersion: 2,
+        postgresVectorSearchVersion: 2,
+        postgresTextSearchVersion: 2,
+      },
+      schema: {
+        postgres: agentPostgresV40Sql,
+        postgresVectorDecoderVersion: 2,
+        postgresVectorSearchVersion: 2,
+        postgresTextSearchVersion: 2,
+      },
+      sql: `${agentCreationOperationsPostgresMigration(agentPostgresSql)}
+        UPDATE schema_meta
+        SET schema_version = ${AGENT_CREATION_OPERATIONS_SCHEMA_VERSION},
+          app_version = '${VERSION.replaceAll("'", "''")}',
+          updated_at = CAST(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP) * 1000 AS bigint)
+        WHERE meta_key = 'primary';`,
+    },
+    {
+      version: AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
+      fromSchema: {
+        postgres: agentPostgresV40Sql,
         postgresVectorDecoderVersion: 2,
         postgresVectorSearchVersion: 2,
         postgresTextSearchVersion: 2,
@@ -345,9 +365,11 @@ export const agentEngineSchema: StoreSchema = {
         postgresTextSearchVersion: 2,
       },
       sql: `${sessionRecipientAuthorityPostgresSql(agentPostgresSql)}
-        ${recipientAuthorityMetaSql}`,
-      // Frond (karmaterminal): fork-39 bridge.
-      alternateSources: [agentFork39PostgresSource(agentPostgresSql, recipientAuthorityMetaSql)],
+        UPDATE schema_meta
+        SET schema_version = ${AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION},
+          app_version = '${VERSION.replaceAll("'", "''")}',
+          updated_at = CAST(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP) * 1000 AS bigint)
+        WHERE meta_key = 'primary';`,
     },
   ],
 };

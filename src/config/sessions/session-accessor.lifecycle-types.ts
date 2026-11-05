@@ -4,6 +4,7 @@ import type { OpenClawConfig } from "../types.openclaw.js";
 import type { ConversationRouteContext } from "./conversation-route-context.js";
 import type { SessionStateDeleteSnapshot } from "./session-accessor.sqlite-delete-snapshot.types.js";
 import type { SqliteSessionGenerationClaim } from "./session-accessor.sqlite-generation.types.js";
+import type { SessionCreationOperation } from "./session-creation-operation.js";
 import type { SessionEntryCommitContext } from "./session-entry-commit-context.js";
 import type { SessionResetBoundaryRequest } from "./session-reset-boundary-event.js";
 import type { InternalSessionEntry as SessionEntry } from "./types.js";
@@ -65,6 +66,7 @@ export type SessionResetCommitContext = SessionEntryCommitContext & {
 };
 
 export type ResetSessionEntryLifecycleParams = {
+  creationOperation?: SessionCreationOperation;
   /** Revalidate caller authority before preparation and synchronous reset commit. */
   commitGuard?: () => void;
   /** Captured caller environment for state-owner resolution across async lazy loading. */

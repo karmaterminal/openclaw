@@ -118,6 +118,10 @@
       "identities": []
     },
     {
+      "name": "session_creation_operations",
+      "identities": []
+    },
+    {
       "name": "session_entry_snapshots",
       "identities": []
     },
@@ -388,6 +392,21 @@
       "identities": []
     },
     {
+      "name": "session_transcript_fts_data",
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER"
+        },
+        {
+          "name": "block",
+          "type": "BLOB"
+        }
+      ],
+      "pk": [],
+      "identities": []
+    },
+    {
       "name": "session_transcript_fts_docsize",
       "columns": [
         {
@@ -416,21 +435,6 @@
       ],
       "pk": [],
       "identities": []
-    },
-    {
-      "name": "session_transcript_fts_data",
-      "columns": [
-        {
-          "name": "id",
-          "type": "INTEGER"
-        },
-        {
-          "name": "block",
-          "type": "BLOB"
-        }
-      ],
-      "pk": [],
-      "identities": []
     }
   ],
   "triggers": [
@@ -438,8 +442,8 @@
       "name": "session_conversations_route_context_invalidate_after_update",
       "table": "session_conversations",
       "range": [
-        10528,
-        10911
+        10669,
+        11052
       ]
     },
     {
@@ -470,41 +474,41 @@
       "name": "session_transcript_fts_rows_after_delete",
       "table": "session_transcript_fts_rows",
       "range": [
-        32577,
-        32760
+        33169,
+        33352
       ]
     },
     {
       "name": "standing_intents_fts_after_delete",
       "table": "standing_intents",
       "range": [
-        30117,
-        30364
+        30709,
+        30956
       ]
     },
     {
       "name": "standing_intents_fts_after_insert",
       "table": "standing_intents",
       "range": [
-        29900,
-        30115
+        30492,
+        30707
       ]
     },
     {
       "name": "standing_intents_fts_after_update",
       "table": "standing_intents",
       "range": [
-        30366,
-        30742
+        30958,
+        31334
       ]
     }
   ],
   "preData": [
     0,
-    30619
+    31030
   ],
   "postData": [
-    30619,
-    46365
+    31030,
+    47168
   ]
 }

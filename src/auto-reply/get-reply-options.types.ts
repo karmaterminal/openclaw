@@ -116,7 +116,14 @@ export type QueuedFollowupReplyBatch = {
   completion:
     | { kind: "progress" }
     | { kind: "completed"; stopReason?: string; allowCanvasOnly?: true }
-    | { kind: "failed"; error: string; stopReason?: string; errorKind?: "timeout" }
+    | {
+        kind: "failed";
+        error: string;
+        /** Host-authored failure copy with its next step; safe to keep in history. */
+        notice?: string;
+        stopReason?: string;
+        errorKind?: "timeout";
+      }
     | { kind: "aborted"; stopReason?: string };
 };
 
@@ -460,6 +467,8 @@ export type GetReplyOptions = {
     provider: string;
     model: string;
     thinkLevel: string | undefined;
+    agentRuntime?: string;
+    cliExecution?: boolean;
   }) => void;
   /**
    * Controls whether normal assistant replies are automatically delivered to

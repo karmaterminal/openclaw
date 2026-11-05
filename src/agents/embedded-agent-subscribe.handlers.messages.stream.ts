@@ -307,7 +307,7 @@ export function resolveAssistantTextChunk(params: {
   if (content.startsWith(accumulatedText)) {
     return content.slice(accumulatedText.length);
   }
-  return accumulatedText.includes(content) ? "" : content;
+  return "";
 }
 
 /** Removes a completed continuation signal from text bound for a display stream. */

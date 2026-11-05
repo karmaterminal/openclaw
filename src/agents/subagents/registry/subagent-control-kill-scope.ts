@@ -386,7 +386,7 @@ export async function withSubagentKillScope<T>(
           }),
           (_selection, runs) =>
             listRunsForControllerFromRuns(
-              new Map(runs),
+              runs,
               controller.controllerSessionKey,
               controller.controllerAgentId,
             ),

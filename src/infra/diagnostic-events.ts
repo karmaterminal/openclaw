@@ -1294,7 +1294,7 @@ export function createQueuedDiagnosticPhaseEmitter() {
         ...phase,
         type: "diagnostic.phase.completed",
         trace,
-        details: phase.details ? { ...phase.details } : undefined,
+        details: phase.details,
       },
       true,
       // Measurements do not establish outbound trace state before dispatch.

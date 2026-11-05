@@ -42,6 +42,8 @@ export const SCHEMA_MIGRATION_BACKUP_TABLES: Record<
     38: [],
     // The table definition changes; rollback retains it without rebuilding indexes/statistics.
     39: ["transcript_events"],
+    // New receipt table only; existing session data is not rewritten.
+    40: ["session_creation_operations"],
     // Continuation (karmaterminal): the authority step only creates its table. The fleet's own
     // schema 26 also crosses upstream's undeclared step 26, so Doctor keeps its full image
     // (isAgentFleetSchema26Migration).
@@ -100,5 +102,8 @@ export const SCHEMA_MIGRATION_BACKUP_TABLES: Record<
       "sqlite_stat1",
       "sqlite_stat4",
     ],
+    37: ["worker_environments"],
+    38: ["session_repository_workspaces", "worker_workspace_pending_results"],
+    39: ["worker_environments"],
   },
 };

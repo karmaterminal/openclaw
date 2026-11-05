@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { matchesGlob, resolve } from "node:path";
+import { vitestDeclaredInputs } from "../../test/vitest/vitest.declared-inputs.ts";
 import { isPlainRepoRelativePath } from "../../test/vitest/vitest.include-patterns.ts";
 import { resolveUiTypeScriptPath } from "../../test/vitest/vitest.ui-paths.mjs";
 import { isTestFileTarget } from "./changed-path-facts.mjs";
@@ -25,6 +26,10 @@ type PolicyTestWatch = {
 // this inventory covers the remaining tests that changed targeting cannot
 // discover from imports alone.
 const policyTestWatches: readonly PolicyTestWatch[] = [
+  ...vitestDeclaredInputs.map(([testFile, input]): PolicyTestWatch => ({
+    testFile,
+    watchGlobs: [input],
+  })),
   {
     // YAML code/docs references are not import edges. A removed path can be
     // either side of a rename; one catalog scan checks every remaining reference.
@@ -664,12 +669,12 @@ const policyTestWatches: readonly PolicyTestWatch[] = [
     watchGlobs: ["src/agents/mcp-oauth-store.worker.ts"],
   },
   {
+    testFile: "src/commands/doctor-db-bloat.worker.test.ts",
+    watchGlobs: ["src/commands/doctor-db-bloat.worker.ts"],
+  },
+  {
     testFile: "src/commands/doctor-maintenance.worker.test.ts",
-    watchGlobs: [
-      "src/commands/doctor-state.worker.ts",
-      "src/infra/sqlite-store.worker.ts",
-      "src/state/openclaw-state.worker.ts",
-    ],
+    watchGlobs: ["src/infra/sqlite-store.worker.ts", "src/state/openclaw-state.worker.ts"],
   },
   {
     testFile: "src/commands/models/auth.minimax-chat.test.ts",

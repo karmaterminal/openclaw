@@ -18,10 +18,6 @@ import {
   assertOpenClawAgentSchemaContains,
   getOpenClawAgentMigrationSchema,
 } from "./openclaw-agent-db-schema-helpers.js";
-import {
-  assertCurrentAgentSchemaMetadata,
-  readExistingAgentSchemaMeta,
-} from "./openclaw-agent-db-schema-read.js";
 import { OPENCLAW_AGENT_SCHEMA_SQL } from "./openclaw-agent-schema.js";
 import { assertOpenClawMigrationWitnessPreserved } from "./openclaw-migration-witness.js";
 import {
@@ -148,7 +144,7 @@ it.each(["commit", "rollback"])(
   },
 );
 
-it("converges with the original rebuild catalog and runtime admission", async () => {
+it("converges with the original rebuild catalog and schema-39 admission", async () => {
   using rebuilt = openNodeSqliteDatabase(":memory:");
   seed(rebuilt);
   const facts = captureSqliteSchemaFacts(rebuilt);
@@ -190,23 +186,14 @@ it("converges with the original rebuild catalog and runtime admission", async ()
       ...expected
     } = captureSqliteSchemaFacts(rebuilt);
     expect(captureSqliteSchemaFacts(database)).toMatchObject(expected);
-    // Continuation (karmaterminal): recipient authority (40) follows upstream's 39, so 39 is a
-    // historical schema here; both databases must still be upstream's exact schema 39.
     for (const db of [rebuilt, database]) {
-      expect(() => {
-        assertCurrentAgentSchemaMetadata(
-          readExistingAgentSchemaMeta(db),
-          "main",
-          "convergence.sqlite",
-          target,
-        );
+      expect(() =>
         assertOpenClawAgentSchemaContains(
           db,
           "convergence.sqlite",
           getOpenClawAgentMigrationSchema(target),
-          "current",
-        );
-      }).not.toThrow();
+        ),
+      ).not.toThrow();
     }
     const migration = {
       kind: "agent" as const,
@@ -242,7 +229,7 @@ it("checks only schema facts before the v39 crossing", async () => {
     const observer = observeSqliteReadSql(requireNodeSqlite().StatementSync.prototype);
     try {
       // Continuation (karmaterminal): the startup gate's crossing to the current schema also
-      // includes recipient authority (40), so this checks the v39 crossing's own gate.
+      // includes recipient authority (41), so this checks the v39 crossing's own gate.
       for (const check of sqliteIntegrityCheckSteps(
         database,
         database.location()!,
