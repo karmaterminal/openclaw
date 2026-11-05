@@ -3,6 +3,7 @@
 // candidates' 39 and 40 (upstream's 38 or 39 plus the authority table) refused at the export
 // before any write.
 import "./backup-worker.test-support.js";
+import { randomUUID } from "node:crypto";
 import { channel } from "node:diagnostics_channel";
 import fs from "node:fs";
 import path from "node:path";
@@ -175,9 +176,14 @@ const ambiguous = [
 ] as const;
 
 describe.skipIf(!connection)("Doctor PostgreSQL export of agent schemas 39 and 40", () => {
-  const client = new Client({ connectionString: connection });
+  // A private database: the scratch-schema checks below see no other suite's restores.
+  const database = `doctor_authority_${randomUUID().replaceAll("-", "")}`;
+  const isolated = new URL(connection ?? "postgresql://unused");
+  isolated.pathname = `/${database}`;
+  const admin = new Client({ connectionString: connection });
+  const client = new Client({ connectionString: isolated.href });
   const namespaces = new Set<string>();
-  const input = { connection: connection!, schemaPrefix: "authority_backup" };
+  const input = { connection: isolated.href, schemaPrefix: "authority_backup" };
   const config = { database: { engine: "postgres" as const, postgres: input } };
   let env: NodeJS.ProcessEnv;
   let statePath: string;
@@ -431,7 +437,12 @@ describe.skipIf(!connection)("Doctor PostgreSQL export of agent schemas 39 and 4
           async close() {},
         }).createTransport(command),
     }));
+    await admin.connect();
+    await admin.query(`CREATE DATABASE "${database}"`);
     await client.connect();
+    await client.query(
+      "CREATE EXTENSION unaccent; CREATE EXTENSION pg_trgm; CREATE EXTENSION vector",
+    );
     installDatabaseProcessRole("cli-oneshot");
     env = { ...process.env, OPENCLAW_STATE_DIR: dirs.make("doctor-pg-authority-") };
     statePath = resolveOpenClawStateSqlitePath(env);
@@ -463,6 +474,8 @@ describe.skipIf(!connection)("Doctor PostgreSQL export of agent schemas 39 and 4
       await client.query(`DROP SCHEMA IF EXISTS "${namespace}" CASCADE`);
     }
     await client.end();
+    await admin.query(`DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`);
+    await admin.end();
   });
 
   it("exports upstream's 40 losslessly, restores it exactly, and migrates it to 41", async () => {

@@ -57,11 +57,13 @@ describe.skipIf(!connection)("PostgreSQL creation receipt migration", () => {
       const before = original.prepare("SELECT entry_json FROM session_nodes").all();
       fixture.invalidate();
       const upgraded = fixture.open(agentEngineSchema);
+      // Continuation (karmaterminal): recipient authority (41) follows step 40, so the upgrade
+      // lands on the current schema.
       expect(
         upgraded.prepare("SELECT version FROM openclaw_schema_meta WHERE store='agent'").get(),
-      ).toEqual({ version: 40 });
+      ).toEqual({ version: agentEngineSchema.version });
       expect(upgraded.prepare("SELECT schema_version FROM schema_meta").get()).toEqual({
-        schema_version: 40,
+        schema_version: agentEngineSchema.version,
       });
       expect(upgraded.prepare("SELECT entry_json FROM session_nodes").all()).toEqual(before);
       expect(upgraded.prepare("SELECT * FROM session_creation_operations").all()).toEqual([]);
