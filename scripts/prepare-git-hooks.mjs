@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { isNodeCompilerArg } from "../node-runtime-env.mjs";
 import { resolveRuntimeBootstrapToolingEntrypointUrl } from "../runtime-process-bootstrap.generated.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -59,7 +60,10 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
     // Source preparation uses the generator CLI; packaged installs have no schemas.
     const generated = spawnSync(
       process.execPath,
-      [fileURLToPath(resolveRuntimeBootstrapToolingEntrypointUrl("kyselyTypes"))],
+      [
+        ...process.execArgv.filter(isNodeCompilerArg),
+        fileURLToPath(resolveRuntimeBootstrapToolingEntrypointUrl("kyselyTypes")),
+      ],
       {
         stdio: "inherit",
       },
