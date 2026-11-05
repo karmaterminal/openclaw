@@ -283,12 +283,33 @@ that wrap a cancellation error.
 
 ### Provider request failures
 
-Model transport failures emit `Model request failed` at warning level with the
-provider, model, available status, code, type, message, error body, and request
-and response IDs. File logs preserve these error fields before transcript
-redaction and clipping; generated response content and request payloads are not
-included. Treat these local logs as sensitive. Log exports retain their existing
-redaction policy.
+Model transport failures emit `Model request failed` at warning level with
+fields such as the provider, model, error name, available HTTP status, code,
+type, cause name and code, request and response IDs, and transport abort or
+incomplete reasons. Each provider-supplied field is logged only when it is a
+short classification label. Provider messages, error bodies,
+generated response content, and request payloads are never logged, because
+provider text can echo prompts and tool results. Treat these local logs as
+sensitive. Log exports retain their existing redaction policy.
+
+When the OpenAI ChatGPT Responses backend rejects a request with HTTP 4xx, the
+same warning also carries labels parsed from the response body, never its text:
+
+- `param`: the rejected field when it is a request field path of at most 80
+  characters built only from known request-schema names and short indexes,
+  such as `tools[3].parameters` or `reasoning.effort`. Index values are
+  dropped from the logged path (`tools[].parameters`). Any other non-null
+  value, including identifier-shaped tokens, is dropped and logged as
+  `paramShape: "invalid"`.
+- `detailClass`: the class of a `{"detail": ...}` body: `unsupported_parameter`,
+  `invalid_tool_schema`, `invalid_input_item`, `unsupported_model`,
+  `store_must_be_false`, `context_length`, or `unknown`.
+- `bodyHash`: a `sha256:` digest prefix of the size-bounded body read,
+  computed with the same function as `rawErrorHash` in `embedded run failover
+  decision` logs (over a different input), so identical rejections correlate
+  across hosts.
+
+HTTP 5xx bodies get none of these labels.
 
 Embedded attempts also log `Assistant attempt failed`, including the saved error
 fields, before choosing recovery. Request validation and content-policy failures

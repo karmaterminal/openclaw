@@ -50,10 +50,7 @@ import {
   transportAbortError,
   withProviderResponseHook,
 } from "../transports/transport-stream-shared.js";
-import {
-  MALFORMED_STREAMING_FRAGMENT_ERROR_MESSAGE,
-  parseRetryAfterSeconds,
-} from "../transports/transport-utils.js";
+import { MALFORMED_STREAMING_FRAGMENT_ERROR_MESSAGE } from "../transports/transport-utils.js";
 import type {
   AssistantMessage,
   Model,
@@ -79,7 +76,11 @@ import {
   withFirstStreamEventTimeout,
 } from "../utils/stream-first-event-timeout.js";
 import { buildBaseCodexHeaders } from "./openai-chatgpt-request-headers.js";
-import { CodexApiError, mapCodexEvents } from "./openai-chatgpt-responses-events.js";
+import {
+  CodexApiError,
+  mapCodexEvents,
+  parseErrorResponse,
+} from "./openai-chatgpt-responses-events.js";
 import {
   CodexProtocolError,
   parseOpenAIChatGptResponsesSse,
@@ -645,7 +646,12 @@ export const streamOpenAICodexResponses: StreamFunction<
           },
         });
       }
-      const terminal = assignTransportErrorDetails(output, normalizedError, options?.signal);
+      const terminal = assignTransportErrorDetails(
+        output,
+        normalizedError,
+        options?.signal,
+        normalizedError instanceof CodexApiError ? normalizedError.rejection : undefined,
+      );
       // Log only locally-derived facts: timing and a fixed failure category. No
       // projected provider field (message, body, code, type, name) is logged —
       // all of them are provider-controlled text that can carry prompt- or
@@ -1320,55 +1326,6 @@ async function readChatGptResponsesErrorTextLimited(
   }
 
   return text;
-}
-
-function parseErrorResponse(raw: string, response: Response): CodexApiError {
-  const { status, statusText } = response;
-  let message = raw || statusText || "Request failed";
-  let friendlyMessage: string | undefined;
-  let code: string | undefined;
-  let payload: Record<string, unknown> | undefined;
-
-  try {
-    const parsed = JSON.parse(raw) as {
-      error?: {
-        code?: string;
-        type?: string;
-        message?: string;
-        plan_type?: string;
-        resets_at?: number;
-      };
-    };
-    payload = isRecord(parsed) ? parsed : undefined;
-    const err = parsed?.error;
-    if (err) {
-      code = err.code || err.type || undefined;
-      if (
-        /usage_limit_reached|usage_not_included|rate_limit_exceeded/i.test(code ?? "") ||
-        status === 429
-      ) {
-        const plan = err.plan_type ? ` (${err.plan_type.toLowerCase()} plan)` : "";
-        const mins = err.resets_at
-          ? Math.max(0, Math.round((err.resets_at * 1000 - Date.now()) / 60000))
-          : undefined;
-        const when = mins !== undefined ? ` Try again in ~${mins} min.` : "";
-        friendlyMessage = `You have hit your ChatGPT usage limit${plan}.${when}`.trim();
-      }
-      message = err.message || friendlyMessage || message;
-    }
-  } catch {}
-
-  const retryAfterSeconds = parseRetryAfterSeconds(response.headers);
-  // The canonical projection retains HTTP status; retry owners read its bounded
-  // terminal text for pacing, matching Anthropic HTTP error projection.
-  const retryAfterSuffix = Number.isFinite(retryAfterSeconds)
-    ? `; Retry-After: ${Math.ceil(retryAfterSeconds ?? 0)} seconds`
-    : "";
-  return new CodexApiError(`${friendlyMessage || message}${retryAfterSuffix}`, {
-    code,
-    status,
-    payload,
-  });
 }
 
 export function extractOpenAICodexAccountId(token: string): string {
