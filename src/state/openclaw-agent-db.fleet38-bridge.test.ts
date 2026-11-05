@@ -264,6 +264,7 @@ it.each([
     withoutSessionRecipientAuthoritySchema(SCHEMA.fleet38),
     39,
   ],
+  ["39 with creation receipts", `${SCHEMA.upstream39}\n${AGENT_CREATION_OPERATIONS_SQL}`, 39],
   ["40 with authority and no creation receipts", `${SCHEMA.upstream39}\n${AUTHORITY_DDL}`, 40],
   ["40 with authority and creation receipts", `${SCHEMA.upstream40}\n${AUTHORITY_DDL}`, 40],
   ["40 without creation receipts", SCHEMA.upstream39, 40],
