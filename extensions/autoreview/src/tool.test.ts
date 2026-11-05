@@ -142,7 +142,7 @@ it("preserves settings, isolation, and complete output", async () => {
   expect(launched.slice(0, launch.length + 1)).toEqual([process.execPath, ...launch]);
   const argv = [launched[0]!, ...launched.slice(launch.length)];
   expect(argv.slice(0, 10).join(" ")).toBe(
-    `${process.execPath} /host/openclaw/openclaw.mjs agent exec --json --code-mode direct --message-file - --config-override`,
+    `${process.execPath} ${launch.at(-1)} agent exec --json --code-mode direct --message-file - --config-override`,
   );
   expect(argv.slice(11)).toEqual(["--cwd", cwd]);
   assert(typeof options !== "number");

@@ -1,11 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { mkdtempSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import type { ContainerConfig } from "@microsoft/mxc-sdk";
 import { isPathInside, resolvePathPrefixSync } from "openclaw/plugin-sdk/file-access-runtime";
 import { isNotFoundPathError as isMissingPathError } from "openclaw/plugin-sdk/path-existence-runtime";
-import { runCommandBuffered, resolveRuntimeWorkerArgv } from "openclaw/plugin-sdk/process-runtime";
+import { runCommandBuffered } from "openclaw/plugin-sdk/process-runtime";
 import {
   resolvePreferredOpenClawTmpDir,
   type SandboxBackendHandle,
@@ -54,11 +53,6 @@ type MxcWorkspaceContext = {
   workdir: string;
   workspaceAccess: SandboxContext["workspaceAccess"];
 };
-
-// The plugin's launcher keeps the host's runtime flags, like its other runtime workers.
-function resolveMxcLauncherArgv(): string[] {
-  return [process.execPath, ...resolveRuntimeWorkerArgv(pathToFileURL(resolveMxcLauncherPath()))];
-}
 
 function resolveCurrentBaselineContext(): BaselineApplicationContext {
   return {
@@ -500,7 +494,12 @@ export function createMxcSandboxBackendHandle(params: {
         );
 
         return {
-          argv: [...resolveMxcLauncherArgv(), "--payload-file", payloadFile.payloadFile],
+          argv: [
+            process.execPath,
+            resolveMxcLauncherPath(),
+            "--payload-file",
+            payloadFile.payloadFile,
+          ],
           env: buildLauncherEnv(),
           stdinMode: usePty ? "pipe-open" : "pipe-closed",
           finalizeToken: payloadFile satisfies MxcExecFinalizeToken,
@@ -562,7 +561,12 @@ export function createMxcSandboxBackendHandle(params: {
           false,
           sandboxTempDir,
         );
-        const argv = [...resolveMxcLauncherArgv(), "--payload-file", payloadFile.payloadFile];
+        const argv = [
+          process.execPath,
+          resolveMxcLauncherPath(),
+          "--payload-file",
+          payloadFile.payloadFile,
+        ];
         try {
           const result = await runCommandBuffered(argv, {
             baseEnv: buildLauncherEnv(),

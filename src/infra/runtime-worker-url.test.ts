@@ -261,6 +261,10 @@ const worker = createCpuTrackedWorker(threadUrl, {
   workerData: { dir, src },
 });
 await new Promise((resolve, reject) => worker.once("exit", resolve).once("error", reject));
+// The SDK's documented thread execArgv for workspace workers must stay free of V8 flags.
+const { resolveWorkspaceWorkerExecArgv } = await load("agents/workspace-worker.ts");
+const { Worker } = await import("node:worker_threads");
+await new Worker("", { eval: true, execArgv: resolveWorkspaceWorkerExecArgv("memory") }).terminate();
 const broker = (await load("process/spawn-broker/host.ts")).createSpawnBrokerHost();
 await broker.ready();
 await broker.close();

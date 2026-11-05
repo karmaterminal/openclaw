@@ -1,3 +1,5 @@
+import { isNodeCompilerArg } from "../../node-runtime-env.mjs";
+
 const NODE_VERSIONED_PATTERN = /^node(?:-\d+|\d+)(?:\.\d+)*(?:\.exe)?$/;
 
 function normalizeRuntimeBasename(execPath: string): string {
@@ -118,6 +120,7 @@ export function resolveRuntimeScriptPosition(args: readonly string[]): {
       const knownBoolean =
         RUNTIME_BOOLEAN_OPTIONS.has(option) ||
         (bun && (option === "--hot" || option === "--no-install")) ||
+        (!bun && isNodeCompilerArg(option)) ||
         (nodeOption && process.allowedNodeEnvironmentFlags.has(negated));
       if (sourceIndices.length === 0 && !knownBoolean && !/^--[^=]+=/.test(arg)) {
         unresolved ??= { kind: "unclassified", reason: `unsupported runtime option ${arg}` };
