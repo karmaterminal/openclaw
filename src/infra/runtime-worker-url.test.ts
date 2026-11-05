@@ -299,9 +299,8 @@ console.log(JSON.stringify(outputs));`;
             },
           },
         );
-        const [bunArgv, , report] = JSON.parse(stdout);
-        // Bun keeps only its install policy; V8 flags never reach a Bun child.
-        expect(bunArgv).toEqual(["--no-install", path.join(dir, "child.mjs")]);
+        const [bunChildArgv, , report] = JSON.parse(stdout);
+        expect(bunChildArgv).toEqual(["--no-install", path.join(dir, "child.mjs")]);
         reports.push(report);
         const children = new Map(
           (await readFile(log, "utf8"))

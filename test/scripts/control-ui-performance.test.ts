@@ -20,6 +20,7 @@ import { installDistArtifactScripts } from "./dist-artifact-fixture.js";
 
 const tsxImport = new URL("../../scripts/tsx.mjs", import.meta.url).href;
 const performanceSources = [
+  "node-runtime-env.mjs",
   "scripts/check-control-ui-performance.mts",
   "ui/config/control-ui-startup-assets.ts",
   "src/gateway/control-ui-route-preloads.ts",

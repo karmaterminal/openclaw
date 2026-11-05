@@ -204,6 +204,5 @@ it("starts the schema generator with only the parent's reviewed compiler flags",
   writeFileSync(join(root, "scripts/generate-kysely-types.mts"), "console.log(process.execArgv);");
   const run = (...flags: string[]) =>
     String(execFileSync(resolveTestNodeExecPath(), [...flags, "--no-warnings", hook]));
-  expect(run("--no-opt")).toBe("[ '--no-opt' ]\n");
-  expect(run()).toBe("[]\n");
+  expect([run("--no-opt"), run()]).toEqual(["[ '--no-opt' ]\n", "[]\n"]);
 });

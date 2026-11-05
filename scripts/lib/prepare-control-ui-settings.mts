@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { promisify } from "node:util";
+import { isNodeCompilerArg } from "../../node-runtime-env.mjs";
 
 /** Keep the alias-aware native builder outside Vite's configuration bundle. */
 export async function prepareControlUiSettings(
@@ -23,10 +24,13 @@ export async function prepareControlUiSettings(
   await withDistArtifactOwnership(repoRoot, () =>
     promisify(execFile)(
       process.execPath,
-      distArtifactEntryArgs(path.join(scripts, "build-plugin-control-ui.mts"), [
-        "--prepare-settings",
-        repoRoot,
-      ]),
+      [
+        ...process.execArgv.filter(isNodeCompilerArg),
+        ...distArtifactEntryArgs(path.join(scripts, "build-plugin-control-ui.mts"), [
+          "--prepare-settings",
+          repoRoot,
+        ]),
+      ],
       { cwd: repoRoot, maxBuffer: 1024 * 1024 },
     ),
   );

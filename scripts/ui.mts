@@ -5,6 +5,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { isNodeCompilerArg } from "../node-runtime-env.mjs";
 import { isPidDefinitelyDead } from "../src/shared/pid-alive.ts";
 import { normalizeControlUiBuildInfo } from "../ui/src/build-info-normalizers.ts";
 import { resolveBuildIdentityEnvironment } from "./lib/build-identity.mts";
@@ -157,8 +158,14 @@ export function resolvePnpmSpawnCall(
   });
 }
 
+// Children on this runtime start past any PATH node shim; they keep its compiler flags.
+function withRuntimeCompilerArgs({ command, args, options }: UiSpawnCall) {
+  const runtime = command === process.execPath ? process.execArgv.filter(isNodeCompilerArg) : [];
+  return { command, spawnArgs: [...runtime, ...args], options };
+}
+
 function runSpawnCall(spawnCall: UiSpawnCall, label: string): void {
-  const { command, args: spawnArgs, options } = spawnCall;
+  const { command, spawnArgs, options } = withRuntimeCompilerArgs(spawnCall);
   let child;
   try {
     child = spawn(command, spawnArgs, options);
@@ -328,7 +335,7 @@ function signalProcessTree(child: ChildProcess, signal: NodeJS.Signals, pids: nu
 type UiSpawnResult = { status: number | null; signal: NodeJS.Signals | null };
 
 function runSpawnCallSync(spawnCall: UiSpawnCall, label: string): UiSpawnResult {
-  const { command, args: spawnArgs, options } = spawnCall;
+  const { command, spawnArgs, options } = withRuntimeCompilerArgs(spawnCall);
   try {
     return spawnSync(command, spawnArgs, options);
   } catch (err) {

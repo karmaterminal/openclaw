@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { replaceFileAtomicSync } from "@openclaw/fs-safe/atomic";
 import { toErrorObject } from "@openclaw/normalization-core/error-coercion";
 import pMap from "p-map";
+import { isNodeCompilerArg } from "../node-runtime-env.mjs";
 import { PRECOMPUTED_SUBCOMMAND_HELP_NAMES as PRECOMPUTED_SUBCOMMAND_HELP_COMMANDS } from "../src/cli/precomputed-help-commands.js";
 import type { RootHelpRenderOptions } from "../src/cli/program/root-help.js";
 import type { OpenClawConfig } from "../src/config/config.js";
@@ -473,12 +474,16 @@ async function spawnText(
     });
   }
   return await new Promise((resolve, reject) => {
-    const child = spawnProcess(process.execPath, args, {
-      cwd: options.cwd,
-      detached: useProcessGroup,
-      env: options.env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const child = spawnProcess(
+      process.execPath,
+      [...process.execArgv.filter(isNodeCompilerArg), ...args],
+      {
+        cwd: options.cwd,
+        detached: useProcessGroup,
+        env: options.env,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
     let stdout = "";
     let stderr = "";
     let outputBytes = 0;

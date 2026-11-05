@@ -62,6 +62,7 @@ function writeFiles(root: string, files: Record<string, string>): void {
 
 function copyUiFixture(root: string, extra: string[] = []): void {
   for (const file of [
+    "node-runtime-env.mjs",
     "scripts/ui.js",
     "scripts/ui.mts",
     "scripts/pnpm-runner.mts",
