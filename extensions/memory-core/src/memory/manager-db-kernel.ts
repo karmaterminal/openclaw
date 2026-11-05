@@ -13,6 +13,7 @@ import {
 import { runSqliteImmediateTransactionSync } from "openclaw/plugin-sdk/sqlite-worker-runtime";
 import { advanceMemoryIndexRevision } from "../memory-index-revision.worker.js";
 import type { MemoryPublicationSchema } from "./manager-publication-task.js";
+import { writeMemoryReindexFailure } from "./manager-reindex-failure.js";
 import { markMemoryVectorIndexClean } from "./manager-vector-rebuild-state.js";
 
 const MEMORY_REINDEX_SCHEMA = "memory_reindex";
@@ -101,6 +102,8 @@ export function publishMemoryDatabaseTables(params: MemoryDatabasePublication): 
            SELECT key, value FROM ${MEMORY_REINDEX_SCHEMA}.memory_index_meta WHERE key = ?`,
           )
           .run(params.metaKey);
+        // The published rebuild supersedes any recorded resource failure.
+        writeMemoryReindexFailure(params.targetDb, null);
 
         params.targetDb.exec(
           Object.entries({

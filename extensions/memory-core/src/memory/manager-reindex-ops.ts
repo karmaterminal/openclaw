@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
+import {
+  collectErrorGraphCandidates,
+  extractErrorCode,
+  formatErrorMessage,
+} from "openclaw/plugin-sdk/error-runtime";
 import { resolveEmbeddingInputFormatVersion } from "openclaw/plugin-sdk/memory-core-host-engine-embeddings";
 import {
   createSubsystemLogger,
@@ -11,12 +15,21 @@ import {
 } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
 import { withMemoryWorkspaceLock } from "../memory-workspace-lock.js";
 import { MemoryIndexDatabase } from "./manager-database-context.js";
-import { cleanupAgedMemoryReindexTempFiles, removeMemoryDatabaseFiles } from "./manager-db.js";
+import {
+  cleanupOrphanMemoryReindexShadows,
+  releaseLiveMemoryReindexShadow,
+  removeMemoryDatabaseFiles,
+  retainLiveMemoryReindexShadow,
+} from "./manager-db.js";
 import { withMemoryIndexGeneration } from "./manager-index-generation-lease.js";
 import {
   publishPostgresMemoryStage,
   withPostgresMemoryReindex,
 } from "./manager-postgres-reindex.js";
+import {
+  describeMemoryReindexResourceFailure,
+  nextMemoryReindexResourceFailure,
+} from "./manager-reindex-failure.js";
 import {
   MEMORY_INDEX_PROVENANCE_VERSION,
   resolveConfiguredSourcesForMeta,
@@ -37,6 +50,14 @@ import {
 } from "./manager-sync-control.js";
 
 const log = createSubsystemLogger("memory");
+
+/** Node reports a Worker heap limit as ERR_WORKER_OUT_OF_MEMORY; pools keep it as a cause. */
+export function isMemoryWorkerOutOfMemoryError(error: unknown): boolean {
+  return collectErrorGraphCandidates(error, (current) => [
+    current.cause,
+    ...(Array.isArray(current.errors) ? current.errors : []),
+  ]).some((candidate) => extractErrorCode(candidate) === "ERR_WORKER_OUT_OF_MEMORY");
+}
 
 export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps {
   private reindexState?: {
@@ -69,7 +90,56 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
       if (!state.shadow.postgresStageId) {
         state.shadow.assertShadowPath();
         await removeMemoryDatabaseFiles(state.tempDbPath);
+        releaseLiveMemoryReindexShadow(state.tempDbPath);
       }
+    }
+  }
+
+  /** A crashed run's shadow can hold gigabytes; reclaim it at startup, before any rebuild is due. */
+  protected startOrphanReindexShadowCleanup(): void {
+    void this.runInBackgroundContext(() =>
+      this.withManagerOperation(() => this.cleanupOrphanReindexShadows()),
+    ).catch((err: unknown) => {
+      log.warn(`memory reindex shadow cleanup failed: ${formatErrorMessage(err)}`);
+    });
+  }
+
+  /** Remove shadows a crashed run left behind; shadows owned by this process stay. */
+  protected async cleanupOrphanReindexShadows(): Promise<void> {
+    if (this.publishedDatabase.admission?.engine === "postgres") {
+      return;
+    }
+    const removed = await cleanupOrphanMemoryReindexShadows(
+      resolveUserPath(this.settings.store.databasePath),
+    );
+    if (removed > 0) {
+      log.info(`removed ${removed} orphaned memory reindex shadow database(s)`);
+    }
+  }
+
+  /** Persist a worker heap OOM so restarts and other managers keep its cooldown. */
+  protected async recordReindexResourceFailure(): Promise<void> {
+    const failure = nextMemoryReindexResourceFailure(
+      this.reindexResourceFailure,
+      resolveConfiguredSourcesForMeta(this.sources),
+      Date.now(),
+    );
+    this.fullReindexRetryBackoff.resourceFailure = failure;
+    const { state, fix } = describeMemoryReindexResourceFailure(failure, this.agentId);
+    log.warn(`memory reindex ${state}. ${fix}`);
+    await this.persistReindexResourceFailure();
+  }
+
+  /** Best effort: deferred syncs retry until the held failure survives a restart. */
+  protected async persistReindexResourceFailure(): Promise<void> {
+    const failure = this.fullReindexRetryBackoff.resourceFailure;
+    if (!failure || failure.failedAt === this.publishedDatabase.facts.reindexFailure?.failedAt) {
+      return;
+    }
+    try {
+      await this.publishedDatabase.writeReindexFailure(failure);
+    } catch (err) {
+      log.warn(`failed to record memory reindex resource failure: ${formatErrorMessage(err)}`);
     }
   }
 
@@ -115,6 +185,10 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
     const dbPath = resolveUserPath(this.settings.store.databasePath);
     const resuming = this.reindexState;
     const tempDbPath = resuming?.tempDbPath ?? `${dbPath}.memory-reindex-${randomUUID()}`;
+    if (!resuming && !postgresStage) {
+      // Registered before the file exists, so orphan cleanup never removes a live shadow.
+      retainLiveMemoryReindexShadow(tempDbPath);
+    }
     const originalDatabase = resuming?.originalDatabase ?? this.database;
     const originalRetryState = resuming?.originalRetryState ?? this.snapshotReindexRetryState();
     const withEmbeddings = this.syncProviderGeneration?.kind === "semantic";
@@ -123,7 +197,7 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
     let suspended = false;
     try {
       if (!postgresStage && !resuming) {
-        await cleanupAgedMemoryReindexTempFiles(dbPath);
+        await this.cleanupOrphanReindexShadows();
       }
       const originalRevision = resuming?.originalRevision ?? this.database.facts.revision;
       const shadow =
@@ -290,6 +364,9 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
       if (!(err instanceof MemoryBackgroundRebuildInterruptedError)) {
         this.recordFullReindexFailure(withEmbeddings);
       }
+      if (isMemoryWorkerOutOfMemoryError(err)) {
+        await this.recordReindexResourceFailure();
+      }
       throw err;
     } finally {
       try {
@@ -298,6 +375,10 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
         }
       } catch (err) {
         log.warn(`failed to remove memory reindex shadow database: ${formatErrorMessage(err)}`);
+      }
+      // A shadow that failed before its state existed has no later discard.
+      if (this.reindexState?.tempDbPath !== tempDbPath) {
+        releaseLiveMemoryReindexShadow(tempDbPath);
       }
     }
   }

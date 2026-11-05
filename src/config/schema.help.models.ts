@@ -202,7 +202,7 @@ export const MODEL_FIELD_HELP: Record<string, string> = {
   "memory.search.rememberAcrossConversations":
     'Use relevant context from this agent\'s other private conversations through protected transcript recall. Defaults on only when global session.dmScope is unset or "main" and no binding overrides DM scope; any configured DM isolation defaults it off. An explicit true or false always wins.',
   "memory.search.sources":
-    'Chooses which sources are indexed: "memory" reads MEMORY.md + memory files, and "sessions" includes transcript history. Keep ["memory"] unless you need recall from prior chat transcripts.',
+    'Chooses which sources memory search reads: "memory" covers MEMORY.md + memory files, and "sessions" covers transcript history (indexed only when experimental.sessionMemory or rememberAcrossConversations is on). While memory.search.rememberAcrossConversations is on, the default for personal installs, transcripts stay indexed for private cross-conversation recall even when this list omits "sessions"; set it to false to stop transcript indexing.',
   "memory.search.extraPaths":
     "Adds extra directories or .md files to the memory index beyond default memory files. Entries may be path strings or objects with a root-relative glob pattern. When multimodal memory is enabled, matching image/audio files under these paths are also eligible for indexing.",
   "memory.search.extraPaths.*.path":

@@ -313,6 +313,7 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
             log.warn("memory session startup catch-up failed: " + String(err));
           },
         );
+        this.startOrphanReindexShadowCleanup();
       });
     }
   }
@@ -659,6 +660,7 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
         providerUnavailableReason: this.providerUnavailableReason,
         indexIdentity: this.indexIdentityState,
         automaticRebuildNotice: this.automaticRebuildNotice,
+        reindexFailure: this.reindexResourceFailure ?? undefined,
       },
     };
   }
