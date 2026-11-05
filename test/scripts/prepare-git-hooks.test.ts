@@ -1,6 +1,6 @@
 import { execFileSync, spawnSync as spawnGit, type SpawnSyncOptions } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { configurePrepareGitHooks } from "../../scripts/prepare-git-hooks.mjs";
 import { resolveTestNodeExecPath } from "../../src/test-utils/node-process.js";
@@ -192,30 +192,18 @@ describe("configurePrepareGitHooks", () => {
   });
 });
 
-it.each([{ flags: ["--no-opt"] }, { flags: [] }])(
-  "starts the schema generator with only the parent's reviewed compiler flags $flags",
-  ({ flags }) => {
-    const root = tempDirs.make("prepare-generator-");
-    const write = (file: string, source: string) => {
-      mkdirSync(dirname(join(root, file)), { recursive: true });
-      writeFileSync(join(root, file), source);
-    };
-    for (const file of [
-      "scripts/prepare-git-hooks.mjs",
-      "runtime-process-bootstrap.generated.mjs",
-      "node-runtime-env.mjs",
-    ]) {
-      write(file, readFileSync(file, "utf8"));
-    }
-    write("src/state/openclaw-state-schema.sql", "");
-    // The stub generator reports the execArgv it was started with.
-    write("scripts/generate-kysely-types.mts", "console.log(JSON.stringify(process.execArgv));");
-    // A real Node parent; its other options stay behind.
-    const stdout = execFileSync(
-      resolveTestNodeExecPath(),
-      [...flags, "--no-warnings", join(root, "scripts/prepare-git-hooks.mjs")],
-      { encoding: "utf8" },
-    );
-    expect(JSON.parse(stdout)).toEqual(flags);
-  },
-);
+it("starts the schema generator with only the parent's reviewed compiler flags", () => {
+  const root = tempDirs.make("prepare-generator-");
+  const hook = join(root, "scripts/prepare-git-hooks.mjs");
+  for (const file of ["node-runtime-env.mjs", "runtime-process-bootstrap.generated.mjs"]) {
+    cpSync(file, join(root, file));
+  }
+  cpSync("scripts/prepare-git-hooks.mjs", hook);
+  cpSync("src/state/openclaw-state-schema.sql", join(root, "src/state/openclaw-state-schema.sql"));
+  // The stub generator reports its own execArgv; a real Node parent's other options stay behind.
+  writeFileSync(join(root, "scripts/generate-kysely-types.mts"), "console.log(process.execArgv);");
+  const run = (...flags: string[]) =>
+    String(execFileSync(resolveTestNodeExecPath(), [...flags, "--no-warnings", hook]));
+  expect(run("--no-opt")).toBe("[ '--no-opt' ]\n");
+  expect(run()).toBe("[]\n");
+});

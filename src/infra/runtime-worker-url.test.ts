@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { build } from "esbuild";
 import { describe, expect, it, vi } from "vitest";
+import { isNodeCompilerArg } from "../../node-runtime-env.mjs";
 import "../test-utils/prepare-compiled-subprocesses.js";
 import { resolveTestNodeExecPath } from "../test-utils/node-process.js";
 import { withTempDir } from "../test-utils/temp-dir.js";
@@ -219,25 +220,6 @@ describe("resolveRuntimeWorkerArgv", () => {
 });
 
 describe("parent compiler policy in OpenClaw-owned children", () => {
-  it("forwards reviewed flags to Node children only", () => {
-    const execArgv = process.execArgv;
-    const url = pathToFileURL(path.resolve("worker fixture.mjs"));
-    try {
-      process.execArgv = ["--no-opt", "--inspect", "--no-maglev"];
-      expect(resolveRuntimeWorkerArgv(url, "/usr/bin/node")).toEqual([
-        "--no-opt",
-        "--no-maglev",
-        fileURLToPath(url),
-      ]);
-      expect(resolveRuntimeWorkerArgv(url, "/opt/homebrew/bin/bun")).toEqual([
-        "--no-install",
-        fileURLToPath(url),
-      ]);
-    } finally {
-      process.execArgv = execArgv;
-    }
-  });
-
   // Each child records its own execArgv through a preload, as the broker fixtures do.
   const observer = `import { appendFileSync } from "node:fs";
 import { isMainThread } from "node:worker_threads";
@@ -254,6 +236,7 @@ const [dir, src] = process.argv.slice(1);
 const load = (file) => import(pathToFileURL(src + "/" + file).href);
 const { resolveRuntimeWorkerArgv } = await load("infra/runtime-worker-url.ts");
 execFileSync(process.execPath, resolveRuntimeWorkerArgv(pathToFileURL(dir + "/child.mjs")));
+const outputs = [resolveRuntimeWorkerArgv(pathToFileURL(dir + "/child.mjs"), "/opt/bun")];
 const threadUrl = pathToFileURL(dir + "/thread.mts");
 const { createCpuTrackedWorker } = await load("infra/worker-cpu.ts");
 const worker = createCpuTrackedWorker(threadUrl, {
@@ -275,13 +258,14 @@ await cli.readUpdateTargetCliOptions({ nodeRunner: process.execPath, entryPath: 
 const { prepareRuntimeProcessScriptInvocation } = await load("infra/runtime-process-url.ts");
 for (const name of ["updateStateSizes", "daemonRuntimeProbe"]) {
   const script = prepareRuntimeProcessScriptInvocation(name, process.execPath);
-  execFileSync(script.argv[0], script.argv.slice(1), { input: '{"files":[]}' });
+  outputs.push(JSON.parse(execFileSync(script.argv[0], script.argv.slice(1), { input: '{"files":[]}' })));
   script.dispose();
-}`;
+}
+console.log(JSON.stringify(outputs));`;
 
-  it.each([{ flags: ["--no-opt"] }, { flags: [] }])(
-    "children observe parent flags $flags",
-    async ({ flags }) => {
+  it("children observe the parent's flags; the probe's report does not change", async () => {
+    const reports: unknown[] = [];
+    for (const flags of [["--no-opt"], []]) {
       await withTempDir("openclaw-compiler-policy-", async (dir) => {
         for (const [name, source] of Object.entries({
           "observer.mjs": observer,
@@ -294,7 +278,7 @@ for (const name of ["updateStateSizes", "daemonRuntimeProbe"]) {
         }
         const log = path.join(dir, "exec-argv.jsonl");
         // The suite may run on Bun; the parent under test is a real Node process.
-        await promisify(execFile)(
+        const { stdout } = await promisify(execFile)(
           resolveTestNodeExecPath(),
           [
             ...flags,
@@ -315,6 +299,10 @@ for (const name of ["updateStateSizes", "daemonRuntimeProbe"]) {
             },
           },
         );
+        const [bunArgv, , report] = JSON.parse(stdout);
+        // Bun keeps only its install policy; V8 flags never reach a Bun child.
+        expect(bunArgv).toEqual(["--no-install", path.join(dir, "child.mjs")]);
+        reports.push(report);
         const children = new Map(
           (await readFile(log, "utf8"))
             .trim()
@@ -327,18 +315,18 @@ for (const name of ["updateStateSizes", "daemonRuntimeProbe"]) {
         expect(children.get("thread-child.mjs")).toEqual(flags);
         expect(children.get("cli.mjs")).toEqual(flags);
         expect(children.get("update-state-sizes.mjs")).toEqual(flags);
-        expect(children.get("daemon-runtime-probe.mjs")).toEqual([]);
-        // Source workers also carry their loader; only the reviewed flag must match the parent.
+        expect(children.get("daemon-runtime-probe.mjs")).toEqual(flags);
+        // Source workers also carry their loader; only the reviewed flags must match the parent.
         for (const worker of [/^worker\.[jt]s$/, /^sqlite-readonly-location\.worker\.[jt]s$/]) {
           const execArgv = [...children].find(([name]) => worker.test(name))?.[1];
-          expect(
-            execArgv?.filter((arg) => arg === "--no-opt"),
-            String(worker),
-          ).toEqual(flags);
+          expect(execArgv?.filter(isNodeCompilerArg), String(worker)).toEqual(flags);
         }
       });
-    },
-  );
+    }
+    // The probe reports the same runtime version and SQLite capability under either parent.
+    expect(reports[0]).toEqual(reports[1]);
+    expect(reports[0]).toMatchObject({ sqliteProbe: { available: true, text: true } });
+  });
 });
 
 describe("resolveRuntimeProcessEntrypointUrl", () => {

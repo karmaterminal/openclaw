@@ -83,10 +83,9 @@ export function prepareRuntimeProcessScriptInvocation(
     }
   }
   const file = createRuntimeProcessScriptFile(name, options);
-  // Probes describe the bare candidate runtime; OpenClaw's own scripts keep its launch flags.
-  const runtimeArgs = name.endsWith("Probe") ? [] : resolveRuntimeCompilerArgs(execPath);
+  // Probes too: each script is a child in this process tree and keeps its compiler policy.
   return {
-    argv: [execPath, ...runtimeArgs, fileURLToPath(file.url)],
+    argv: [execPath, ...resolveRuntimeCompilerArgs(execPath), fileURLToPath(file.url)],
     dispose: () => file.dispose(),
   };
 }
