@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { copyFile, link, writeFile } from "node:fs/promises";
+import { copyFile, link, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { build } from "esbuild";
 import { describe, expect, it, vi } from "vitest";
 import "../test-utils/prepare-compiled-subprocesses.js";
+import { resolveTestNodeExecPath } from "../test-utils/node-process.js";
 import { withTempDir } from "../test-utils/temp-dir.js";
 import {
   resolveExternalPackageRuntimeEntrypointUrl as external,
@@ -212,6 +213,125 @@ describe("resolveRuntimeWorkerArgv", () => {
           { cwd, timeout: 10_000 },
         );
         expect(stdout.trim()).toBe("42");
+      });
+    },
+  );
+});
+
+describe("parent compiler policy in OpenClaw-owned children", () => {
+  it("forwards reviewed flags to Node children only", () => {
+    const execArgv = process.execArgv;
+    const url = pathToFileURL(path.resolve("worker fixture.mjs"));
+    try {
+      process.execArgv = ["--no-opt", "--inspect", "--no-maglev"];
+      expect(resolveRuntimeWorkerArgv(url, "/usr/bin/node")).toEqual([
+        "--no-opt",
+        "--no-maglev",
+        fileURLToPath(url),
+      ]);
+      expect(resolveRuntimeWorkerArgv(url, "/opt/homebrew/bin/bun")).toEqual([
+        "--no-install",
+        fileURLToPath(url),
+      ]);
+    } finally {
+      process.execArgv = execArgv;
+    }
+  });
+
+  // Each child records its own execArgv through a preload, as the broker fixtures do.
+  const observer = `import { appendFileSync } from "node:fs";
+import { isMainThread } from "node:worker_threads";
+if (isMainThread) appendFileSync(process.env.EXEC_ARGV_LOG, JSON.stringify([process.argv[1], process.execArgv]) + "\\n");`;
+  const thread = `import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
+import { workerData } from "node:worker_threads";
+const { resolveRuntimeWorkerArgv } = await import(pathToFileURL(workerData.src + "/infra/runtime-worker-url.ts").href);
+execFileSync(process.execPath, resolveRuntimeWorkerArgv(pathToFileURL(workerData.dir + "/thread-child.mjs")));`;
+  const driver = `import { execFileSync } from "node:child_process";
+import { DatabaseSync } from "node:sqlite";
+import { pathToFileURL } from "node:url";
+const [dir, src] = process.argv.slice(1);
+const load = (file) => import(pathToFileURL(src + "/" + file).href);
+const { resolveRuntimeWorkerArgv } = await load("infra/runtime-worker-url.ts");
+execFileSync(process.execPath, resolveRuntimeWorkerArgv(pathToFileURL(dir + "/child.mjs")));
+const threadUrl = pathToFileURL(dir + "/thread.mts");
+const { createCpuTrackedWorker } = await load("infra/worker-cpu.ts");
+const worker = createCpuTrackedWorker(threadUrl, {
+  execArgv: resolveRuntimeWorkerArgv(threadUrl).slice(0, -1),
+  workerData: { dir, src },
+});
+await new Promise((resolve, reject) => worker.once("exit", resolve).once("error", reject));
+const broker = (await load("process/spawn-broker/host.ts")).createSpawnBrokerHost();
+await broker.ready();
+await broker.close();
+new DatabaseSync(dir + "/state.sqlite").exec("CREATE TABLE t (x)");
+(await load("infra/sqlite-readonly-worker.ts")).runSqliteReadOnlyWorkerSync(dir + "/state.sqlite", dir);
+const cli = await load("cli/update-cli/update-command-cli-options.ts");
+await cli.readUpdateTargetCliOptions({ nodeRunner: process.execPath, entryPath: dir + "/cli.mjs", command: "doctor" }, {});
+const { prepareRuntimeProcessScriptInvocation } = await load("infra/runtime-process-url.ts");
+for (const name of ["updateStateSizes", "daemonRuntimeProbe"]) {
+  const script = prepareRuntimeProcessScriptInvocation(name, process.execPath);
+  execFileSync(script.argv[0], script.argv.slice(1), { input: '{"files":[]}' });
+  script.dispose();
+}`;
+
+  it.each([{ flags: ["--no-opt"] }, { flags: [] }])(
+    "children observe parent flags $flags",
+    async ({ flags }) => {
+      await withTempDir("openclaw-compiler-policy-", async (dir) => {
+        for (const [name, source] of Object.entries({
+          "observer.mjs": observer,
+          "thread.mts": thread,
+          "child.mjs": "",
+          "thread-child.mjs": "",
+          "cli.mjs": "",
+        })) {
+          await writeFile(path.join(dir, name), source);
+        }
+        const log = path.join(dir, "exec-argv.jsonl");
+        // The suite may run on Bun; the parent under test is a real Node process.
+        await promisify(execFile)(
+          resolveTestNodeExecPath(),
+          [
+            ...flags,
+            "--no-warnings",
+            "--import",
+            import.meta.resolve("tsx"),
+            "--input-type=module",
+            "-e",
+            driver,
+            dir,
+            fileURLToPath(new URL("..", import.meta.url)),
+          ],
+          {
+            env: {
+              ...process.env,
+              EXEC_ARGV_LOG: log,
+              NODE_OPTIONS: `--import=${pathToFileURL(path.join(dir, "observer.mjs")).href}`,
+            },
+          },
+        );
+        const children = new Map(
+          (await readFile(log, "utf8"))
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line) as [string, string[]])
+            .map(([entry, execArgv]) => [path.basename(entry ?? ""), execArgv]),
+        );
+        // Exact for plain children: --no-warnings and the parent's loader stay behind.
+        expect(children.get("child.mjs")).toEqual(flags);
+        expect(children.get("thread-child.mjs")).toEqual(flags);
+        expect(children.get("cli.mjs")).toEqual(flags);
+        expect(children.get("update-state-sizes.mjs")).toEqual(flags);
+        expect(children.get("daemon-runtime-probe.mjs")).toEqual([]);
+        // Source workers also carry their loader; only the reviewed flag must match the parent.
+        for (const worker of [/^worker\.[jt]s$/, /^sqlite-readonly-location\.worker\.[jt]s$/]) {
+          const execArgv = [...children].find(([name]) => worker.test(name))?.[1];
+          expect(
+            execArgv?.filter((arg) => arg === "--no-opt"),
+            String(worker),
+          ).toEqual(flags);
+        }
       });
     },
   );
