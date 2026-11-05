@@ -1,4 +1,5 @@
 export function parseNodeOptionsEnvVar(value: string | undefined): string[] | null;
+export function isNodeCompilerArg(arg: unknown): arg is string;
 export function stripNodeStartupHooks(value: string | undefined): string | undefined;
 export function hasNodeStartupHooks(
   execArgv: readonly string[],

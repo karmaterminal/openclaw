@@ -6,6 +6,7 @@ import {
   resolveOpenClawCompileCacheDirectory,
   resolveOpenClawCompileCacheRespawnEnv,
 } from "./node-compile-cache.mjs";
+import { isNodeCompilerArg } from "./node-runtime-env.mjs";
 
 const directory = resolveOpenClawCompileCacheDirectory({
   installRoot: fileURLToPath(new URL(".", import.meta.url)),
@@ -17,7 +18,7 @@ if (respawnEnv) {
   await runRespawnedChild(
     resolveOpenClawCliRespawn({
       entryPath: fileURLToPath(import.meta.url),
-      execArgv: [],
+      execArgv: process.execArgv.filter(isNodeCompilerArg),
       args: [],
       env: respawnEnv,
     }),

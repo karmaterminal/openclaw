@@ -5,22 +5,17 @@ import { createRequire } from "node:module";
 import { constants as osConstants } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { isNodeCompilerArg } from "../../node-runtime-env.mjs";
 import { ensureRepoNodeModulesLink } from "./local-check-runtime.mts";
 import { hasManagedCleanupParent } from "./managed-cleanup-handoff.mts";
 
 const FORWARDED_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"];
 const DEFAULT_FORCE_KILL_DELAY_MS = 5_000;
-const FORWARDED_COMPILER_FLAGS = new Set([
-  "--maglev",
-  "--no-maglev",
-  "--concurrent-sparkplug",
-  "--no-concurrent-sparkplug",
-]);
 const SHIM_CHECKOUT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 // Forward compiler policy without replaying parent loaders, evals, or debuggers.
 export function resolveForwardedNodeCompilerArgs(execArgv = process.execArgv) {
-  return execArgv.filter((arg) => FORWARDED_COMPILER_FLAGS.has(arg));
+  return execArgv.filter(isNodeCompilerArg);
 }
 
 export function resolveConfiguredModulesDir(checkoutRoot) {

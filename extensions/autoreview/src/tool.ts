@@ -1,8 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import type { AnyAgentTool, OpenClawPluginToolContext } from "openclaw/plugin-sdk/plugin-entry";
-import { runCommandWithTimeout } from "openclaw/plugin-sdk/process-runtime";
+import {
+  runCommandWithTimeout,
+  resolveRuntimeWorkerArgv,
+} from "openclaw/plugin-sdk/process-runtime";
 import { resolvePreferredOpenClawTmpDir } from "openclaw/plugin-sdk/temp-path";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
@@ -367,7 +371,7 @@ export function createAutoReviewTool(context: OpenClawPluginToolContext<2>): Any
                 }
                 const argv = [
                   process.execPath,
-                  entry,
+                  ...resolveRuntimeWorkerArgv(pathToFileURL(entry)),
                   "agent",
                   "exec",
                   "--json",

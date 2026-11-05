@@ -1,6 +1,7 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { resolveOpenClawCliInvocation } from "../../../cli-invocation.mjs";
 import { resolveStateDir } from "../../config/paths.js";
+import { resolveRuntimeArgs } from "../../infra/runtime-worker-url.js";
 import {
   normalizeUpdateFailureFacts,
   parseConfigFailureFacts,
@@ -28,10 +29,11 @@ export async function validatePostPluginConfigInFreshProcess(params: {
   nodeRunner?: string;
 }): Promise<PostPluginConfigValidation> {
   try {
+    const nodeRunner = params.nodeRunner ?? resolveNodeRunner();
     const invocation = resolveOpenClawCliInvocation({
-      execPath: params.nodeRunner ?? resolveNodeRunner(),
+      execPath: nodeRunner,
       entryPath: params.entryPath,
-      execArgv: [],
+      execArgv: resolveRuntimeArgs(nodeRunner),
       args: ["config", "validate", "--json"],
     });
     await runExec(invocation.command, invocation.args, {

@@ -1,6 +1,7 @@
 import { resolveOpenClawCliInvocation } from "../../../cli-invocation.mjs";
 import { UPDATE_POST_CORE_CONVERGENCE_ENV } from "../../commands/doctor/shared/update-phase.js";
 import { resolveStateDir } from "../../config/paths.js";
+import { resolveRuntimeArgs } from "../../infra/runtime-worker-url.js";
 import type { UpdateDoctorLintFinding } from "../../infra/update-doctor-lint-schema.js";
 import { parseUpdateDoctorLintReport } from "../../infra/update-doctor-lint.js";
 import type { UpdateStepResult } from "../../infra/update-step-result.js";
@@ -103,10 +104,11 @@ export async function applyPostPluginUpdateReadiness(params: {
   let executionFailure: string | undefined;
   let report: ReturnType<typeof parseUpdateDoctorLintReport>;
   try {
+    const nodeRunner = params.nodeRunner ?? resolveNodeRunner();
     const invocation = resolveOpenClawCliInvocation({
-      execPath: params.nodeRunner ?? resolveNodeRunner(),
+      execPath: nodeRunner,
       entryPath: params.entryPath,
-      execArgv: [],
+      execArgv: resolveRuntimeArgs(nodeRunner),
       args,
     });
     execution = await runUtf8CommandWithTimeout([invocation.command, ...invocation.args], {

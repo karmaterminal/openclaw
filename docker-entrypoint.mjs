@@ -11,6 +11,7 @@ import {
   GATEWAY_RUN_VALUE_FLAGS,
   isForegroundGatewayRunArgv,
 } from "./gateway-run-argv.mjs";
+import { isNodeCompilerArg } from "./node-runtime-env.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const command = process.argv.slice(2);
@@ -113,6 +114,7 @@ async function activate() {
       child = spawn(
         process.execPath,
         [
+          ...process.execArgv.filter(isNodeCompilerArg),
           path.join(root, "openclaw.mjs"),
           ...invocation.rootOptions,
           "doctor",

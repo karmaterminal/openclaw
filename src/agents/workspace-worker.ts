@@ -17,11 +17,12 @@ export function resolveWorkspaceWorkerUrl(kind: "memory" | "skills"): URL {
 
 /** Preserve the source host's config when a worker imports source plugins. */
 export function resolveWorkspaceWorkerExecArgv(kind: "memory" | "skills"): string[] {
+  const runtimeArgs = resolveRuntimeArgs();
   if (
     !runtimeNeedsTypeScriptLoader(fileURLToPath(resolveWorkspaceWorkerUrl(kind))) &&
     !runtimeNeedsTypeScriptLoader(fileURLToPath(import.meta.url))
   ) {
-    return resolveRuntimeArgs();
+    return runtimeArgs;
   }
   const register =
     "import { register } from " +
@@ -29,7 +30,7 @@ export function resolveWorkspaceWorkerExecArgv(kind: "memory" | "skills"): strin
     "; register({ tsconfig: " +
     JSON.stringify(fileURLToPath(new URL("../../tsconfig.json", import.meta.url))) +
     " });";
-  return ["--import", `data:text/javascript,${encodeURIComponent(register)}`];
+  return [...runtimeArgs, "--import", `data:text/javascript,${encodeURIComponent(register)}`];
 }
 
 export function resolveWorkspaceWorkerArgv(kind: "memory" | "skills"): string[] {
