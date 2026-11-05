@@ -401,18 +401,6 @@ describe("session lifecycle state", () => {
     terminalCase("aborted", { phase: "end", stopReason: "aborted" }, "killed", true),
     terminalCase("signal-only cancellation", { phase: "end", aborted: true }, "killed", true),
     terminalCase(
-      "superseded by a newer session writer",
-      { phase: "end", stopReason: "superseded", aborted: true },
-      "killed",
-      true,
-    ),
-    terminalCase(
-      "superseded continuation wake",
-      { phase: "end", stopReason: "superseded", aborted: true, continuationWake: true },
-      "killed",
-      false,
-    ),
-    terminalCase(
       "provider timeout",
       {
         phase: "error",
@@ -469,6 +457,36 @@ describe("session lifecycle state", () => {
     }
     const next = await persistLifecycle(persisted, startEvent(2_100, "next-run"));
     expect(next.goal).toEqual(persisted.goal);
+  });
+
+  // Continuation (karmaterminal): supersession keeps the Goal active, as for any supersession; only a
+  // superseded continuation wake leaves abortedLastRun unset, since its turn yielded to a newer one.
+  it.each([
+    terminalCase(
+      "a newer session writer",
+      { phase: "end", stopReason: "superseded", aborted: true },
+      "killed",
+      true,
+    ),
+    terminalCase(
+      "a continuation wake",
+      { phase: "end", stopReason: "superseded", aborted: true, continuationWake: true },
+      "killed",
+      false,
+    ),
+  ])("persists a terminal superseded by $name and keeps the Goal active", async (testCase) => {
+    const persisted = await persistLifecycle(
+      goalEntry,
+      lifecycleEvent(testCase.data, { runId: "goal-run" }),
+    );
+    expect(persisted).toMatchObject({
+      status: testCase.status,
+      startedAt: 1_050,
+      endedAt: 1_800,
+      runtimeMs: 750,
+      abortedLastRun: testCase.abortedLastRun,
+    });
+    expect(persisted.goal).toEqual(goalEntry.goal);
   });
 
   it.each([
