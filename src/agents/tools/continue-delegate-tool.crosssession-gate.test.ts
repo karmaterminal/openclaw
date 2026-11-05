@@ -11,6 +11,11 @@ import {
   setRuntimeConfigSnapshot,
   type OpenClawConfig,
 } from "../../config/config.js";
+import { listAncestorSessionKeys } from "../subagents/registry/subagent-registry-read.js";
+import {
+  resetSubagentRegistryForTests,
+  seedSubagentRunForReadTest,
+} from "../subagents/registry/subagent-registry.test-helpers.js";
 import { createContinueDelegateTool } from "./continue-delegate-tool.js";
 
 const DISPATCHING_SESSION = "agent:main:self";
@@ -62,10 +67,11 @@ describe("continue_delegate cross-session targeting gate", () => {
     clearRuntimeConfigSnapshot();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     resetDelegateStoreForTests();
     resetContinueDelegateTurnAdmissionForTests();
     clearRuntimeConfigSnapshot();
+    await resetSubagentRegistryForTests({ persist: false });
   });
 
   it("case 1: disabled rejects targetSessionKey for another session", async () => {
@@ -142,6 +148,28 @@ describe("continue_delegate cross-session targeting gate", () => {
     expect(await consumePendingDelegates(DISPATCHING_SESSION)).toEqual([
       expect.objectContaining({ targetSessionKeys: [DISPATCHING_SESSION] }),
     ]);
+  });
+
+  it("disabled refuses an explicit target naming a tree member, while fanoutMode=tree passes", async () => {
+    // The gate reads the targeting form, not tree membership: naming the
+    // dispatcher's requester (an ancestor) is refused; fanoutMode=tree is admitted.
+    setRuntimeConfigSnapshot(continuationConfig("disabled"));
+    seedSubagentRunForReadTest({
+      runId: "tree-member-run",
+      childSessionKey: DISPATCHING_SESSION,
+      requesterSessionKey: "agent:main:root",
+    });
+    expect(listAncestorSessionKeys(DISPATCHING_SESSION)).toContain("agent:main:root");
+
+    await expect(
+      executeContinueDelegate({
+        crossSessionTargeting: "disabled",
+        args: { targetSessionKey: "agent:main:root" },
+      }),
+    ).rejects.toThrow("cross-session continuation targeting is disabled");
+    await expect(
+      executeContinueDelegate({ crossSessionTargeting: "disabled", args: { fanoutMode: "tree" } }),
+    ).resolves.toMatchObject({ status: "scheduled", fanoutMode: "tree" });
   });
 
   it("case 8: enabled allows targetSessionKey for another session", async () => {
