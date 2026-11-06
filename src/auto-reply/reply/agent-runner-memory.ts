@@ -117,8 +117,11 @@ export async function runSessionCompactionIfNeeded(params: {
   storePath?: string;
   /** Completed commands carry the actual harness, not the originally requested runtime. */
   agentHarnessId?: string;
-  /** No later prompt carries this pass's refresh, so a staged delegate's release must. */
-  postRunMaintenance?: boolean;
+  /**
+   * Only a reply turn's prompt carries this pass's refresh. Every other caller's release queues
+   * it as a system event; commands drain none, so it waits for the session's next reply turn.
+   */
+  promptCarriesRefresh?: boolean;
   abortSignal?: AbortSignal;
   authorize?: () => boolean;
   beforeCompaction?: (entry: SessionEntry) => Promise<SessionEntry | undefined>;
@@ -502,7 +505,7 @@ export async function runSessionCompactionIfNeeded(params: {
       sessionEntry: entry,
       sessionKey: compactionSessionKey,
       storePath: compactionStorePath,
-      workspaceContextRefreshed: !params.postRunMaintenance,
+      workspaceContextRefreshed: params.promptCarriesRefresh === true,
     });
     return entry;
   } catch (err) {

@@ -474,11 +474,8 @@ describe("runReplyAgent :: pressure warning to post-compaction handoff", () => {
     },
   );
 
-  it.each([
-    { caller: "a command's preflight", postRunMaintenance: undefined, refreshed: true },
-    { caller: "post-run maintenance", postRunMaintenance: true, refreshed: false },
-  ])("releases at $caller outside a reply turn", async ({ postRunMaintenance, refreshed }) => {
-    const sessionKey = `agent:main:maintenance-${String(refreshed)}`;
+  it("releases outside a reply turn and queues the refresh no prompt carries", async () => {
+    const sessionKey = "agent:main:maintenance";
     const { run, queueKey, sessionStore, storePath } = await createPressureRun(sessionKey, 150_000);
     Object.assign(run.config.agents.defaults, {
       compaction: { postCompactionSections: ["Session Startup"] },
@@ -510,13 +507,12 @@ describe("runReplyAgent :: pressure warning to post-compaction handoff", () => {
       sessionStore,
       sessionKey,
       storePath,
-      postRunMaintenance,
     });
 
     expect(stagedPostCompactionDelegateCount(sessionKey)).toBe(0);
     expect(peekSystemEvents(queueKey).join("\n")).toContain("Queued 1 post-compaction delegate(s)");
     expect(
       peekSystemEvents(queueKey).some((event) => event.includes("Reload the kept file.")),
-    ).toBe(!refreshed);
+    ).toBe(true);
   });
 });

@@ -557,6 +557,7 @@ export async function prepareReplyAgentTurn<TConfigured>(
           activeEntry = await tracePhase("reply.preflight_compaction", () =>
             runSessionCompactionIfNeeded({
               ...preparation,
+              promptCarriesRefresh: true,
               replyOperation: operation,
               pendingUserEntryId: preflightAdmission?.entryId,
               abortSignal: operation.abortSignal,
