@@ -24,6 +24,7 @@ import {
 } from "../../state/openclaw-agent-db.js";
 import type { AgentDatabaseExecutionFileIdentity } from "../../state/openclaw-agent-execution-contract.js";
 import {
+  assertOpenClawAgentDatabaseExecutionAdmitted,
   captureOpenClawAgentDatabaseExecution,
   supportsOpenClawAgentDatabaseExecution,
 } from "../../state/openclaw-agent-execution.js";
@@ -90,8 +91,22 @@ export async function resetSessionEntryLifecycle(
   params: ResetSessionEntryLifecycleParams,
 ): Promise<ResetSessionEntryLifecycleResult> {
   const agentId = params.agentId ?? parseAgentSessionKey(params.target.canonicalKey)?.agentId;
-  const scope = { agentId, sessionKey: params.target.canonicalKey, storePath: params.storePath };
-  const current = await readSessionEntryReadOnlyInWorker(scope, () => params.commitGuard?.());
+  // The fork's pinned env, not the ambient one, names the store this read and the reset share.
+  const scope = {
+    agentId,
+    env: params.env,
+    sessionKey: params.target.canonicalKey,
+    storePath: params.storePath,
+  };
+  const current = await withPreparedSqliteScope({ ...scope, sessionKey: "" }, (prepared) => {
+    const resolved = captureLifecycleDatabaseScope(prepared);
+    const databaseOptions = { ...toDatabaseOptions(resolved), path: resolved.path };
+    // A store the reset would refuse must not supply this read's entry first.
+    if (isMainThread && supportsOpenClawAgentDatabaseExecution(databaseOptions)) {
+      assertOpenClawAgentDatabaseExecutionAdmitted(databaseOptions);
+    }
+    return readSessionEntryReadOnlyInWorker(scope, () => params.commitGuard?.());
+  });
   if (current?.localWorkspaceHandoff) {
     if (!agentId) {
       throw new Error("Local workspace handoff requires its original agent before reset");

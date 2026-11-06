@@ -57,6 +57,19 @@ export function captureOpenClawAgentDatabasePreparationExecution(
   return captureOpenClawAgentDatabaseExecution(options, { expectedIdentity, requestedPath }, true);
 }
 
+/** Refuse what capture would refuse, for a read whose result precedes a lifecycle write. */
+export function assertOpenClawAgentDatabaseExecutionAdmitted(
+  options: OpenClawAgentDatabaseOptions,
+): void {
+  const pathname = resolveOpenClawAgentSqlitePath(options);
+  const existing =
+    executions.get(pathname) ??
+    executions.get(readDatabasePathIdentitySync(pathname).canonicalPath);
+  if (existing) {
+    assertAgentDatabaseExecutionSharedState(options, existing.sharedDatabaseKey);
+  }
+}
+
 /** Only the deleted agent's store needs a fresh, exclusive cleanup owner. */
 export async function captureAgentDeletionDatabaseExecution(
   options: OpenClawAgentDatabaseOptions,
