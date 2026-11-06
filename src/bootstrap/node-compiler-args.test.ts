@@ -1,12 +1,10 @@
-import { getEnvironmentData, setEnvironmentData } from "node:worker_threads";
+import { getEnvironmentData } from "node:worker_threads";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveForwardedNodeCompilerArgs } from "./node-compiler-args.js";
 
 const originalExecArgv = process.execArgv;
-const publishedPolicy = getEnvironmentData("openclaw.nodeCompilerArgs.v1");
 afterEach(() => {
   process.execArgv = originalExecArgv;
-  setEnvironmentData("openclaw.nodeCompilerArgs.v1", publishedPolicy);
 });
 
 describe("explicit Node compiler policy", () => {
@@ -22,10 +20,10 @@ describe("explicit Node compiler policy", () => {
     ];
     const actual = resolveForwardedNodeCompilerArgs();
     expect(actual).toEqual(["--maglev", "--no_concurrent_sparkplug", "--no-maglev", "--no-opt"]);
+    const published = getEnvironmentData("openclaw.nodeCompilerArgs.v1");
     process.execArgv = ["--inspect"];
-    setEnvironmentData("openclaw.nodeCompilerArgs.v1", undefined);
     vi.resetModules();
     await import("./node-compiler-args.js");
-    expect(getEnvironmentData("openclaw.nodeCompilerArgs.v1")).toBeUndefined();
+    expect(getEnvironmentData("openclaw.nodeCompilerArgs.v1")).toEqual(published);
   });
 });

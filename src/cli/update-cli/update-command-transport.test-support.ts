@@ -20,9 +20,11 @@ import type {
 import { createCommandResult as commandResult } from "../../test-utils/npm-spec-install-test-helpers.js";
 
 export const compilerArgs = resolveForwardedNodeCompilerArgs();
-/** argv = runner, the parent's reviewed compiler flags, then `args` (undefined matches any). */
+/** argv = runner, the parent's reviewed compiler flags (none on Bun), then `args` (or undefined). */
 export const isCliCommand = (argv: readonly string[], ...args: (string | undefined)[]) =>
-  [...compilerArgs, ...args].every((arg, i) => arg === undefined || argv[i + 1] === arg);
+  [...(process.versions.bun ? [] : compilerArgs), ...args].every(
+    (arg, i) => arg === undefined || argv[i + 1] === arg,
+  );
 
 export function isLegacyUpdateDoctorCommand(argv: readonly string[]) {
   return (
