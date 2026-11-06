@@ -7,6 +7,7 @@ import { PassThrough, Readable } from "node:stream";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { createRequireRecord } from "openclaw/plugin-sdk/test-fixtures";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { resolveForwardedNodeCompilerArgs } from "../../bootstrap/node-compiler-args.js";
 import { runNativeHookRelayCliFromArgvForTest } from "../../cli/native-hook-relay-cli.test-support.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { replaceSessionEntry } from "../../config/sessions/session-accessor.js";
@@ -321,16 +322,19 @@ describe("native hook relay registry", () => {
         allowedEvents: ["pre_tool_use"],
       },
     );
+    const compilerFlags = resolveForwardedNodeCompilerArgs()
+      .map((flag) => `${flag} `)
+      .join("");
     expect(relay.commandForEvent("pre_tool_use")).toBe(
-      `${NATIVE_HOOK_RELAY_EXEC_PREFIX}/usr/local/bin/node '/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id ` +
+      `${NATIVE_HOOK_RELAY_EXEC_PREFIX}/usr/local/bin/node ${compilerFlags}'/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id ` +
         `${relay.relayId} ${nativeHookRelayStateDbArgForTests()} --generation ${relay.generation} --event pre_tool_use --timeout 1234`,
     );
     expect(relay.commandForEvent("pre_tool_use", { timeoutMs: 900 })).toBe(
-      `${NATIVE_HOOK_RELAY_EXEC_PREFIX}/usr/local/bin/node '/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id ` +
+      `${NATIVE_HOOK_RELAY_EXEC_PREFIX}/usr/local/bin/node ${compilerFlags}'/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id ` +
         `${relay.relayId} ${nativeHookRelayStateDbArgForTests()} --generation ${relay.generation} --event pre_tool_use --timeout 900`,
     );
     expect(relay.commandForEvent("pre_tool_use", { timeoutMs: 2_000 })).toBe(
-      `${NATIVE_HOOK_RELAY_EXEC_PREFIX}/usr/local/bin/node '/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id ` +
+      `${NATIVE_HOOK_RELAY_EXEC_PREFIX}/usr/local/bin/node ${compilerFlags}'/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id ` +
         `${relay.relayId} ${nativeHookRelayStateDbArgForTests()} --generation ${relay.generation} --event pre_tool_use --timeout 1234`,
     );
   });

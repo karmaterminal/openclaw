@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as noteModule from "../../packages/terminal-core/src/note.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import { resolveForwardedNodeCompilerArgs } from "../bootstrap/node-compiler-args.js";
 import { completionInstallError as wrappedFsError } from "../cli/completion-profile.test-support.js";
 import {
   COMPLETION_SKIP_PLUGIN_COMMANDS_ENV,
@@ -152,7 +153,9 @@ describe("doctorShellCompletion", () => {
         expect.arrayContaining(["completion", "--write-state", "--shell", "powershell"]),
       );
       const entryIndex = args.findIndex((arg) => arg.endsWith("openclaw.mjs"));
-      expect(args.slice(0, entryIndex)).toEqual(runtime === "bun" ? ["--no-install"] : []);
+      expect(args.slice(0, entryIndex)).toEqual(
+        runtime === "bun" ? ["--no-install"] : resolveForwardedNodeCompilerArgs(),
+      );
       const spawnOptions = spawnSyncMock.mock.lastCall?.[2];
       expect(spawnOptions?.env?.[COMPLETION_SKIP_PLUGIN_COMMANDS_ENV]).toBe(expectedSkipValue);
     },
