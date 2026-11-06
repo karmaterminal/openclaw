@@ -62,7 +62,7 @@ import {
   writeNpmPackageInstall,
   writeOpenClawPackageFixture,
 } from "./update-cli/update-cli-package.test-support.js";
-import { isCliCommand } from "./update-cli/update-command-transport.test-support.js";
+import { compilerArgs, isCliCommand } from "./update-cli/update-command-transport.test-support.js";
 
 await vi.hoisted(() => import("./update-cli-mocks.test-support.js"));
 
@@ -403,6 +403,7 @@ describe("update-cli", () => {
     const postCoreCall = spawnCall();
     expect(postCoreCall?.[0]).toBe(process.execPath);
     expect(postCoreCall?.[1]).toEqual([
+      ...compilerArgs,
       entryPath,
       "update",
       "--json",

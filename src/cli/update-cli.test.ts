@@ -1,6 +1,5 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { isDeepStrictEqual } from "node:util";
 import { CANCEL_SYMBOL } from "@clack/core";
 import { Command } from "commander";
 import { afterAll, aroundEach, describe, expect, it, vi } from "vitest";
@@ -438,7 +437,7 @@ describe("update-cli", () => {
         "exec fixture",
       );
       vi.mocked(cli.runExec).mockImplementation((file, args, options) => {
-        if (isDeepStrictEqual(args, [...check.compilerArgs, entry, "update", "--help"])) {
+        if (check.isCliCommand([file, ...args], entry, "update", "--help")) {
           return Promise.resolve({
             stdout: new Command("update").option("--accept-capabilities").helpInformation(),
             stderr: "",

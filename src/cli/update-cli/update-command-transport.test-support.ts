@@ -20,7 +20,7 @@ import type {
 import { createCommandResult as commandResult } from "../../test-utils/npm-spec-install-test-helpers.js";
 
 export const compilerArgs = resolveForwardedNodeCompilerArgs();
-/** argv = runner, the parent's reviewed compiler flags (none on Bun), then `args` (or undefined). */
+/** argv = runner, parent's reviewed compiler flags (none on Bun), then `args` (or undefined). */
 export const isCliCommand = (argv: readonly string[], ...args: (string | undefined)[]) =>
   [...(process.versions.bun ? [] : compilerArgs), ...args].every(
     (arg, i) => arg === undefined || argv[i + 1] === arg,
