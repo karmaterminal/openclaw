@@ -592,11 +592,7 @@ Failing check node-runtime (node-runtime-preflight); key engines.node: ${runtime
     );
     vi.mocked(runCommand).mockImplementation(async (argv, options) => {
       const result = await runFixtureCommand(argv, options);
-      if (
-        result.code === 0 &&
-        check.isCliCommand(argv, undefined, "gateway") &&
-        ["install", "restart"].includes(argv[check.compilerArgs.length + 3] ?? "")
-      ) {
+      if (result.code === 0 && check.isGatewayCommand(argv, "install", "restart")) {
         await activateGateway(argv);
         const activatedHealth = check.requireValue(
           mocks.callGateway.getMockImplementation(),

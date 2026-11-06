@@ -76,7 +76,7 @@ describe("update-cli", () => {
         mocks.serviceReadCommand.mockResolvedValue({
           programArguments: [
             requireValue(argv[0], "Node"),
-            requireValue(argv[1], "entrypoint"),
+            requireValue(argv[proof.compilerArgs.length + 1], "entrypoint"),
             "gateway",
           ],
         }),
@@ -123,10 +123,8 @@ describe("update-cli", () => {
     );
     expect(installed.version).toBe("2026.5.20");
     expect(previous.version).toBe("2026.5.18");
-    const serviceInstall = proof
-      .commandCalls()
-      .find(([argv]) => argv[2] === "gateway" && argv[3] === "install");
-    expect(serviceInstall?.[0].slice(0, 2)).toEqual([process.execPath, newInstall.entrypoint]);
+    const serviceInstall = proof.gatewayCommandCall(newInstall.entrypoint, "install");
+    expect(serviceInstall?.[0][0]).toBe(process.execPath);
     expect(mocks.serviceStop).toHaveBeenCalledOnce();
     expect(proof.getLogOutput()).toContain("Gateway: restarted and verified");
   });
@@ -222,7 +220,7 @@ describe("update-cli", () => {
         "runtime fixture command",
       );
       vi.mocked(modules.runCommandWithTimeout).mockImplementation(async (argv, options) => {
-        if (argv[2] === "gateway" && argv[3] === "install") {
+        if (proof.isGatewayCommand(argv, "install")) {
           if (refreshFails) {
             return commandResult({ code: 1, stderr: "runtime refresh failed" });
           }

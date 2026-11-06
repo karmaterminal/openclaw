@@ -20,6 +20,7 @@ import {
   type CandidateAdmissionFixture,
 } from "./update-command-candidate-admission-fixture.test-support.js";
 import * as runtimeRecovery from "./update-command-runtime-recovery.test-support.js";
+import { compilerArgs } from "./update-command-transport.test-support.js";
 
 export function registerCandidateAdmissionTests(f: CandidateAdmissionFixture) {
   const {
@@ -266,7 +267,7 @@ export function registerCandidateAdmissionTests(f: CandidateAdmissionFixture) {
 
       const lifecycleCommands = commandTransport.run.mock.calls.filter(([argv]) =>
         /(?:preinstall-package-manager-warning|postinstall-bundled-plugins)\.mjs$/.test(
-          argv[1] ?? "",
+          argv[compilerArgs.length + 1] ?? "",
         ),
       );
       expect(lifecycleCommands).toHaveLength(2);

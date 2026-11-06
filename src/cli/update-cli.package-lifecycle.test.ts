@@ -62,7 +62,7 @@ import {
   writeNpmPackageInstall,
   writeOpenClawPackageFixture,
 } from "./update-cli/update-cli-package.test-support.js";
-import { compilerArgs, isCliCommand } from "./update-cli/update-command-transport.test-support.js";
+import { cliArgs, isCliCommand } from "./update-cli/update-command-transport.test-support.js";
 
 await vi.hoisted(() => import("./update-cli-mocks.test-support.js"));
 
@@ -402,16 +402,9 @@ describe("update-cli", () => {
     ).toBe("1");
     const postCoreCall = spawnCall();
     expect(postCoreCall?.[0]).toBe(process.execPath);
-    expect(postCoreCall?.[1]).toEqual([
-      ...compilerArgs,
-      entryPath,
-      "update",
-      "--json",
-      "--no-restart",
-      "--yes",
-      "--timeout",
-      "1800",
-    ]);
+    expect(postCoreCall?.[1]).toEqual(
+      cliArgs(entryPath, "update", "--json", "--no-restart", "--yes", "--timeout", "1800"),
+    );
     expect(postCoreCall?.[2]?.env?.OPENCLAW_UPDATE_POST_CORE).toBe("1");
     expect(updateNpmInstalledPlugins).not.toHaveBeenCalled();
     expect(defaultRuntime.exit).not.toHaveBeenCalledWith(1);
@@ -553,8 +546,8 @@ describe("update-cli", () => {
     expect(updateNpmInstalledPlugins).not.toHaveBeenCalled();
     expect(
       commandCalls()
-        .filter(([argv]) => argv[0] === process.execPath && argv.at(-1)?.includes("/scripts/"))
-        .map(([argv]) => path.basename(requireValue(argv.at(-1), "lifecycle script"))),
+        .filter(([argv]) => argv[0] === process.execPath)
+        .flatMap(([argv]) => argv.slice(1).filter((arg) => arg.includes("/scripts/"))),
     ).toEqual([]);
     await expect(fs.readFile(path.join(pkgRoot, "package.json"), "utf-8")).resolves.toContain(
       '"version":"2026.7.1"',

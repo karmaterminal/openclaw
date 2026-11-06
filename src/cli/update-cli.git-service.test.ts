@@ -223,7 +223,7 @@ it.each(["stopped", "throws", "refused"] as const)(
         "default command fixture",
       );
       vi.mocked(cli.runCommandWithTimeout).mockImplementation(async (argv, options) => {
-        if (argv[2] === "gateway" && argv[3] === "restart") {
+        if (checks.isGatewayCommand(argv, "restart")) {
           if (failure === "throws") {
             throw new Error("restart unavailable");
           }
@@ -291,7 +291,7 @@ it.each(["owned", "foreign"])(
     f.mockNpmGlobalCommands(
       nodeModules,
       async (argv, options) => {
-        if (argv[2] === "doctor") {
+        if (checks.isCliCommand(argv, undefined, "doctor")) {
           doctorEnv = typeof options === "number" ? undefined : options.env;
           backupAtDoctorEntry = await fs
             .readFile(`${selected.config}.pre-update`, "utf8")
@@ -545,8 +545,8 @@ it("never starts the candidate after plugin post-update invalidates config", asy
   });
   f.mockRunningManagedGateway(gatewayArgs(serviceEntrypoint));
   cli.mockGitUpdateAfterMutation();
-  vi.mocked(cli.runExec).mockImplementation(async (_file, args) => {
-    if (args[1] === "config" && args[2] === "validate") {
+  vi.mocked(cli.runExec).mockImplementation(async (file, args) => {
+    if (checks.isCliCommand([file, ...args], undefined, "config", "validate")) {
       throw createConfigValidationFailure(
         invalidPostUpdateSnapshot.issues,
         "target plugin config invalid",
@@ -563,7 +563,7 @@ it("never starts the candidate after plugin post-update invalidates config", asy
   expect(cli.defaultRuntime.exit).not.toHaveBeenCalled();
   expect(cli.runExec).toHaveBeenCalledExactlyOnceWith(
     expect.any(String),
-    [serviceEntrypoint, "config", "validate", "--json"],
+    checks.cliArgs(serviceEntrypoint, "config", "validate", "--json"),
     expect.objectContaining({ env: { OPENCLAW_UPDATE_IN_PROGRESS: "0" } }),
   );
   expect(checks.getLogOutput()).toContain("OpenClaw update failed: post-update-plugins.");

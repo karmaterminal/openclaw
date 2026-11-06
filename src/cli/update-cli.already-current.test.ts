@@ -412,7 +412,7 @@ describe("update-cli", () => {
       expect(modules.defaultRuntime.exit).not.toHaveBeenCalled();
       proof.expectPackageInstallSpec("openclaw@latest");
       expect(
-        vi.mocked(modules.runExec).mock.calls.filter(([, args]) => args[1] === "doctor"),
+        vi.mocked(modules.runExec).mock.calls.filter(([, args]) => args.includes("doctor")),
       ).toEqual([]);
       return;
     }

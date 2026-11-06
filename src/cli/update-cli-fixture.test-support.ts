@@ -385,16 +385,16 @@ export function createUpdateCliFixture() {
       );
       vi.mocked(update.runCommandWithTimeout).mockImplementation(async (argv, options) => {
         const result = await runFixtureCommand(argv, options);
-        if (argv[2] === "gateway" && argv[3] === "install" && result.code === 0) {
-          expect(argv[1]).toBe(updatedEntrypoint);
+        if (assert.isCliCommand(argv, undefined, "gateway", "install") && result.code === 0) {
+          expect(argv[assert.compilerArgs.length + 1]).toBe(updatedEntrypoint);
           const env = assert.requireValue(
             typeof options === "number" ? undefined : options.env,
             "gateway install environment",
           );
           primeServiceCommand([argv[0], updatedEntrypoint, "gateway", "run"], env);
         }
-        if (argv[2] === "gateway" && argv[3] === "restart" && result.code === 0) {
-          expect(argv[1]).toBe(updatedEntrypoint);
+        if (assert.isCliCommand(argv, undefined, "gateway", "restart") && result.code === 0) {
+          expect(argv[assert.compilerArgs.length + 1]).toBe(updatedEntrypoint);
           mocks.serviceReadRuntime.mockResolvedValue(running);
           mockGatewayHealth(VERSION, "updated-work");
         }

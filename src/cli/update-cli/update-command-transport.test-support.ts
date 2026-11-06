@@ -26,6 +26,10 @@ export const isCliCommand = (argv: readonly string[], ...args: (string | undefin
     (arg, i) => arg === undefined || argv[i + 1] === arg,
   );
 
+export const cliArgs = (...args: (string | undefined)[]) => [...compilerArgs, ...args];
+export const isGatewayCommand = (argv: readonly string[], ...actions: string[]) =>
+  actions.some((action) => isCliCommand(argv, undefined, "gateway", action));
+
 export function isLegacyUpdateDoctorCommand(argv: readonly string[]) {
   return (
     isCliCommand(argv, undefined, "doctor", "--non-interactive") &&
@@ -71,16 +75,14 @@ export function createUpdateExecTransportFixture(params: {
 }): typeof runExec {
   return async (...args: Parameters<typeof runExec>) => {
     const [command, argv, options] = args;
-    if (
-      path.basename(argv[0] ?? "") === "daemon-runtime-probe.mjs" &&
-      (argv[1] === "node" || argv[1] === "bun")
-    ) {
+    const executable = path.win32.basename(command).toLowerCase();
+    const isBun = executable === "bun" || executable === "bun.exe";
+    const [probe, runtime] = argv.slice(isBun ? 0 : compilerArgs.length);
+    if (probe?.endsWith("daemon-runtime-probe.mjs") && ["node", "bun"].includes(runtime ?? "")) {
       const result = await params.run(...args);
       if (result.stdout.trim() || result.stderr.trim()) {
         return result;
       }
-      const executable = path.win32.basename(command).toLowerCase();
-      const isBun = executable === "bun" || executable === "bun.exe";
       return {
         stdout: JSON.stringify({
           nodeVersion: process.versions.node,

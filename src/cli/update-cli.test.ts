@@ -460,15 +460,14 @@ describe("update-cli", () => {
         .map(([, args]) => args)
         .filter((args) => args.includes(entry));
       expect(updateInvocations).toEqual([
-        [
-          ...check.compilerArgs,
+        check.cliArgs(
           entry,
           "update",
           "--no-restart",
           "--accept-capabilities",
           "--timeout",
           "1800",
-        ],
+        ),
       ]);
       check.expectNoSideEffects(mocks.syncPluginsForUpdateChannel, mocks.updateNpmInstalledPlugins);
       expect(runtime.exit).not.toHaveBeenCalledWith(1);

@@ -15,6 +15,8 @@ import {
   freshRestartCalls,
   getErrorOutput,
   getLogOutput,
+  isCliCommand,
+  isGatewayCommand,
   lastWriteJsonCall,
   packageInstallCommandCall,
   requireValue,
@@ -478,7 +480,7 @@ describe("update-cli", () => {
       vi.mocked(runCommandWithTimeout).mockImplementation(async (argv, options) => {
         const action = scheduledTaskAction(argv);
         if (action === undefined) {
-          if (argv[2] === "gateway" && ["install", "start", "restart"].includes(argv[3] ?? "")) {
+          if (isGatewayCommand(argv, "install", "start", "restart")) {
             activateTask();
           }
           return configuredRunCommand(argv, options);
@@ -550,7 +552,7 @@ describe("update-cli", () => {
       "staged package commands",
     );
     vi.mocked(runCommandWithTimeout).mockImplementation(async (argv, options) => {
-      if (argv[2] === "doctor") {
+      if (isCliCommand(argv, undefined, "doctor")) {
         await fs.unlink(path.join(root, "dist", "index.js"));
         const listeners = process
           .listeners("SIGINT")

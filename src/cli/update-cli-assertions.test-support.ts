@@ -6,7 +6,7 @@ import * as mocks from "./update-cli-mocks.test-support.js";
 import * as update from "./update-cli-modules.test-support.js";
 import { createUpdateFixtureAssertions } from "./update-cli-shared-fixture.test-support.js";
 import * as transport from "./update-cli/update-command-transport.test-support.js";
-export const { compilerArgs, isCliCommand } = transport;
+export const { cliArgs, compilerArgs, isCliCommand, isGatewayCommand } = transport;
 
 await vi.hoisted(() => import("./update-cli-mocks.test-support.js"));
 
