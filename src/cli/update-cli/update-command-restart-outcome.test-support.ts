@@ -30,7 +30,7 @@ import {
   maybeRestartServiceAfterFailedMutableUpdate,
   maybeStopManagedServiceBeforeMutableUpdate,
 } from "./update-command-service.js";
-import { compilerArgs } from "./update-command-transport.test-support.js";
+import { compilerArgs, isGatewayCommand } from "./update-command-transport.test-support.js";
 
 function revocableAuthority() {
   let current = true;
@@ -115,7 +115,7 @@ export function registerRestartOutcomeTests(
         }
       });
       mocks.child.mockImplementation(async (argv) => {
-        if (argv.includes("restart")) {
+        if (isGatewayCommand(argv, "restart")) {
           const program = new Command().exitOverride();
           addGatewayServiceCommands(program.command("gateway"));
           await program.parseAsync(argv.slice(compilerArgs.length + 2), { from: "user" });

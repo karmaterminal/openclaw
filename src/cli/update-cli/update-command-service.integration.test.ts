@@ -48,7 +48,7 @@ import {
   maybeRestartService,
   maybeStopManagedServiceBeforeMutableUpdate,
 } from "./update-command-service.js";
-import { compilerArgs } from "./update-command-transport.test-support.js";
+import { compilerArgs, isGatewayCommand } from "./update-command-transport.test-support.js";
 
 const mocks = vi.hoisted(() => ({
   launchctl: vi.fn<typeof import("../../daemon/launchd-exec.js").execLaunchctl>(),
@@ -377,7 +377,7 @@ describe("preserved update activation with real version guards", () => {
       const before = await stopForUpdate(mode === "git" ? "git" : "package");
       const repair = vi.spyOn(startRepair, "repairLoadedGatewayServiceForStart");
       mocks.child.mockImplementation(async (args) => {
-        if (args.includes("install")) {
+        if (isGatewayCommand(args, "install")) {
           mocks.capability.mockResolvedValue({
             kind: denial,
             reason: denial === "sealed" ? "foreign-owner" : "inspection-failed",
