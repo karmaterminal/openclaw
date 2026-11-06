@@ -492,6 +492,34 @@ describe("continuation delegate dispatch under the elector's bounded grant", () 
     expect(await interruptedNotices()).toEqual([]);
   });
 
+  it("charges nothing for a retry, so the hedge leaves the chain state alone", async () => {
+    const gateway = gatewayInstance(runtimeConfig());
+    const operator = await operatorConnection(gateway, ["operator.write"]);
+    grantRestore.unavailable = new GatewayDispatchUnavailableError("operator recovery", true);
+    const recordId = await operator.elect(0.05);
+    const persistChainState = vi.fn(async () => {});
+
+    await vi.waitFor(
+      async () => {
+        const [record] = await listContinuationRecords({ recordIds: [recordId] });
+        expect(record?.status).toBe("queued");
+        expect(record?.spawnAttempts.length).toBeGreaterThan(0);
+      },
+      { timeout: 10_000, interval: 20 },
+    );
+    const result = await dispatchToolDelegates({
+      sessionKey: OWNER,
+      chainState: { currentChainCount: 0, chainStartedAt: Date.now(), accumulatedChainTokens: 0 },
+      ctx: { sessionKey: OWNER, resolveGatewayContext: () => gateway.context },
+      maxChainLength: 10,
+      persistChainState,
+    });
+
+    expect(result).toMatchObject({ dispatched: 0, rejected: 0 });
+    expect(persistChainState).not.toHaveBeenCalled();
+    expect(gateway.launches).toEqual([]);
+  });
+
   it("refuses at once when the Gateway says the restore can never succeed", async () => {
     const gateway = gatewayInstance(runtimeConfig());
     const operator = await operatorConnection(gateway, ["operator.write"]);

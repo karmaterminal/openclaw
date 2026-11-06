@@ -334,6 +334,24 @@ describe("announce tool-delegate accepted spawn commits the custody record (C2)"
     },
   );
 
+  it("retries a grant restore from the hop the turn already spent", async () => {
+    vi.mocked(requeuePendingDelegate).mockReset().mockResolvedValue(true);
+    mockedConsumePendingDelegates.mockResolvedValueOnce([
+      { task: "first", flowId: "flow-tool-c2-spent", expectedRevision: 1 },
+      { task: "second", flowId: "flow-tool-c2-retry", expectedRevision: 1 },
+    ]);
+    failSharedDelegateDispatchOnce();
+    runUnderGrantMock
+      .mockImplementationOnce(async (_params: unknown, run: () => Promise<unknown>) => await run())
+      .mockRejectedValueOnce(new GatewayDispatchUnavailableError("operator recovery", true));
+
+    await runSubagentAnnounceFlow(buildToolDelegateParams());
+
+    await vi.waitFor(() => expect(dispatchToolDelegatesMock).toHaveBeenCalledTimes(2));
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    expect(dispatchToolDelegatesMock.mock.calls[1]?.[0].chainState.currentChainCount).toBe(2);
+  });
+
   it("rolls back an accepted child and preserves the hop when source acceptance is stale", async () => {
     const rollbackAccepted = vi.fn(async () => undefined);
     mockedConsumePendingDelegates.mockResolvedValueOnce([
