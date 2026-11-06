@@ -144,11 +144,12 @@ async function exercisePersistence(state: OpenClawTestState, scenario: (typeof s
   });
   transport.command.mockReset().mockRejectedValue(new Error("Unexpected package/native command"));
   transport.exec.mockReset().mockImplementation(async (file: string, args: string[]) => {
+    const doctor = args.at(-1) === "--doctor";
     const [command, subcommand] = args.slice(compilerArgs.length + 1);
-    if (!isCliCommand([file, ...args], state.path("dist", "entry.js"))) {
+    if (!isCliCommand([file, ...args], doctor ? undefined : state.path("dist", "entry.js"))) {
       throw new Error("Unexpected external entrypoint");
     }
-    if (command === "doctor" || (command === "config" && subcommand === "validate")) {
+    if (doctor || command === "doctor" || (command === "config" && subcommand === "validate")) {
       return { stdout: JSON.stringify({ ok: true, checksRun: 1, findings: [] }), stderr: "" };
     }
     throw new Error("Unexpected external command");
