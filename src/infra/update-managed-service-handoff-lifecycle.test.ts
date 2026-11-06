@@ -13,6 +13,7 @@ import { expectDefined } from "@openclaw/normalization-core";
 import { escape as escapeGlob } from "minimatch";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import { resolveForwardedNodeCompilerArgs } from "../bootstrap/node-compiler-args.js";
 import { resolveTestNodeExecPath } from "../test-utils/node-process.js";
 import { installDatabaseEngineSelection } from "./database-engine/context.js";
 import { resetDatabaseEngineSelectionForTest } from "./database-engine/context.test-support.js";
@@ -792,7 +793,8 @@ describe("managed service update handoff", () => {
           if (process.platform !== "win32") {
             expect((await fs.stat(environmentPath)).mode & 0o777).toBe(0o600);
           }
-          expect(args.at(-3)).toBe(nodeExec);
+          const flags = resolveForwardedNodeCompilerArgs();
+          expect(args.slice(-3 - flags.length, -2)).toEqual([nodeExec, ...flags]);
           expect(helperParams.serviceRecovery).toEqual({
             kind: "systemd",
             unit: "openclaw-gateway.service",

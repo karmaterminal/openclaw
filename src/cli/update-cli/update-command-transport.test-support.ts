@@ -3,6 +3,7 @@ import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { expect, vi } from "vitest";
+import { resolveForwardedNodeCompilerArgs } from "../../bootstrap/node-compiler-args.js";
 import { decodeLaunchAgentPlistFixture } from "../../daemon/launchd-plist.test-support.js";
 import type { GatewayServiceCommandConfig } from "../../daemon/service-types.js";
 import { runtimeProcessEntrypoints } from "../../infra/runtime-process-entrypoints.js";
@@ -18,11 +19,15 @@ import type {
 } from "../../process/exec.js";
 import { createCommandResult as commandResult } from "../../test-utils/npm-spec-install-test-helpers.js";
 
+export const compilerArgs = resolveForwardedNodeCompilerArgs();
+/** argv = runner, the parent's reviewed compiler flags, then `args` (undefined matches any). */
+export const isCliCommand = (argv: readonly string[], ...args: (string | undefined)[]) =>
+  [...compilerArgs, ...args].every((arg, i) => arg === undefined || argv[i + 1] === arg);
+
 export function isLegacyUpdateDoctorCommand(argv: readonly string[]) {
   return (
-    argv[2] === "doctor" &&
-    argv[3] === "--non-interactive" &&
-    (argv.length === 4 || argv[4] === "--fix")
+    isCliCommand(argv, undefined, "doctor", "--non-interactive") &&
+    (argv.length === compilerArgs.length + 4 || argv[compilerArgs.length + 4] === "--fix")
   );
 }
 
@@ -216,7 +221,7 @@ export async function createUpdateUtf8CommandTransportFixture(
     await vi.importActual<typeof import("node:child_process")>("node:child_process");
   const runDoctorFixture = await createUpdateCommandTransportFixture(transport);
   return async (argv, options) => {
-    if (argv[2] === "doctor" && argv[3] === "--repair") {
+    if (isCliCommand(argv, undefined, "doctor", "--repair")) {
       try {
         const result = await transport.exec(
           expectDefined(argv[0], "Doctor executable"),

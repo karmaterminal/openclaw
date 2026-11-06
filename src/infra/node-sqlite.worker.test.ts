@@ -1,11 +1,13 @@
 import { expect, it } from "vitest";
 import { runNodeScript } from "../../test/helpers/run-node-script.js";
+import { resolveForwardedNodeCompilerArgs } from "../bootstrap/node-compiler-args.js";
 import { resolveRuntimeWorkerUrl } from "./runtime-worker-url.js";
 import { storageProcessTestEntrypoints } from "./storage-process-runtime.test-support.js";
 
 it("admits the loaded SQLite library once before sibling workers open databases", async ({
   signal,
 }) => {
+  const flags = resolveForwardedNodeCompilerArgs();
   const sqliteUrl = resolveRuntimeWorkerUrl(storageProcessTestEntrypoints.nodeSqlite);
   const runtimeUrl = resolveRuntimeWorkerUrl(storageProcessTestEntrypoints.sqliteRuntimeInitialize);
   const workerSource = `
@@ -42,7 +44,7 @@ it("admits the loaded SQLite library once before sibling workers open databases"
         const { initializeSqliteRuntime } = await import(${JSON.stringify(runtimeUrl.href)});
         await initializeSqliteRuntime();
         const workers = [0, 1].map(() => new Worker(${JSON.stringify(workerSource)}, {
-          eval: true, execArgv: ${JSON.stringify(workerArgv(sqliteUrl).slice(0, -1))},
+          eval: true, execArgv: ${JSON.stringify(workerArgv(sqliteUrl).slice(flags.length, -1))},
         }));
         const rows = await Promise.all(workers.map(async (worker) => {
           const exited = once(worker, "exit");
@@ -50,7 +52,7 @@ it("admits the loaded SQLite library once before sibling workers open databases"
           await exited;
           return row;
         }));
-        console.log(JSON.stringify({ probes, rows }));
+        console.log(JSON.stringify({ probes, rows, flags: process.execArgv.slice(0, ${flags.length}) }));
       `,
     ],
     { ...process.env, NODE_OPTIONS: "" },
@@ -60,6 +62,7 @@ it("admits the loaded SQLite library once before sibling workers open databases"
   expect(result.error, result.stderr).toBeUndefined();
   expect(result.status, result.stderr).toBe(0);
   expect(JSON.parse(result.stdout)).toEqual({
+    flags,
     probes: 1,
     rows: [
       { probes: 0, value: 42 },

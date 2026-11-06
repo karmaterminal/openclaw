@@ -11,6 +11,7 @@ import {
 } from "../../test/helpers/fixture-receipts.js";
 import { waitForFile } from "../../test/helpers/process-wait.js";
 import { withinTest } from "../../test/helpers/promise.js";
+import { resolveForwardedNodeCompilerArgs } from "../bootstrap/node-compiler-args.js";
 import { resolveTestNodeExecPath } from "../test-utils/node-process.js";
 import { writeRestartSentinel } from "./restart-sentinel.js";
 import { writeTriageUpdateFailure } from "./update-failure-report-artifact.js";
@@ -290,6 +291,7 @@ export function createManagedServiceManagerBoundary({
       if (selectedDriverPath) {
         expect(generated.commandArgv).toEqual([
           resolveTestNodeExecPath(),
+          ...resolveForwardedNodeCompilerArgs(),
           selectedDriverPath,
           "update",
           "--yes",

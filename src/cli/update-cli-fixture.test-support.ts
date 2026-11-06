@@ -258,10 +258,11 @@ export function createUpdateCliFixture() {
       const calls = vi
         .mocked(update.runExec)
         .mock.calls.filter(
-          ([, args]) => args[0] === FRESH_POST_UPDATE_ENTRYPOINT && args[1] === "doctor",
+          ([, args]) => args[args.indexOf(FRESH_POST_UPDATE_ENTRYPOINT) + 1] === "doctor",
         );
       expect(calls).toHaveLength(1);
       expect(calls[0]?.[1]).toEqual([
+        ...assert.compilerArgs,
         FRESH_POST_UPDATE_ENTRYPOINT,
         "doctor",
         "--repair",

@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, expect, it, vi } from "vitest";
+import { resolveForwardedNodeCompilerArgs } from "../../bootstrap/node-compiler-args.js";
 import { standaloneManifestFixture } from "../../daemon/standalone-manifest.test-support.js";
 import { withTempDir } from "../../test-utils/temp-dir.js";
 
@@ -53,7 +54,8 @@ it.each([
       vi.stubEnv("OPENCLAW_CLI_PATH", target);
     }
     const nodeExecutable = standalone && entry ? "/explicit/node" : process.execPath;
-    const argv = manifest ? [executable!] : [nodeExecutable, ...(executable ? [executable] : [])];
+    const flagged = executable ? [...resolveForwardedNodeCompilerArgs(), executable] : [];
+    const argv = manifest ? [executable!] : [nodeExecutable, ...flagged];
     const command = shellQuoteArgs([...argv, ...flags.split(" ")]);
     expect(
       buildNativeHookRelayCommand({

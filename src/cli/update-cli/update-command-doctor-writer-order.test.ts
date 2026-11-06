@@ -24,6 +24,7 @@ import {
   managedServiceState,
   successfulPluginUpdate,
 } from "./update-command-post-update.test-support.js";
+import { compilerArgs, isCliCommand } from "./update-command-transport.test-support.js";
 
 const mocks = vi.hoisted(() => ({
   child: vi.fn<typeof import("../../process/exec.js").runExec>(),
@@ -84,14 +85,14 @@ vi.mock("../../process/exec.js", async (original) => {
   return {
     ...actual,
     runExec: vi.fn<typeof actual.runExec>((_command, args) => {
-      expect(args.slice(1)).toEqual(["config", "validate", "--json"]);
+      expect(args).toEqual([...compilerArgs, expect.any(String), "config", "validate", "--json"]);
       return Promise.resolve({ stdout: "", stderr: "" });
     }),
     runUtf8CommandWithTimeout: async (
       ...args: Parameters<typeof actual.runUtf8CommandWithTimeout>
     ) => {
       const [command, ...argv] = args[0];
-      if (command && argv[1] === "doctor" && argv.includes("--repair")) {
+      if (command && isCliCommand(args[0], undefined, "doctor") && argv.includes("--repair")) {
         return {
           ...(await mocks.child(command, argv, args[1]).catch((error: unknown) => {
             // The in-process writer fixture never launches a native child.

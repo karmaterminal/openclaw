@@ -62,6 +62,7 @@ import {
   writeNpmPackageInstall,
   writeOpenClawPackageFixture,
 } from "./update-cli/update-cli-package.test-support.js";
+import { isCliCommand } from "./update-cli/update-command-transport.test-support.js";
 
 await vi.hoisted(() => import("./update-cli-mocks.test-support.js"));
 
@@ -207,7 +208,7 @@ describe("update-cli", () => {
           ),
         );
       }
-      if (argv[1] !== entryPath || argv[2] !== "doctor") {
+      if (!isCliCommand(argv, entryPath, "doctor")) {
         return undefined;
       }
       doctorStarted = true;
@@ -316,7 +317,7 @@ describe("update-cli", () => {
       keys: ["meta", "plugins", "wizard"],
     };
     mockNpmGlobalCommands(nodeModules, async (argv, options) => {
-      if (argv[1] === entryPath && argv[2] === "doctor") {
+      if (isCliCommand(argv, entryPath, "doctor")) {
         const env = typeof options === "number" ? undefined : options.env;
         const resultPath = requireValue(
           env?.[UPDATE_POST_INSTALL_DOCTOR_RESULT_PATH_ENV],
@@ -360,7 +361,7 @@ describe("update-cli", () => {
     primeNpmChannelTag("latest", VERSION);
     mockFileBackedPathExists();
     mockNpmGlobalCommands(nodeModules, async (argv, options) => {
-      if (argv[1] === entryPath && argv[2] === "doctor") {
+      if (isCliCommand(argv, entryPath, "doctor")) {
         const env = options && typeof options !== "number" ? options.env : undefined;
         const resultPath = env?.[UPDATE_POST_INSTALL_DOCTOR_RESULT_PATH_ENV];
         if (!resultPath) {
@@ -386,7 +387,7 @@ describe("update-cli", () => {
     });
 
     const doctorCall = doctorCommandCall();
-    expect(doctorCall?.[0].slice(1)).toEqual([entryPath, "doctor", "--non-interactive", "--fix"]);
+    expect(doctorCall?.[0].slice(-4)).toEqual([entryPath, "doctor", "--non-interactive", "--fix"]);
     expect(
       (doctorCall?.[1].env as NodeJS.ProcessEnv | undefined)
         ?.OPENCLAW_UPDATE_PARENT_ALLOWS_GATEWAY_ACTIVATION,
@@ -551,8 +552,8 @@ describe("update-cli", () => {
     expect(updateNpmInstalledPlugins).not.toHaveBeenCalled();
     expect(
       commandCalls()
-        .filter(([argv]) => argv[0] === process.execPath && argv[1]?.includes("/scripts/"))
-        .map(([argv]) => path.basename(requireValue(argv[1], "lifecycle script"))),
+        .filter(([argv]) => argv[0] === process.execPath && argv.at(-1)?.includes("/scripts/"))
+        .map(([argv]) => path.basename(requireValue(argv.at(-1), "lifecycle script"))),
     ).toEqual([]);
     await expect(fs.readFile(path.join(pkgRoot, "package.json"), "utf-8")).resolves.toContain(
       '"version":"2026.7.1"',
@@ -600,7 +601,7 @@ describe("update-cli", () => {
 
     const doctorCall = doctorCommandCall();
     expect(doctorCall?.[0][0]).toBe(nodeExecutable);
-    expect(doctorCall?.[0].slice(1)).toEqual([entryPath, "doctor", "--non-interactive"]);
+    expect(doctorCall?.[0].slice(-3)).toEqual([entryPath, "doctor", "--non-interactive"]);
     expect(
       (doctorCall?.[1].env as NodeJS.ProcessEnv | undefined)?.OPENCLAW_UPDATE_IN_PROGRESS,
     ).toBe("1");

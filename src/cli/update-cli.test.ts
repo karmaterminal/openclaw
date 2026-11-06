@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { CANCEL_SYMBOL } from "@clack/core";
 import { Command } from "commander";
 import { afterAll, aroundEach, describe, expect, it, vi } from "vitest";
@@ -398,6 +399,7 @@ describe("update-cli", () => {
   it("update wizard forwards explicit consent before the subcommand", async () => {
     const root = await fs.realpath(tempDirs.make("openclaw-update-wizard-"));
     const tempDir = path.join(root, "openclaw");
+    const entry = path.join(tempDir, "dist", "entry.js");
     const nodeModules = path.join(root, "prefix", "lib", "node_modules");
     const packageRoot = path.join(nodeModules, "openclaw");
     const sha = "a".repeat(40);
@@ -436,12 +438,7 @@ describe("update-cli", () => {
         "exec fixture",
       );
       vi.mocked(cli.runExec).mockImplementation((file, args, options) => {
-        if (
-          args.length === 3 &&
-          args[0] === path.join(tempDir, "dist", "entry.js") &&
-          args[1] === "update" &&
-          args[2] === "--help"
-        ) {
+        if (isDeepStrictEqual(args, [...check.compilerArgs, entry, "update", "--help"])) {
           return Promise.resolve({
             stdout: new Command("update").option("--accept-capabilities").helpInformation(),
             stderr: "",
@@ -462,10 +459,11 @@ describe("update-cli", () => {
       // Directory-observation helpers can also spawn while the update runs.
       const updateInvocations = mocks.spawn.mock.calls
         .map(([, args]) => args)
-        .filter((args) => args[1] === "update");
+        .filter((args) => args.includes(entry));
       expect(updateInvocations).toEqual([
         [
-          path.join(tempDir, "dist", "entry.js"),
+          ...check.compilerArgs,
+          entry,
           "update",
           "--no-restart",
           "--accept-capabilities",
@@ -615,7 +613,7 @@ describe("update-cli", () => {
 
     expect(check.gatewayCommandCall(updatedEntrypoint, "install")).toBeDefined();
     const restartCall = check.gatewayCommandCall(updatedEntrypoint, "restart");
-    expect(restartCall?.[0].slice(4)).toEqual([
+    expect(restartCall?.[0].slice(check.compilerArgs.length + 4)).toEqual([
       "--preserve-definition",
       "--json",
       "--update-executor",

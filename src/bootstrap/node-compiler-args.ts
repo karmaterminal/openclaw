@@ -26,7 +26,9 @@ export function withoutNodeCompilerArgs(options?: WorkerOptions): WorkerOptions 
     : options;
 }
 
-// Every Worker copies this at construction; Worker launch owners import this module first.
-if (isMainThread) {
-  setEnvironmentData(COMPILER_ARGS_KEY, resolveForwardedNodeCompilerArgs());
+// Every Worker copies a reviewed policy at construction; Worker launch owners import this module
+// first. A parent without one publishes nothing, so Workers fall back to the same empty policy.
+const policy = isMainThread ? resolveForwardedNodeCompilerArgs() : [];
+if (policy.length > 0) {
+  setEnvironmentData(COMPILER_ARGS_KEY, policy);
 }
