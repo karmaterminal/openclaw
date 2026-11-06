@@ -2,12 +2,13 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import {
   clearEmbeddedSessionPromptStates,
   retainEmbeddedSessionPromptState,
 } from "../../agents/embedded-agent-runner/session-prompt-state.js";
 import type { OpenClawConfig } from "../../config/config.js";
+import { captureRuntimeConfigAsyncReader } from "../../config/io.runtime.js";
 import { testing as sessionBindingTesting } from "../../infra/outbound/session-binding-service.js";
 import { withSystemEventOwner } from "../../infra/system-event-ownership.js";
 import {
@@ -69,6 +70,11 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await fs.rm(suiteRoot, { recursive: true, force: true });
+});
+
+beforeEach(async () => {
+  // Re-arming kept elections reads the published runtime config.
+  await captureRuntimeConfigAsyncReader()();
 });
 
 afterEach(async () => {

@@ -1,12 +1,14 @@
 // Continuation (karmaterminal): a jump-9 shared store is upstream's schema 35 plus the first-use
-// continuation_records custody table. Upstream's schema-36 Template cutover runs at startup and
-// must carry that table and its rows unchanged; reopening the migrated store changes nothing.
+// continuation_records custody table. Upstream's schema-36 Template cutover runs at startup, and
+// it and the state steps above it must carry that table and its rows unchanged; reopening the
+// migrated store changes nothing.
 import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, expect, it } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import type { EngineConnection } from "../infra/sql-connection.js";
+import { OPENCLAW_STATE_SCHEMA_VERSION } from "./openclaw-schema-versions.js";
 import { closeOpenClawStateDatabaseAsync, openOpenClawStateDatabase } from "./openclaw-state-db.js";
 import { resolveOpenClawStateSqlitePath } from "./openclaw-state-db.paths.js";
 import { getOpenClawStateFeatureSchemaSql } from "./openclaw-state-feature-schema.js";
@@ -71,12 +73,16 @@ it("carries the continuation custody table through the schema-36 Template cutove
   );
 
   const opened = openOpenClawStateDatabase({ path: pathname, env });
-  expect(opened.db.prepare("PRAGMA user_version").get()?.user_version).toBe(36);
+  expect(opened.db.prepare("PRAGMA user_version").get()?.user_version).toBe(
+    OPENCLAW_STATE_SCHEMA_VERSION,
+  );
   expect(custody(opened.db)).toEqual(before);
   expect(opened.db.prepare("PRAGMA integrity_check").all()).toEqual([{ integrity_check: "ok" }]);
   await closeOpenClawStateDatabaseAsync();
 
   const reopened = openOpenClawStateDatabase({ path: pathname, env });
-  expect(reopened.db.prepare("PRAGMA user_version").get()?.user_version).toBe(36);
+  expect(reopened.db.prepare("PRAGMA user_version").get()?.user_version).toBe(
+    OPENCLAW_STATE_SCHEMA_VERSION,
+  );
   expect(custody(reopened.db)).toEqual(before);
 });
