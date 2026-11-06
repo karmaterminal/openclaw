@@ -7,7 +7,6 @@ import { PassThrough, Readable } from "node:stream";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { createRequireRecord } from "openclaw/plugin-sdk/test-fixtures";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import { resolveForwardedNodeCompilerArgs } from "../../bootstrap/node-compiler-args.js";
 import { runNativeHookRelayCliFromArgvForTest } from "../../cli/native-hook-relay-cli.test-support.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { replaceSessionEntry } from "../../config/sessions/session-accessor.js";
@@ -45,6 +44,7 @@ import {
   resolveNativeHookRelayDeferredToolApproval,
 } from "./native-hook-relay.js";
 import {
+  NATIVE_HOOK_RELAY_NODE_PREFIX,
   clearNativeHookRelaysForTests,
   createNativeHookRelayPermissionRequestFixture as createPermissionRequestFixture,
   registerTestNativeHookRelay as registerRelay,
@@ -52,8 +52,6 @@ import {
 } from "./native-hook-relay.test-support.js";
 
 const sessionDirs = useSessionStoreTempDirs(afterAll, "openclaw-native-relay-policy-");
-
-const NATIVE_HOOK_RELAY_EXEC_PREFIX = process.platform === "win32" ? "" : "exec ";
 
 function invokeRelay(
   relayId: string,
@@ -322,17 +320,16 @@ describe("native hook relay registry", () => {
         allowedEvents: ["pre_tool_use"],
       },
     );
-    const launcher = ["/usr/local/bin/node", ...resolveForwardedNodeCompilerArgs()].join(" ");
     expect(relay.commandForEvent("pre_tool_use")).toBe(
-      `${NATIVE_HOOK_RELAY_EXEC_PREFIX}${launcher} '/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id ` +
+      `${NATIVE_HOOK_RELAY_NODE_PREFIX} '/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id ` +
         `${relay.relayId} ${nativeHookRelayStateDbArgForTests()} --generation ${relay.generation} --event pre_tool_use --timeout 1234`,
     );
     expect(relay.commandForEvent("pre_tool_use", { timeoutMs: 900 })).toBe(
-      `${NATIVE_HOOK_RELAY_EXEC_PREFIX}${launcher} '/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id ` +
+      `${NATIVE_HOOK_RELAY_NODE_PREFIX} '/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id ` +
         `${relay.relayId} ${nativeHookRelayStateDbArgForTests()} --generation ${relay.generation} --event pre_tool_use --timeout 900`,
     );
     expect(relay.commandForEvent("pre_tool_use", { timeoutMs: 2_000 })).toBe(
-      `${NATIVE_HOOK_RELAY_EXEC_PREFIX}${launcher} '/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id ` +
+      `${NATIVE_HOOK_RELAY_NODE_PREFIX} '/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id ` +
         `${relay.relayId} ${nativeHookRelayStateDbArgForTests()} --generation ${relay.generation} --event pre_tool_use --timeout 1234`,
     );
   });

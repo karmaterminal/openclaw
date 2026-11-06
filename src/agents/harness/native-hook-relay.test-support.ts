@@ -1,3 +1,4 @@
+import { resolveForwardedNodeCompilerArgs } from "../../bootstrap/node-compiler-args.js";
 import { runOpenClawStateWriteTransaction } from "../../state/openclaw-state-db.js";
 import {
   registerNativeHookRelay,
@@ -5,6 +6,8 @@ import {
   testing,
   type invokeNativeHookRelay,
 } from "./native-hook-relay.js";
+
+export const NATIVE_HOOK_RELAY_NODE_PREFIX = `${process.platform === "win32" ? "" : "exec "}${["/usr/local/bin/node", ...resolveForwardedNodeCompilerArgs()].join(" ")}`;
 
 export function registerTestNativeHookRelay(
   overrides: Partial<Parameters<typeof registerNativeHookRelay>[0]> = {},
