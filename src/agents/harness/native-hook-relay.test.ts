@@ -322,19 +322,17 @@ describe("native hook relay registry", () => {
         allowedEvents: ["pre_tool_use"],
       },
     );
-    const compilerFlags = resolveForwardedNodeCompilerArgs()
-      .map((flag) => `${flag} `)
-      .join("");
+    const launcher = ["/usr/local/bin/node", ...resolveForwardedNodeCompilerArgs()].join(" ");
     expect(relay.commandForEvent("pre_tool_use")).toBe(
-      `${NATIVE_HOOK_RELAY_EXEC_PREFIX}/usr/local/bin/node ${compilerFlags}'/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id ` +
+      `${NATIVE_HOOK_RELAY_EXEC_PREFIX}${launcher} '/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id ` +
         `${relay.relayId} ${nativeHookRelayStateDbArgForTests()} --generation ${relay.generation} --event pre_tool_use --timeout 1234`,
     );
     expect(relay.commandForEvent("pre_tool_use", { timeoutMs: 900 })).toBe(
-      `${NATIVE_HOOK_RELAY_EXEC_PREFIX}/usr/local/bin/node ${compilerFlags}'/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id ` +
+      `${NATIVE_HOOK_RELAY_EXEC_PREFIX}${launcher} '/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id ` +
         `${relay.relayId} ${nativeHookRelayStateDbArgForTests()} --generation ${relay.generation} --event pre_tool_use --timeout 900`,
     );
     expect(relay.commandForEvent("pre_tool_use", { timeoutMs: 2_000 })).toBe(
-      `${NATIVE_HOOK_RELAY_EXEC_PREFIX}/usr/local/bin/node ${compilerFlags}'/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id ` +
+      `${NATIVE_HOOK_RELAY_EXEC_PREFIX}${launcher} '/opt/Open Claw/openclaw.mjs' hooks relay --provider codex --relay-id ` +
         `${relay.relayId} ${nativeHookRelayStateDbArgForTests()} --generation ${relay.generation} --event pre_tool_use --timeout 1234`,
     );
   });

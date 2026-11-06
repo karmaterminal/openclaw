@@ -417,7 +417,7 @@ describe("continuation delegate dispatch under the elector's bounded grant", () 
   it("refuses a timed delegate whose operator device was revoked before it fired", async () => {
     const gateway = gatewayInstance(runtimeConfig());
     const operator = await operatorConnection(gateway, ["operator.write"]);
-    const recordId = await operator.elect(0.05);
+    const recordId = await operator.elect(0.5);
     persistDevices(stateDir, [], "both");
     invalidateGatewayDeviceRevocation(gateway.context, operator.device.deviceId, "operator");
     operator.disconnect();
@@ -428,7 +428,7 @@ describe("continuation delegate dispatch under the elector's bounded grant", () 
   it("refuses when the operator's scopes narrow below the grant, connection still open", async () => {
     const gateway = gatewayInstance(runtimeConfig());
     const operator = await operatorConnection(gateway, ["operator.write"]);
-    const recordId = await operator.elect(0.05);
+    const recordId = await operator.elect(0.5);
     const narrowed = structuredClone(operator.device);
     narrowed.tokens!.operator!.scopes = ["operator.read"];
     persistDevices(stateDir, [narrowed], "both");
