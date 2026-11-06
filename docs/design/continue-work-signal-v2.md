@@ -889,6 +889,8 @@ The relay pattern proved the need for `continue_work()`, but it also clarified w
 
 A lighter precursor also existed (historical; upstream has since retired the heartbeat runner): `requestHeartbeatNow()` could ring the parent session like a doorbell, but it still lacked task payload, chain tracking, and typed continuation semantics.
 
+Every compaction seam releases staged work: in-run auto-compaction, a queued `request_compaction`, and maintenance compaction, whether preflight or post-run. A preflight release leaves the workspace refresh to that turn's prompt; the post-run one enqueues it, because no later prompt carries that pass's refresh.
+
 For `post-compaction` delegates, the release semantics are intentionally fixed: staged work is delivered as silent-wake work. Release does not mean "spawn already happened"; the after-compaction path first consumes staged delegates, drops stale work older than the TTL, applies the combined `maxDelegatesPerTurn` budget, enqueues accepted delegates into `session-delivery-queue`, and then drains that queue asynchronously.
 
 If enqueueing fails, the affected delegate is re-staged for a later attempt. If draining fails, the queue retry path owns backoff and eventual failure movement. The lifecycle event reports queued and dropped counts, not guaranteed child-spawn counts. **Custody revision:** the drain retries only a failure that happened before the Gateway dispatch began. A started spawn attempt that a restart or an error leaves unproven ends in one `[continuation:delegate-spawn-interrupted]` notice, never a second spawn (Q3, §5.4.4). An entry that carries no attempt record ends in the same notice without a spawn.
