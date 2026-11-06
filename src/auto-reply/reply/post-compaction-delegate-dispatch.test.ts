@@ -649,6 +649,30 @@ describe("post-compaction delegate dispatch extraction", () => {
     expect(contextCall?.[0]).toContain("[System]");
   });
 
+  it("leaves the workspace context to a preflight seam that already refreshed it", async () => {
+    const agentsContext = "Injected sections from AGENTS.md (Critical):";
+    const { deps, enqueueSystemEvent, readPostCompactionContext } = createDispatchDeps({
+      context: agentsContext,
+    });
+
+    await dispatchPostCompactionDelegates(
+      {
+        cfg,
+        compactionCount: 1,
+        followupRun: createFollowupRun(),
+        postCompactionDelegatesToPreserve: [],
+        sessionEntry: { sessionId: "session", updatedAt: 1 },
+        sessionKey: "main",
+        workspaceContextRefreshed: true,
+      },
+      deps,
+    );
+    await flushMicrotasks();
+
+    expect(readPostCompactionContext).not.toHaveBeenCalled();
+    expect(enqueueSystemEvent).not.toHaveBeenCalledWith(agentsContext, expect.anything());
+  });
+
   it("persists request_compaction traceparent onto released queued delegates", async () => {
     const sessionEntry: SessionEntry = {
       sessionId: SOURCE_SESSION_ID,

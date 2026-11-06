@@ -110,6 +110,8 @@ export type DispatchPostCompactionDelegatesParams = {
   sessionKey: string;
   sessionStore?: Record<string, SessionEntry>;
   storePath?: string;
+  /** Preflight compaction already put the refresh in this turn's prompt. */
+  workspaceContextRefreshed?: boolean;
 };
 
 export type DispatchPostCompactionDelegatesResult = {
@@ -420,16 +422,18 @@ export async function dispatchPostCompactionDelegates(
   let postCompactionContextContent: string | null = null;
   let postCompactionContextError: unknown;
   try {
-    postCompactionContextContent = await deps.readPostCompactionContext(
-      typeof params.followupRun.run.workspaceDir === "string" &&
-        params.followupRun.run.workspaceDir.trim()
-        ? params.followupRun.run.workspaceDir
-        : deps.resolveAgentWorkspaceDir(params.cfg, params.followupRun.run.agentId),
-      {
-        cfg: params.cfg,
-        agentId: ownerAgentId,
-      },
-    );
+    postCompactionContextContent = params.workspaceContextRefreshed
+      ? null
+      : await deps.readPostCompactionContext(
+          typeof params.followupRun.run.workspaceDir === "string" &&
+            params.followupRun.run.workspaceDir.trim()
+            ? params.followupRun.run.workspaceDir
+            : deps.resolveAgentWorkspaceDir(params.cfg, params.followupRun.run.agentId),
+          {
+            cfg: params.cfg,
+            agentId: ownerAgentId,
+          },
+        );
   } catch (err) {
     postCompactionContextError = err;
   }

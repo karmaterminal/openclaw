@@ -37,6 +37,7 @@ import type { ReplyPayload } from "../types.js";
 import { resolveRunAfterAutoFallbackPrimaryProbeRecheck } from "./agent-runner-auto-fallback.js";
 import { buildPreflightCompactionFailureText } from "./agent-runner-failure-reply.js";
 import { runMemoryFlushIfNeeded, runSessionCompactionIfNeeded } from "./agent-runner-memory.js";
+import { releasePreflightCompactionDelegates } from "./agent-runner-post-compaction-release.js";
 import { resolveQueuedReplyExecutionConfig } from "./agent-runner-utils.js";
 import {
   shouldNotifyUserAboutCompaction,
@@ -615,6 +616,7 @@ export async function prepareReplyAgentTurn<TConfigured>(
         const generationRotated = refreshTurnSessionState(activeEntry, preflightEntry);
         turn.preflightCompactionApplied =
           generationRotated || (activeEntry?.compactionCount ?? 0) > previousCompactionCount;
+        await releasePreflightCompactionDelegates(turn, activeEntry, replySessionKey);
       } catch (error) {
         const failureEntry = session.current();
         if (failureEntry) {

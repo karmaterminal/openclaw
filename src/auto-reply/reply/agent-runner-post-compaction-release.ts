@@ -10,8 +10,10 @@ import { resolveSessionEntryFromStore } from "../../config/sessions/session-acce
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { logVerbose } from "../../globals.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { resolveLiveContinuationRuntimeConfig } from "../continuation/config.js";
 import { stagePostCompactionDelegate } from "../continuation/delegate-store-post-compaction.js";
 import { isFollowupRunAborted, type FollowupRun } from "./queue/types.js";
+import type { AdmittedFollowupTurn } from "./reply-agent-turn-preparation.js";
 
 // A skipped release leaves staged post-compaction delegates waiting for a
 // later seam that may never come (#1469), so skips are visible by default.
@@ -101,6 +103,7 @@ export async function releasePostCompactionDelegatesAfterCompaction(params: {
   sessionKey: string;
   storePath?: string;
   traceparent?: string;
+  workspaceContextRefreshed?: boolean;
 }): Promise<void> {
   const { dispatchPostCompactionDelegates } =
     await import("./post-compaction-delegate-dispatch.js");
@@ -119,6 +122,7 @@ export async function releasePostCompactionDelegatesAfterCompaction(params: {
     sessionKey: params.sessionKey,
     sessionStore: params.activeSessionStore,
     storePath: params.storePath,
+    workspaceContextRefreshed: params.workspaceContextRefreshed,
   });
   for (const delegate of delegatesToPreserve) {
     await stagePostCompactionDelegate(params.sessionKey, delegate);
@@ -143,6 +147,45 @@ export async function releaseQueuedCompactionTolerant(
     const reason = error instanceof Error ? error.message : String(error);
     log.warn(
       `[request_compaction:post-compaction-release-failed] session=${params.sessionKey ?? "none"} reason=${reason}`,
+    );
+  }
+}
+
+/**
+ * A preflight seam releases staged delegates like an in-run one: the warning that had
+ * the agent stage them promised this. Failure stays on the turn's side of the seam.
+ */
+export async function releasePreflightCompactionDelegates(
+  turn: Pick<
+    AdmittedFollowupTurn,
+    "config" | "preflightCompactionApplied" | "queued" | "session" | "sessionStore"
+  >,
+  sessionEntry: SessionEntry | undefined,
+  sessionKey: string | undefined,
+): Promise<void> {
+  if (
+    !turn.preflightCompactionApplied ||
+    !sessionEntry ||
+    !sessionKey ||
+    !turn.sessionStore ||
+    !resolveLiveContinuationRuntimeConfig(turn.config).enabled
+  ) {
+    return;
+  }
+  try {
+    await releasePostCompactionDelegatesAfterCompaction({
+      activeSessionStore: turn.sessionStore,
+      compactionCount: sessionEntry.compactionCount,
+      followupRun: turn.queued,
+      sessionEntry,
+      sessionKey,
+      storePath: turn.session.kind === "session" ? turn.session.storePath : undefined,
+      workspaceContextRefreshed: true,
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    log.warn(
+      `[continuation:post-compaction-release-failed] session=${sessionKey} seam=preflight reason=${reason}`,
     );
   }
 }
