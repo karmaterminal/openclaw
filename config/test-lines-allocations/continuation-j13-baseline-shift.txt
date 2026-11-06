@@ -1,0 +1,2 @@
+# Jump 13 baseline shift, not new coverage. Upstream U13 (480d503053) left 27,003 fewer lines of test-lines slack than U12 (b8b054c13a): slack 27,034 at U12, 31 at U13. The fork's carried continuation delta did not produce this; U13 spent the headroom j12' was sitting on. Recorded separately from the jump's coverage on 🌊's accounting ruling (Discord 1568126533778800742), which is not a direction to trim tests.
+27003
