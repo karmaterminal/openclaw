@@ -282,10 +282,7 @@ export function createUpdateCliPackageFixtures({
       }
       // Native activation starts the installed package. Changing the probe only
       // here keeps a missing restart or wrong package visible to real health checks.
-      const entrypoint = requireValue(
-        argv[transport.compilerArgs.length + 1],
-        "gateway activation entrypoint",
-      );
+      const entrypoint = requireValue(argv[transport.compilerArgs.length + 1], "gateway entry");
       await fs.access(entrypoint);
       const manifest = JSON.parse(
         await fs.readFile(path.join(path.dirname(entrypoint), "..", "package.json"), "utf8"),

@@ -8,6 +8,7 @@ import { expectDefined } from "@openclaw/normalization-core/expect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { awaitGateBeforeSettlement, withinTest } from "../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import { resolveForwardedNodeCompilerArgs } from "../bootstrap/node-compiler-args.js";
 import { findSystemdGatewayInstallation } from "../daemon/systemd-scope.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { withEnv } from "../test-utils/env.js";
@@ -197,7 +198,8 @@ describe("managed service update handoff command", () => {
       prepared.recoveryCommandArgv,
       prepared.triageCommandArgv,
     ]) {
-      expect(await fs.realpath(expectDefined(argv?.[1], "prepared handoff entry"))).toBe(
+      const entry = argv?.[resolveForwardedNodeCompilerArgs().length + 1];
+      expect(await fs.realpath(expectDefined(entry, "prepared handoff entry"))).toBe(
         path.join(releaseA, "openclaw.mjs"),
       );
     }
@@ -386,7 +388,7 @@ describe("managed service update handoff command", () => {
   );
 
   it.each([
-    { runtime: "node", runtimeArgs: [] },
+    { runtime: "node", runtimeArgs: resolveForwardedNodeCompilerArgs() },
     { runtime: "bun", runtimeArgs: ["--no-install"] },
   ])(
     "stages automatic triage in a stop-linked scope using $runtime",
@@ -583,7 +585,7 @@ describe("managed service update handoff command", () => {
 
       expect(result.commandArgv).toEqual([
         `/usr/local/bin/${runtime}`,
-        ...(runtime === "bun" ? ["--no-install"] : []),
+        ...(runtime === "bun" ? ["--no-install"] : resolveForwardedNodeCompilerArgs()),
         "/opt/openclaw/openclaw.mjs",
         "update",
         "--yes",

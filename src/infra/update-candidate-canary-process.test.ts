@@ -3,6 +3,7 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { resolveRuntimeArgs } from "./runtime-worker-url.js";
 import { launchCanary } from "./update-candidate-canary-process.js";
 
 const mocks = vi.hoisted(() => ({ spawn: vi.fn<typeof import("node:child_process").spawn>() }));
@@ -47,7 +48,7 @@ it("routes a worker target through the embedded entry dispatcher", async () => {
   expect(await running.result).toBe(0);
   expect(mocks.spawn).toHaveBeenCalledExactlyOnceWith(
     process.execPath,
-    [...(process.versions.bun ? ["--no-install"] : []), entry, "--check"],
+    [...resolveRuntimeArgs(), entry, "--check"],
     expect.objectContaining({ cwd: root }),
   );
 });

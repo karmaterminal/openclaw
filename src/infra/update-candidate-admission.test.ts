@@ -5,6 +5,7 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import { resolveForwardedNodeCompilerArgs } from "../bootstrap/node-compiler-args.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import type { UpdateAdmissionContext } from "./update-admission-contract.js";
 import { runUpdateCandidateAdmission } from "./update-candidate-admission.js";
@@ -227,9 +228,10 @@ it.each(["unknown-version", "artifact"] as const)(
     if (process.platform !== "win32") {
       expect(observedModes).toEqual({ file: 0o600, directory: 0o700 });
     }
+    const flags = resolveForwardedNodeCompilerArgs();
     expect(mocks.spawn).toHaveBeenCalledWith(
       "/selected/node",
-      [path.join(root, "dist", "index.js"), "update", "admit", "--context", contextPath],
+      [...flags, path.join(root, "dist", "index.js"), "update", "admit", "--context", contextPath],
       expect.objectContaining({
         cwd: root,
         windowsHide: true,

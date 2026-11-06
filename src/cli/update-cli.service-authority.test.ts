@@ -571,12 +571,10 @@ describe("update-cli", () => {
 
       expectNoSideEffects(serviceStart, serviceRestart);
       if (inspection === "unchanged") {
+        const argv = cliArgs(entrypoint, "gateway", "restart", "--preserve-definition", "--json");
         expect(freshRestartCalls()).toEqual([
           [
-            [
-              process.execPath,
-              ...cliArgs(entrypoint, "gateway", "restart", "--preserve-definition", "--json"),
-            ],
+            [process.execPath, ...argv],
             expect.objectContaining({ cwd: process.cwd(), baseEnv: {} }),
           ],
         ]);

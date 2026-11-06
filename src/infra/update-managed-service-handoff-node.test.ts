@@ -5,6 +5,7 @@ import { CLI_PARENT_BOUND_PRELOAD } from "../../cli-parent-lifetime.mjs";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import * as runtimePaths from "../daemon/runtime-paths.js";
 import { resolveTestNodeExecPath } from "../test-utils/node-process.js";
+import { resolveRuntimeArgs } from "./runtime-worker-url.js";
 import { resolveManagedServiceCliArgv } from "./update-managed-service-handoff-command.js";
 import {
   prepareManagedHandoffCliRuntime,
@@ -58,7 +59,7 @@ describe("managed handoff Node selection", () => {
     const env = { NODE_EXTRA_CA_CERTS: "/fixture/ca.pem" };
     const expectedCommand = [
       execPath,
-      ...(runtime === "bun" ? ["--no-install"] : []),
+      ...resolveRuntimeArgs(execPath),
       argv1,
       ...(foreground ? ["gateway", "run"] : ["doctor"]),
     ];
