@@ -25,7 +25,6 @@ export const isCliCommand = (argv: readonly string[], ...args: (string | undefin
   [...(process.versions.bun ? [] : compilerArgs), ...args].every(
     (arg, i) => arg === undefined || argv[i + 1] === arg,
   );
-
 export const cliArgs = (...args: (string | undefined)[]) => [...compilerArgs, ...args];
 export const isGatewayCommand = (argv: readonly string[], ...actions: string[]) =>
   actions.some((action) => isCliCommand(argv, undefined, "gateway", action));
@@ -77,8 +76,8 @@ export function createUpdateExecTransportFixture(params: {
     const [command, argv, options] = args;
     const executable = path.win32.basename(command).toLowerCase();
     const isBun = executable === "bun" || executable === "bun.exe";
-    const [probe, runtime] = argv.slice(isBun ? 0 : compilerArgs.length);
-    if (probe?.endsWith("daemon-runtime-probe.mjs") && ["node", "bun"].includes(runtime ?? "")) {
+    const [probe = "", runtime = ""] = argv.slice(isBun ? 0 : compilerArgs.length);
+    if (path.basename(probe) === "daemon-runtime-probe.mjs" && ["node", "bun"].includes(runtime)) {
       const result = await params.run(...args);
       if (result.stdout.trim() || result.stderr.trim()) {
         return result;

@@ -48,6 +48,7 @@ import {
   maybeRestartService,
   maybeStopManagedServiceBeforeMutableUpdate,
 } from "./update-command-service.js";
+import { compilerArgs } from "./update-command-transport.test-support.js";
 
 const mocks = vi.hoisted(() => ({
   launchctl: vi.fn<typeof import("../../daemon/launchd-exec.js").execLaunchctl>(),
@@ -410,7 +411,7 @@ describe("preserved update activation with real version guards", () => {
         }
         const program = new Command().exitOverride();
         addGatewayServiceCommands(program.command("gateway"));
-        await program.parseAsync(args.slice(2), { from: "user" });
+        await program.parseAsync(args.slice(compilerArgs.length + 2), { from: "user" });
         return commandResult({
           stdout: JSON.stringify(mocks.writeJson.mock.lastCall?.[0]),
         });
@@ -521,7 +522,7 @@ describe("preserved update activation with real version guards", () => {
           await runDaemonRestart(opts);
         });
       try {
-        await program.parseAsync(args.slice(2), { from: "user" });
+        await program.parseAsync(args.slice(compilerArgs.length + 2), { from: "user" });
         return commandResult({ stderr });
       } catch (error) {
         if (!(error instanceof Error) || !error.message.includes("unknown option")) {
@@ -536,8 +537,9 @@ describe("preserved update activation with real version guards", () => {
       serviceEnv: before.serviceEnv,
     });
     expect(activated).toBe("failed");
-    expect(mocks.error.mock.calls.flat().join("\n")).toContain("unknown option");
-    expect(mocks.error.mock.calls.flat().join("\n")).toContain("stopped");
+    const errors = mocks.error.mock.calls.flat().join("\n");
+    expect(errors).toContain("unknown option '--preserve-definition'");
+    expect(errors).toContain("stopped");
     expectUncalled(repair, mocks.restart, mocks.health);
   });
 

@@ -8,7 +8,7 @@ import {
   commandCalls,
   expectNoSideEffects,
   getErrorOutput,
-  isCliCommand,
+  isGatewayCommand,
   lastWriteJsonCall,
   packageInstallCommandCall,
   requireValue,
@@ -222,11 +222,10 @@ describe("update-cli", () => {
     expect(await installedVersion(oldInstall.root)).toBe("2026.5.20");
     expect(await installedVersion(shellInstall.root)).toBe("2026.5.18");
     expect(await mocks.serviceReadCommand(process.env)).toEqual(overriddenCommand);
-    const installCalls = commandCalls().filter(([argv]) =>
-      isCliCommand(argv, oldInstall.entrypoint, "gateway", "install"),
-    );
+    const installCalls = commandCalls().filter(([argv]) => isGatewayCommand(argv, "install"));
     expect(installCalls).toHaveLength(1);
-    expect(installCalls[0]?.[0][0]).toBe(oldInstall.serviceNode);
+    const want = [oldInstall.serviceNode, ...cliArgs(oldInstall.entrypoint, "gateway", "install")];
+    expect(installCalls[0]?.[0].slice(0, want.length)).toEqual(want);
     expect(installCalls[0]?.[1]).toMatchObject({
       cwd: oldInstall.root,
       input: expect.stringContaining('"targetRoot":' + JSON.stringify(oldInstall.root)),

@@ -123,8 +123,11 @@ describe("update-cli", () => {
     );
     expect(installed.version).toBe("2026.5.20");
     expect(previous.version).toBe("2026.5.18");
-    const serviceInstall = proof.gatewayCommandCall(newInstall.entrypoint, "install");
-    expect(serviceInstall?.[0][0]).toBe(process.execPath);
+    const serviceInstall = proof
+      .commandCalls()
+      .find(([argv]) => proof.isGatewayCommand(argv, "install"));
+    const expected = [process.execPath, ...proof.cliArgs(newInstall.entrypoint)];
+    expect(serviceInstall?.[0].slice(0, expected.length)).toEqual(expected);
     expect(mocks.serviceStop).toHaveBeenCalledOnce();
     expect(proof.getLogOutput()).toContain("Gateway: restarted and verified");
   });

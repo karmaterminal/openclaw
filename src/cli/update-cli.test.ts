@@ -437,7 +437,7 @@ describe("update-cli", () => {
         "exec fixture",
       );
       vi.mocked(cli.runExec).mockImplementation((file, args, options) => {
-        if (check.isCliCommand([file, ...args], entry, "update", "--help")) {
+        if (args.join(" ") === check.cliArgs(entry, "update", "--help").join(" ")) {
           return Promise.resolve({
             stdout: new Command("update").option("--accept-capabilities").helpInformation(),
             stderr: "",

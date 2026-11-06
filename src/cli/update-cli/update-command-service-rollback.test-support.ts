@@ -30,6 +30,7 @@ import type {
 import { maintenanceDefaults } from "./update-command-service-fixtures.test-support.js";
 import type { InstallRootTransitionFixture } from "./update-command-service-fixtures.test-support.js";
 import { maybeStopManagedServiceBeforeMutableUpdate } from "./update-command-service.js";
+import { compilerArgs } from "./update-command-transport.test-support.js";
 
 const readText = (file: string) => fs.readFile(file, "utf8");
 const gatewayArgs = (root: string, ...args: string[]) => [
@@ -265,7 +266,7 @@ export function registerPackageRootRollbackTests(
       });
     }
     mocks.child.mockImplementation(async (argv) => {
-      expect(argv[1]).toBe(path.join(previousRoot, "dist", "index.js"));
+      expect(argv[compilerArgs.length + 1]).toBe(path.join(previousRoot, "dist", "index.js"));
       await expectPackageVersion(previousRoot, previousPackageVersion);
       expect(argv).not.toContain("install");
       expect(argv).toEqual(expect.arrayContaining(["restart", "--preserve-definition"]));
