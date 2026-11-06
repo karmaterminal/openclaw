@@ -360,6 +360,20 @@ describe("subagent-announce silent / silent-wake / wakeOnReturn routing (RFC §2
     expect(requestContinuationWakeMock).not.toHaveBeenCalled();
   });
 
+  it("silentAnnounce:true on a Discord origin posts nothing to the channel", async () => {
+    seedDefaultStore();
+
+    const didAnnounce = await runSubagentAnnounceFlow({
+      ...baseParams,
+      requesterOrigin: { channel: "discord", to: "channel:1", accountId: "primary" },
+      silentAnnounce: true,
+    });
+
+    expect(didAnnounce).toBe("delivered");
+    expect(deliverSubagentAnnouncementMock).not.toHaveBeenCalled();
+    expect(enqueueSystemEventMock).toHaveBeenCalledTimes(1);
+  });
+
   it("silentAnnounce:true → system event text references the task label", async () => {
     seedDefaultStore();
 
