@@ -31,10 +31,7 @@ import {
 
 const gcStorm = channel("openclaw.code-mode.gc-storm");
 
-type WorkerCpuHandle = {
-  readonly threadId: number;
-  cpuUsage: Worker["cpuUsage"];
-  getHeapStatistics: Worker["getHeapStatistics"];
+type WorkerCpuHandle = Pick<Worker, "threadId" | "cpuUsage" | "getHeapStatistics"> & {
   once(event: "exit", listener: () => void): unknown;
 };
 
