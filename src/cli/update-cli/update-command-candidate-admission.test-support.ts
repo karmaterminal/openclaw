@@ -20,7 +20,7 @@ import {
   type CandidateAdmissionFixture,
 } from "./update-command-candidate-admission-fixture.test-support.js";
 import * as runtimeRecovery from "./update-command-runtime-recovery.test-support.js";
-import { compilerArgs } from "./update-command-transport.test-support.js";
+import { compilerArgs, isCliCommand } from "./update-command-transport.test-support.js";
 
 export function registerCandidateAdmissionTests(f: CandidateAdmissionFixture) {
   const {
@@ -265,10 +265,9 @@ export function registerCandidateAdmissionTests(f: CandidateAdmissionFixture) {
       const timeoutMs = timeout === undefined ? undefined : 17_000;
       expect(packageInstallCommandCall()?.[1].timeoutMs).toBe(timeoutMs);
 
-      const lifecycleCommands = commandTransport.run.mock.calls.filter(([argv]) =>
-        /(?:preinstall-package-manager-warning|postinstall-bundled-plugins)\.mjs$/.test(
-          argv[compilerArgs.length + 1] ?? "",
-        ),
+      const lifecycle = /(?:preinstall-package-manager-warning|postinstall-bundled-plugins)\.mjs$/;
+      const lifecycleCommands = commandTransport.run.mock.calls.filter(
+        ([argv]) => isCliCommand(argv) && lifecycle.test(argv[compilerArgs.length + 1] ?? ""),
       );
       expect(lifecycleCommands).toHaveLength(2);
       expect(

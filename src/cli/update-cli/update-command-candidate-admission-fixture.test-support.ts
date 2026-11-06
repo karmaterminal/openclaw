@@ -54,7 +54,7 @@ export function createCandidateAdmissionFixtures(f: CandidateAdmissionFixture) {
         events.push("runtime-provision");
         return createCommandResult({ cleanup: "normal" });
       }
-      const script = argv[transport.compilerArgs.length + 1];
+      const script = transport.isCliCommand(argv) ? argv[transport.compilerArgs.length + 1] : "";
       if (script?.endsWith("preinstall-package-manager-warning.mjs")) {
         events.push("preinstall");
       } else if (script?.endsWith("postinstall-bundled-plugins.mjs")) {
