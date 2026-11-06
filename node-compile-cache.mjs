@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isMainThread } from "node:worker_threads";
+import { isNodeCompilerArg } from "./node-runtime-env.mjs";
 
 if (isMainThread && process.env.OPENCLAW_PACKAGED_COMPILE_CACHE_RESPAWNED === "gateway") {
   // Node has already started uncached. Restore worker caching after the respawn.
@@ -208,7 +209,12 @@ async function maintainOpenClawCompileCache(directory) {
     const { spawn } = await import("node:child_process");
     const child = spawn(
       process.execPath,
-      [fileURLToPath(import.meta.url), "--maintain", directory],
+      [
+        ...process.execArgv.filter(isNodeCompilerArg),
+        fileURLToPath(import.meta.url),
+        "--maintain",
+        directory,
+      ],
       {
         detached: true,
         stdio: "ignore",

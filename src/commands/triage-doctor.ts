@@ -2,6 +2,7 @@ import { z } from "zod";
 import { resolveOpenClawCliInvocation } from "../../cli-invocation.mjs";
 import { resolveGatewayInstallEntrypoint } from "../daemon/gateway-entrypoint.js";
 import { isNodeRuntime } from "../daemon/runtime-binary.js";
+import { resolveRuntimeCompilerArgs } from "../infra/runtime-worker-url.js";
 import type { UpdateRepairValidation } from "../infra/update-repair-protocol.js";
 import {
   redactSupportString,
@@ -30,10 +31,11 @@ export async function validateTriageDoctor(params: {
   }
   // A fresh child reads the repaired installation and can be cancelled without
   // leaving Doctor's temporary process-global state active in this CLI.
+  const execPath = isNodeRuntime(process.execPath) ? process.execPath : "node";
   const invocation = resolveOpenClawCliInvocation({
-    execPath: isNodeRuntime(process.execPath) ? process.execPath : "node",
+    execPath,
     entryPath: entrypoint,
-    execArgv: [],
+    execArgv: resolveRuntimeCompilerArgs(execPath),
     args: ["doctor", "--lint", "--json", "--severity-min", "error"],
   });
   const doctorCommand = await runUtf8CommandWithTimeout([invocation.command, ...invocation.args], {

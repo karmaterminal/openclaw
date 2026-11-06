@@ -39,6 +39,7 @@ import { finishUpdate } from "./update-command-post-update.js";
 import { UpdateCommandPendingRecoveryFailure } from "./update-command-result.js";
 import * as postCoreResume from "./update-command-resume.js";
 import { withUpdateCommandTerminalResult } from "./update-command-terminal.js";
+import { compilerArgs, isCliCommand } from "./update-command-transport.test-support.js";
 import { withUpdateFailureTriage } from "./update-command-triage.js";
 
 const transport = vi.hoisted(() => ({ exec: vi.fn(), command: vi.fn() }));
@@ -69,12 +70,8 @@ vi.mock("./update-command-doctor-child.js", async (importOriginal) => ({
   ) => {
     params.context.executorFence.assertCurrent();
     params.context.assertRequesterCurrent();
-    const result = await operation(async (_argv, options) => ({
-      ...(await transport.exec(
-        process.execPath,
-        [path.join(params.root, "dist", "entry.js"), "doctor"],
-        options,
-      )),
+    const result = await operation(async ([runner, ...args], options) => ({
+      ...(await transport.exec(runner, args, options)),
       code: 0,
       signal: null,
       killed: false,
@@ -146,11 +143,13 @@ async function exercisePersistence(state: OpenClawTestState, scenario: (typeof s
     runAtPublication = getUpdateRun(created.runId, { env: state.env });
   });
   transport.command.mockReset().mockRejectedValue(new Error("Unexpected package/native command"));
-  transport.exec.mockReset().mockImplementation(async (_file, args: string[]) => {
-    if (args[0] !== state.path("dist", "entry.js")) {
+  transport.exec.mockReset().mockImplementation(async (file: string, args: string[]) => {
+    const doctor = args.at(-1) === "--doctor";
+    const [command, subcommand] = args.slice(compilerArgs.length + 1);
+    if (!isCliCommand([file, ...args], doctor ? undefined : state.path("dist", "entry.js"))) {
       throw new Error("Unexpected external entrypoint");
     }
-    if (args[1] === "doctor" || (args[1] === "config" && args[2] === "validate")) {
+    if (doctor || command === "doctor" || (command === "config" && subcommand === "validate")) {
       return { stdout: JSON.stringify({ ok: true, checksRun: 1, findings: [] }), stderr: "" };
     }
     throw new Error("Unexpected external command");

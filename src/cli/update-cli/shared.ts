@@ -17,6 +17,7 @@ import { readPackageName, readPackageVersion } from "../../infra/package-json.js
 import { normalizePackageTagInput } from "../../infra/package-tag.js";
 import { parseSemver } from "../../infra/runtime-guard.js";
 import { resolveExternalPackageRuntimeEntrypointUrl } from "../../infra/runtime-process-url.js";
+import { resolveRuntimeCompilerArgs } from "../../infra/runtime-worker-url.js";
 import { normalizeUpdateChannel } from "../../infra/update-channels.js";
 import { fetchNpmTagVersion } from "../../infra/update-check.js";
 import {
@@ -600,7 +601,7 @@ export async function tryWriteCompletionCache(
     const invocation = resolveOpenClawCliInvocation({
       execPath: nodeRunner,
       entryPath: standalone ? undefined : binPath,
-      execArgv: [],
+      execArgv: resolveRuntimeCompilerArgs(nodeRunner),
       args: ["completion", "--write-state"],
     });
     const result = await runCommandWithTimeout([invocation.command, ...invocation.args], {

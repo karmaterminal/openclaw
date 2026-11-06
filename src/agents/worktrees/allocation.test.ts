@@ -9,6 +9,8 @@ import {
 import { observeHostDataSql } from "../../../test/helpers/sqlite-statement-execution-counter.js";
 import * as backoff from "../../infra/backoff.js";
 import { executeSqliteQuerySync, getNodeSqliteKysely } from "../../infra/kysely-sync.js";
+import { runtimeProcessEntrypoints } from "../../infra/runtime-process-entrypoints.js";
+import { resolveRuntimeWorkerUrl } from "../../infra/runtime-worker-url.js";
 import type { DB } from "../../state/openclaw-state-db.generated.js";
 import { runOpenClawStateWriteTransaction } from "../../state/openclaw-state-db.js";
 import * as leaseStore from "../../state/openclaw-state-lease-store.js";
@@ -27,28 +29,26 @@ import { useWorktreeStateRoots } from "./state-fixture.test-support.js";
 beforeEach(useInProcessWorktreeCapacityTransport);
 
 const heartbeatWorkers = vi.hoisted(() => ({
+  url: "",
   onCreate: undefined as ((worker: Worker) => void) | undefined,
 }));
 
 vi.mock("node:worker_threads", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:worker_threads")>();
-  const [{ runtimeProcessEntrypoints }, { resolveRuntimeWorkerUrl }] = await Promise.all([
-    import("../../infra/runtime-process-entrypoints.js"),
-    import("../../infra/runtime-worker-url.js"),
-  ]);
-  const heartbeatUrl = resolveRuntimeWorkerUrl(runtimeProcessEntrypoints.stateLeaseHeartbeat);
   return {
     ...actual,
     Worker: class extends actual.Worker {
       constructor(filename: string | URL, options: WorkerOptions = {}) {
         super(filename, options);
-        if (String(filename) === heartbeatUrl.href) {
+        if (String(filename) === heartbeatWorkers.url) {
           heartbeatWorkers.onCreate?.(this);
         }
       }
     },
   };
 });
+
+heartbeatWorkers.url = resolveRuntimeWorkerUrl(runtimeProcessEntrypoints.stateLeaseHeartbeat).href;
 
 const tempDirs = useWorktreeStateRoots(() => {
   heartbeatWorkers.onCreate = undefined;

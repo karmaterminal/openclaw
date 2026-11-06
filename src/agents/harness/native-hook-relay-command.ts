@@ -6,6 +6,7 @@ import {
   resolveOpenClawCliInvocation,
 } from "../../../cli-invocation.mjs";
 import { resolveOpenClawPackageRootSync } from "../../infra/openclaw-root.js";
+import { resolveRuntimeCompilerArgs } from "../../infra/runtime-worker-url.js";
 import { DEFAULT_RELAY_TIMEOUT_MS } from "./native-hook-relay-constants.js";
 import type { NativeHookRelayEvent, NativeHookRelayProvider } from "./native-hook-relay-types.js";
 import { normalizePositiveInteger, shellQuoteArgs } from "./native-hook-relay-utils.js";
@@ -68,18 +69,19 @@ export function buildNativeHookRelayCommandWithStateDatabase(params: {
       : undefined;
   const directExecutable =
     standaloneExecutable ?? (executable === "openclaw" ? executable : undefined);
+  const node = params.nodeExecutable ?? process.execPath;
   const invocation =
     target.kind === "cli"
       ? resolveOpenClawCliInvocation({
-          execPath: directExecutable ?? params.nodeExecutable ?? process.execPath,
+          execPath: directExecutable ?? node,
           entryPath: directExecutable ? null : executable,
-          execArgv: [],
+          execArgv: resolveRuntimeCompilerArgs(node),
           args: [],
         })
       : undefined;
   const argv = invocation
     ? [invocation.command, ...invocation.args]
-    : [params.nodeExecutable ?? process.execPath, executable];
+    : [node, ...resolveRuntimeCompilerArgs(node), executable];
   const nicePrefix = resolveNativeHookRelayNicePrefix(params.nice);
   const command = shellQuoteArgs([
     ...nicePrefix,

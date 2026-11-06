@@ -1,7 +1,8 @@
 import { fileURLToPath } from "node:url";
 import { runtimeProcessEntrypoints } from "../infra/runtime-process-entrypoints.js";
 import {
-  resolveRuntimeArgs,
+  resolveRuntimeCompilerArgs,
+  resolveRuntimeInstallPolicyArgs,
   resolveRuntimeWorkerUrl,
   runtimeNeedsTypeScriptLoader,
 } from "../infra/runtime-worker-url.js";
@@ -21,7 +22,7 @@ export function resolveWorkspaceWorkerExecArgv(kind: "memory" | "skills"): strin
     !runtimeNeedsTypeScriptLoader(fileURLToPath(resolveWorkspaceWorkerUrl(kind))) &&
     !runtimeNeedsTypeScriptLoader(fileURLToPath(import.meta.url))
   ) {
-    return resolveRuntimeArgs();
+    return resolveRuntimeInstallPolicyArgs();
   }
   const register =
     "import { register } from " +
@@ -32,8 +33,13 @@ export function resolveWorkspaceWorkerExecArgv(kind: "memory" | "skills"): strin
   return ["--import", `data:text/javascript,${encodeURIComponent(register)}`];
 }
 
+/** Worker threads share V8 flags; only the child process takes the parent's compiler policy. */
 export function resolveWorkspaceWorkerArgv(kind: "memory" | "skills"): string[] {
-  return [...resolveWorkspaceWorkerExecArgv(kind), fileURLToPath(resolveWorkspaceWorkerUrl(kind))];
+  return [
+    ...resolveRuntimeCompilerArgs(),
+    ...resolveWorkspaceWorkerExecArgv(kind),
+    fileURLToPath(resolveWorkspaceWorkerUrl(kind)),
+  ];
 }
 
 /** Reuse the native bounded Skill reader with host-owned per-file authorization. */

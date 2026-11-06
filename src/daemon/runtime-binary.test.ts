@@ -1,6 +1,6 @@
 // Daemon runtime binary tests cover runtime executable resolution.
 import { describe, expect, it } from "vitest";
-import { isBunRuntime, isNodeRuntime } from "./runtime-binary.js";
+import { isBunRuntime, isNodeRuntime, resolveRuntimeScriptPosition } from "./runtime-binary.js";
 
 describe("isNodeRuntime", () => {
   it("rejects non-node runtimes", () => {
@@ -9,6 +9,11 @@ describe("isNodeRuntime", () => {
     expect(isNodeRuntime("/usr/bin/nodeenv")).toBe(false);
     expect(isNodeRuntime("/usr/bin/nodemon")).toBe(false);
   });
+});
+
+it("locates the entry after compiler flags OpenClaw forwards to its children", () => {
+  const argv = ["/usr/bin/node", "--no-maglev", "--no-opt", "/app/dist/index.js", "gateway"];
+  expect(resolveRuntimeScriptPosition(argv).position).toBe(3);
 });
 
 describe("isBunRuntime", () => {

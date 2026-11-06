@@ -15,6 +15,7 @@ import { PackageUpdateActivationError } from "../../infra/package-update-swap-co
 import { deferPackageStateVerification } from "../../infra/package-update-verification-step.js";
 import { runtimeProcessEntrypoints } from "../../infra/runtime-process-entrypoints.js";
 import {
+  resolveRuntimeCompilerArgs,
   resolveRuntimeWorkerArgv,
   resolveRuntimeWorkerUrl,
 } from "../../infra/runtime-worker-url.js";
@@ -160,10 +161,11 @@ export async function runPackageUpdateDoctor(params: PackageDoctorOptions) {
         )
       ).has("--full-integrity-check");
     // Older candidates already check fully and reject the new option.
+    const nodeRunner = params.nodeRunner ?? resolveNodeRunner();
     const invocation = resolveOpenClawCliInvocation({
-      execPath: params.nodeRunner ?? resolveNodeRunner(),
+      execPath: nodeRunner,
       entryPath,
-      execArgv: [],
+      execArgv: resolveRuntimeCompilerArgs(nodeRunner),
       args: [
         "doctor",
         "--non-interactive",

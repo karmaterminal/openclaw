@@ -14,6 +14,7 @@ import type { FinishUpdateParams } from "./update-command-finish-types.js";
 import { inspectActivatedUpdateState } from "./update-command-migrated.js";
 import { finishUpdate } from "./update-command-post-update.js";
 import { UpdateCommandFailure } from "./update-command-result.js";
+import { isCliCommand, isGatewayCommand } from "./update-command-transport.test-support.js";
 
 export function registerUnverifiedDefinitionRecoveryTests({
   fixture,
@@ -110,11 +111,11 @@ export function registerUnverifiedDefinitionRecoveryTests({
       const runCommand = processExec.runCommandWithTimeout;
       // Native stdout is fixture I/O; executor/receiver custody has separate process proof.
       vi.spyOn(processExec, "runCommandWithTimeout").mockImplementation(async (argv, options) => {
-        if (argv[1] !== entrypoint || argv[2] !== "gateway") {
+        if (!isCliCommand(argv, entrypoint, "gateway")) {
           return runCommand(argv, options);
         }
-        expect(["install", "restart"]).toContain(argv[3]);
-        const install = argv[3] === "install";
+        expect(isGatewayCommand(argv, "install", "restart")).toBe(true);
+        const install = isGatewayCommand(argv, "install");
         if (!install) {
           expect(argv).toContain("--preserve-definition");
           mocks.healthy = startup !== "start-failed";

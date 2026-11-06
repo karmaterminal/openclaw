@@ -19,6 +19,7 @@ import {
 } from "../../infra/deferred-plugin-migrations.js";
 import { runtimeProcessEntrypoints } from "../../infra/runtime-process-entrypoints.js";
 import {
+  resolveRuntimeCompilerArgs,
   resolveRuntimeWorkerArgv,
   resolveRuntimeWorkerUrl,
 } from "../../infra/runtime-worker-url.js";
@@ -252,10 +253,11 @@ export async function runUpdateFinalizationDoctorInFreshProcess(params: {
       ) {
         args.push("--full-integrity-check");
       }
+      const nodeRunner = params.nodeRunner ?? resolveNodeRunner();
       const invocation = resolveOpenClawCliInvocation({
-        execPath: params.nodeRunner ?? resolveNodeRunner(),
+        execPath: nodeRunner,
         entryPath,
-        execArgv: [],
+        execArgv: resolveRuntimeCompilerArgs(nodeRunner),
         args: args.slice(1),
       });
       doctorArgv = [invocation.command, ...invocation.args];

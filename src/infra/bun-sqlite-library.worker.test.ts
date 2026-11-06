@@ -6,6 +6,7 @@ import { Worker } from "node:worker_threads";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "../test-utils/prepare-compiled-subprocesses.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import { resolveForwardedNodeCompilerArgs } from "../bootstrap/node-compiler-args.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import type { RuntimeWorkerGeneration } from "./runtime-worker-generation.js";
 import { SQLITE_DATABASE_ADMISSIONS_KEY } from "./sqlite-database-admission-key.js";
@@ -86,7 +87,7 @@ vi.mock("node:worker_threads", async (importOriginal) => {
     Worker: class extends actual.Worker {
       constructor(...args: ConstructorParameters<typeof actual.Worker>) {
         runtime.launches += 1;
-        if (!runtime.selectedPath || runtime.environment.size === 0) {
+        if (!runtime.selectedPath || !runtime.environment.has(inheritedKeys[0])) {
           throw new Error("Worker started before its SQLite library owner completed selection");
         }
         super(...args);
@@ -533,8 +534,8 @@ describe("Bun SQLite process selection and worker inheritance", () => {
     const { ensureSqliteLibrarySelected } = await import("./bun-sqlite-library.js");
     expect(() => ensureSqliteLibrarySelected()).toThrow("Native selection failed");
     expect(runtime.select).toHaveBeenCalledTimes(1);
-    expect(runtime.environment.size).toBe(0);
-    expect(runtime.setEnvironmentData).not.toHaveBeenCalled();
+    const policy = resolveForwardedNodeCompilerArgs();
+    expect([...runtime.environment.values()]).toEqual(policy.length ? [policy] : []);
     expect(runtime.launches).toBe(0);
     expect(existsSync(databasePath)).toBe(false);
   });

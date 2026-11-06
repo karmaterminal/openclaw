@@ -14,7 +14,7 @@ import { OPENCLAW_STATE_SCHEMA_VERSION } from "../../state/openclaw-state-db-con
 import { resolveOpenClawStateSqlitePath } from "../../state/openclaw-state-db.paths.js";
 import { createCommandResult } from "../../test-utils/npm-spec-install-test-helpers.js";
 import { writeJsonFixture, writeNpmPackageInstall } from "./update-cli-package.test-support.js";
-import { isLegacyUpdateDoctorCommand } from "./update-command-transport.test-support.js";
+import * as transport from "./update-command-transport.test-support.js";
 
 export type CandidateAdmissionFixture = ReturnType<
   typeof import("../update-cli-fixture.test-support.js").createUpdateCliFixture
@@ -54,11 +54,12 @@ export function createCandidateAdmissionFixtures(f: CandidateAdmissionFixture) {
         events.push("runtime-provision");
         return createCommandResult({ cleanup: "normal" });
       }
-      if (argv[1]?.endsWith("preinstall-package-manager-warning.mjs")) {
+      const script = transport.isCliCommand(argv) ? argv[transport.compilerArgs.length + 1] : "";
+      if (script?.endsWith("preinstall-package-manager-warning.mjs")) {
         events.push("preinstall");
-      } else if (argv[1]?.endsWith("postinstall-bundled-plugins.mjs")) {
+      } else if (script?.endsWith("postinstall-bundled-plugins.mjs")) {
         events.push("postinstall");
-      } else if (isLegacyUpdateDoctorCommand(argv)) {
+      } else if (transport.isLegacyUpdateDoctorCommand(argv)) {
         events.push("doctor");
       }
       if (argv[0] !== "npm" || argv[1] !== "i") {

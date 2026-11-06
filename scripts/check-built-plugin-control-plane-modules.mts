@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import * as ts from "typescript/ast";
+import { isNodeCompilerArg } from "../node-runtime-env.mjs";
 import { resolveNodeRuntimeExecutable } from "../src/infra/node-runtime-executable.ts";
 import { collectSourceCheckoutPluginBuildEntries } from "./lib/bundled-plugin-build-entries.mjs";
 import {
@@ -173,7 +174,7 @@ export function probeBuiltPluginControlPlaneModules(
   const encodedTargets = Buffer.from(JSON.stringify(modules), "utf8").toString("base64url");
   const result = spawnSync(
     resolveNodeRuntimeExecutable() ?? process.execPath,
-    ["-e", REQUIRE_PROBE_SOURCE, encodedTargets],
+    [...process.execArgv.filter(isNodeCompilerArg), "-e", REQUIRE_PROBE_SOURCE, encodedTargets],
     {
       cwd: rootDir,
       encoding: "utf8",

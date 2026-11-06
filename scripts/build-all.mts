@@ -5,6 +5,7 @@ import { spawnSync, type SpawnSyncOptions } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
+import { isNodeCompilerArg } from "../node-runtime-env.mjs";
 import { resolveNodeRuntimeExecutable } from "../src/infra/node-runtime-executable.ts";
 import {
   finalizeBuildStepCache,
@@ -591,15 +592,18 @@ export async function runBuildAllSteps(
       return {
         status: await runManagedCommand({
           bin: invocation.command,
-          args:
-            invocation.args[0] === "scripts/ui.js"
+          args: [
+            // Steps start on this runtime directly, past any PATH node shim: keep its compiler flags.
+            ...process.execArgv.filter(isNodeCompilerArg),
+            ...(invocation.args[0] === "scripts/ui.js"
               ? distArtifactEntryArgs("scripts/ui.js", invocation.args.slice(1), { native: true })
               : script === "scripts/tsdown-build.mts" ||
                   script === "scripts/write-unified-entry-dts.ts" ||
                   script === "scripts/write-plugin-sdk-entry-dts.ts" ||
                   script === "scripts/runtime-postbuild.mts"
                 ? distArtifactEntryArgs(script, invocation.args.slice(3))
-                : invocation.args,
+                : invocation.args),
+          ],
           ...invocation.options,
           signal: params.signal,
           requireProcessTreeExit: process.platform !== "win32",

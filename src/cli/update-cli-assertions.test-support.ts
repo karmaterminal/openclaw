@@ -5,7 +5,8 @@ import type { UpdateRunResult } from "../infra/update-runner-types.js";
 import * as mocks from "./update-cli-mocks.test-support.js";
 import * as update from "./update-cli-modules.test-support.js";
 import { createUpdateFixtureAssertions } from "./update-cli-shared-fixture.test-support.js";
-import { isLegacyUpdateDoctorCommand } from "./update-cli/update-command-transport.test-support.js";
+import * as transport from "./update-cli/update-command-transport.test-support.js";
+export const { cliArgs, compilerArgs, isCliCommand, isGatewayCommand } = transport;
 
 await vi.hoisted(() => import("./update-cli-mocks.test-support.js"));
 
@@ -56,20 +57,18 @@ const isNpmGitPackageSpec = (spec: string) => {
 };
 
 export const doctorCommandCall = () =>
-  commandCalls().find(([argv]) => isLegacyUpdateDoctorCommand(argv));
+  commandCalls().find(([argv]) => transport.isLegacyUpdateDoctorCommand(argv));
 
 export const doctorCommandCallIndex = () =>
-  commandCalls().findIndex(([argv]) => isLegacyUpdateDoctorCommand(argv));
+  commandCalls().findIndex(([argv]) => transport.isLegacyUpdateDoctorCommand(argv));
 
 export const freshRestartCalls = () =>
   vi
     .mocked(update.runCommandWithTimeout)
-    .mock.calls.filter(([argv]) => argv[2] === "gateway" && argv[3] === "restart");
+    .mock.calls.filter(([argv]) => isCliCommand(argv, undefined, "gateway", "restart"));
 
 export const gatewayCommandCall = (entryPath: string, action: "install" | "restart") =>
-  commandCalls().find(
-    ([argv]) => argv[1] === entryPath && argv[2] === "gateway" && argv[3] === action,
-  );
+  commandCalls().find(([argv]) => isCliCommand(argv, entryPath, "gateway", action));
 
 export const spawnCall = (index = 0) => {
   const calls = mocks.spawn.mock.calls as unknown as Array<
@@ -79,7 +78,7 @@ export const spawnCall = (index = 0) => {
 };
 
 export const completionCommandCall = () =>
-  commandCalls().find(([argv]) => argv[2] === "completion");
+  commandCalls().find(([argv]) => isCliCommand(argv, undefined, "completion"));
 
 export const {
   syncPluginCall,

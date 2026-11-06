@@ -19,6 +19,7 @@ import { ExitError, type RuntimeEnv } from "../runtime.js";
 import { formatErrorMessage } from "./errors.js";
 import { resolveOsHomeDir } from "./home-dir.js";
 import { installationTargetEnv, resolveInstallationTarget } from "./installation-target-context.js";
+import { resolveRuntimeCompilerArgs } from "./runtime-worker-url.js";
 import { tryProcessCwd } from "./safe-cwd.js";
 import { UPDATE_RUN_ID_ENV } from "./update-control-plane-sentinel.js";
 import { writeTriageUpdateFailure } from "./update-failure-report-artifact.js";
@@ -205,7 +206,7 @@ async function runPreparedUpdateFailureTriage(
       const invocation = resolveOpenClawCliInvocation({
         execPath: nodeRunner,
         entryPath,
-        execArgv: [],
+        execArgv: resolveRuntimeCompilerArgs(nodeRunner),
         args,
       });
       const result = await runCommandWithTimeout([invocation.command, ...invocation.args], {

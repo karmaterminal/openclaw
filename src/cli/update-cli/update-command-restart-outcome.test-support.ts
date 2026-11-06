@@ -30,6 +30,7 @@ import {
   maybeRestartServiceAfterFailedMutableUpdate,
   maybeStopManagedServiceBeforeMutableUpdate,
 } from "./update-command-service.js";
+import { compilerArgs, isGatewayCommand } from "./update-command-transport.test-support.js";
 
 function revocableAuthority() {
   let current = true;
@@ -115,10 +116,10 @@ export function registerRestartOutcomeTests(
         }
       });
       mocks.child.mockImplementation(async (argv) => {
-        if (argv.includes("restart")) {
+        if (isGatewayCommand(argv, "restart")) {
           const program = new Command().exitOverride();
           addGatewayServiceCommands(program.command("gateway"));
-          await program.parseAsync(argv.slice(2), { from: "user" });
+          await program.parseAsync(argv.slice(compilerArgs.length + 2), { from: "user" });
         } else {
           expect(argv).toContain("install");
         }
@@ -144,7 +145,7 @@ export function registerRestartOutcomeTests(
         expect(result.steps).toContainEqual(verifiedStep);
       }
       expect(unownedSpawn).not.toHaveBeenCalled();
-      expect(mocks.child.mock.calls.map(([argv]) => argv[3])).toEqual(
+      expect(mocks.child.mock.calls.map(([argv]) => argv[compilerArgs.length + 3])).toEqual(
         revoked ? ["install"] : ["install", "restart"],
       );
     },

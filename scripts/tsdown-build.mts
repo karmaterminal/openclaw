@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isPathInside } from "@openclaw/fs-safe/path";
+import { isNodeCompilerArg } from "../node-runtime-env.mjs";
 import { ensureKyselyTypes } from "./generate-kysely-types.mts";
 import { BUNDLED_PLUGIN_BUILD_ENV_NAMES } from "./lib/bundled-plugin-build-entries.mjs";
 import { BUNDLED_PLUGIN_PATH_PREFIX } from "./lib/bundled-plugin-paths.mjs";
@@ -1094,11 +1095,15 @@ export async function runTsdownBuildInvocation(
   if (stdin !== "ignore" || stdoutPipe !== "pipe" || stderrPipe !== "pipe") {
     throw new Error("tsdown invocation stdio must be ignore/pipe/pipe");
   }
-  const child = spawn(invocation.command, invocation.args, {
-    ...invocation.options,
-    stdio: tsdownStdio(),
-    detached: useProcessGroup,
-  });
+  const child = spawn(
+    invocation.command,
+    [...process.execArgv.filter(isNodeCompilerArg), ...invocation.args],
+    {
+      ...invocation.options,
+      stdio: tsdownStdio(),
+      detached: useProcessGroup,
+    },
+  );
   const pidText = child.pid ? ` pid=${child.pid}` : "";
 
   function markOutput() {

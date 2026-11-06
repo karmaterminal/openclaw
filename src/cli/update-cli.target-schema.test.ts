@@ -585,11 +585,7 @@ PATH Node: not found.`,
     );
     vi.mocked(runCommand).mockImplementation(async (argv, options) => {
       const result = await runFixtureCommand(argv, options);
-      if (
-        result.code === 0 &&
-        argv[2] === "gateway" &&
-        ["install", "restart"].includes(argv[3] ?? "")
-      ) {
+      if (result.code === 0 && check.isGatewayCommand(argv, "install", "restart")) {
         await activateGateway(argv);
         const activatedHealth = check.requireValue(
           mocks.callGateway.getMockImplementation(),
@@ -715,7 +711,7 @@ PATH Node: not found.`,
     const entrypoint = check.requireValue(entrypoints[0], "updated entrypoint");
     const install = check.gatewayCommandCall(entrypoint, "install");
     expect(install?.[0][0]).toBe(process.execPath);
-    expect(install?.[0].slice(1)).toEqual([
+    expect(install?.[0].slice(check.compilerArgs.length + 1)).toEqual([
       entrypoint,
       "gateway",
       "install",
@@ -757,9 +753,8 @@ PATH Node: not found.`,
 
       expect(cli.doctorCommand).not.toHaveBeenCalled();
       expect(process.env.OPENCLAW_UPDATE_IN_PROGRESS).toBeUndefined();
-      const restartIndex = vi
-        .mocked(runCommand)
-        .mock.calls.findIndex(([argv]) => argv[2] === "gateway" && argv[3] === "restart");
+      const [restart] = check.freshRestartCalls();
+      const restartIndex = vi.mocked(runCommand).mock.calls.findIndex((call) => call === restart);
       const restartOrder = check.requireValue(
         vi.mocked(runCommand).mock.invocationCallOrder[restartIndex],
         "installed CLI restart call order",

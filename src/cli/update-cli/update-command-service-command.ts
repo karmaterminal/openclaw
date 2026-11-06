@@ -8,6 +8,7 @@ import { GatewayServiceDefinitionBackupReceiptSchema } from "../../daemon/servic
 import type { GatewayServiceRestartResult } from "../../daemon/service-types.js";
 import { GATEWAY_UPDATE_EXECUTOR_CONTRACT } from "../../daemon/service-update-authority.js";
 import { resolveGatewayService } from "../../daemon/service.js";
+import { resolveRuntimeCompilerArgs } from "../../infra/runtime-worker-url.js";
 import { resolveUpdateInstallRoot } from "../../infra/update-install-root.js";
 import type { UpdateRecoveryFence } from "../../infra/update-run-recovery.js";
 import { UPDATE_RUNNER_TIMEOUT_MS } from "../../infra/update-run-timeouts.js";
@@ -123,10 +124,11 @@ export async function isUpdatedInstallGatewayExecutorSupported(params: {
     params.onUnsupported?.("missing Gateway entrypoint");
     return false;
   }
+  const nodeRunner = params.nodeRunner ?? resolveNodeRunner();
   const invocation = resolveOpenClawCliInvocation({
-    execPath: params.nodeRunner ?? resolveNodeRunner(),
+    execPath: nodeRunner,
     entryPath: entrypoint,
-    execArgv: [],
+    execArgv: resolveRuntimeCompilerArgs(nodeRunner),
     args: ["gateway", "install", "--update-executor", "check", "--json"],
   });
   const argv = [invocation.command, ...invocation.args];
@@ -295,7 +297,7 @@ export async function runUpdatedInstallGatewayCommand(
     const invocation = resolveOpenClawCliInvocation({
       execPath: nodeRunner,
       entryPath: entrypoint,
-      execArgv: [],
+      execArgv: resolveRuntimeCompilerArgs(nodeRunner),
       args: [...args, ...(grant ? ["--update-executor", "run"] : [])],
     });
     const argv = [invocation.command, ...invocation.args];

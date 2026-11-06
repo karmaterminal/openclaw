@@ -104,7 +104,7 @@ it.each([
       if (kind === "git" && argv[3] === "rev-parse" && argv[4] === "HEAD") {
         return { ...result, stdout: `${previousSha}\n` };
       }
-      if (result.code === 0 && argv[2] === "gateway" && argv[3] === "restart") {
+      if (result.code === 0 && assertions.isGatewayCommand(argv, "restart")) {
         if (kind === "git") {
           await activateGateway(argv);
           setup.mockGatewayHealth("1.0.0", "restored-gateway", "fixture-original-build");

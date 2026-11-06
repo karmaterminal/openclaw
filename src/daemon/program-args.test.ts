@@ -137,7 +137,8 @@ describe("resolveGatewayProgramArguments", () => {
     const originalExecArgv = process.execArgv;
     const entryPath = path.resolve("/opt/openclaw/dist/index.js");
     mockEntrypoint(entryPath);
-    process.execArgv = ["--max-old-space-size=24576", "--require=/tmp/preload.js"];
+    // Durable service definitions never copy the installer's compiler flags.
+    process.execArgv = ["--max-old-space-size=24576", "--require=/tmp/preload.js", "--no-opt"];
     try {
       const result = await gatewayArgs();
       expect(result.programArguments).toEqual([validatedNodePath, entryPath, ...gatewayTail]);

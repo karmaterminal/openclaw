@@ -18,6 +18,7 @@ import {
   maybeRestartService,
   maybeStopManagedServiceBeforeMutableUpdate,
 } from "./update-command-service.js";
+import { cliArgs } from "./update-command-transport.test-support.js";
 
 export const preservedActivationCases = [
   { phase: "late", mode: "npm", denial: "unknown", outcome: "clean refusal", json: true },
@@ -278,13 +279,9 @@ export function registerPluginMaintenanceTests(getFixture: () => PluginMaintenan
         "fresh CLI restart",
       ]);
       const child = mocks.child.mock.calls[0];
-      expect(child?.[0].slice(1)).toEqual([
-        entry,
-        "gateway",
-        "restart",
-        "--preserve-definition",
-        "--json",
-      ]);
+      expect(child?.[0].slice(1)).toEqual(
+        cliArgs(entry, "gateway", "restart", "--preserve-definition", "--json"),
+      );
       expect(mocks.health.mock.calls[0]?.[0]).toMatchObject({
         port: 19305,
         expectedVersion: "9999.1.1",
@@ -308,9 +305,9 @@ export function registerPluginMaintenanceTests(getFixture: () => PluginMaintenan
         timeoutMs: 1000,
       });
       const repairFlags = ["--repair", "--non-interactive", "--no-workspace-suggestions", "--yes"];
-      expect(doctorRunner.mock.calls.filter(([argv]) => argv[2] === "doctor")).toEqual([
+      expect(doctorRunner.mock.calls.filter(([argv]) => argv.includes("doctor"))).toEqual([
         [
-          [process.execPath, entry, "doctor", ...repairFlags],
+          [process.execPath, ...cliArgs(entry, "doctor", ...repairFlags)],
           expect.objectContaining({ cwd: root }),
         ],
       ]);

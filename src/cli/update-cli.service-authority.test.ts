@@ -9,6 +9,7 @@ import { withEnvAsync } from "../test-utils/env.js";
 import { resolveTestNodeExecPath } from "../test-utils/node-process.js";
 import { createCommandResult as commandResult } from "../test-utils/npm-spec-install-test-helpers.js";
 import {
+  cliArgs,
   expectNoSideEffects,
   expectPackageInstallSpec,
   freshRestartCalls,
@@ -570,9 +571,10 @@ describe("update-cli", () => {
 
       expectNoSideEffects(serviceStart, serviceRestart);
       if (inspection === "unchanged") {
+        const argv = cliArgs(entrypoint, "gateway", "restart", "--preserve-definition", "--json");
         expect(freshRestartCalls()).toEqual([
           [
-            [process.execPath, entrypoint, "gateway", "restart", "--preserve-definition", "--json"],
+            [process.execPath, ...argv],
             expect.objectContaining({ cwd: process.cwd(), baseEnv: {} }),
           ],
         ]);

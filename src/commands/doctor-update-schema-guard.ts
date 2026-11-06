@@ -14,6 +14,7 @@ import {
   getNodeSqliteKysely,
 } from "../infra/kysely-sync.js";
 import { openNodeSqliteDatabase } from "../infra/node-sqlite.js";
+import { resolveRuntimeCompilerArgs } from "../infra/runtime-worker-url.js";
 import { prepareSqliteReadOnlyLocation } from "../infra/sqlite-snapshot-source.js";
 import type { UpdateDoctorWriteAuthority } from "../infra/update-doctor-result.js";
 import { POST_CORE_UPDATE_ENV } from "../infra/update-post-core-context.js";
@@ -636,7 +637,7 @@ async function rehearseDeferredUpdateDoctorSchemaForParent(
     writerStarted = true;
     const invocation = resolveOpenClawCliInvocation({
       entryPath: entry,
-      execArgv: [],
+      execArgv: resolveRuntimeCompilerArgs(),
       args: [
         "doctor",
         "--fix",

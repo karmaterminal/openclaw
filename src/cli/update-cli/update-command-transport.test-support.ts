@@ -3,6 +3,7 @@ import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { expect, vi } from "vitest";
+import { resolveForwardedNodeCompilerArgs } from "../../bootstrap/node-compiler-args.js";
 import { decodeLaunchAgentPlistFixture } from "../../daemon/launchd-plist.test-support.js";
 import type { GatewayServiceCommandConfig } from "../../daemon/service-types.js";
 import { runtimeProcessEntrypoints } from "../../infra/runtime-process-entrypoints.js";
@@ -18,11 +19,20 @@ import type {
 } from "../../process/exec.js";
 import { createCommandResult as commandResult } from "../../test-utils/npm-spec-install-test-helpers.js";
 
+export const compilerArgs = resolveForwardedNodeCompilerArgs();
+/** argv = runner, parent's reviewed compiler flags (none on Bun), then `args` (or undefined). */
+export const isCliCommand = (argv: readonly string[], ...args: (string | undefined)[]) =>
+  [...(process.versions.bun ? [] : compilerArgs), ...args].every(
+    (arg, i) => arg === undefined || argv[i + 1] === arg,
+  );
+export const cliArgs = (...args: (string | undefined)[]) => [...compilerArgs, ...args];
+export const isGatewayCommand = (argv: readonly string[], ...actions: string[]) =>
+  actions.some((action) => isCliCommand(argv, undefined, "gateway", action));
+
 export function isLegacyUpdateDoctorCommand(argv: readonly string[]) {
   return (
-    argv[2] === "doctor" &&
-    argv[3] === "--non-interactive" &&
-    (argv.length === 4 || argv[4] === "--fix")
+    isCliCommand(argv, undefined, "doctor", "--non-interactive") &&
+    (argv.length === compilerArgs.length + 4 || argv[compilerArgs.length + 4] === "--fix")
   );
 }
 
@@ -64,16 +74,14 @@ export function createUpdateExecTransportFixture(params: {
 }): typeof runExec {
   return async (...args: Parameters<typeof runExec>) => {
     const [command, argv, options] = args;
-    if (
-      path.basename(argv[0] ?? "") === "daemon-runtime-probe.mjs" &&
-      (argv[1] === "node" || argv[1] === "bun")
-    ) {
+    const executable = path.win32.basename(command).toLowerCase();
+    const isBun = executable === "bun" || executable === "bun.exe";
+    const [probe = "", runtime = ""] = argv.slice(isBun ? 0 : compilerArgs.length);
+    if (path.basename(probe) === "daemon-runtime-probe.mjs" && ["node", "bun"].includes(runtime)) {
       const result = await params.run(...args);
       if (result.stdout.trim() || result.stderr.trim()) {
         return result;
       }
-      const executable = path.win32.basename(command).toLowerCase();
-      const isBun = executable === "bun" || executable === "bun.exe";
       return {
         stdout: JSON.stringify({
           nodeVersion: process.versions.node,
@@ -216,7 +224,7 @@ export async function createUpdateUtf8CommandTransportFixture(
     await vi.importActual<typeof import("node:child_process")>("node:child_process");
   const runDoctorFixture = await createUpdateCommandTransportFixture(transport);
   return async (argv, options) => {
-    if (argv[2] === "doctor" && argv[3] === "--repair") {
+    if (isCliCommand(argv, undefined, "doctor", "--repair")) {
       try {
         const result = await transport.exec(
           expectDefined(argv[0], "Doctor executable"),

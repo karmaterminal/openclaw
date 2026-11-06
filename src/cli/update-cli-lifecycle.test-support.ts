@@ -40,6 +40,7 @@ import {
 import { reportUpdateCliHomeCleanupFailure } from "./update-cli/update-cli-failure-recovery.test-support.js";
 import { runtimeFixture } from "./update-cli/update-command-fixtures.test-support.js";
 import { getNodeRuntimeFixture } from "./update-cli/update-command-runtime-recovery.test-support.js";
+import { isGatewayCommand } from "./update-cli/update-command-transport.test-support.js";
 
 await vi.hoisted(() => import("./update-cli-mocks.test-support.js"));
 
@@ -276,7 +277,7 @@ export function registerUpdateCliLifecycle(fixture: UpdateCliLifecycleFixture): 
       if (argv[1] === "--version") {
         return commandResult({ stdout: "12.0.0\n" });
       }
-      if (argv[2] === "gateway" && argv[3] === "stop") {
+      if (isGatewayCommand(argv, "stop")) {
         return commandResult({
           stdout: JSON.stringify({ action: "stop", ok: true, result: "stopped" }),
         });

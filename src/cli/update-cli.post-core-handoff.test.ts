@@ -135,7 +135,9 @@ it("keeps stopped owned-service config and plugin state through fresh post-core 
     })?.trigger,
   ).toBe("cli");
   expect(handoff?.[0]).toBe(process.execPath);
-  expect(handoff?.[1]).toEqual([updatedEntrypoint, "update", "--yes", "--timeout", "1800"]);
+  expect(handoff?.[1]).toEqual(
+    checks.cliArgs(updatedEntrypoint, "update", "--yes", "--timeout", "1800"),
+  );
   expect(handoff?.[2]).toMatchObject({
     stdio: "inherit",
     env: {
@@ -161,7 +163,7 @@ it("keeps stopped owned-service config and plugin state through fresh post-core 
   expect(handedRecords).toEqual(managedRecords);
   const restartIndex = checks
     .commandCalls()
-    .findIndex(([argv]) => argv[2] === "gateway" && argv[3] === "restart");
+    .findIndex(([argv]) => checks.isGatewayCommand(argv, "restart"));
   expect(
     vi.mocked(cli.runCommandWithTimeout).mock.invocationCallOrder[restartIndex],
   ).toBeGreaterThan(
@@ -218,14 +220,9 @@ it("never pipes JSON post-core output to stdout", async () => {
   );
   await cli.updateCommand({ json: true, restart: false });
   const call = checks.spawnCall();
-  expect(call?.[1]).toEqual([
-    entrypoints[0],
-    "update",
-    "--json",
-    "--no-restart",
-    "--timeout",
-    "1800",
-  ]);
+  expect(call?.[1]).toEqual(
+    checks.cliArgs(entrypoints[0], "update", "--json", "--no-restart", "--timeout", "1800"),
+  );
   expect(call?.[2]?.stdio).toBe("pipe");
   expect([stdout.mock.calls, stderr.mock.calls]).toEqual([[[process.stderr]], [[process.stderr]]]);
 });
@@ -261,7 +258,7 @@ it("keeps the candidate stopped through plugin convergence and only restarts the
     "staged package commands",
   );
   vi.mocked(cli.runCommandWithTimeout).mockImplementation(async (argv, options) => {
-    if (argv[2] === "gateway" && ["install", "restart"].includes(argv[3] ?? "")) {
+    if (checks.isGatewayCommand(argv, "install", "restart")) {
       const manifest = JSON.parse(await fs.readFile(path.join(root, "package.json"), "utf8"));
       activations.push({
         version: manifest.version,

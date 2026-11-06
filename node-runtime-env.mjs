@@ -39,6 +39,20 @@ export function parseNodeOptionsEnvVar(value) {
   return tokens;
 }
 
+// Explicit operator or tooling compiler policy; production uses Node defaults.
+const NODE_COMPILER_FLAGS = [
+  "--no-opt",
+  "--no-maglev",
+  "--maglev",
+  "--no-concurrent-sparkplug",
+  "--concurrent-sparkplug",
+];
+
+/** The exact reviewed V8 compiler flags OpenClaw-owned Node children keep from their parent. */
+export function isNodeCompilerArg(arg) {
+  return typeof arg === "string" && NODE_COMPILER_FLAGS.includes(arg.replaceAll("_", "-"));
+}
+
 /** Preloads can install module hooks and start an independent compiler/reaper. */
 function isNodeStartupHook(arg) {
   return /^(?:--(?:import|require|(?:experimental-)?loader)(?:=|$)|-r)/u.test(

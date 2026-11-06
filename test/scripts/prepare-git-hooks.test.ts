@@ -1,8 +1,9 @@
 import { execFileSync, spawnSync as spawnGit, type SpawnSyncOptions } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { configurePrepareGitHooks } from "../../scripts/prepare-git-hooks.mjs";
+import { resolveTestNodeExecPath } from "../../src/test-utils/node-process.js";
 import { useAutoCleanupTempDirTracker } from "../helpers/temp-dir.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
@@ -202,6 +203,7 @@ describe("prepare entrypoint", () => {
     writeFileSync(join(scripts, "native-protocol-inputs.json"), "{}");
     for (const file of [
       "scripts/prepare-git-hooks.mjs",
+      "node-runtime-env.mjs",
       "runtime-process-bootstrap.generated.mjs",
     ]) {
       copyFileSync(new URL(`../../${file}`, import.meta.url), join(root, file));
@@ -245,4 +247,19 @@ describe("prepare entrypoint", () => {
     expect(hooks.status).toBe(ci ? 1 : 0);
     expect(hooks.stdout).toBe(ci ? "" : "git-hooks\n");
   });
+});
+
+it("starts the schema generator with only the parent's reviewed compiler flags", () => {
+  const root = tempDirs.make("prepare-generator-");
+  const hook = join(root, "scripts/prepare-git-hooks.mjs");
+  for (const file of ["node-runtime-env.mjs", "runtime-process-bootstrap.generated.mjs"]) {
+    cpSync(file, join(root, file));
+  }
+  cpSync("scripts/prepare-git-hooks.mjs", hook);
+  cpSync("src/state/openclaw-state-schema.sql", join(root, "src/state/openclaw-state-schema.sql"));
+  // The stub generator reports its own execArgv; a real Node parent's other options stay behind.
+  writeFileSync(join(root, "scripts/generate-kysely-types.mts"), "console.log(process.execArgv);");
+  const run = (...flags: string[]) =>
+    String(execFileSync(resolveTestNodeExecPath(), [...flags, "--no-warnings", hook]));
+  expect([run("--no-opt"), run()]).toEqual(["[ '--no-opt' ]\n", "[]\n"]);
 });

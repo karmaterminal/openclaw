@@ -1,5 +1,6 @@
 import { stripVTControlCharacters } from "node:util";
 import { resolveOpenClawCliInvocation } from "../../../cli-invocation.mjs";
+import { resolveRuntimeCompilerArgs } from "../../infra/runtime-worker-url.js";
 import { runExec, type RunExecOptions } from "../../process/exec.js";
 
 /** Same-version artifacts can advertise different options; inspect the selected target. */
@@ -10,7 +11,7 @@ export async function readUpdateTargetCliOptions(
   const invocation = resolveOpenClawCliInvocation({
     execPath: params.nodeRunner,
     entryPath: params.entryPath,
-    execArgv: [],
+    execArgv: resolveRuntimeCompilerArgs(params.nodeRunner),
     args: [params.command, "--help"],
   });
   const { stdout } = await runExec(invocation.command, invocation.args, {

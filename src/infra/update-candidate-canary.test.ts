@@ -4,6 +4,7 @@ import path from "node:path";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import { resolveForwardedNodeCompilerArgs } from "../bootstrap/node-compiler-args.js";
 import { formatCliFailureLines } from "../cli/failure-output.js";
 import { createInvalidConfigError } from "../config/io.invalid-config.js";
 import { createDeferredCore } from "../shared/deferred.js";
@@ -217,7 +218,7 @@ describe("update candidate canary", () => {
       ]);
       expect(mocks.snapshot.mock.calls[0]?.[0]).toEqual([
         nodeRunner,
-        ...(runtime === "bun" ? ["--no-install"] : []),
+        ...(runtime === "bun" ? ["--no-install"] : resolveForwardedNodeCompilerArgs()),
         path.join(root, "dist", "infra", "update-candidate-state.worker.js"),
       ]);
       expect(mocks.snapshot.mock.calls[0]?.[1].baseEnv.OPENCLAW_DEV_SOURCE_ROOT).toBe(root);

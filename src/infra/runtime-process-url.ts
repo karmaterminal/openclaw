@@ -11,7 +11,11 @@ import {
   type runtimeProcessDeployManifest,
   type runtimeProcessSealedManifest,
 } from "./runtime-process-manifest.js";
-import { resolveRuntimeWorkerArgv, resolveRuntimeWorkerUrl } from "./runtime-worker-url.js";
+import {
+  resolveRuntimeCompilerArgs,
+  resolveRuntimeWorkerArgv,
+  resolveRuntimeWorkerUrl,
+} from "./runtime-worker-url.js";
 
 type RuntimeProcessEntrypointName = keyof typeof runtimeProcessEntrypoints;
 
@@ -79,5 +83,9 @@ export function prepareRuntimeProcessScriptInvocation(
     }
   }
   const file = createRuntimeProcessScriptFile(name, options);
-  return { argv: [execPath, fileURLToPath(file.url)], dispose: () => file.dispose() };
+  // Probes included: a Node target keeps this process's reviewed compiler flags; Bun takes none.
+  return {
+    argv: [execPath, ...resolveRuntimeCompilerArgs(execPath), fileURLToPath(file.url)],
+    dispose: () => file.dispose(),
+  };
 }

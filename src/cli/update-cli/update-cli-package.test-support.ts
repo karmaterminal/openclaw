@@ -8,6 +8,7 @@ import type { runCommandWithTimeout as RunCommandWithTimeout } from "../../proce
 import { resolveTestNodeExecPath } from "../../test-utils/node-process.js";
 import { createCommandResult as commandResult } from "../../test-utils/npm-spec-install-test-helpers.js";
 import { quoteCliArg } from "../quote-cli-arg.js";
+import * as transport from "./update-command-transport.test-support.js";
 
 function requireValue<T>(value: T | undefined, label: string): T {
   if (value === undefined) {
@@ -276,12 +277,12 @@ export function createUpdateCliPackageFixtures({
       }
     });
     return async (argv: string[]) => {
-      if (argv[2] !== "gateway" || (argv[3] !== "install" && argv[3] !== "restart")) {
+      if (!transport.isGatewayCommand(argv, "install", "restart")) {
         return;
       }
       // Native activation starts the installed package. Changing the probe only
       // here keeps a missing restart or wrong package visible to real health checks.
-      const entrypoint = requireValue(argv[1], "gateway activation entrypoint");
+      const entrypoint = requireValue(argv[transport.compilerArgs.length + 1], "gateway entry");
       await fs.access(entrypoint);
       const manifest = JSON.parse(
         await fs.readFile(path.join(path.dirname(entrypoint), "..", "package.json"), "utf8"),
@@ -330,7 +331,7 @@ export function createUpdateCliPackageFixtures({
         });
       }
       await activateGateway(argv);
-      if (argv[2] === "gateway" && argv[3] === "install") {
+      if (transport.isGatewayCommand(argv, "install")) {
         params.onGatewayInstall?.([...argv]);
       }
       return commandResult();
@@ -385,7 +386,7 @@ export function createUpdateCliPackageFixtures({
     const message =
       "Service definition refresh failed; the previous definition was restored: Error: launchctl bootstrap failed";
     vi.mocked(runCommandWithTimeout).mockImplementation(async (argv) => {
-      const failed = argv[1] === entrypoint && argv[2] === "gateway" && argv[3] === "install";
+      const failed = transport.isCliCommand(argv, entrypoint, "gateway", "install");
       return commandResult({
         stdout: failed
           ? JSON.stringify({

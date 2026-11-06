@@ -200,7 +200,7 @@ describe("update-cli", () => {
         expect(mocks.spawn).toHaveBeenCalledOnce();
         expect(update.runExec).toHaveBeenCalledWith(
           expect.any(String),
-          [entryPath, "config", "validate", "--json"],
+          assert.cliArgs(entryPath, "config", "validate", "--json"),
           expect.objectContaining({ env: { OPENCLAW_UPDATE_IN_PROGRESS: "0" } }),
         );
         expect(process.env.OPENCLAW_COMPATIBILITY_HOST_VERSION).toBeUndefined();

@@ -26,6 +26,7 @@ import {
   writeJsonFixture,
   writeOpenClawPackageFixture,
 } from "./update-cli/update-cli-package.test-support.js";
+import * as transport from "./update-cli/update-command-transport.test-support.js";
 
 await vi.hoisted(() => import("./update-cli-mocks.test-support.js"));
 
@@ -89,7 +90,7 @@ describe("update-cli", () => {
       );
       const runOtherCommand = vi.mocked(update.runUtf8CommandWithTimeout).getMockImplementation();
       vi.mocked(update.runUtf8CommandWithTimeout).mockImplementation(async (argv, options) => {
-        if (argv[2] === "doctor" && argv.includes("--lint")) {
+        if (transport.isCliCommand(argv, entrypoint, "doctor", "--lint")) {
           return createCommandResult({
             stdout: JSON.stringify({ ok: true, checksRun: 1, checksSkipped: 0, findings: [] }),
           });
@@ -104,8 +105,11 @@ describe("update-cli", () => {
 
       const maintenance = vi
         .mocked(update.runExec)
-        .mock.calls.filter(([, args]) => args[0] === entrypoint);
-      expect(maintenance.map(([runner, args]) => [runner].concat(args.slice(1)))).toEqual([
+        .mock.calls.filter(([runner, args]) =>
+          transport.isCliCommand([runner, ...args], entrypoint),
+        )
+        .map(([runner, args]) => [runner].concat(args.slice(transport.compilerArgs.length + 1)));
+      expect(maintenance).toEqual([
         [expectedRunner, ...repairArgs, "--yes"],
         [expectedRunner, ...quietRepairArgs, "--yes"],
         [expectedRunner, ...validationArgs],
@@ -114,12 +118,7 @@ describe("update-cli", () => {
         vi.mocked(update.runUtf8CommandWithTimeout).mock.calls.map(([argv]) => argv),
       ).toContainEqual([
         expectedRunner,
-        entrypoint,
-        "doctor",
-        "--lint",
-        "--json",
-        "--severity-min",
-        "error",
+        ...transport.cliArgs(entrypoint, "doctor", "--lint", "--json", "--severity-min", "error"),
       ]);
       expect(completionCommandCall()?.[0][0]).toBe(expectedRunner);
       expect(lastWriteJsonCall()).toMatchObject({ status: "ok", mode: "finalize" });
@@ -242,10 +241,12 @@ describe("update-cli", () => {
       }
       const freshDoctorCall = vi
         .mocked(update.runExec)
-        .mock.calls.find(
-          ([, args]) => args[0] === "/tmp/openclaw-entry.mjs" && args.includes("doctor"),
+        .mock.calls.find(([runner, args]) =>
+          transport.isCliCommand([runner, ...args], "/tmp/openclaw-entry.mjs", "doctor"),
         );
-      expect(freshDoctorCall?.[1]).toEqual(["/tmp/openclaw-entry.mjs", ...quietRepairArgs]);
+      expect(freshDoctorCall?.[1].slice(transport.compilerArgs.length + 1)).toEqual(
+        quietRepairArgs,
+      );
       expect(freshDoctorCall?.[2]).toMatchObject({
         cwd: process.cwd(),
         env: {
@@ -302,10 +303,9 @@ describe("update-cli", () => {
     );
     const finalizationCommands = vi
       .mocked(update.runExec)
-      .mock.calls.filter(
-        ([, args]) => args[0] === entryPath && ["doctor", "config"].includes(args[1] ?? ""),
-      )
-      .map(([, args]) => args.slice(1));
+      .mock.calls.filter(([runner, args]) => transport.isCliCommand([runner, ...args], entryPath))
+      .map(([, args]) => args.slice(transport.compilerArgs.length + 1))
+      .filter(([command]) => command === "doctor" || command === "config");
     expect(finalizationCommands).toEqual([repairArgs, quietRepairArgs, validationArgs]);
     expect(update.doctorCommand).not.toHaveBeenCalled();
     expect(lastWriteJsonCall()).toMatchObject({ status: "ok" });

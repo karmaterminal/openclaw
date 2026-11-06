@@ -150,6 +150,7 @@ const {
   stableWhatsAppConfig,
 } = await import("./update-cli/update-cli-config.test-support.js");
 const { writeJsonFixture } = await import("./update-cli/update-cli-package.test-support.js");
+const { isCliCommand } = await import("./update-cli/update-command-transport.test-support.js");
 const { createTempHomeEnv } = await import("../test-utils/temp-home.js");
 export const { updateGitCheckout } = await import("../infra/update-runner-git.js");
 const { runExec, runCommandWithTimeout } = await import("../process/exec.js");
@@ -262,7 +263,8 @@ export function installDeferredCompletionFixture() {
     pathExists.mockImplementation(async (candidate: string) => candidate === entrypoint);
     // Child completion may invoke only Doctor and config validation.
     vi.mocked(runExec).mockImplementation(async (file, args) => {
-      if (file === process.execPath && (args[1] === "doctor" || args[1] === "config")) {
+      const isChild = (command: string) => isCliCommand([file, ...args], undefined, command);
+      if (file === process.execPath && (isChild("doctor") || isChild("config"))) {
         return { stdout: "", stderr: "" };
       }
       throw new Error(`Unexpected completion process: ${file}`);
