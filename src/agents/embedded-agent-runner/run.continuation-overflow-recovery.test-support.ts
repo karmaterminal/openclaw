@@ -109,9 +109,9 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
       runEmbeddedAttempt: mockedRunEmbeddedAttempt,
       compactDirect: mockedCompactDirect,
       beforeCompact: () => {
-        expect(loadSessionEntry(overflowBaseRunParams.sessionTarget!)).toMatchObject({
-          lastContextPressureBand: 95,
-        });
+        expect(loadSessionEntry(overflowBaseRunParams.sessionTarget!)).not.toHaveProperty(
+          "lastContextPressureBand",
+        );
         pressureEvents.push(
           ...peekSystemEventEntries(overflowBaseRunParams.sessionKey).filter((event) =>
             event.text.includes("[system:context-pressure]"),
@@ -137,9 +137,8 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
       trigger: "overflow",
       authProfileId: "test-profile",
     });
-    expect(pressureEvents).toHaveLength(1);
-    expect(pressureEvents[0]?.text).toContain("preserve critical working state");
-    expect(pressureEvents[0]?.text).not.toContain("continue_delegate");
+    // An overflow is past the built-in trigger: compaction owns it, so nothing warns about it.
+    expect(pressureEvents).toEqual([]);
   });
 
   it("does not enqueue overflow pressure guidance when continuation is disabled", async () => {
@@ -188,6 +187,8 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
     mockOverflowRetrySuccess({
       runEmbeddedAttempt: mockedRunEmbeddedAttempt,
       compactDirect: mockedCompactDirect,
+      // A provider limit under the declared budget overflows before the built-in trigger.
+      overflowMessage: "prompt is too long: 135000 tokens > 134000 maximum",
       beforeCompact: () => {
         sawCanonicalPressureEvent = peekSystemEventEntries(
           overflowBaseRunParams.sessionTarget.sessionKey,

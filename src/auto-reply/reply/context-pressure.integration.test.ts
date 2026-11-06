@@ -6,7 +6,7 @@
  * to confirm the P1 fix (event ordering) works end-to-end.
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import type { SessionEntry } from "../../config/sessions/types.js";
+import { SESSION_TOTAL_TOKENS_VERSION, type SessionEntry } from "../../config/sessions/types.js";
 import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import { peekSystemEventEntries, drainSystemEventEntries } from "../../infra/system-events.js";
 import { checkContextPressure } from "../continuation/context-pressure.js";
@@ -19,6 +19,8 @@ const TEST_QUEUE_KEY = resolveSystemEventQueueKey(TEST_SESSION_KEY, OWNER_AGENT_
 function makeEntry(overrides: Partial<SessionEntry> = {}): SessionEntry {
   return {
     totalTokens: 8000,
+    totalTokensFresh: true,
+    totalTokensVersion: SESSION_TOTAL_TOKENS_VERSION,
     lastContextPressureBand: undefined,
     ...overrides,
   } as SessionEntry;

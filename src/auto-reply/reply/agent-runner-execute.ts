@@ -2,7 +2,9 @@ import crypto from "node:crypto";
 import { resolveContextTokensForModel } from "../../agents/context.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
 import { appendCurrentInboundContext } from "../../agents/embedded-agent-runner/run/runtime-context-prompt.js";
+import { evaluateRequestCompactionGuards } from "../../agents/tools/request-compaction-tool.js";
 import type { SessionEntry } from "../../config/sessions.js";
+import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { withBeforeAgentReplyObserver } from "../../plugins/before-agent-reply.js";
 import { getGatewayContextResolver } from "../../plugins/runtime/gateway-request-scope.js";
 import { defaultRuntime } from "../../runtime.js";
@@ -13,6 +15,7 @@ import { resolveLiveContinuationRuntimeConfig } from "../continuation/config.js"
 import {
   checkContextPressure,
   emitPersistedContextPressure,
+  resolveRecordedToolNames,
 } from "../continuation/context-pressure.js";
 import { setReplyPayloadMetadata } from "../reply-payload.js";
 import type { ReplyPayload } from "../types.js";
@@ -24,17 +27,28 @@ import {
 } from "./agent-runner-core.js";
 import { executeAgentTurn } from "./agent-runner-execution.js";
 import { markPostCompactionModelFailurePayload } from "./agent-runner-failure-reply.js";
+import {
+  followupRunsBuiltInCompaction,
+  resolveFollowupAgentRuntimeId,
+  resolveFollowupContextTokens,
+} from "./agent-runner-memory-runtime.js";
+import { computeRequestCompactionContextUsage } from "./agent-runner-post-compaction-release.js";
 import { accountAgentTurnCompaction } from "./agent-runner-result-accounting.js";
 import { finalizeReplyAgentRun } from "./agent-runner-result.js";
 import type { FinalizeReplyAgentRunInput } from "./agent-runner-result.types.js";
 import { createFollowupRunner } from "./followup-runner.js";
 import { createGoalContinuationReturn } from "./goal-continuation.js";
+import { resolveBuiltInCompactionTrigger } from "./memory-flush-plan.js";
 import { evaluateNoOpRearmAdmission, type NoOpRearmWakeClass } from "./no-op-rearm-guard.js";
 import {
   buildRecoverablePendingFinalDeliveryText,
   normalizePendingFinalDeliveryPayloads,
 } from "./pending-final-delivery.js";
-import { claimNextQueuedFollowupRequestFrom, enqueueFollowupRun } from "./queue.js";
+import {
+  claimNextQueuedFollowupRequestFrom,
+  enqueueFollowupRun,
+  type FollowupRun,
+} from "./queue.js";
 import { admitFollowupRunLifecycle } from "./queue/lifecycle.js";
 import type { PendingReplyDelivery } from "./reply-input-admission.js";
 import {
@@ -156,6 +170,41 @@ type ExecutePreparedReplyAgentRunInput = Omit<
     traceAgentPhase: <T>(name: string, run: () => Promise<T> | T) => Promise<T>;
   };
 
+/** The built-in runtime warns from the trigger preflight compaction uses; others keep window ratios. */
+function resolveBuiltInContextPressure(params: {
+  cfg: OpenClawConfig;
+  defaultModel: string;
+  followupRun: FollowupRun;
+  sessionEntry: SessionEntry;
+  sessionKey: string;
+}) {
+  const { cfg, followupRun, sessionEntry, sessionKey } = params;
+  const runtimeId = resolveFollowupAgentRuntimeId(params);
+  if (!followupRunsBuiltInCompaction(params, runtimeId)) {
+    return undefined;
+  }
+  const { provider } = followupRun.run;
+  const model = followupRun.run.model ?? params.defaultModel;
+  const contextWindowTokens = resolveFollowupContextTokens(params, runtimeId);
+  return {
+    contextWindowTokens,
+    compactionTriggerTokens: resolveBuiltInCompactionTrigger({
+      cfg,
+      contextWindowTokens,
+      provider,
+      modelId: model,
+    }),
+    admittedToolNames: resolveRecordedToolNames(sessionEntry),
+    isRequestCompactionAdmitted: (entry: SessionEntry) =>
+      evaluateRequestCompactionGuards({
+        sessionKey,
+        contextUsageOrigin: "live_runner",
+        getContextUsage: () =>
+          computeRequestCompactionContextUsage({ entry, cfg, provider, model }),
+      }).admitted,
+  };
+}
+
 export async function executePreparedReplyAgentRun(
   context: ExecutePreparedReplyAgentRunInput,
 ): Promise<ReplyPayload | ReplyPayload[] | undefined> {
@@ -254,25 +303,36 @@ async function executePreparedReplyAgentRunWithCompletion(
   if (activeSessionEntry && sessionKey) {
     const { enabled, contextPressureThreshold, earlyWarningBand } =
       resolveLiveContinuationRuntimeConfig(cfg);
-    const contextWindowTokens =
-      resolveContextTokensForModel({
-        cfg,
-        provider: followupRun.run.provider,
-        model: defaultModel,
-        fallbackContextTokens: activeSessionEntry.contextTokens ?? DEFAULT_CONTEXT_TOKENS,
-        allowAsyncLoad: false,
-      }) ?? DEFAULT_CONTEXT_TOKENS;
+    const pressure = {
+      sessionEntry: activeSessionEntry,
+      sessionKey,
+      agentId: followupRun.run.agentId,
+      contextPressureThreshold,
+      contextWindowTokens:
+        resolveContextTokensForModel({
+          cfg,
+          provider: followupRun.run.provider,
+          model: defaultModel,
+          fallbackContextTokens: activeSessionEntry.contextTokens ?? DEFAULT_CONTEXT_TOKENS,
+          allowAsyncLoad: false,
+        }) ?? DEFAULT_CONTEXT_TOKENS,
+      earlyWarningBand,
+      postCompaction: preflightCompactionApplied,
+      ...(enabled
+        ? resolveBuiltInContextPressure({
+            cfg,
+            defaultModel,
+            followupRun,
+            sessionEntry: activeSessionEntry,
+            sessionKey,
+          })
+        : undefined),
+    };
     if (storePath) {
       try {
         await emitPersistedContextPressure({
-          sessionEntry: activeSessionEntry,
-          sessionKey,
-          agentId: followupRun.run.agentId,
+          ...pressure,
           continuationEnabled: enabled,
-          contextPressureThreshold,
-          contextWindowTokens,
-          earlyWarningBand,
-          postCompaction: preflightCompactionApplied,
           storePath,
           expectedSessionId: activeSessionEntry.sessionId,
         });
@@ -280,15 +340,7 @@ async function executePreparedReplyAgentRunWithCompletion(
         defaultRuntime.log(`context-pressure band persistence failed (non-fatal): ${String(err)}`);
       }
     } else if (enabled) {
-      checkContextPressure({
-        sessionEntry: activeSessionEntry,
-        sessionKey,
-        agentId: followupRun.run.agentId,
-        contextPressureThreshold,
-        contextWindowTokens,
-        earlyWarningBand,
-        postCompaction: preflightCompactionApplied,
-      });
+      checkContextPressure(pressure);
     }
   }
 

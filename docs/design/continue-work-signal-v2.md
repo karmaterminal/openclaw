@@ -789,7 +789,7 @@ When the session crosses the threshold, the gateway enqueues a message such as:
 Consider evacuating working state to memory files or delegating remaining work.
 ```
 
-The event is injected **pre-run**, not post-run. That distinction matters: the agent can act in the current turn rather than discovering pressure one turn too late.
+The event is enqueued **pre-run**, after that turn's system events were already drained into its prompt, so the agent reads it on the next turn. The built-in runtime's headrooms below account for that one-turn lag.
 
 The message is telemetry, but it is also lifecycle instruction. At low pressure it can establish a habit of steady evacuation: write durable state, dispatch a quiet `continue_delegate(mode="post-compaction")`, or send a silent shard that preserves the detail most likely to matter after the window changes. At rising pressure it should make evacuation the live concern of the turn. At high pressure it should make elective `request_compaction()` preferable to waiting for the platform to force compaction at the boundary.
 
@@ -797,12 +797,27 @@ This is the practical form of the lich pattern from §2.5. The session is not me
 
 Urgency is banded. `contextPressureThreshold` is optional; when absent, ordinary pre-run pressure events are disabled. `earlyWarningBand` is shipped and defaults to `0.3125`, so a production threshold of `0.8` also creates an early warning at 25% (`0.8 * 0.3125`).
 
-The practical bands are:
+The practical bands depend on who owns compaction.
+
+**Runtimes that keep their own compaction** (Codex, CLI backends, native-compaction harnesses) use window ratios:
 
 - early-warning threshold (25% with the shipped default multiplier and an 80% primary threshold),
 - configured primary threshold (often 80% in production configurations),
 - 90%,
 - 95%.
+
+**The built-in runtime** compacts at a resolved token trigger, `min(window - reserve, floor(0.75 * window))`, raised by a server-compaction minimum where one applies. Ratio bands above that trigger would describe a session that has already compacted, so its two warnings are token points below it, from the same resolver preflight compaction uses:
+
+| Warning | Fires at          | Cue                                                                      |
+| ------- | ----------------- | ------------------------------------------------------------------------ |
+| First   | `trigger - 20000` | Stage a chosen handoff.                                                  |
+| Second  | `trigger - 10000` | Stage a handoff; add `request_compaction` only if its live guard admits. |
+
+The headrooms are named in `context-pressure.ts`: `TURN_HEADROOM_TOKENS` (8000) plus `TOOL_CALL_HEADROOM_TOKENS` (2000) make the second warning's 10000, and the first doubles it. A warning reaches the model with the next turn's prompt, so each headroom covers the turn in flight and then the turn that reads the warning and makes its call. A trigger that cannot hold 20000 tokens keeps only the second warning, and one that cannot hold 10000 has none. At or past the trigger nothing warns, including overflow and timeout recovery: compaction owns the session by then. `contextPressureThreshold` only enables these events on the built-in runtime, and `earlyWarningBand` does not apply.
+
+The second warning names `request_compaction` only when the tool's own guard, `evaluateRequestCompactionGuards`, would admit the call, so it never cues a request the tool will reject. A window whose second warning sits below the guard's 70% floor never shows that cue. Either warning names a tool only if the session's last run recorded it. `lastContextPressureBand` holds the ordinal (1, 2) here and a percentage on the ratio path.
+
+Both policies count only fresh v2 totals, the check `request_compaction` applies. A v1 total left by an upgrade is no evidence of pressure.
 
 The dedup rule is equality-based: the same band does not fire twice consecutively, but a new band always fires. This allows post-compaction lifecycles to begin again at lower bands without suppressing fresh advisories.
 
@@ -811,7 +826,7 @@ The dedup rule is equality-based: the same band does not fire twice consecutivel
 1. **`contextPressureThreshold`** is configured (non-null) and positive (`> 0`). Absent or non-positive threshold disables the gate entirely. (Post-compaction-only path uses a default of `0.8` if unset.)
 2. **`contextWindow`** resolves to a positive finite value (`> 0` and `Number.isFinite`).
 3. **`activeSessionEntry.totalTokens`** is populated, finite, and positive (`> 0`).
-4. **(non-post-compaction only)** **`activeSessionEntry.totalTokensFresh !== false`** — i.e., the cached token count is not explicitly stale. Note the asymmetry: an undefined `totalTokensFresh` passes through (treated as fresh-by-default); only an explicit `false` blocks. This is the staleness guard: when an upstream cost-accounting refresh is in flight and the in-memory `totalTokens` is known-stale, `totalTokensFresh: false` short-circuits the pre-fire check rather than firing on a stale ratio.
+4. **(non-post-compaction only)** the total is **fresh and v2**: `resolveFreshSessionTotalTokens` returns it, so `totalTokensFresh === true` and `totalTokensVersion` is current. Anything else, including an undefined `totalTokensFresh`, is no evidence of pressure.
 
 If any of conditions 1–3 fails, or condition 4 fails on the non-post-compaction path, the pre-fire check is a no-op for that turn. The next turn picks it up once the missing or stale value resolves.
 
@@ -1396,11 +1411,11 @@ These anchors make the full pipeline grepable end to end.
 
 **`[context-pressure:noop]` reason taxonomy** (debug-level, gated behind `log.isEnabled("debug")` to avoid hot-path string interpolation):
 
-| `reason=`         | Meaning                                                                                                         |
-| ----------------- | --------------------------------------------------------------------------------------------------------------- |
-| `window-zero`     | `contextWindow <= 0` — model context window not yet resolved for this turn                                      |
-| `below-threshold` | `ratio < threshold` — pressure ratio below the configured trigger; logs raw 4dp ratio alongside rounded percent |
-| `band-dedup`      | `band === previous` — same pressure band as the previous fire; suppressed to avoid repeat-event flood           |
+| `reason=`         | Meaning                                                                                                                                                                                                           |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `window-zero`     | `contextWindow <= 0` — model context window not yet resolved for this turn                                                                                                                                        |
+| `below-threshold` | no warning applies: `ratio < threshold`, or on the built-in runtime a total outside both warning ranges (including at or past the trigger); logs raw 4dp ratio alongside rounded percent and the resolved trigger |
+| `band-dedup`      | `band === previous` — same pressure band as the previous fire; suppressed to avoid repeat-event flood                                                                                                             |
 
 **Privacy.** Continuation log anchors that include free-text agent payloads (`[continue_delegate:enqueue] task=…`, `[continuation:enrichment-return] …`) honor the `extensions/diagnostics-otel` content-capture redaction policy (see §6.6). Operators deploying with content-capture enabled should declare `task`, `enrichment`, and `reason` keys in their redaction policy configuration before enabling capture in production.
 

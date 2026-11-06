@@ -624,8 +624,9 @@ type SessionEntryCore = SessionEntryProvenance &
     contextTokensSource?: "runtime" | "runtime-configured" | "resolved" | "resolved-v1";
     contextBudgetStatus?: SessionContextBudgetStatus;
     /**
-     * Last context-pressure band that fired (e.g. 80, 90, 95). Used to deduplicate
-     * pressure events until the session crosses into a higher band.
+     * Last context-pressure band that fired: a window percentage for runtimes that own
+     * compaction (e.g. 80, 90, 95), an ordinal warning (1, 2) on the built-in runtime.
+     * Used to deduplicate pressure events until the session crosses into another band.
      */
     lastContextPressureBand?: number;
     compactionCount?: number;

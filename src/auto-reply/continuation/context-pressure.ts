@@ -11,10 +11,14 @@
  * Band dedup: equality-based. The same band doesn't fire twice consecutively,
  * but a new band (including a lower band after compaction) always fires.
  *
+ * Two policies share this owner. Runtimes that keep their own compaction use the
+ * configured window ratios. The built-in runtime compacts at a resolved token
+ * trigger, so its warnings are token points below that trigger.
+ *
  * RFC: docs/design/continue-work-signal-v2.md §4.2
  */
 
-import type { SessionEntry } from "../../config/sessions.js";
+import { resolveFreshSessionTotalTokens, type SessionEntry } from "../../config/sessions.js";
 import { patchSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
@@ -24,7 +28,25 @@ const log = createSubsystemLogger("continuation/context-pressure");
 
 const DEFAULT_CONTEXT_PRESSURE_THRESHOLD = 0.8;
 
-/** Pressure-band percentage returned by {@link resolveContextPressureBand}. */
+// A warning reaches the model with the next turn's prompt: the system-event drain runs
+// before this check. So the headrooms below cover the turn in flight at the crossing,
+// then the turn that reads the warning and makes its tool call.
+/** One inbound message and the reply it produces. */
+const TURN_HEADROOM_TOKENS = 8_000;
+/** One handoff call and its result: a 4 KiB delegate task, or request_compaction's reason and focus. */
+const TOOL_CALL_HEADROOM_TOKENS = 2_000;
+/** H1: the second warning sits one turn and one tool call before the trigger. */
+const SECOND_WARNING_HEADROOM_TOKENS = TURN_HEADROOM_TOKENS + TOOL_CALL_HEADROOM_TOKENS;
+/** H2: the first warning leaves room to stage first, then still see the second warning. */
+const FIRST_WARNING_HEADROOM_TOKENS = 2 * SECOND_WARNING_HEADROOM_TOKENS;
+
+const FIRST_WARNING_BAND = 1;
+const SECOND_WARNING_BAND = 2;
+
+/**
+ * A window ratio percentage from {@link resolveContextPressureBand}, or the ordinal
+ * warning from {@link resolveTriggerPressureBand}: 0 is below every warning.
+ */
 export type PressureBand = number;
 
 /**
@@ -62,6 +84,38 @@ export function resolveContextPressureBand(
   return band;
 }
 
+/**
+ * Resolve the built-in runtime's warning for a token total, given the compaction trigger.
+ *
+ * first = trigger - H2 (stage a handoff); second = trigger - H1. Neither is a share of the
+ * window, so a trigger pulled low by a large reserve keeps both, in order, with the same
+ * headroom. A window whose trigger cannot hold H2 keeps only the second warning, and one that
+ * cannot hold H1 has none: a warning at or below zero tokens would carry no information.
+ * At or past the trigger compaction owns the session, so nothing warns about it.
+ */
+export function resolveTriggerPressureBand(
+  totalTokens: number,
+  compactionTriggerTokens: number,
+): PressureBand {
+  if (totalTokens >= compactionTriggerTokens) {
+    return 0;
+  }
+  const secondWarningTokens = compactionTriggerTokens - SECOND_WARNING_HEADROOM_TOKENS;
+  if (secondWarningTokens > 0 && totalTokens >= secondWarningTokens) {
+    return SECOND_WARNING_BAND;
+  }
+  const firstWarningTokens = compactionTriggerTokens - FIRST_WARNING_HEADROOM_TOKENS;
+  return firstWarningTokens > 0 && totalTokens >= firstWarningTokens ? FIRST_WARNING_BAND : 0;
+}
+
+/** Tools the last completed run recorded: pre-run evidence of what this session admits. */
+export function resolveRecordedToolNames(
+  entry: Pick<SessionEntry, "systemPromptReport">,
+): ReadonlySet<string> | undefined {
+  const tools = entry.systemPromptReport?.tools?.entries;
+  return tools ? new Set(tools.map((tool) => tool.name)) : undefined;
+}
+
 interface CheckSessionContextPressureParams {
   sessionEntry: SessionEntry;
   sessionKey: string;
@@ -72,6 +126,10 @@ interface CheckSessionContextPressureParams {
   admittedToolNames?: ReadonlySet<string>;
   earlyWarningBand?: number;
   postCompaction?: boolean;
+  /** Built-in runtime only: the resolved trigger selects token warnings over window ratios. */
+  compactionTriggerTokens?: number;
+  /** request_compaction's live guard verdict for this entry; absent means no request cue. */
+  isRequestCompactionAdmitted?: (entry: SessionEntry) => boolean;
 }
 
 interface CheckContextPressureResult {
@@ -84,6 +142,27 @@ type SessionContextPressureEvaluation = CheckContextPressureResult & {
   logMessage?: string;
   logLevel?: "info" | "warn";
 };
+
+function buildTriggerPressureEvent(params: {
+  percentUsed: number;
+  tokensK: number;
+  windowK: number;
+  triggerK: number;
+  canStageDelegate: boolean;
+  canRequestCompaction: boolean;
+}): string {
+  const stageCue = params.canStageDelegate
+    ? "Stage a chosen handoff: continue_delegate(mode='post-compaction', task='<working-state-summary>') carries it across compaction, or write critical state to memory files."
+    : "Stage a chosen handoff: preserve critical working state outside the active context before upcoming compaction.";
+  const requestCue = params.canRequestCompaction
+    ? " Once it is staged, request_compaction(reason='...') lands compaction at a moment you choose."
+    : "";
+  return (
+    `[system:context-pressure] ${params.percentUsed}% of context window consumed ` +
+    `(${params.tokensK}k / ${params.windowK}k tokens). ` +
+    `Automatic compaction runs at ${params.triggerK}k tokens. ${stageCue}${requestCue}`
+  );
+}
 
 function buildContextPressureEvent(params: {
   percentUsed: number;
@@ -143,29 +222,40 @@ function evaluateSessionContextPressure(
     admittedToolNames,
     earlyWarningBand,
     postCompaction = false,
+    compactionTriggerTokens,
   } = params;
   const threshold =
     contextPressureThreshold ?? (postCompaction ? DEFAULT_CONTEXT_PRESSURE_THRESHOLD : undefined);
+  // The post-compaction notice reports a seam, so only a warning needs a v2 total: a v1
+  // total is one request_compaction refuses, and it is not pressure evidence either.
+  const totalTokens = postCompaction
+    ? sessionEntry.totalTokens
+    : resolveFreshSessionTotalTokens(sessionEntry);
 
   if (
     threshold == null ||
     threshold <= 0 ||
     !Number.isFinite(contextWindowTokens) ||
     contextWindowTokens <= 0 ||
-    sessionEntry.totalTokens == null ||
-    !Number.isFinite(sessionEntry.totalTokens) ||
-    sessionEntry.totalTokens <= 0 ||
-    (!postCompaction && sessionEntry.totalTokensFresh === false)
+    totalTokens == null ||
+    !Number.isFinite(totalTokens) ||
+    totalTokens <= 0
   ) {
     return { fired: false, band: 0 };
   }
 
-  const ratio = Math.max(0, sessionEntry.totalTokens / contextWindowTokens);
-  const band = resolveContextPressureBand(ratio, threshold, earlyWarningBand);
-  if (!postCompaction && band === 0 && ratio < threshold) {
+  const ratio = Math.max(0, totalTokens / contextWindowTokens);
+  const usesTrigger = compactionTriggerTokens !== undefined;
+  // The notice keeps out of the warning record, so it never spends a warning of the next cycle.
+  const band = usesTrigger
+    ? postCompaction
+      ? 0
+      : resolveTriggerPressureBand(totalTokens, compactionTriggerTokens)
+    : resolveContextPressureBand(ratio, threshold, earlyWarningBand);
+  if (!postCompaction && band === 0 && (usesTrigger || ratio < threshold)) {
     if (log.isEnabled("debug")) {
       log.debug(
-        `[context-pressure:noop] reason=below-threshold ratio=${Math.round(ratio * 100)}% threshold=${Math.round(threshold * 100)}% rawRatio=${ratio.toFixed(4)} rawThreshold=${threshold.toFixed(4)} session=${sessionKey}`,
+        `[context-pressure:noop] reason=below-threshold ratio=${Math.round(ratio * 100)}% threshold=${Math.round(threshold * 100)}% rawRatio=${ratio.toFixed(4)} rawThreshold=${threshold.toFixed(4)} trigger=${compactionTriggerTokens ?? "none"} session=${sessionKey}`,
       );
     }
     return { fired: false, band: 0 };
@@ -182,16 +272,29 @@ function evaluateSessionContextPressure(
   }
 
   const percentUsed = Math.round(ratio * 100);
-  const tokensK = Math.round(sessionEntry.totalTokens / 1000);
+  const tokensK = Math.round(totalTokens / 1000);
   const windowK = Math.round(contextWindowTokens / 1000);
-  const eventText = buildContextPressureEvent({
-    percentUsed,
-    tokensK,
-    windowK,
-    band,
-    admittedToolNames,
-    postCompaction,
-  });
+  const eventText =
+    usesTrigger && !postCompaction
+      ? buildTriggerPressureEvent({
+          percentUsed,
+          tokensK,
+          windowK,
+          triggerK: Math.round(compactionTriggerTokens / 1000),
+          canStageDelegate: admittedToolNames?.has("continue_delegate") === true,
+          canRequestCompaction:
+            band === SECOND_WARNING_BAND &&
+            admittedToolNames?.has("request_compaction") === true &&
+            params.isRequestCompactionAdmitted?.(sessionEntry) === true,
+        })
+      : buildContextPressureEvent({
+          percentUsed,
+          tokensK,
+          windowK,
+          band,
+          admittedToolNames,
+          postCompaction,
+        });
 
   return {
     fired: true,
@@ -277,6 +380,7 @@ export async function emitPersistedContextPressure(
           ...current,
           totalTokens: params.sessionEntry.totalTokens,
           totalTokensFresh: params.sessionEntry.totalTokensFresh,
+          totalTokensVersion: params.sessionEntry.totalTokensVersion,
         },
       });
       return evaluation.fired ? { lastContextPressureBand: evaluation.band } : null;

@@ -1,10 +1,6 @@
 import crypto from "node:crypto";
 import { asPositiveFiniteNumber } from "@openclaw/normalization-core/number-coercion";
-import {
-  normalizeLowercaseStringOrEmpty,
-  normalizeOptionalString,
-} from "@openclaw/normalization-core/string-coerce";
-import { resolveEffectiveCompactionReserveTokens } from "../../agents/agent-compaction-constants.js";
+import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { resolveDefaultAgentId } from "../../agents/agent-scope-config.js";
 import { MemoryFlushToolsUnavailableError } from "../../agents/agent-tools.memory-flush.js";
 import { resolveBootstrapWarningSignaturesSeen } from "../../agents/bootstrap-budget.js";
@@ -48,6 +44,7 @@ import type { ReplyPayload } from "../types.js";
 import {
   defersTokenCompactionToChatGPTBoundary,
   followupOwnsNativeCompaction,
+  followupRunsBuiltInCompaction,
   followupUsesCliRuntime,
   resolveFollowupAgentRuntimeId,
   resolveFollowupContextTokens,
@@ -76,6 +73,7 @@ import { recordMemoryFlushFailure } from "./memory-flush-failure.js";
 import {
   isToolsMemoryFlushPlan,
   memoryFlushResultIsSilent,
+  resolveBuiltInCompactionTrigger,
   resolveMemoryFlushPlanForRun,
   type MemoryFlushPlanForRunResolution,
 } from "./memory-flush-plan.js";
@@ -84,7 +82,6 @@ import {
   hasAlreadyFlushedForCurrentCompaction,
   resolveCompactionThreshold,
   resolveProjectedPromptTokens,
-  resolveResponsesServerCompactionThreshold,
   shouldRunPreflightCompaction,
 } from "./memory-flush.js";
 import { appendPostCompactionRefreshPrompt } from "./post-compaction-context.js";
@@ -147,9 +144,7 @@ export async function runSessionCompactionIfNeeded(params: {
   const runtimeParams = { ...params, sessionEntry: entry };
   assertActive();
   const runtimeId = resolveFollowupAgentRuntimeId(runtimeParams);
-  const isCli = followupUsesCliRuntime(runtimeParams, runtimeId);
-  const ownsNativeCompaction = followupOwnsNativeCompaction(runtimeParams, runtimeId);
-  if (isCli || ownsNativeCompaction || normalizeLowercaseStringOrEmpty(runtimeId) === "codex") {
+  if (!followupRunsBuiltInCompaction(runtimeParams, runtimeId)) {
     return entry;
   }
 
@@ -182,30 +177,15 @@ export async function runSessionCompactionIfNeeded(params: {
     });
 
   const contextWindowTokens = resolveFollowupContextTokens(runtimeParams, runtimeId);
-  const memoryFlushPlan = resolveMemoryFlushPlanForRun({
-    cfg: params.cfg,
-    contextWindowTokens,
-  })?.plan;
-  const reserveTokensFloor =
-    memoryFlushPlan?.reserveTokensFloor ??
-    resolveEffectiveCompactionReserveTokens({
-      contextTokenBudget: contextWindowTokens,
-      reserveTokens: 20_000,
-    });
   const freshPersistedTokens = resolveFreshSessionTotalTokens(entry);
   const promptTokenEstimate = estimatePromptTokensForMemoryFlush(
     params.promptForEstimate ?? params.followupRun.prompt,
   );
-  const responsesServerCompactionThreshold = resolveResponsesServerCompactionThreshold({
-    contextWindowTokens,
+  const threshold = resolveBuiltInCompactionTrigger({
     cfg: params.cfg,
+    contextWindowTokens,
     provider: params.followupRun.run.provider,
     modelId: params.followupRun.run.model ?? params.defaultModel,
-  });
-  const threshold = resolveCompactionThreshold({
-    contextWindowTokens,
-    reserveTokensFloor,
-    minimumThresholdTokens: responsesServerCompactionThreshold,
   });
   const maxActiveTranscriptBytes = resolveMaxActiveTranscriptBytes(params.cfg);
   const shouldCheckActiveTranscriptBytes = maxActiveTranscriptBytes !== undefined;

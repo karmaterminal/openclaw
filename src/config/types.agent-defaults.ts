@@ -46,12 +46,15 @@ export type AgentDefaultsConfig = Omit<SchemaAgentDefaultsConfig, "sandbox"> & {
      * Context-pressure awareness threshold (exclusive (0.0, 1.0]). When the session's token
      * usage exceeds this fraction of the context window, a [system:context-pressure]
      * event is injected pre-run so the agent can elect evacuation. Disabled when
-     * unset. Recommended: 0.8 (80%).
+     * unset. Recommended: 0.8 (80%). On the built-in runtime this only enables the
+     * events: they fire at token points below its resolved compaction trigger, because
+     * compaction there runs at 75% of the window or earlier.
      */
     contextPressureThreshold?: number;
     /**
      * Early-warning band as a fraction of contextPressureThreshold (default: 0.3125,
-     * which fires at 25% when the threshold is 0.8). Set to 0 to opt out.
+     * which fires at 25% when the threshold is 0.8). Set to 0 to opt out. Applies to
+     * runtimes that keep their own compaction; the built-in runtime ignores it.
      */
     earlyWarningBand?: number;
     /**

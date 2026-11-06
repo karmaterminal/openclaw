@@ -1,3 +1,4 @@
+import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
 import { resolveDefaultAgentId } from "../../agents/agent-scope-config.js";
 import { resolveCliBackendConfig } from "../../agents/cli-backends.js";
 import { resolveModelContextTokenProjection } from "../../agents/context.js";
@@ -106,6 +107,18 @@ export function followupOwnsNativeCompaction(
     resolveCliBackendConfig(runtimeId, params.cfg, {
       agentId: params.followupRun.run.agentId,
     })?.ownsNativeCompaction === true
+  );
+}
+
+/** Runtimes that keep their own compaction stay outside the built-in maintenance owner. */
+export function followupRunsBuiltInCompaction(
+  params: FollowupRuntimeParams,
+  runtimeId: string,
+): boolean {
+  return !(
+    followupUsesCliRuntime(params, runtimeId) ||
+    followupOwnsNativeCompaction(params, runtimeId) ||
+    normalizeLowercaseStringOrEmpty(runtimeId) === "codex"
   );
 }
 

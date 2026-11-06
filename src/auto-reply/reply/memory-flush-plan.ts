@@ -11,6 +11,10 @@ import {
   type MemoryFlushToolsPlan,
 } from "../../plugins/memory-state.js";
 import type { ReplyPayload } from "../types.js";
+import {
+  resolveCompactionThreshold,
+  resolveResponsesServerCompactionThreshold,
+} from "./memory-flush.js";
 
 const log = createSubsystemLogger("auto-reply/memory-flush");
 const DEFAULT_MEMORY_FLUSH_SOFT_TOKENS = 4_000;
@@ -114,6 +118,32 @@ export function resolveMemoryFlushPlanForRun(
       reserveTokensFloor: resolution.plan.reserveTokensFloor ?? timing.reserveTokensFloor,
     },
   };
+}
+
+/** The token count where built-in maintenance compacts; preflight and context pressure share it. */
+export function resolveBuiltInCompactionTrigger(params: {
+  cfg: OpenClawConfig;
+  contextWindowTokens: number;
+  provider?: string;
+  modelId?: string;
+}): number {
+  const { cfg, contextWindowTokens, provider, modelId } = params;
+  const reserveTokensFloor =
+    resolveMemoryFlushPlanForRun({ cfg, contextWindowTokens })?.plan.reserveTokensFloor ??
+    resolveEffectiveCompactionReserveTokens({
+      contextTokenBudget: contextWindowTokens,
+      reserveTokens: DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR,
+    });
+  return resolveCompactionThreshold({
+    contextWindowTokens,
+    reserveTokensFloor,
+    minimumThresholdTokens: resolveResponsesServerCompactionThreshold({
+      contextWindowTokens,
+      cfg,
+      provider,
+      modelId,
+    }),
+  });
 }
 
 /** Recognize deliberate silence only in the final assistant output. */

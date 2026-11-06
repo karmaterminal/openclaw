@@ -73,7 +73,7 @@ const RequestCompactionToolSchema = Type.Object({
   reason: Type.String({
     description:
       "Why the agent is requesting compaction now. Logged for diagnostics. " +
-      "Example: 'context pressure at 92%, working state evacuated to memory files and 2 post-compaction delegates staged.'",
+      "Example: 'context pressure at 72%, working state evacuated to memory files and 2 post-compaction delegates staged.'",
     maxLength: 1024,
   }),
   focus: Type.Optional(
@@ -179,6 +179,89 @@ function notifyCompactionDegraded(params: {
   }
 }
 
+/**
+ * The guards a request must clear before compaction is enqueued. Exported so the
+ * context-pressure cue reads this verdict instead of a copy of it. Guards run in
+ * order; a rejection carries the structured result the tool returns.
+ */
+export function evaluateRequestCompactionGuards(params: {
+  sessionKey: string;
+  getContextUsage: RequestCompactionToolOpts["getContextUsage"];
+  contextUsageOrigin?: RequestCompactionToolOpts["contextUsageOrigin"];
+}):
+  | { admitted: true; contextUsage: number }
+  | { admitted: false; rejection: Record<string, unknown> } {
+  const { sessionKey } = params;
+
+  // ----- Guard 0: Dedup — compaction already pending -----
+  if (pendingCompactionSessions.has(sessionKey)) {
+    log.debug(`[request_compaction:already-pending] session=${sessionKey}`);
+    return {
+      admitted: false,
+      rejection: {
+        status: "already_pending",
+        reason: "A compaction request is already in-flight for this session.",
+      },
+    };
+  }
+
+  // ----- Guard 1: Context threshold -----
+  const contextUsage = params.getContextUsage();
+  if (typeof contextUsage !== "number") {
+    // A named cause always wins; a bare null is only inventory-only off a live runner.
+    const cause =
+      contextUsage ??
+      (params.contextUsageOrigin === "live_runner" ? "no_fresh_usage" : "inventory_only");
+    log.debug(`[request_compaction:context-unmeasured] session=${sessionKey} cause=${cause}`);
+    return {
+      admitted: false,
+      rejection: {
+        status: "rejected",
+        guard: "context_unmeasured",
+        cause,
+        reason: UNMEASURED_REASONS[cause],
+      },
+    };
+  }
+  if (contextUsage < MIN_CONTEXT_THRESHOLD) {
+    log.debug(
+      `[request_compaction:below-threshold] session=${sessionKey} usage=${(contextUsage * 100).toFixed(1)}%`,
+    );
+    return {
+      admitted: false,
+      rejection: {
+        status: "rejected",
+        guard: "context_threshold",
+        contextUsage: Math.round(contextUsage * 100),
+        threshold: Math.round(MIN_CONTEXT_THRESHOLD * 100),
+        reason: `Context usage (${Math.round(contextUsage * 100)}%) is below the minimum threshold (${Math.round(MIN_CONTEXT_THRESHOLD * 100)}%). Compaction is not needed yet.`,
+      },
+    };
+  }
+
+  // ----- Guard 2: Rate limit -----
+  const now = Date.now();
+  const guard = sessionGuardState.get(sessionKey);
+  if (guard && now - guard.lastRequestMs < RATE_LIMIT_MS) {
+    const remainingMs = RATE_LIMIT_MS - (now - guard.lastRequestMs);
+    const remainingSec = Math.ceil(remainingMs / 1000);
+    log.debug(
+      `[request_compaction:rate-limited] session=${sessionKey} remainingSec=${remainingSec}`,
+    );
+    return {
+      admitted: false,
+      rejection: {
+        status: "rejected",
+        guard: "rate_limit",
+        retryAfterSeconds: remainingSec,
+        reason: `Rate limited. Next compaction request allowed in ${remainingSec}s.`,
+      },
+    };
+  }
+
+  return { admitted: true, contextUsage };
+}
+
 // ---------------------------------------------------------------------------
 // Tool factory
 // ---------------------------------------------------------------------------
@@ -209,7 +292,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
     description: [
       "Trigger compaction volitionally — but FIRST stage working-state survival via continue_delegate(mode='post-compaction', task='<state-summary>'), THEN call this — vs becoming subject to forced compaction at context exhaustion with no warning.",
       "Working state is NOT preserved automatically — the paired post-compaction delegate is what carries state across the seam, and you must stage it before requesting compaction.",
-      "Typically called after receiving a [system:context-pressure] event, which fires at configurable bands as your context fills.",
+      "Typically called after receiving a [system:context-pressure] event, which fires as your context approaches compaction.",
       "Reach for this when you've felt context pressure and want to land compaction at a chosen moment rather than obligatorily at context exhaustion, which may occur mid-thought or otherwise be inopportune.",
       "Async: enqueues compaction; runs after this turn completes — safe to call mid-turn.",
       "Guards return as structured rejections (not errors): requires >=70% context usage and at most one request per 5 minutes per session.",
@@ -239,60 +322,17 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
       const traceparent = formatCurrentSpanContinuationTraceparent();
       const traceContextFields = traceparent ? { traceparent } : {};
 
-      // ----- Guard 0: Dedup — compaction already pending -----
-      if (pendingCompactionSessions.has(sessionKey)) {
-        log.debug(`[request_compaction:already-pending] session=${sessionKey}`);
-        return jsonResult({
-          status: "already_pending",
-          reason: "A compaction request is already in-flight for this session.",
-        });
+      const guards = evaluateRequestCompactionGuards({
+        sessionKey,
+        getContextUsage: opts.getContextUsage,
+        contextUsageOrigin: opts.contextUsageOrigin,
+      });
+      if (!guards.admitted) {
+        return jsonResult(guards.rejection);
       }
-
-      // ----- Guard 1: Context threshold -----
-      const contextUsage = opts.getContextUsage();
-      if (typeof contextUsage !== "number") {
-        // A named cause always wins; a bare null is only inventory-only off a live runner.
-        const cause =
-          contextUsage ??
-          (opts.contextUsageOrigin === "live_runner" ? "no_fresh_usage" : "inventory_only");
-        log.debug(`[request_compaction:context-unmeasured] session=${sessionKey} cause=${cause}`);
-        return jsonResult({
-          status: "rejected",
-          guard: "context_unmeasured",
-          cause,
-          reason: UNMEASURED_REASONS[cause],
-        });
-      }
-      if (contextUsage < MIN_CONTEXT_THRESHOLD) {
-        log.debug(
-          `[request_compaction:below-threshold] session=${sessionKey} usage=${(contextUsage * 100).toFixed(1)}%`,
-        );
-        return jsonResult({
-          status: "rejected",
-          guard: "context_threshold",
-          contextUsage: Math.round(contextUsage * 100),
-          threshold: Math.round(MIN_CONTEXT_THRESHOLD * 100),
-          reason: `Context usage (${Math.round(contextUsage * 100)}%) is below the minimum threshold (${Math.round(MIN_CONTEXT_THRESHOLD * 100)}%). Compaction is not needed yet.`,
-        });
-      }
-
-      // ----- Guard 2: Rate limit -----
+      const { contextUsage } = guards;
       const now = Date.now();
       const diagId = createCompactionDiagId(now);
-      const guard = sessionGuardState.get(sessionKey);
-      if (guard && now - guard.lastRequestMs < RATE_LIMIT_MS) {
-        const remainingMs = RATE_LIMIT_MS - (now - guard.lastRequestMs);
-        const remainingSec = Math.ceil(remainingMs / 1000);
-        log.debug(
-          `[request_compaction:rate-limited] session=${sessionKey} remainingSec=${remainingSec}`,
-        );
-        return jsonResult({
-          status: "rejected",
-          guard: "rate_limit",
-          retryAfterSeconds: remainingSec,
-          reason: `Rate limited. Next compaction request allowed in ${remainingSec}s.`,
-        });
-      }
 
       // ----- All guards passed — enqueue compaction -----
       // No generation guard (removed 2026-04-15 RFC): compaction is not blocked

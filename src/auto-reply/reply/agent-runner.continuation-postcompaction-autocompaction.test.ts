@@ -4,12 +4,23 @@
 // delegate must remain queued in the custody-backed post-compaction store until
 // the next seam consumes it.
 
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { abortEmbeddedAgentRun } from "../../agents/embedded-agent-runner/runs.js";
 import { testing as embeddedRunTesting } from "../../agents/embedded-agent-runner/runs.test-support.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
-import type { SessionEntry } from "../../config/sessions.js";
-import { clearMemoryPluginState } from "../../plugins/memory-state.js";
+import { SESSION_TOTAL_TOKENS_VERSION, type SessionEntry } from "../../config/sessions.js";
+import {
+  patchSessionEntryCore,
+  replaceSessionEntry,
+} from "../../config/sessions/session-accessor.js";
+import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
+import {
+  drainSystemEventEntries,
+  peekSystemEvents,
+  resetSystemEventsForTest,
+} from "../../infra/system-events.js";
+import { clearMemoryPluginState, registerMemoryCapability } from "../../plugins/memory-state.js";
 import { testing as sessionControllerTesting } from "../../sessions/session-controller.test-support.js";
 import {
   listCustodyRecordsForTest,
@@ -158,7 +169,7 @@ type RunWithModelFallbackParams = {
   runCandidate: (provider: string, model: string) => Promise<unknown>;
 };
 
-useContinuationCustodyTestState();
+const custodyState = useContinuationCustodyTestState();
 
 beforeEach(() => {
   embeddedRunTesting.resetActiveEmbeddedRuns();
@@ -277,6 +288,7 @@ function createContinuationRun(params: { sessionKey: string; compactionCount: nu
 async function runDelegateTurn(
   run: ReturnType<typeof createContinuationRun>,
   sessionStore: Record<string, SessionEntry>,
+  storePath?: string,
 ): Promise<void> {
   setRuntimeConfigSnapshot(run.followupRun.run.config);
   await runReplyAgent({
@@ -292,6 +304,7 @@ async function runDelegateTurn(
     sessionEntry: run.sessionEntry,
     sessionStore,
     sessionKey: run.sessionKey,
+    storePath,
     defaultModel: "anthropic/claude-opus-4-6",
     resolvedVerboseLevel: "off",
     isNewSession: false,
@@ -328,4 +341,131 @@ describe("runReplyAgent :: post-compaction delegate survives same-turn auto-comp
     ]);
     expect(sessionStore[run.sessionKey]?.pendingPostCompactionDelegates ?? []).toHaveLength(0);
   });
+});
+
+describe("runReplyAgent :: pressure warning to post-compaction handoff", () => {
+  const WINDOW = 200_000;
+  const report = {
+    tools: { entries: [{ name: "continue_delegate" }, { name: "request_compaction" }] },
+  } as unknown as SessionEntry["systemPromptReport"];
+
+  afterEach(() => {
+    resetSystemEventsForTest();
+  });
+
+  const pressureEvents = (queueKey: string) =>
+    peekSystemEvents(queueKey).filter((event) => event.includes("[system:context-pressure]"));
+
+  async function createPressureRun(sessionKey: string, trigger: number) {
+    const run = createContinuationRun({ sessionKey, compactionCount: 0 });
+    run.config.agents.defaults.continuation = {
+      ...run.config.agents.defaults.continuation,
+      contextPressureThreshold: 0.8,
+    } as typeof run.config.agents.defaults.continuation;
+    Object.assign(run.sessionEntry, {
+      contextTokens: WINDOW,
+      totalTokens: trigger - 20_000,
+      totalTokensFresh: true,
+      totalTokensVersion: SESSION_TOTAL_TOKENS_VERSION,
+      systemPromptReport: report,
+      compactionCount: 0,
+    } satisfies Partial<SessionEntry>);
+    const storePath = path.join(custodyState.stateDir(), "agents/main/agent/openclaw-agent.sqlite");
+    await replaceSessionEntry({ storePath, sessionKey }, run.sessionEntry);
+    const sessionStore = { [sessionKey]: run.sessionEntry };
+    return {
+      run,
+      storePath,
+      sessionStore,
+      queueKey: resolveSystemEventQueueKey(sessionKey, "main"),
+    };
+  }
+
+  it.each([
+    { branch: "the 0.75 cap", reserveTokensFloor: undefined, trigger: 150_000 },
+    { branch: "a memory plan's reserve", reserveTokensFloor: 90_000, trigger: 110_000 },
+  ])(
+    "warns, stages, compacts at $branch, then hands off",
+    async ({ reserveTokensFloor, trigger }) => {
+      if (reserveTokensFloor !== undefined) {
+        registerMemoryCapability("memory-core", {
+          flushPlanResolver: () => ({
+            softThresholdTokens: 4_000,
+            forceFlushTranscriptBytes: 1_000_000_000,
+            reserveTokensFloor,
+            prompt: "flush",
+            systemPrompt: "flush",
+            relativePath: "memory/flush.md",
+          }),
+        });
+      }
+      const sessionKey = `agent:main:pressure-${trigger}`;
+      const { run, queueKey, sessionStore, storePath } = await createPressureRun(
+        sessionKey,
+        trigger,
+      );
+
+      // Turn one: past the first warning, with the handoff staged in the same turn.
+      await runDelegateTurn(run, sessionStore, storePath);
+
+      expect(compactState.compactEmbeddedAgentSessionMock).not.toHaveBeenCalled();
+      const warnings = pressureEvents(queueKey);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain(`${Math.round(trigger / 1000)}k tokens`);
+      expect(warnings[0]).toContain("continue_delegate(mode='post-compaction'");
+      expect(warnings[0]).not.toContain("request_compaction");
+      expect(stagedPostCompactionDelegateCount(run.sessionKey)).toBe(1);
+      expect(spawnSubagentDirectMock).not.toHaveBeenCalled();
+      drainSystemEventEntries(queueKey);
+
+      // Turn two: the session crossed the trigger, so preflight maintenance compacts first.
+      const crossed = await patchSessionEntryCore({ storePath, sessionKey }, () => ({
+        totalTokens: trigger,
+        totalTokensFresh: true,
+        totalTokensVersion: SESSION_TOTAL_TOKENS_VERSION,
+      }));
+      sessionStore[sessionKey] = crossed!;
+      compactState.compactEmbeddedAgentSessionMock.mockResolvedValueOnce({
+        ok: true,
+        compacted: true,
+        result: {
+          summary: "compacted",
+          firstKeptEntryId: "kept",
+          tokensBefore: trigger,
+          tokensAfter: 40_000,
+        },
+      });
+      runEmbeddedAgentMock.mockResolvedValueOnce({
+        payloads: [{ text: "Reply" }],
+        meta: {
+          finalAssistantVisibleText: "Reply",
+          finalAssistantRawText: "Reply",
+          agentMeta: { usage: { input: 1, output: 1 } },
+        },
+      });
+      const nextTurn = { ...run.followupRun, controllerInput: undefined };
+      await runDelegateTurn(
+        { ...run, sessionEntry: crossed!, followupRun: nextTurn },
+        sessionStore,
+        storePath,
+      );
+
+      expect(compactState.compactEmbeddedAgentSessionMock).toHaveBeenCalledOnce();
+      const notices = pressureEvents(queueKey);
+      expect(notices).toHaveLength(1);
+      expect(notices[0]).toContain("Post-compaction:");
+      expect(stagedPostCompactionDelegateCount(run.sessionKey)).toBe(0);
+      expect(await listCustodyRecordsForTest({ ownerSessionKey: run.sessionKey })).toMatchObject([
+        {
+          kind: "post_compaction",
+          status: "succeeded",
+          phase: "Durably handed off after compaction",
+          handoff: { target: "session_delivery_queue" },
+        },
+      ]);
+      expect(peekSystemEvents(queueKey)).toContainEqual(
+        expect.stringContaining("Queued 1 post-compaction delegate(s)"),
+      );
+    },
+  );
 });

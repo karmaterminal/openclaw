@@ -1,6 +1,7 @@
 import { resolveContinuationRuntimeConfig } from "../../../auto-reply/continuation/config.js";
 import { emitPersistedContextPressure } from "../../../auto-reply/continuation/context-pressure.js";
-import type { SessionEntry } from "../../../config/sessions.js";
+import { resolveBuiltInCompactionTrigger } from "../../../auto-reply/reply/memory-flush-plan.js";
+import { SESSION_TOTAL_TOKENS_VERSION, type SessionEntry } from "../../../config/sessions.js";
 import { loadExactSessionEntryReadOnly } from "../../../config/sessions/session-accessor.js";
 import { log } from "../logger.js";
 import type { EmbeddedRunCompactionRecoveryInput } from "./compaction-runtime.js";
@@ -51,6 +52,7 @@ export async function emitRecoveryContextPressure(
     );
     return;
   }
+  const contextWindowTokens = input.contextTokenBudget ?? 0;
   try {
     await emitPersistedContextPressure({
       agentId,
@@ -58,14 +60,22 @@ export async function emitRecoveryContextPressure(
         ...sessionEntry,
         totalTokens,
         totalTokensFresh: true,
+        totalTokensVersion: SESSION_TOTAL_TOKENS_VERSION,
       },
       sessionKey,
       storePath,
       expectedSessionId: activeSession.id,
       continuationEnabled: runtimeConfig.enabled,
       contextPressureThreshold: runtimeConfig.contextPressureThreshold,
-      contextWindowTokens: input.contextTokenBudget ?? 0,
+      contextWindowTokens,
       earlyWarningBand: runtimeConfig.earlyWarningBand,
+      // Both recovery callers require generic compaction, so the built-in trigger applies.
+      compactionTriggerTokens: resolveBuiltInCompactionTrigger({
+        cfg: input.runParams.config ?? {},
+        contextWindowTokens,
+        provider: input.modelSelection.provider,
+        modelId: input.modelSelection.model,
+      }),
     });
   } catch (error) {
     log.warn(

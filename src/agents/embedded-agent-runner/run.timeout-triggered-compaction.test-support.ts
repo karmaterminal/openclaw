@@ -224,7 +224,7 @@ describe("runEmbeddedAgent timeout recovery composition", () => {
     }));
     mockedRunEmbeddedAttempt.mockResolvedValue(
       session.makeAttemptResult({
-        ...timeoutAttempt(150_000),
+        ...timeoutAttempt(135_000),
         aborted: true,
       }),
     );
@@ -271,7 +271,7 @@ describe("runEmbeddedAgent timeout recovery composition", () => {
       .filter((event) => event.text.includes("[system:context-pressure]"));
     expect(repeatedPressureEvents).toHaveLength(0);
     expect(loadSessionEntry(session.runParams.sessionTarget!)).toMatchObject({
-      lastContextPressureBand: 25,
+      lastContextPressureBand: 1,
     });
   });
 

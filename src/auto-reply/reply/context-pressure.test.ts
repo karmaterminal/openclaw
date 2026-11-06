@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SessionEntry } from "../../config/sessions.js";
+import { SESSION_TOTAL_TOKENS_VERSION, type SessionEntry } from "../../config/sessions.js";
 import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import { peekSystemEvents, resetSystemEventsForTest } from "../../infra/system-events.js";
 
@@ -45,6 +45,7 @@ function makeSessionEntry(overrides: Partial<SessionEntry> = {}): SessionEntry {
   return {
     totalTokens: 0,
     totalTokensFresh: true,
+    totalTokensVersion: SESSION_TOTAL_TOKENS_VERSION,
     lastContextPressureBand: undefined,
     ...overrides,
   } as SessionEntry;
@@ -723,5 +724,122 @@ describe("checkContextPressure", () => {
     expect(mockedLog.debug).not.toHaveBeenCalledWith(
       expect.stringContaining("[context-pressure:fire]"),
     );
+  });
+});
+
+describe("built-in runtime warnings", () => {
+  const WINDOW = 200_000;
+  const TRIGGER = 150_000;
+  const TOOLS = new Set(["continue_delegate", "request_compaction"]);
+
+  function warn(
+    totalTokens: number,
+    overrides: Partial<Parameters<typeof checkContextPressure>[0]> = {},
+    entry: Partial<SessionEntry> = {},
+  ) {
+    const sessionEntry = makeSessionEntry({ totalTokens, ...entry });
+    return {
+      result: checkContextPressure({
+        sessionEntry,
+        sessionKey: SESSION_KEY,
+        agentId: OWNER_AGENT_ID,
+        contextPressureThreshold: 0.8,
+        contextWindowTokens: WINDOW,
+        compactionTriggerTokens: TRIGGER,
+        admittedToolNames: TOOLS,
+        isRequestCompactionAdmitted: () => true,
+        ...overrides,
+      }),
+      sessionEntry,
+      text: peekSystemEvents(QUEUE_KEY).at(-1),
+    };
+  }
+
+  it("makes the first warning stage-only even when the guard would admit a request", () => {
+    const { result, text } = warn(130_000);
+    expect(result).toEqual({ fired: true, band: 1 });
+    expect(text).toContain("continue_delegate(mode='post-compaction'");
+    expect(text).toContain("Automatic compaction runs at 150k tokens");
+    expect(text).not.toContain("request_compaction");
+    expect(text).not.toMatch(/imminent/i);
+  });
+
+  it("adds the request cue to the second warning only while the guard admits it", () => {
+    const admitted = warn(140_000);
+    expect(admitted.result).toEqual({ fired: true, band: 2 });
+    expect(admitted.text).toContain("continue_delegate(mode='post-compaction'");
+    expect(admitted.text).toContain("request_compaction(reason=");
+    resetSystemEventsForTest();
+
+    const refused = warn(140_000, { isRequestCompactionAdmitted: () => false });
+    expect(refused.result).toEqual({ fired: true, band: 2 });
+    expect(refused.text).toContain("continue_delegate(mode='post-compaction'");
+    expect(refused.text).not.toContain("request_compaction");
+  });
+
+  it("passes the guard the entry it evaluated", () => {
+    const seen: Array<number | undefined> = [];
+    warn(140_000, {
+      isRequestCompactionAdmitted: (entry) => {
+        seen.push(entry.totalTokens);
+        return false;
+      },
+    });
+    expect(seen).toEqual([140_000]);
+  });
+
+  it("names neither tool when the session recorded neither", () => {
+    const { text } = warn(140_000, { admittedToolNames: undefined });
+    expect(text).toMatch(/preserve critical working state/i);
+    expect(text).not.toContain("continue_delegate");
+    expect(text).not.toContain("request_compaction");
+  });
+
+  it.each([
+    { total: 129_999, name: "below the first warning" },
+    { total: 150_000, name: "at the trigger" },
+    { total: 180_000, name: "past the trigger, where a ratio band would claim 90%" },
+  ])("does not warn $name", ({ total }) => {
+    const { result, sessionEntry } = warn(total);
+    expect(result.fired).toBe(false);
+    expect(peekSystemEvents(QUEUE_KEY)).toEqual([]);
+    expect(sessionEntry.lastContextPressureBand).toBeUndefined();
+  });
+
+  it.each([
+    { version: "a v1 total", entry: { totalTokensVersion: undefined } },
+    { version: "a stale total", entry: { totalTokensFresh: false } },
+    { version: "a total with no fresh mark", entry: { totalTokensFresh: undefined } },
+  ])("takes $version as no pressure evidence, built-in or not", ({ entry }) => {
+    expect(warn(140_000, {}, entry).result).toEqual({ fired: false, band: 0 });
+    expect(
+      warn(95_000, { compactionTriggerTokens: undefined, contextWindowTokens: 100_000 }, entry)
+        .result,
+    ).toEqual({ fired: false, band: 0 });
+    expect(peekSystemEvents(QUEUE_KEY)).toEqual([]);
+  });
+
+  it("keeps the post-compaction notice out of the warning record", () => {
+    const { result, sessionEntry, text } = warn(135_000, { postCompaction: true });
+    expect(result).toEqual({ fired: true, band: 0 });
+    expect(text).toContain("Post-compaction: 68% context consumed");
+    expect(sessionEntry.lastContextPressureBand).toBe(0);
+    resetSystemEventsForTest();
+    expect(warn(135_000, {}, { lastContextPressureBand: 0 }).result).toEqual({
+      fired: true,
+      band: 1,
+    });
+  });
+
+  it("fires once per band across a growing session, then re-arms after compaction", () => {
+    const bands: number[] = [];
+    for (const total of [130_000, 135_000, 140_000, 145_000]) {
+      const { result } = warn(total, {}, { lastContextPressureBand: bands.at(-1) });
+      if (result.fired) {
+        bands.push(result.band);
+      }
+    }
+    expect(bands).toEqual([1, 2]);
+    expect(warn(130_000, {}, { lastContextPressureBand: undefined }).result.fired).toBe(true);
   });
 });
