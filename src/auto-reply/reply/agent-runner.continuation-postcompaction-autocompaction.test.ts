@@ -7,14 +7,21 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createCommandMaintenanceFollowup,
+  prepareCommandForegroundRun,
+} from "../../agents/command/maintenance.js";
 import { abortEmbeddedAgentRun } from "../../agents/embedded-agent-runner/runs.js";
 import { testing as embeddedRunTesting } from "../../agents/embedded-agent-runner/runs.test-support.js";
+import { waitForSessionMaintenance } from "../../agents/session-maintenance/coordinator.js";
+import { scheduleSessionMaintenance } from "../../agents/session-maintenance/run.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import { SESSION_TOTAL_TOKENS_VERSION, type SessionEntry } from "../../config/sessions.js";
 import {
   patchSessionEntryCore,
   replaceSessionEntry,
 } from "../../config/sessions/session-accessor.js";
+import { getAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
 import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import {
   drainSystemEventEntries,
@@ -22,6 +29,8 @@ import {
   resetSystemEventsForTest,
 } from "../../infra/system-events.js";
 import { clearMemoryPluginState, registerMemoryCapability } from "../../plugins/memory-state.js";
+import { createEmptyPluginRegistry } from "../../plugins/registry-empty.js";
+import { withPluginRuntimeGatewayRequestScope } from "../../plugins/runtime/gateway-request-scope.js";
 import { testing as sessionControllerTesting } from "../../sessions/session-controller.test-support.js";
 import {
   listCustodyRecordsForTest,
@@ -46,6 +55,41 @@ const compactState = vi.hoisted(() => ({
   compactEmbeddedAgentSessionMock: vi.fn(),
 }));
 const spawnSubagentDirectMock = vi.hoisted(() => vi.fn());
+const faults = vi.hoisted(() => ({
+  custodyRead: undefined as Error | undefined,
+  releaseWarn: vi.fn(),
+}));
+
+// mock-isolation: One row fails the staged read; every other call reaches the real custody store.
+vi.mock("../continuation/delegate-flow-store.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../continuation/delegate-flow-store.js")>();
+  return {
+    ...actual,
+    listQueuedPostCompactionFlows: (sessionKey: string) =>
+      faults.custodyRead
+        ? Promise.reject(faults.custodyRead)
+        : actual.listQueuedPostCompactionFlows(sessionKey),
+  };
+});
+
+// mock-isolation: Only the byte-pressure row measures a transcript, and it is always oversized.
+vi.mock("../../agents/compaction-transcript-bytes.js", () => ({
+  readCompactionTranscriptBytes: async () => 102_400,
+}));
+
+// Release failures log through the continuation/compaction subsystem logger.
+vi.mock("../../logging/subsystem.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../logging/subsystem.js")>();
+  return {
+    ...actual,
+    createSubsystemLogger: (subsystem: string) => {
+      const logger = actual.createSubsystemLogger(subsystem);
+      return subsystem === "continuation/compaction"
+        ? { ...logger, warn: (message: string) => faults.releaseWarn(message) }
+        : logger;
+    },
+  };
+});
 
 // mock-isolation: Turns run through a scripted fallback runner; the real one reads auth profiles and calls providers.
 vi.mock("../../agents/model-fallback-runner.js", () => ({
@@ -165,7 +209,6 @@ vi.mock("../../agents/subagents/registry/subagent-registry.js", () => ({
   markSubagentRunTerminated: () => 0,
 }));
 
-import { runSessionCompactionIfNeeded } from "./agent-runner-memory.js";
 import { runReplyAgent } from "./agent-runner-run.js";
 
 type RunWithModelFallbackParams = {
@@ -294,9 +337,9 @@ async function runDelegateTurn(
   run: ReturnType<typeof createContinuationRun>,
   sessionStore: Record<string, SessionEntry>,
   storePath?: string,
-): Promise<void> {
+) {
   setRuntimeConfigSnapshot(run.followupRun.run.config);
-  await runReplyAgent({
+  return await runReplyAgent({
     commandBody: "hello",
     followupRun: run.followupRun,
     queueKey: run.sessionKey,
@@ -356,7 +399,16 @@ describe("runReplyAgent :: pressure warning to post-compaction handoff", () => {
 
   afterEach(() => {
     resetSystemEventsForTest();
+    faults.custodyRead = undefined;
+    faults.releaseWarn.mockReset();
   });
+
+  const crossTrigger = (storePath: string, key: string, totalTokens: number) =>
+    patchSessionEntryCore({ storePath, sessionKey: key }, () => ({
+      totalTokens,
+      totalTokensFresh: true,
+      totalTokensVersion: SESSION_TOTAL_TOKENS_VERSION,
+    }));
 
   const pressureEvents = (queueKey: string) =>
     peekSystemEvents(queueKey).filter((event) => event.includes("[system:context-pressure]"));
@@ -424,11 +476,7 @@ describe("runReplyAgent :: pressure warning to post-compaction handoff", () => {
       drainSystemEventEntries(queueKey);
 
       // Turn two: the session crossed the trigger, so preflight maintenance compacts first.
-      const crossed = await patchSessionEntryCore({ storePath, sessionKey }, () => ({
-        totalTokens: trigger,
-        totalTokensFresh: true,
-        totalTokensVersion: SESSION_TOTAL_TOKENS_VERSION,
-      }));
+      const crossed = await crossTrigger(storePath, sessionKey, trigger);
       sessionStore[sessionKey] = crossed!;
       compactState.compactEmbeddedAgentSessionMock.mockResolvedValueOnce({
         ok: true,
@@ -474,45 +522,150 @@ describe("runReplyAgent :: pressure warning to post-compaction handoff", () => {
     },
   );
 
-  it("releases outside a reply turn and queues the refresh no prompt carries", async () => {
-    const sessionKey = "agent:main:maintenance";
-    const { run, queueKey, sessionStore, storePath } = await createPressureRun(sessionKey, 150_000);
+  const REFRESH = "Reload the kept file.";
+  const ARMED_KEY = "agent:main:preflight";
+  const ARMED_QUEUE = resolveSystemEventQueueKey(ARMED_KEY, "main");
+  const countEvents = (text: string) =>
+    peekSystemEvents(ARMED_QUEUE).filter((event) => event.includes(text)).length;
+  const compacted = {
+    ok: true,
+    compacted: true,
+    result: { summary: "compacted", firstKeptEntryId: "kept", tokensBefore: 1, tokensAfter: 1 },
+  };
+  const skipped = { ok: true, compacted: false, reason: "nothing to compact" };
+  const refused = { ok: false, compacted: false, reason: "fixture refused" };
+
+  /** A session past the trigger, with a delegate staged and a refresh its workspace supplies. */
+  async function armPreflight(compaction?: object, inRunCompactions = 0) {
+    const armed = await createPressureRun(ARMED_KEY, 150_000);
+    const { run, sessionStore, storePath } = armed;
     Object.assign(run.config.agents.defaults, {
-      compaction: { postCompactionSections: ["Session Startup"] },
+      compaction: { postCompactionSections: ["Session Startup"], ...compaction },
     });
-    const workspaceDir = custodyState.stateDir();
-    await fs.writeFile(
-      path.join(workspaceDir, "AGENTS.md"),
-      "## Session Startup\n\nReload the kept file.\n",
-    );
-    await stagePostCompactionDelegate(sessionKey, { task: "lifeboat", createdAt: Date.now() });
-    const crossed = await patchSessionEntryCore({ storePath, sessionKey }, () => ({
-      totalTokens: 150_000,
-    }));
-    compactState.compactEmbeddedAgentSessionMock.mockResolvedValueOnce({
-      ok: true,
-      compacted: true,
-      result: { summary: "compacted", firstKeptEntryId: "kept", tokensBefore: 1, tokensAfter: 1 },
+    const workspaceDir = (run.followupRun.run.workspaceDir = custodyState.stateDir());
+    await fs.writeFile(path.join(workspaceDir, "AGENTS.md"), `## Session Startup\n\n${REFRESH}\n`);
+    await stagePostCompactionDelegate(ARMED_KEY, { task: "lifeboat", createdAt: Date.now() });
+    const crossed = (await crossTrigger(storePath, ARMED_KEY, 150_000))!;
+    sessionStore[ARMED_KEY] = crossed;
+    runEmbeddedAgentMock.mockReset().mockImplementation(async (attempt) => {
+      attempt.onAutoCompactionSucceeded(inRunCompactions);
+      const text = "Reply";
+      return {
+        payloads: [{ text }],
+        meta: { finalAssistantVisibleText: text, finalAssistantRawText: text, agentMeta: {} },
+      };
     });
     setRuntimeConfigSnapshot(run.followupRun.run.config);
+    const turn = () => runDelegateTurn({ ...run, sessionEntry: crossed }, sessionStore, storePath);
+    return { ...armed, crossed, turn, workspaceDir };
+  }
 
-    await runSessionCompactionIfNeeded({
-      cfg: run.followupRun.run.config,
-      followupRun: {
-        ...run.followupRun,
-        run: { ...run.followupRun.run, sessionKey, workspaceDir },
-      },
-      defaultModel: "anthropic/claude-opus-4-6",
-      sessionEntry: crossed!,
-      sessionStore,
-      sessionKey,
-      storePath,
-    });
+  /** Counted, because `toContainEqual` would not notice a second release. */
+  async function expectCustody(handedOff: boolean, emptyReleases = 0) {
+    expect(stagedPostCompactionDelegateCount(ARMED_KEY)).toBe(handedOff ? 0 : 1);
+    const records = await listCustodyRecordsForTest({ ownerSessionKey: ARMED_KEY });
+    expect(records.map(({ handoff, status }) => ({ status, to: handoff?.target }))).toEqual([
+      handedOff ? { status: "succeeded", to: "session_delivery_queue" } : { status: "queued" },
+    ]);
+    expect(countEvents("Queued 1 post-compaction")).toBe(handedOff ? 1 : 0);
+    expect(countEvents("Queued 0 post-compaction")).toBe(emptyReleases);
+  }
 
-    expect(stagedPostCompactionDelegateCount(sessionKey)).toBe(0);
-    expect(peekSystemEvents(queueKey).join("\n")).toContain("Queued 1 post-compaction delegate(s)");
-    expect(
-      peekSystemEvents(queueKey).some((event) => event.includes("Reload the kept file.")),
-    ).toBe(true);
+  it.each([
+    { outcome: "a benign skip", result: skipped, reply: "Reply" },
+    { outcome: "a required compaction's failure", result: refused, reply: "couldn't shorten it" },
+    { outcome: "a context_bounded return", result: refused, reply: "Reply", byteLimit: "32kb" },
+  ])("keeps the delegate staged after $outcome", async ({ byteLimit, reply, result }) => {
+    const armed = await armPreflight({ maxActiveTranscriptBytes: byteLimit });
+    compactState.compactEmbeddedAgentSessionMock.mockResolvedValueOnce(result);
+
+    const replies = [await armed.turn()].flat();
+
+    expect(compactState.compactEmbeddedAgentSessionMock).toHaveBeenCalledOnce();
+    expect(replies.at(-1)?.text).toContain(reply);
+    expect(runEmbeddedAgentMock).toHaveBeenCalledTimes(reply === "Reply" ? 1 : 0);
+    await expectCustody(false);
   });
+
+  it("keeps the delegate staged when the release throws, and the turn proceeds", async () => {
+    const armed = await armPreflight();
+    faults.custodyRead = new Error("custody store unavailable");
+    compactState.compactEmbeddedAgentSessionMock.mockResolvedValueOnce(compacted);
+
+    expect(await armed.turn()).toMatchObject({ text: "Reply" });
+
+    expect(faults.releaseWarn).toHaveBeenCalledExactlyOnceWith(
+      `[continuation:post-compaction-release-failed] session=${ARMED_KEY} seam=maintenance reason=custody store unavailable`,
+    );
+    await expectCustody(false);
+  });
+
+  it.each([0, 1])(
+    "hands off once from a reply turn whose prompt carries the refresh (in-run compactions: %i)",
+    async (inRunCompactions) => {
+      const armed = await armPreflight(undefined, inRunCompactions);
+      compactState.compactEmbeddedAgentSessionMock.mockResolvedValueOnce(compacted);
+
+      await armed.turn();
+
+      expect(runEmbeddedAgentMock.mock.calls[0]?.[0]).toMatchObject({
+        extraSystemPrompt: expect.stringContaining(REFRESH),
+      });
+      // Only the in-run compaction's own post-run release queues an event, and it has nothing left.
+      expect(countEvents(REFRESH)).toBe(inRunCompactions);
+      await expectCustody(true, inRunCompactions);
+    },
+  );
+
+  it.each([true, false])(
+    "a command queues the refresh and hands off once (preflight compaction: %s)",
+    async (preflight) => {
+      const { crossed, run, sessionStore, storePath, workspaceDir } = await armPreflight();
+      compactState.compactEmbeddedAgentSessionMock.mockResolvedValue(compacted);
+      const cfg = run.followupRun.run.config;
+      const { sessionId } = crossed;
+      const session = { sessionKey: ARMED_KEY, sessionId, sessionStore, storePath, workspaceDir };
+      const model = { provider: "anthropic", model: "claude" };
+      const command = {
+        prepared: { ...session, cfg, runId: "command", sessionAgentId: "main", timeoutMs: 60_000 },
+        opts: {},
+        sessionEntry: crossed,
+        embeddedSessionState: { runContext: {}, skillsSnapshot: {} },
+        modelSelection: { ...model, defaultModel: "anthropic/claude-opus-4-6" },
+        lifecycleGeneration: getAgentEventLifecycleGeneration(),
+        ingress: { kind: "local-cli", boundary: "agent-command.local", state: "present" },
+      } as unknown as Parameters<typeof prepareCommandForegroundRun>[0];
+
+      if (preflight) {
+        await (await prepareCommandForegroundRun(command)).admission.finish();
+        expect(countEvents(REFRESH)).toBe(1);
+        expect(countEvents("Queued 1 post-compaction")).toBe(1);
+        await crossTrigger(storePath, ARMED_KEY, 150_000);
+      }
+      const followupRun = createCommandMaintenanceFollowup({
+        ...command,
+        ...model,
+        sessionEntry: crossed,
+        thinkLevel: "low",
+        senderIsOwner: false,
+      });
+      withPluginRuntimeGatewayRequestScope(
+        { pluginRegistry: createEmptyPluginRegistry(), isWebchatConnect: () => false },
+        () =>
+          scheduleSessionMaintenance({
+            prepared: { cfg, sessionKey: ARMED_KEY, storePath, timeoutMs: 60_000 },
+            followupRun,
+            sessionId,
+            lifecycleRevision: crossed.lifecycleRevision,
+            lifecycleGeneration: command.lifecycleGeneration,
+            startedAt: Date.now(),
+          }),
+      );
+      await waitForSessionMaintenance(ARMED_KEY);
+
+      expect(compactState.compactEmbeddedAgentSessionMock).toHaveBeenCalledTimes(preflight ? 2 : 1);
+      expect(countEvents(REFRESH)).toBe(preflight ? 2 : 1);
+      await expectCustody(true, preflight ? 1 : 0);
+    },
+  );
 });
