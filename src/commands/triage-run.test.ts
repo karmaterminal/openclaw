@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import { resolveForwardedNodeCompilerArgs } from "../bootstrap/node-compiler-args.js";
 import { writeFixtureJson } from "../cli/cli-fixtures.test-support.js";
 import { recordDeferredPluginMigrations } from "../infra/deferred-plugin-migrations.js";
 import { resolveInstallationTarget } from "../infra/installation-target-context.js";
@@ -496,15 +497,13 @@ describe("triage --run", () => {
     );
     expect(mocks.collectDoctorFindings).toHaveBeenCalledOnce();
     expect(mocks.runUtf8CommandWithTimeout).toHaveBeenCalledTimes(2);
+    const doctorLint = ["doctor", "--lint", "--json", "--severity-min", "error"];
     expect(mocks.runUtf8CommandWithTimeout).toHaveBeenCalledWith(
       [
         process.versions.bun ? "node" : process.execPath,
+        ...resolveForwardedNodeCompilerArgs(),
         path.join(installRoot, "dist/index.js"),
-        "doctor",
-        "--lint",
-        "--json",
-        "--severity-min",
-        "error",
+        ...doctorLint,
       ],
       expect.objectContaining({
         cwd: installRoot,
