@@ -257,7 +257,7 @@ new DatabaseSync(dir + "/state.sqlite").exec("CREATE TABLE t (x)");
 const sqlite = await load("infra/sqlite-readonly-worker.ts");
 sqlite.runSqliteReadOnlyWorkerSync(dir + "/state.sqlite", dir);
 const session = sqlite.createScopedSqliteReadOnlyWorker({ ...sqlite.captureSqliteReadOnlyWorkerLaunch(), retainLifetime: false });
-await session.run(dir + "/state.sqlite", { mode: "file-generation" });
+await session.run(dir + "/state.sqlite", { mode: "sync" });
 await session.close();
 const cli = await load("cli/update-cli/update-command-cli-options.ts");
 await cli.readUpdateTargetCliOptions({ nodeRunner: process.execPath, entryPath: dir + "/cli.mjs", command: "doctor" }, {});

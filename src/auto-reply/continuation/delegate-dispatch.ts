@@ -609,7 +609,6 @@ export async function dispatchToolDelegates(
           { ...hedgeParamsFor(params), queuedCreatedAtOrBefore: hedgeQueuedCreatedAtOrBefore },
           dispatchToolDelegates,
         );
-        rejected++;
         continue;
       }
       if (spawnAttempted) {

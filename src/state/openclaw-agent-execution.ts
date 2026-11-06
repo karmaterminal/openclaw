@@ -57,7 +57,7 @@ export function captureOpenClawAgentDatabasePreparationExecution(
   return captureOpenClawAgentDatabaseExecution(options, { expectedIdentity, requestedPath }, true);
 }
 
-/** Refuse what capture would refuse, for a read whose result precedes a lifecycle write. */
+/** A live owner refuses another state root here, before a read's entry steers a lifecycle write. */
 export function assertOpenClawAgentDatabaseExecutionAdmitted(
   options: OpenClawAgentDatabaseOptions,
 ): void {

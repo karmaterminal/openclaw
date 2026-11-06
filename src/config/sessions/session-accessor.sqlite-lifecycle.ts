@@ -31,6 +31,7 @@ import {
 import type { ResetSessionEntryLifecycleMutation } from "./session-accessor.lifecycle-types.js";
 import {
   deleteMemorySessionEntryLifecycle,
+  isMemorySessionLifecycle,
   resetMemorySessionEntryLifecycle,
 } from "./session-accessor.memory-lifecycle.js";
 import { withSqliteTranscriptArchiveSession } from "./session-accessor.sqlite-archive-session.js";
@@ -98,15 +99,19 @@ export async function resetSessionEntryLifecycle(
     sessionKey: params.target.canonicalKey,
     storePath: params.storePath,
   };
-  const current = await withPreparedSqliteScope({ ...scope, sessionKey: "" }, (prepared) => {
-    const resolved = captureLifecycleDatabaseScope(prepared);
-    const databaseOptions = { ...toDatabaseOptions(resolved), path: resolved.path };
-    // A store the reset would refuse must not supply this read's entry first.
-    if (isMainThread && supportsOpenClawAgentDatabaseExecution(databaseOptions)) {
-      assertOpenClawAgentDatabaseExecutionAdmitted(databaseOptions);
-    }
-    return readSessionEntryReadOnlyInWorker(scope, () => params.commitGuard?.());
-  });
+  const readCurrent = () => readSessionEntryReadOnlyInWorker(scope, () => params.commitGuard?.());
+  const current = isMemorySessionLifecycle(params)
+    ? await readCurrent()
+    : await withPreparedSqliteScope({ ...scope, sessionKey: "" }, (prepared) => {
+        const resolved = captureLifecycleDatabaseScope(prepared);
+        const databaseOptions = { ...toDatabaseOptions(resolved), path: resolved.path };
+        // A store the live owner refuses must not supply this read's entry first. With no live
+        // owner an explicit path names the store for this read and the reset alike.
+        if (isMainThread && supportsOpenClawAgentDatabaseExecution(databaseOptions)) {
+          assertOpenClawAgentDatabaseExecutionAdmitted(databaseOptions);
+        }
+        return readCurrent();
+      });
   if (current?.localWorkspaceHandoff) {
     if (!agentId) {
       throw new Error("Local workspace handoff requires its original agent before reset");

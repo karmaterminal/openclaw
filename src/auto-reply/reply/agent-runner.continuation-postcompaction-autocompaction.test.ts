@@ -4,6 +4,7 @@
 // delegate must remain queued in the custody-backed post-compaction store until
 // the next seam consumes it.
 
+import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { abortEmbeddedAgentRun } from "../../agents/embedded-agent-runner/runs.js";
@@ -27,7 +28,10 @@ import {
   useContinuationCustodyTestState,
 } from "../continuation/custody/custody.test-support.js";
 import { resetDelegateDispatchHedgesForTests } from "../continuation/delegate-dispatch.js";
-import { stagedPostCompactionDelegateCount } from "../continuation/delegate-store-post-compaction.js";
+import {
+  stagedPostCompactionDelegateCount,
+  stagePostCompactionDelegate,
+} from "../continuation/delegate-store-post-compaction.js";
 import { resetContinuationStateForTests } from "../continuation/state.js";
 import type { TemplateContext } from "../templating.js";
 import type { FollowupRun, QueueSettings } from "./queue.js";
@@ -161,6 +165,7 @@ vi.mock("../../agents/subagents/registry/subagent-registry.js", () => ({
   markSubagentRunTerminated: () => 0,
 }));
 
+import { runSessionCompactionIfNeeded } from "./agent-runner-memory.js";
 import { runReplyAgent } from "./agent-runner-run.js";
 
 type RunWithModelFallbackParams = {
@@ -468,4 +473,50 @@ describe("runReplyAgent :: pressure warning to post-compaction handoff", () => {
       );
     },
   );
+
+  it.each([
+    { caller: "a command's preflight", postRunMaintenance: undefined, refreshed: true },
+    { caller: "post-run maintenance", postRunMaintenance: true, refreshed: false },
+  ])("releases at $caller outside a reply turn", async ({ postRunMaintenance, refreshed }) => {
+    const sessionKey = `agent:main:maintenance-${String(refreshed)}`;
+    const { run, queueKey, sessionStore, storePath } = await createPressureRun(sessionKey, 150_000);
+    Object.assign(run.config.agents.defaults, {
+      compaction: { postCompactionSections: ["Session Startup"] },
+    });
+    const workspaceDir = custodyState.stateDir();
+    await fs.writeFile(
+      path.join(workspaceDir, "AGENTS.md"),
+      "## Session Startup\n\nReload the kept file.\n",
+    );
+    await stagePostCompactionDelegate(sessionKey, { task: "lifeboat", createdAt: Date.now() });
+    const crossed = await patchSessionEntryCore({ storePath, sessionKey }, () => ({
+      totalTokens: 150_000,
+    }));
+    compactState.compactEmbeddedAgentSessionMock.mockResolvedValueOnce({
+      ok: true,
+      compacted: true,
+      result: { summary: "compacted", firstKeptEntryId: "kept", tokensBefore: 1, tokensAfter: 1 },
+    });
+    setRuntimeConfigSnapshot(run.followupRun.run.config);
+
+    await runSessionCompactionIfNeeded({
+      cfg: run.followupRun.run.config,
+      followupRun: {
+        ...run.followupRun,
+        run: { ...run.followupRun.run, sessionKey, workspaceDir },
+      },
+      defaultModel: "anthropic/claude-opus-4-6",
+      sessionEntry: crossed!,
+      sessionStore,
+      sessionKey,
+      storePath,
+      postRunMaintenance,
+    });
+
+    expect(stagedPostCompactionDelegateCount(sessionKey)).toBe(0);
+    expect(peekSystemEvents(queueKey).join("\n")).toContain("Queued 1 post-compaction delegate(s)");
+    expect(
+      peekSystemEvents(queueKey).some((event) => event.includes("Reload the kept file.")),
+    ).toBe(!refreshed);
+  });
 });

@@ -10,6 +10,7 @@ vi.mock("./tools/continue-delegate-tool.js", () => ({
 }));
 
 import { createOpenClawContinuationTools } from "./openclaw-tools.continuation.js";
+import { _resetGuardState, _setPending } from "./tools/request-compaction-tool.js";
 
 describe("createOpenClawContinuationTools live session identity", () => {
   beforeEach(() => {
@@ -29,6 +30,26 @@ describe("createOpenClawContinuationTools live session identity", () => {
       agentSessionKey: "agent:main:live-session",
       runId: "run-1",
     });
+  });
+
+  it("keys request_compaction's guards by the live run session the pressure cue reads", async () => {
+    _setPending("agent:main:live-session");
+    const tools = createOpenClawContinuationTools({
+      config: { agents: { defaults: { continuation: { enabled: true } } } },
+      agentSessionKey: "agent:main:sandbox-policy",
+      runSessionKey: "agent:main:live-session",
+      sessionId: "session-1",
+      requestCompactionOpts: {
+        getContextUsage: () => 0.8,
+        triggerCompaction: async () => ({ ok: true, compacted: true }),
+      },
+    });
+    const tool = tools.find((candidate) => candidate.name === "request_compaction");
+
+    const result = await tool?.execute("call-1", { reason: "chosen seam" });
+
+    _resetGuardState();
+    expect(result?.details).toMatchObject({ status: "already_pending" });
   });
 
   it("falls back to the policy session when no separate run session exists", () => {

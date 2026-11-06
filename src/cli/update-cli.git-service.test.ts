@@ -551,7 +551,7 @@ it("never starts the candidate after plugin post-update invalidates config", asy
     "default command fixture",
   );
   vi.mocked(cli.runCommandWithTimeout).mockImplementation(async (argv, options) => {
-    if (argv[2] === "gateway" && argv[3] === "restart") {
+    if (checks.isGatewayCommand(argv, "restart")) {
       const runtime = await fs.stat(runtimeDirectory);
       restartedRuntimes.push({
         dev: runtime.dev,

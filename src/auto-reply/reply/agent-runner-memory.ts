@@ -55,6 +55,7 @@ import {
   readSessionLogSnapshot,
 } from "./agent-runner-memory-transcript-context.js";
 import type { MemoryFlushResult, MemoryFlushRunParams } from "./agent-runner-memory.types.js";
+import { releaseMaintenanceCompactionDelegates } from "./agent-runner-post-compaction-release.js";
 import { buildRunEntrySelection } from "./agent-runner-run-params.js";
 import {
   buildEmbeddedRunExecutionParams,
@@ -116,6 +117,8 @@ export async function runSessionCompactionIfNeeded(params: {
   storePath?: string;
   /** Completed commands carry the actual harness, not the originally requested runtime. */
   agentHarnessId?: string;
+  /** No later prompt carries this pass's refresh, so a staged delegate's release must. */
+  postRunMaintenance?: boolean;
   abortSignal?: AbortSignal;
   authorize?: () => boolean;
   beforeCompaction?: (entry: SessionEntry) => Promise<SessionEntry | undefined>;
@@ -492,6 +495,15 @@ export async function runSessionCompactionIfNeeded(params: {
         nextSessionFile: queueKey,
       });
     }
+    await releaseMaintenanceCompactionDelegates({
+      activeSessionStore: compactionStore,
+      cfg: params.cfg,
+      followupRun: params.followupRun,
+      sessionEntry: entry,
+      sessionKey: compactionSessionKey,
+      storePath: compactionStorePath,
+      workspaceContextRefreshed: !params.postRunMaintenance,
+    });
     return entry;
   } catch (err) {
     if (!terminalCompactionNoticeSent && !params.abortSignal?.aborted) {

@@ -457,8 +457,8 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
   }
 
   let postBracketDrainArmed = false;
-  let grantRestorePending = false;
   if (toolDelegates.length > 0 && isChain) {
+    let grantRestorePending = false;
     const config = resolveContinuationRuntimeConfig(params.cfg);
     const childChainHop = parseContinuationChainHop(params.task) ?? 0;
     let toolHopBase = childChainHop + (bracketReserved ? 1 : 0);
@@ -665,7 +665,8 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
         activeDispatch.release();
       }
     }
-    if (deferInitialDrain && !bracketDrainArmed) {
+    // After a grant restore failure this drain's dispatch owns the retry, on its hedge.
+    if ((deferInitialDrain && !bracketDrainArmed) || grantRestorePending) {
       const state = await accounting.buildChildContinuationSpawnState(toolHopBase);
       postBracketDrainArmed = true;
       void drainChildContinuationQueue({
@@ -683,17 +684,6 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
         inheritedWake: params.wakeOnReturn === true,
       });
     }
-  }
-  if (grantRestorePending && !postBracketDrainArmed) {
-    // This drain's dispatch owns the retry from here: its hedge re-drives the delegate.
-    void drainChildContinuationQueue({
-      cfg: params.cfg,
-      childSessionKey: params.childSessionKey,
-      childAgentId: childOwnerAgentId,
-      requesterOrigin: params.targetRequesterOrigin,
-      inheritedSilent: params.silentAnnounce === true,
-      inheritedWake: params.wakeOnReturn === true,
-    });
   }
   if (deferInitialDrain && !postBracketDrainArmed && !bracketDrainArmed) {
     const state = await accounting.buildChildContinuationSpawnState(

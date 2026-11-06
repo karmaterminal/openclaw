@@ -1,6 +1,7 @@
 import path from "node:path";
 import { beforeEach, expect, it, vi } from "vitest";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
+import { resolveStateDir } from "../state-dir.js";
 import {
   loadSessionEntry,
   resetSessionEntryLifecycle,
@@ -59,4 +60,23 @@ it("refuses a store outside the pinned env before the read's entry is used", () 
 
     expect(prepareMessageCutLocalWorkspace).not.toHaveBeenCalled();
     expect(loadSessionEntry(ambient)?.sessionId).toBe("ambient");
+  }));
+
+it("leaves an incognito reset to the root its sentinel names, after the ambient root moved", () =>
+  withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    const storePath = path.join(
+      resolveStateDir(process.env),
+      "agents/main/agent/incognito-openclaw-agent.sqlite",
+    );
+    const incognitoKey = "agent:main:dashboard:incognito-moved";
+    vi.stubEnv("OPENCLAW_STATE_DIR", state.path("moved-root"));
+
+    await expect(
+      resetSessionEntryLifecycle({
+        agentId,
+        storePath,
+        target: { canonicalKey: incognitoKey, storeKeys: [incognitoKey] },
+        buildNextEntry: () => ({ sessionId: "after-reset", updatedAt: 2 }),
+      }),
+    ).resolves.toBeDefined();
   }));

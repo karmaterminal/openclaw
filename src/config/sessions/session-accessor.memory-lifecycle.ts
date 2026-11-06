@@ -13,6 +13,13 @@ import { captureSessionActorStorageOwner } from "./session-actor-storage-binding
 import { readSessionActorStorageResult } from "./session-actor-storage-result.js";
 import { captureSessionTranscriptTargetBinding } from "./transcript-target-binding.js";
 
+/** A memory session names its own root, outside any SQLite scope. */
+export function isMemorySessionLifecycle(params: ResetSessionEntryLifecycleParams): boolean {
+  const scope = { ...params, sessionKey: params.target.canonicalKey };
+  const authority = { assertCurrent() {}, authorize() {} };
+  return captureSessionActorStorageOwner(scope, authority) !== undefined;
+}
+
 export function resetMemorySessionEntryLifecycle(
   params: ResetSessionEntryLifecycleParams,
 ): Promise<ResetSessionEntryLifecycleResult> | undefined {

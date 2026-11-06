@@ -58,7 +58,7 @@ export function createOpenClawContinuationTools(
   if (options.requestCompactionOpts) {
     tools.push(
       createRequestCompactionTool({
-        agentSessionKey: options.agentSessionKey,
+        agentSessionKey: liveSessionKey,
         sessionId: options.sessionId,
         runId: options.runId,
         ...options.requestCompactionOpts,

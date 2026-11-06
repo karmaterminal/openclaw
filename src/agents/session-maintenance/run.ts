@@ -367,6 +367,7 @@ export function scheduleSessionMaintenance(
                                 cfg: prepared.cfg,
                                 followupRun,
                                 promptForEstimate: "",
+                                postRunMaintenance: true,
                                 // The completed user is canonical history; do not reserve its input twice.
                                 compactionRequestBudget: request.compactionRequestBudget
                                   ? { ...request.compactionRequestBudget, pendingTokens: 0 }

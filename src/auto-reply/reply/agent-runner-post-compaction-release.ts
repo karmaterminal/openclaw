@@ -13,7 +13,6 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { resolveLiveContinuationRuntimeConfig } from "../continuation/config.js";
 import { stagePostCompactionDelegate } from "../continuation/delegate-store-post-compaction.js";
 import { isFollowupRunAborted, type FollowupRun } from "./queue/types.js";
-import type { AdmittedFollowupTurn } from "./reply-agent-turn-preparation.js";
 
 // A skipped release leaves staged post-compaction delegates waiting for a
 // later seam that may never come (#1469), so skips are visible by default.
@@ -152,40 +151,30 @@ export async function releaseQueuedCompactionTolerant(
 }
 
 /**
- * A preflight seam releases staged delegates like an in-run one: the warning that had
- * the agent stage them promised this. Failure stays on the turn's side of the seam.
+ * Maintenance compaction releases staged delegates like an in-run seam: the warning that had
+ * the agent stage them promised this. A failed release stays staged and the turn proceeds.
  */
-export async function releasePreflightCompactionDelegates(
-  turn: Pick<
-    AdmittedFollowupTurn,
-    "config" | "preflightCompactionApplied" | "queued" | "session" | "sessionStore"
-  >,
-  sessionEntry: SessionEntry | undefined,
-  sessionKey: string | undefined,
-): Promise<void> {
-  if (
-    !turn.preflightCompactionApplied ||
-    !sessionEntry ||
-    !sessionKey ||
-    !turn.sessionStore ||
-    !resolveLiveContinuationRuntimeConfig(turn.config).enabled
-  ) {
+export async function releaseMaintenanceCompactionDelegates(params: {
+  activeSessionStore: Record<string, SessionEntry>;
+  cfg: OpenClawConfig;
+  followupRun: FollowupRun;
+  sessionEntry: SessionEntry;
+  sessionKey: string;
+  storePath?: string;
+  workspaceContextRefreshed: boolean;
+}): Promise<void> {
+  if (!resolveLiveContinuationRuntimeConfig(params.cfg).enabled) {
     return;
   }
   try {
     await releasePostCompactionDelegatesAfterCompaction({
-      activeSessionStore: turn.sessionStore,
-      compactionCount: sessionEntry.compactionCount,
-      followupRun: turn.queued,
-      sessionEntry,
-      sessionKey,
-      storePath: turn.session.kind === "session" ? turn.session.storePath : undefined,
-      workspaceContextRefreshed: true,
+      ...params,
+      compactionCount: params.sessionEntry.compactionCount,
     });
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     log.warn(
-      `[continuation:post-compaction-release-failed] session=${sessionKey} seam=preflight reason=${reason}`,
+      `[continuation:post-compaction-release-failed] session=${params.sessionKey} seam=maintenance reason=${reason}`,
     );
   }
 }
