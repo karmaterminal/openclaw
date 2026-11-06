@@ -1,4 +1,8 @@
-import { runUnderContinuationDelegateDispatchGrant } from "../auto-reply/continuation/delegate-dispatch-grant.js";
+import {
+  DELEGATE_GRANT_RESTORE_RETRY_PHASE,
+  isRetryableDelegateGrantFailure,
+  runUnderContinuationDelegateDispatchGrant,
+} from "../auto-reply/continuation/delegate-dispatch-grant.js";
 import { dispatchToolDelegates } from "../auto-reply/continuation/delegate-dispatch.js";
 import {
   createContinuationOwnerSessionLoader,
@@ -453,6 +457,7 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
   }
 
   let postBracketDrainArmed = false;
+  let grantRestorePending = false;
   if (toolDelegates.length > 0 && isChain) {
     const config = resolveContinuationRuntimeConfig(params.cfg);
     const childChainHop = parseContinuationChainHop(params.task) ?? 0;
@@ -641,6 +646,13 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
         if (spawnAttempted) {
           // A thrown spawn has no phase: admission is unproven (Q3).
           await terminalizeInterruptedDelegateClaim(delegate);
+        } else if (
+          isRetryableDelegateGrantFailure(error) &&
+          (await requeuePendingDelegate(delegate, DELEGATE_GRANT_RESTORE_RETRY_PHASE, undefined, {
+            failurePhase: "initialize",
+          }))
+        ) {
+          grantRestorePending = true;
         } else {
           await markPendingDelegateFailed(delegate, `Tool delegate spawn failed: ${String(error)}`);
         }
@@ -671,6 +683,17 @@ async function coordinateSubagentContinuationInOwnedWork(params: {
         inheritedWake: params.wakeOnReturn === true,
       });
     }
+  }
+  if (grantRestorePending && !postBracketDrainArmed) {
+    // This drain's dispatch owns the retry from here: its hedge re-drives the delegate.
+    void drainChildContinuationQueue({
+      cfg: params.cfg,
+      childSessionKey: params.childSessionKey,
+      childAgentId: childOwnerAgentId,
+      requesterOrigin: params.targetRequesterOrigin,
+      inheritedSilent: params.silentAnnounce === true,
+      inheritedWake: params.wakeOnReturn === true,
+    });
   }
   if (deferInitialDrain && !postBracketDrainArmed && !bracketDrainArmed) {
     const state = await accounting.buildChildContinuationSpawnState(

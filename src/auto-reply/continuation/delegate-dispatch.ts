@@ -29,8 +29,16 @@ import type {
   DelegateDispatchParams,
   DelegateDispatchResult,
 } from "./delegate-dispatch-contract.js";
-import { runUnderContinuationDelegateDispatchGrant } from "./delegate-dispatch-grant.js";
-import { armDelegateDispatchHedge, clearDelegateDispatchHedge } from "./delegate-dispatch-hedge.js";
+import {
+  DELEGATE_GRANT_RESTORE_RETRY_PHASE,
+  isRetryableDelegateGrantFailure,
+  runUnderContinuationDelegateDispatchGrant,
+} from "./delegate-dispatch-grant.js";
+import {
+  armDelegateDispatchHedge,
+  clearDelegateDispatchHedge,
+  DELEGATE_DISPATCH_RETRY_MS,
+} from "./delegate-dispatch-hedge.js";
 import {
   buildDelegateSpawnRequest,
   delegateBudgetChainState,
@@ -447,6 +455,7 @@ export async function dispatchToolDelegates(
         continue;
       }
       // A refused grant throws before the spawn: a terminal rejection, never an uncertain spawn.
+      // A Gateway that cannot answer yet throws there too, and the catch below keeps the delegate.
       const result = await runUnderContinuationDelegateDispatchGrant(
         {
           grant: delegate.dispatchGrant,
@@ -583,6 +592,26 @@ export async function dispatchToolDelegates(
       dispatchSpan?.recordException(err);
       dispatchSpan?.setStatus("ERROR", message);
       log.info(`[continuation:delegate-spawn-failed] error=${message} session=${sessionKey}`);
+      if (
+        !spawnAttempted &&
+        isRetryableDelegateGrantFailure(err) &&
+        (await requeuePendingDelegate(
+          delegate,
+          DELEGATE_GRANT_RESTORE_RETRY_PHASE,
+          { inheritedSilent, inheritedWake },
+          { failurePhase: "initialize" },
+        ))
+      ) {
+        // Each retry rechecks the grant, so its expiry bounds this and ends it with a named refusal.
+        armDelegateDispatchHedge(
+          sessionKey,
+          Date.now() + DELEGATE_DISPATCH_RETRY_MS,
+          { ...hedgeParamsFor(params), queuedCreatedAtOrBefore: hedgeQueuedCreatedAtOrBefore },
+          dispatchToolDelegates,
+        );
+        rejected++;
+        continue;
+      }
       if (spawnAttempted) {
         // A thrown spawn has no phase: admission is unproven (RFC §5.4.4).
         await settleUncertainSpawn(`thrown:${message}`);

@@ -40,6 +40,7 @@ import type {
   GatewayRequestContext,
 } from "../../../gateway/server-methods/shared-types.js";
 import { createContext } from "../../../gateway/server-plugin-in-process-dispatch.test-support.js";
+import { GatewayDispatchUnavailableError } from "../../../infra/restart-recovery-errors.js";
 import { loadPendingSessionDeliveries } from "../../../infra/session-delivery-queue-storage.js";
 import { peekSystemEvents, resetSystemEventsForTest } from "../../../infra/system-events.js";
 import { withPluginRuntimeGatewayRequestScope } from "../../../plugins/runtime/gateway-request-scope.js";
@@ -71,6 +72,33 @@ vi.mock("../../runtime-plugins.js", () => {
       loadRegistry(...args),
   };
 });
+const grantRestore = vi.hoisted(() => ({
+  failures: [] as Error[],
+  unavailable: undefined as Error | undefined,
+}));
+// mock-isolation: A Gateway that cannot answer is injected at the owner the grant calls.
+vi.mock("../../../gateway/operator-run-recovery.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../gateway/operator-run-recovery.js")>();
+  return {
+    ...actual,
+    restoreGatewayQueuedOperatorRecovery: async (
+      params: Parameters<typeof actual.restoreGatewayQueuedOperatorRecovery>[0],
+    ) => {
+      const failure = grantRestore.failures.shift() ?? grantRestore.unavailable;
+      if (failure) {
+        throw failure;
+      }
+      return await actual.restoreGatewayQueuedOperatorRecovery(params);
+    },
+  };
+});
+// mock-isolation: The real hedge re-drives the delegate on a test-sized interval.
+vi.mock("../../../auto-reply/continuation/delegate-dispatch-hedge.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../auto-reply/continuation/delegate-dispatch-hedge.js")
+  >()),
+  DELEGATE_DISPATCH_RETRY_MS: 50,
+}));
 vi.mock("../registry/subagent-registry-state.js", { spy: true });
 vi.mock("../registry/subagent-registry-persistence.js", { spy: true });
 
@@ -298,6 +326,8 @@ describe("continuation delegate dispatch under the elector's bounded grant", () 
   afterEach(async () => {
     vi.useRealTimers();
     subagentSpawnTesting.setDepsForTest();
+    grantRestore.failures = [];
+    grantRestore.unavailable = undefined;
     resetDelegateDispatchHedgesForTests();
     resetContinueDelegateTurnAdmissionForTests();
     resetContinuationStateForTests();
@@ -441,6 +471,55 @@ describe("continuation delegate dispatch under the elector's bounded grant", () 
     vi.setSystemTime(Date.now() + 2 * 60 * 60 * 1000);
 
     await expectRefused(gateway, recordId, /operator dispatch grant expired/);
+  });
+
+  it("keeps the same delegate through a Gateway that cannot answer yet, then dispatches once", async () => {
+    const gateway = gatewayInstance(runtimeConfig());
+    const operator = await operatorConnection(gateway, ["operator.write"]);
+    grantRestore.failures.push(new GatewayDispatchUnavailableError("operator recovery", true));
+    const recordId = await operator.elect(0.05);
+
+    const record = await settledDelegate(recordId);
+
+    expect(record).toMatchObject({ status: "succeeded", handoff: { target: "subagent_runs" } });
+    expect(record.spawnAttempts.map((attempt) => attempt.failurePhase)).toEqual([
+      "initialize",
+      undefined,
+    ]);
+    expect(gateway.launches).toHaveLength(1);
+    expectChildUnderElector(gateway.launches[0], operator.profileId);
+    expect(await delegateRecords(OWNER)).toHaveLength(1);
+    expect(await interruptedNotices()).toEqual([]);
+  });
+
+  it("refuses at once when the Gateway says the restore can never succeed", async () => {
+    const gateway = gatewayInstance(runtimeConfig());
+    const operator = await operatorConnection(gateway, ["operator.write"]);
+    grantRestore.failures.push(new GatewayDispatchUnavailableError("operator recovery", false));
+    const recordId = await operator.elect(0.05);
+
+    await expectRefused(gateway, recordId, /operator dispatch grant was revoked/);
+    expect(grantRestore.failures).toEqual([]);
+  });
+
+  it("ends an unanswered retry at the grant's expiry with a named refusal", async () => {
+    const gateway = gatewayInstance(runtimeConfig());
+    const operator = await operatorConnection(gateway, ["operator.write"]);
+    grantRestore.unavailable = new GatewayDispatchUnavailableError("operator recovery", true);
+    const recordId = await operator.elect(0.05);
+    await vi.waitFor(
+      async () => {
+        const [record] = await listContinuationRecords({ recordIds: [recordId] });
+        expect(record?.spawnAttempts.length).toBeGreaterThan(1);
+      },
+      { timeout: 10_000, interval: 20 },
+    );
+
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 2 * 60 * 60 * 1000);
+
+    await expectRefused(gateway, recordId, /operator dispatch grant expired/);
+    expect(peekSystemEvents(OWNER).join("\n")).toContain("DELEGATE spawn failed");
   });
 
   it("keeps the grant across a Gateway restart and never spawns through an ambient route", async () => {

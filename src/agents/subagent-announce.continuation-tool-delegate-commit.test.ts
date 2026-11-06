@@ -89,6 +89,15 @@ vi.mock("../auto-reply/continuation/delegate-store-post-compaction.js", () => ({
   stagePostCompactionDelegate: vi.fn(),
 }));
 
+const { runUnderGrantMock } = vi.hoisted(() => ({ runUnderGrantMock: vi.fn() }));
+
+vi.mock("../auto-reply/continuation/delegate-dispatch-grant.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../auto-reply/continuation/delegate-dispatch-grant.js")>();
+  runUnderGrantMock.mockImplementation(actual.runUnderContinuationDelegateDispatchGrant);
+  return { ...actual, runUnderContinuationDelegateDispatchGrant: runUnderGrantMock };
+});
+
 const { dispatchToolDelegatesMock } = vi.hoisted(() => ({
   dispatchToolDelegatesMock: vi.fn(
     async (params: DispatchToolDelegatesParams): Promise<DispatchToolDelegatesResult> => ({
@@ -116,11 +125,13 @@ import {
   consumePendingDelegates,
   markPendingDelegateFailed,
   markPendingDelegateSpawnAccepted,
+  requeuePendingDelegate,
 } from "../auto-reply/continuation/delegate-store.js";
 import { setRuntimeConfigSnapshot, clearRuntimeConfigSnapshot } from "../config/config.js";
 import { resolveSessionStorePathCore } from "../config/sessions.js";
 import { replaceSessionEntry } from "../config/sessions/session-accessor.js";
 import type { SessionEntry } from "../config/sessions/types.js";
+import { GatewayDispatchUnavailableError } from "../infra/restart-recovery-errors.js";
 import {
   createOpenClawTestState,
   type OpenClawTestState,
@@ -298,6 +309,30 @@ describe("announce tool-delegate accepted spawn commits the custody record (C2)"
     expect(mockedMarkPendingDelegateSpawnAccepted).not.toHaveBeenCalled();
     expect(mockedMarkPendingDelegateFailed).toHaveBeenCalledTimes(1);
   });
+
+  it.each([
+    { retryable: true, requeues: 1, fails: 0, drains: 2 },
+    { retryable: false, requeues: 0, fails: 1, drains: 1 },
+  ])(
+    "keeps the delegate only while the grant's Gateway may still answer (retryable=$retryable)",
+    async ({ retryable, requeues, fails, drains }) => {
+      vi.mocked(requeuePendingDelegate).mockReset().mockResolvedValue(true);
+      mockedConsumePendingDelegates.mockResolvedValueOnce([
+        { task: "continue next step", flowId: "flow-tool-c2-grant", expectedRevision: 1 },
+      ]);
+      failSharedDelegateDispatchOnce();
+      runUnderGrantMock.mockRejectedValueOnce(
+        new GatewayDispatchUnavailableError("operator recovery", retryable),
+      );
+
+      await runSubagentAnnounceFlow(buildToolDelegateParams());
+
+      await vi.waitFor(() => expect(dispatchToolDelegatesMock).toHaveBeenCalledTimes(drains));
+      expect(requeuePendingDelegate).toHaveBeenCalledTimes(requeues);
+      expect(mockedMarkPendingDelegateFailed).toHaveBeenCalledTimes(fails);
+      expect(spawnSpy).not.toHaveBeenCalled();
+    },
+  );
 
   it("rolls back an accepted child and preserves the hop when source acceptance is stale", async () => {
     const rollbackAccepted = vi.fn(async () => undefined);

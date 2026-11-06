@@ -8,6 +8,9 @@
  * the shared operator-recovery owner, which still fails closed on device revocation, profile
  * or role change and narrowed scopes. Delegates elected without a Gateway operator (channel
  * and internal turns) carry no grant and dispatch as before.
+ *
+ * A Gateway that cannot answer yet has not refused anything: the same delegate stays queued
+ * and retries on the dispatch hedge, and the grant's expiry is what ends that wait.
  */
 
 import type { AdmittedRunOperatorAuthority } from "../../agents/admitted-run-context.js";
@@ -18,6 +21,7 @@ import { restoreGatewayQueuedOperatorRecovery } from "../../gateway/operator-run
 import { runOutsideOperatorToolGatewayAuthority } from "../../gateway/operator-tool-gateway-authority.js";
 import type { GatewayContextResolver } from "../../gateway/server-methods/types.js";
 import { createSyntheticPluginRuntimeClient } from "../../gateway/server-plugin-runtime-client.js";
+import { GatewayDispatchUnavailableError } from "../../infra/restart-recovery-errors.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import {
   getInProcessGatewayRequestContext,
@@ -33,6 +37,13 @@ const log = createSubsystemLogger("continuation/delegate-dispatch");
  * re-arms and a Gateway restart, but an operator's hour-old authorization never fires.
  */
 export const CONTINUATION_DELEGATE_GRANT_SLACK_MS = 60 * 60 * 1000;
+
+export const DELEGATE_GRANT_RESTORE_RETRY_PHASE = "Waiting for the Gateway to restore its grant";
+
+/** The grant's Gateway is briefly unavailable; only definitive authority loss refuses it. */
+export function isRetryableDelegateGrantFailure(error: unknown): boolean {
+  return error instanceof GatewayDispatchUnavailableError && error.retryable;
+}
 
 function grantRefused(reason: string, cause?: unknown): Error {
   const detail = cause instanceof Error ? `: ${cause.message}` : "";
@@ -118,6 +129,9 @@ export async function runUnderContinuationDelegateDispatchGrant<T>(
       },
     });
   } catch (error) {
+    if (isRetryableDelegateGrantFailure(error)) {
+      throw error;
+    }
     throw grantRefused("was revoked", error);
   }
   try {
