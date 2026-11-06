@@ -254,7 +254,11 @@ const broker = (await load("process/spawn-broker/host.ts")).createSpawnBrokerHos
 await broker.ready();
 await broker.close();
 new DatabaseSync(dir + "/state.sqlite").exec("CREATE TABLE t (x)");
-(await load("infra/sqlite-readonly-worker.ts")).runSqliteReadOnlyWorkerSync(dir + "/state.sqlite", dir);
+const sqlite = await load("infra/sqlite-readonly-worker.ts");
+sqlite.runSqliteReadOnlyWorkerSync(dir + "/state.sqlite", dir);
+const session = sqlite.createScopedSqliteReadOnlyWorker({ ...sqlite.captureSqliteReadOnlyWorkerLaunch(), retainLifetime: false });
+await session.run(dir + "/state.sqlite", { mode: "file-generation" });
+await session.close();
 const cli = await load("cli/update-cli/update-command-cli-options.ts");
 await cli.readUpdateTargetCliOptions({ nodeRunner: process.execPath, entryPath: dir + "/cli.mjs", command: "doctor" }, {});
 const { prepareRuntimeProcessScriptInvocation } = await load("infra/runtime-process-url.ts");
@@ -304,13 +308,12 @@ console.log(JSON.stringify(outputs));`;
         const [bunChildArgv, , report] = JSON.parse(stdout);
         expect(bunChildArgv).toEqual(["--no-install", path.join(dir, "child.mjs")]);
         reports.push(report);
-        const children = new Map(
-          (await readFile(log, "utf8"))
-            .trim()
-            .split("\n")
-            .map((line) => JSON.parse(line) as [string, string[]])
-            .map(([entry, execArgv]) => [path.basename(entry ?? ""), execArgv]),
-        );
+        const logged = (await readFile(log, "utf8"))
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line) as [string, string[]])
+          .map(([entry, execArgv]) => [path.basename(entry ?? ""), execArgv] as const);
+        const children = new Map(logged);
         // Exact for plain children: --no-warnings and the parent's loader stay behind.
         expect(children.get("child.mjs")).toEqual(flags);
         expect(children.get("thread-child.mjs")).toEqual(flags);
@@ -318,10 +321,13 @@ console.log(JSON.stringify(outputs));`;
         expect(children.get("update-state-sizes.mjs")).toEqual(flags);
         expect(children.get("daemon-runtime-probe.mjs")).toEqual(flags);
         // Source workers also carry their loader; only the reviewed flags must match the parent.
-        for (const worker of [/^worker\.[jt]s$/, /^sqlite-readonly-location\.worker\.[jt]s$/]) {
-          const execArgv = [...children].find(([name]) => worker.test(name))?.[1];
-          expect(execArgv?.filter(isNodeCompilerArg), String(worker)).toEqual(flags);
-        }
+        // The one-shot and session readers each carry them once.
+        const workerFlags = (worker: RegExp) =>
+          logged
+            .filter(([name]) => worker.test(name))
+            .map(([, execArgv]) => execArgv.filter(isNodeCompilerArg));
+        expect(workerFlags(/^worker\.[jt]s$/)).toEqual([flags]);
+        expect(workerFlags(/^sqlite-readonly-location\.worker\.[jt]s$/)).toEqual([flags, flags]);
       });
     }
     // The probe reports the same runtime version and SQLite capability under either parent.
