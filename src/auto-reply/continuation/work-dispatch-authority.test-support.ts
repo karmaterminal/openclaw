@@ -87,7 +87,11 @@ export async function runDetachedGenerationFossil(params: {
 }): Promise<void> {
   const sessionKey = "agent:main:detached-generation";
   params.mockSessionStore[sessionKey] = { sessionKey };
-  params.observedDetachedGenerations.push({ prepared: true, pluginRegistry: true, dispatchRuntime: true });
+  params.observedDetachedGenerations.push({
+    prepared: true,
+    pluginRegistry: true,
+    dispatchRuntime: true,
+  });
   await enqueuePendingWork({
     sessionKey,
     hop: 2,
@@ -99,7 +103,9 @@ export async function runDetachedGenerationFossil(params: {
   });
   // A closed turn lease: the generation is still in the frame, its borrow is gone. The arming
   // request's prepared reply dispatch runtime pins that generation too (get-reply-run acquires on it).
-  const closedTurnGeneration = { remoteCatalog: null } as unknown as PreparedModelRuntimePluginGeneration;
+  const closedTurnGeneration = {
+    remoteCatalog: null,
+  } as unknown as PreparedModelRuntimePluginGeneration;
   const armingDispatchRuntime = { pluginGeneration: closedTurnGeneration } as unknown as Parameters<
     typeof bindPreparedReplyDispatchRuntime
   >[0];
@@ -107,10 +113,17 @@ export async function runDetachedGenerationFossil(params: {
     closedTurnGeneration,
     () =>
       withPluginRuntimeGenerationScope(
-        { metadataSnapshot: createPluginMetadataSnapshotFixture(), pluginRegistry: createEmptyPluginRegistry() },
+        {
+          metadataSnapshot: createPluginMetadataSnapshotFixture(),
+          pluginRegistry: createEmptyPluginRegistry(),
+        },
         bindPreparedReplyDispatchRuntime(armingDispatchRuntime, async () => {
           // Control: the arming frame does carry all three.
-          expect(observeAdmittedGenerations()).toEqual({ prepared: true, pluginRegistry: true, dispatchRuntime: true });
+          expect(observeAdmittedGenerations()).toEqual({
+            prepared: true,
+            pluginRegistry: true,
+            dispatchRuntime: true,
+          });
           await dispatchPendingContinuationWorkFromDetachedCallback({ sessionKey });
         }),
       ),

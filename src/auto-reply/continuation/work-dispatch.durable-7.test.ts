@@ -282,9 +282,8 @@ vi.mock("../reply/get-reply.js", () => ({
       };
     }
     if (observedDetachedGenerations.length === 1) {
-      const { observeAdmittedGenerations } = await import(
-        "./work-dispatch-authority.test-support.js"
-      );
+      const { observeAdmittedGenerations } =
+        await import("./work-dispatch-authority.test-support.js");
       observedDetachedGenerations[0] = observeAdmittedGenerations();
     }
     const { readOperatorToolGatewayAuthority } =
@@ -875,7 +874,11 @@ describe("durable continuation_work dispatch", () => {
   });
 
   it("re-admits a detached wake on the current generation, not its closed turn's (#1550)", async () => {
-    await runDetachedGenerationFossil({ mockSessionStore, observedDetachedGenerations, turnGrants });
+    await runDetachedGenerationFossil({
+      mockSessionStore,
+      observedDetachedGenerations,
+      turnGrants,
+    });
   });
 
   it.each([
