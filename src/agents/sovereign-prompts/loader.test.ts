@@ -353,19 +353,10 @@ describe.skipIf(process.platform === "win32")("loadSovereignPromptSnapshot", () 
 });
 
 describe.skipIf(process.platform === "win32")("loadAgentSovereignPrompts", () => {
-  function configFor(
-    agentDir: string,
-    modes: { defaults?: "off" | "enforce"; entry?: "off" | "enforce" },
-  ) {
-    return {
-      agents: {
-        ...(modes.defaults ? { defaults: { sovereignPrompts: { mode: modes.defaults } } } : {}),
-        entries: {
-          main: { agentDir, ...(modes.entry ? { sovereignPrompts: { mode: modes.entry } } : {}) },
-        },
-      },
-    } as OpenClawConfig;
-  }
+  const configFor = (agentDir: string, mode?: "off" | "enforce") =>
+    ({
+      agents: { entries: { main: { agentDir, ...(mode ? { sovereignPrompts: { mode } } : {}) } } },
+    }) as OpenClawConfig;
 
   it("off reads nothing at the loader's fs boundary; enforce refuses enforce_unwired", async () => {
     const agentDir = newRoot();
@@ -377,24 +368,22 @@ describe.skipIf(process.platform === "win32")("loadAgentSovereignPrompts", () =>
     ).map((name) => vi.spyOn(fs, name));
     const fsCalls = () => spies.reduce((sum, spy) => sum + spy.mock.calls.length, 0);
     try {
-      for (const modes of [{}, { entry: "off" }, { defaults: "enforce", entry: "off" }] as const) {
-        const target = resolveSovereignPromptTarget(configFor(agentDir, modes), "main");
+      for (const mode of [undefined, "off"] as const) {
+        const target = resolveSovereignPromptTarget(configFor(agentDir, mode), "main");
         expect(target.root).toBe(root);
         spies.forEach((spy) => spy.mockClear());
         expect(loadAgentSovereignPrompts(target)).toEqual({ state: "off" });
         expect(fsCalls()).toBe(0);
       }
-      for (const modes of [{ entry: "enforce" }, { defaults: "enforce" }] as const) {
-        const target = resolveSovereignPromptTarget(configFor(agentDir, modes), "main");
-        spies.forEach((spy) => spy.mockClear());
-        const outcome = await capture(() => loadAgentSovereignPrompts(target));
-        expect(outcome.value).toMatchObject({
-          state: "refused",
-          refusal: { code: "enforce_unwired" },
-        });
-        expectNoSentinel(outcome);
-        expect(fsCalls()).toBe(0);
-      }
+      const target = resolveSovereignPromptTarget(configFor(agentDir, "enforce"), "main");
+      spies.forEach((spy) => spy.mockClear());
+      const outcome = await capture(() => loadAgentSovereignPrompts(target));
+      expect(outcome.value).toMatchObject({
+        state: "refused",
+        refusal: { code: "enforce_unwired" },
+      });
+      expectNoSentinel(outcome);
+      expect(fsCalls()).toBe(0);
       // Positive control: the same spies see the loader's reads of this root.
       loadSovereignPromptSnapshot({ agentId: "main", target: { root } });
       expect(fsCalls()).toBeGreaterThan(0);

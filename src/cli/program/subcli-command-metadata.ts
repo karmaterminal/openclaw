@@ -68,7 +68,7 @@ const commands = [
   ),
   command("security", "Audit local config and state for common security foot-guns"),
   command("secrets", "Secrets runtime controls"),
-  command("sovereign", "Locate and check agent sovereign prompt files without printing them"),
+  command("sovereign", "Locate and check an agent's sovereign prompt files without printing them"),
   command("skills", "List and inspect available skills"),
   command("update", "Update OpenClaw and inspect update channel status"),
   command("completion", "Generate shell completion script", { hasSubcommands: false }),

@@ -490,9 +490,7 @@ export function resolveAgentConfig(
     embeddedAgent: entry.embeddedAgent,
     sandbox: entry.sandbox,
     tools: entry.tools,
-    sovereignPrompts: entry.sovereignPrompts
-      ? { ...agentDefaults?.sovereignPrompts, ...entry.sovereignPrompts }
-      : agentDefaults?.sovereignPrompts,
+    sovereignPrompts: entry.sovereignPrompts,
   };
 }
 
