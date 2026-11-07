@@ -123,13 +123,14 @@ export function expectNoSentinel(outcome: Outcome): void {
     if (value === undefined) {
       continue;
     }
-    surfaces.push(
-      String(value),
-      inspect(value, { depth: 8, showHidden: true }),
-      JSON.stringify(value) ?? "",
-    );
+    surfaces.push(inspect(value, { depth: 8, showHidden: true }), JSON.stringify(value) ?? "");
     if (value instanceof Error) {
-      surfaces.push(value.message, value.stack ?? "", inspect(value.cause, { depth: 8 }));
+      surfaces.push(
+        String(value),
+        value.message,
+        value.stack ?? "",
+        inspect(value.cause, { depth: 8 }),
+      );
     }
   }
   for (const surface of surfaces) {

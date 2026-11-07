@@ -49,10 +49,10 @@ async function run(...args: string[]) {
     await program.parseAsync(["sovereign", ...args], { from: "user" });
   });
   expectNoSentinel(outcome);
-  const exitCode = outcome.error instanceof ExitError ? outcome.error.code : 0;
-  if (outcome.error && !(outcome.error instanceof ExitError)) {
-    throw outcome.error;
+  if (outcome.error !== undefined) {
+    expect(outcome.error).toBeInstanceOf(ExitError);
   }
+  const exitCode = outcome.error instanceof ExitError ? outcome.error.code : 0;
   const output = outcome.logs.join("");
   return { exitCode, output, json: () => JSON.parse(output) as Record<string, unknown> };
 }

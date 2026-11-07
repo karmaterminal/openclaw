@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { inspect } from "node:util";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
@@ -327,7 +326,8 @@ describe.skipIf(process.platform === "win32")("loadSovereignPromptSnapshot", () 
     for (const printed of [
       JSON.stringify(snapshot),
       inspect(snapshot, { depth: 8, showHidden: true }),
-      `${snapshot}`,
+      // String() applies the same ToPrimitive(hint "string") as template interpolation.
+      String(snapshot),
       inspect(new Error("load failed", { cause: snapshot }), { depth: 8 }),
     ]) {
       expect(printed).not.toContain(SENTINEL);
