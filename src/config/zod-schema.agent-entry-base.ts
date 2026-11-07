@@ -130,4 +130,17 @@ export const AgentEntryBaseSchema = z.strictObject({
     .optional(),
   params: z.record(z.string(), z.unknown()).optional(),
   runtime: AgentRuntimeSchema,
+  /** Sovereign prompt loading (#1321); "off" renders code text and reads no sovereign file. */
+  sovereignPrompts: z
+    .strictObject({
+      // Nothing at runtime consults the loader yet, so an accepted "enforce" would render stock
+      // text. The wiring slice widens this in the same change that lands the chokepoint.
+      mode: z
+        .enum(["off"], {
+          error:
+            'Only "off" is accepted in this build: "enforce" needs the phase A prompt wiring from the next slice. Set "off" or remove the setting.',
+        })
+        .optional(),
+    })
+    .optional(),
 });
