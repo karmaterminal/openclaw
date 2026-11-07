@@ -447,7 +447,7 @@ describe.skipIf(process.platform === "win32")("loadSovereignPromptSnapshot", () 
 });
 
 describe.skipIf(process.platform === "win32")("loadAgentSovereignPrompts", () => {
-  const configFor = (agentDir: string, mode?: "off" | "enforce") =>
+  const configFor = (agentDir: string, mode?: "off") =>
     ({
       agents: { entries: { main: { agentDir, ...(mode ? { sovereignPrompts: { mode } } : {}) } } },
     }) as OpenClawConfig;
@@ -473,8 +473,8 @@ describe.skipIf(process.platform === "win32")("loadAgentSovereignPrompts", () =>
         expect(fsCalls()).toBe(0);
       }
       spies.forEach((spy) => spy.mockClear());
-      const target = resolveSovereignPromptTarget(configFor(agentDir, "enforce"), "main");
-      const outcome = await capture(() => loadAgentSovereignPrompts(target));
+      // Config validation refuses "enforce" on this build, so the branch is reached directly.
+      const outcome = await capture(() => loadAgentSovereignPrompts({ mode: "enforce" }));
       expect(fsCalls()).toBe(0);
       expect(outcome.value).toMatchObject({
         state: "refused",

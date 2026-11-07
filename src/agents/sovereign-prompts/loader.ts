@@ -46,6 +46,8 @@ const READ_FLAGS =
 type RefusalCode = SovereignPromptRefusal["code"];
 type RefusalDetails = SovereignPromptRefusal["details"];
 type LoadContext = { agentId: string; euid: number };
+/** Wider than the config schema, which accepts only "off" until the wiring slice. */
+type SovereignPromptMode = "off" | "enforce";
 
 const Sha256HexSchema = z.string().regex(/^[0-9a-f]{64}$/);
 const ManifestSchema = z.strictObject({
@@ -535,9 +537,10 @@ export function resolveSovereignPromptTarget(
     "sovereign",
     "systemprompts",
   );
+  const mode: SovereignPromptMode = agent.sovereignPrompts?.mode ?? "off";
   return {
     agentId: id,
-    mode: agent.sovereignPrompts?.mode ?? "off",
+    mode,
     root,
     current: path.join(root, CURRENT_FILE),
     generations: path.join(root, GENERATIONS_DIR),
@@ -547,7 +550,8 @@ export function resolveSovereignPromptTarget(
 /**
  * The per-agent start-time load. `off` reads nothing and changes nothing. `enforce` is
  * refused until the snapshot is wired into prompt assembly, so a seat cannot flip
- * early and nothing falls back to code text.
+ * early and nothing falls back to code text. On this build config validation refuses
+ * `enforce` first; this refusal remains for direct callers.
  */
 export function loadAgentSovereignPrompts(
   target: Pick<ReturnType<typeof resolveSovereignPromptTarget>, "mode">,

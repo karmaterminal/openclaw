@@ -17,7 +17,8 @@ print codes, names, sizes, digests and paths. They never print file content.
 <Note>
 This build ships the loader, its checks and these commands. Prompt assembly does
 not read sovereign files yet, so `agents.entries.<agentId>.sovereignPrompts.mode`
-stays `"off"`. `"enforce"` is accepted but refused (`enforce_unwired`).
+accepts only `"off"` until the phase A wiring slice lands. Config validation
+refuses `"enforce"`, so `openclaw config validate` rejects a config that sets it.
 </Note>
 
 | Command | Role                                                                                                  |
@@ -107,7 +108,7 @@ Every check is mechanical; nothing reads or judges the text.
 | `placeholder_invalid`, `placeholder_unknown`       | A `{{oc:…}}` token is malformed or names a fact its slot does not provide                                                                                                                                                          |
 | `generation_changed`                               | `CURRENT` changed during the load twice in a row                                                                                                                                                                                   |
 | `io_error`                                         | Any other read failure; the output carries the errno name only                                                                                                                                                                     |
-| `enforce_unwired`                                  | `paths`: the agent's mode is `"enforce"`, which this build does not apply                                                                                                                                                          |
+| `enforce_unwired`                                  | `paths`: the loader was given mode `"enforce"`, which this build does not apply. Config validation refuses `"enforce"` first                                                                                                       |
 | `agent_unknown`                                    | `--agent` names no configured agent                                                                                                                                                                                                |
 
 An empty optional file counts as absent. Refusal output names the code and, where

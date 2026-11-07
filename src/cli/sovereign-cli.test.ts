@@ -11,7 +11,6 @@ import {
   writeGeneration,
   writeRoot,
 } from "../agents/sovereign-prompts/sovereign-fixture.test-support.js";
-import type { OpenClawConfig } from "../config/types.js";
 import { ExitError } from "../runtime.js";
 import { registerSovereignCli } from "./sovereign-cli.js";
 
@@ -37,9 +36,9 @@ beforeEach(() => {
 });
 
 function configure(mode: "off" | "enforce") {
-  state.config = {
-    agents: { entries: { main: { agentDir, sovereignPrompts: { mode } } } },
-  } satisfies OpenClawConfig;
+  // The mocked reader skips config validation, which refuses "enforce" on this build
+  // (sovereign-cli.config.integration.test.ts); here it reaches the loader directly.
+  state.config = { agents: { entries: { main: { agentDir, sovereignPrompts: { mode } } } } };
 }
 
 /** Runs the command; `forbidden` strings (fixture paths) must never reach its output. */
