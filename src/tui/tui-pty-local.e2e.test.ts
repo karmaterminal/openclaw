@@ -1289,13 +1289,13 @@ export default {
   );
 
   registerGatewayTest(
-    "collects two Gateway-client prompts into one real Gateway followup turn",
+    "keeps two Gateway-client invocations as separate real Gateway collect followup turns",
     async ({ onTestFinished }) => {
       const fixture = await startGatewayModeTui("collectGatewayClient", onTestFinished);
       const terminalObserver = createChatTerminalObserver();
-      // Only human turns mint the per-turn skill-authoring capability that forces an
-      // individual drain. External-user provenance is not a human turn, so these
-      // authorized prompts still collect into one followup turn.
+      // External-user provenance is not a human turn, so these prompts take the collect path,
+      // not the human individual drain. Queued input groups only with its own chat.send's
+      // invocation authority, so collect admits each prompt as its own FIFO followup turn.
       const queueClient = await connectGatewayClient({
         url: fixture.gateway.url,
         token: fixture.gateway.gatewayToken,
@@ -1320,7 +1320,7 @@ export default {
           onTimeout: () =>
             new Error(`first prompt did not reach the model\n${fixture.run.output()}`),
         });
-        // Admit alpha before submitting beta so the collected turn has a defined order.
+        // Admit alpha before submitting beta so the followup turns have a defined order.
         const queuedRunIds: string[] = [];
         for (const message of ["collect prompt alpha", "collect prompt beta"]) {
           const idempotencyKey = randomUUID();
@@ -1351,18 +1351,6 @@ export default {
         );
         fixture.mockModel.releaseFirstResponse();
         await Promise.all(queuedTerminalPromises);
-        await fixture.waitForOutput("FOLLOWUP_RUN_COMPLETE");
-        const completedOffset = fixture.lastOutputIndex("FOLLOWUP_RUN_COMPLETE");
-        await waitForOutputAfter(fixture.run, "| idle", completedOffset);
-        const completedRows = await waitForSynchronizedFrameRows(
-          fixture.run,
-          (frame) => frame.some((row) => row.includes("FOLLOWUP_RUN_COMPLETE")),
-          LOCAL_OUTPUT_TIMEOUT_MS,
-        );
-        expect(completedRows.filter((row) => row.includes("FOLLOWUP_RUN_COMPLETE"))).toHaveLength(
-          1,
-        );
-
         const requests = fixture.mockModel.requests();
         expect(
           requests,
@@ -1371,13 +1359,25 @@ export default {
             null,
             2,
           )}\n${fixture.gateway.logs()}`,
-        ).toHaveLength(2);
-        const collectedBody = JSON.stringify(requests[1]?.body);
-        expect(collectedBody).toContain("collect prompt alpha");
-        expect(collectedBody).toContain("collect prompt beta");
-        expect(collectedBody.indexOf("collect prompt alpha")).toBeLessThan(
-          collectedBody.indexOf("collect prompt beta"),
+        ).toHaveLength(3);
+        // Separate user messages per turn; a merged collect envelope is one message, one turn.
+        const queuedPrompts = requests.slice(1).map((request) =>
+          (request.body.input as Array<{ role?: string; content?: Array<{ text?: string }> }>)
+            .flatMap((item) => (item.role === "user" ? (item.content ?? []) : []))
+            .map(({ text = "" }) => text.slice(text.lastIndexOf("\n") + 1))
+            .filter((line) => line.startsWith("collect prompt")),
         );
+        expect(queuedPrompts).toEqual([
+          ["collect prompt alpha"],
+          ["collect prompt alpha", "collect prompt beta"],
+        ]);
+        await waitForSynchronizedFrameRows(
+          fixture.run,
+          (frame) => frame.filter((row) => row.includes("FOLLOWUP_RUN_COMPLETE")).length === 2,
+          LOCAL_OUTPUT_TIMEOUT_MS,
+        );
+        const completedOffset = fixture.lastOutputIndex("FOLLOWUP_RUN_COMPLETE");
+        await waitForOutputAfter(fixture.run, "| idle", completedOffset);
       } finally {
         await queueClient.stopAndWait();
         await fixture.cleanup();
