@@ -382,6 +382,11 @@ export const cliCommandCatalog: readonly CliCommandCatalogEntry[] = [
     policy: { configGuard: "validate", loadPlugins: "never", networkProxy: "bypass" },
   },
   {
+    // Deploys run these read-only checks beside a live Gateway, before its restart.
+    commandPath: ["sovereign"],
+    policy: { configGuard: "validate", loadPlugins: "never", networkProxy: "bypass" },
+  },
+  {
     commandPath: ["doctor"],
     policy: {
       configGuard: "skip",

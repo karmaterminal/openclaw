@@ -58,6 +58,11 @@ export const AgentModelMapSchema = z
     }
   });
 
+/** Sovereign prompt loading (#1321); "off" renders code text and reads no sovereign files. */
+export const SovereignPromptsSchema = z.strictObject({
+  mode: z.enum(["off", "enforce"]).optional(),
+});
+
 export const AgentModelPolicySchema = z.strictObject({
   /** Model refs allowed for session/run overrides. Empty or omitted allows any model. */
   allow: z.array(z.string()).optional(),
@@ -130,4 +135,5 @@ export const AgentEntryBaseSchema = z.strictObject({
     .optional(),
   params: z.record(z.string(), z.unknown()).optional(),
   runtime: AgentRuntimeSchema,
+  sovereignPrompts: SovereignPromptsSchema.optional(),
 });

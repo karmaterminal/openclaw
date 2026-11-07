@@ -4,6 +4,7 @@ import { isValidNonNegativeByteSizeString } from "./byte-size.js";
 import {
   AgentModelMapSchema,
   AgentModelPolicySchema,
+  SovereignPromptsSchema,
   WorkspaceFileModeSchema,
 } from "./zod-schema.agent-entry-base.js";
 import {
@@ -65,6 +66,7 @@ export const AgentDefaultsBaseSchema = z.strictObject({
   modelPolicy: AgentModelPolicySchema.optional(),
   workspace: z.string().optional(),
   workspaceFileMode: WorkspaceFileModeSchema.optional(),
+  sovereignPrompts: SovereignPromptsSchema.optional(),
   cwd: z.string().optional(),
   skills: z.array(z.string()).optional(),
   silentReply: SilentReplyPolicyConfigSchema.optional(),
