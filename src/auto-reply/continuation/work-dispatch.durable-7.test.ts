@@ -29,6 +29,11 @@ const observedDetachedAuthority: Array<{
   resolver: boolean;
 }> = [];
 const observedOperatorScopes: string[][] = [];
+const observedDetachedGenerations: Array<{
+  prepared: boolean;
+  pluginRegistry: boolean;
+  dispatchRuntime: boolean;
+}> = [];
 // test state: toggle continuation enablement (disabled-gate), capture the
 // active diagnostic traceparent at reply time (traceparent re-entry), and force
 // a revision race after the turn ran (failed durable delivered-mark).
@@ -274,6 +279,12 @@ vi.mock("../reply/get-reply.js", () => ({
         resolver: scope?.resolveGatewayContext !== undefined,
       };
     }
+    if (observedDetachedGenerations.length === 1) {
+      const { observeAdmittedGenerations } = await import(
+        "./work-dispatch-authority.test-support.js"
+      );
+      observedDetachedGenerations[0] = observeAdmittedGenerations();
+    }
     const { readOperatorToolGatewayAuthority } =
       await import("../../gateway/operator-tool-gateway-authority.js");
     observedOperatorScopes.push([...(readOperatorToolGatewayAuthority()?.scopes ?? [])]);
@@ -394,7 +405,10 @@ import {
   pendingDelegateCount,
 } from "./delegate-store.js";
 import type { ContinuationRuntimeConfig } from "./types.js";
-import { runDetachedAuthorityFossil } from "./work-dispatch-authority.test-support.js";
+import {
+  runDetachedAuthorityFossil,
+  runDetachedGenerationFossil,
+} from "./work-dispatch-authority.test-support.js";
 import {
   describeWorkTransition,
   resetWorkDispatchCustodyHooks,
@@ -576,6 +590,7 @@ describe("durable continuation_work dispatch", () => {
     observeSubordinateAdmission = false;
     observedSubordinateAdmissionClosed.length = 0;
     observedDetachedAuthority.length = 0;
+    observedDetachedGenerations.length = 0;
     observedOperatorScopes.length = 0;
     for (const key of Object.keys(mockSessionStore)) {
       delete mockSessionStore[key];
@@ -842,6 +857,10 @@ describe("durable continuation_work dispatch", () => {
   });
   it("does not inherit settled request authority into a detached wake", async () => {
     await runDetachedAuthorityFossil({ mockSessionStore, observedDetachedAuthority, turnGrants });
+  });
+
+  it("re-admits a detached wake on the current generation, not its closed turn's (#1550)", async () => {
+    await runDetachedGenerationFossil({ mockSessionStore, observedDetachedGenerations, turnGrants });
   });
 
   it("re-enters retained role limits for an accepted operator wake", async () => {

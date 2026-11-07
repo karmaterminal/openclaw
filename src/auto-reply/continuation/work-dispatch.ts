@@ -21,6 +21,8 @@ import {
   registerContinuationDispatchClaim,
   resetContinuationDispatchClaimsForTests,
 } from "./continuation-dispatch-claims.js";
+// Continuation (karmaterminal): detached re-entries re-admit on the current plugin generation.
+import { runOnCurrentPluginGeneration } from "./detached-generation.js";
 import { checkContinuationBudget } from "./scheduler.js";
 import type {
   ChainState,
@@ -101,8 +103,9 @@ export function dispatchPendingContinuationWorkFromDetachedCallback(
       withPluginRuntimeGatewayContextResolver(
         resolveGatewayContext,
         () =>
-          runWithGatewayIndependentRootWorkAdmission(
-            async () => await dispatchPendingContinuationWork(params),
+          runWithGatewayIndependentRootWorkAdmission(() =>
+            // Continuation (karmaterminal): admit on the plugin generation current at fire time.
+            runOnCurrentPluginGeneration(() => dispatchPendingContinuationWork(params)),
           ),
         { inheritRequestScope: false },
       ),
