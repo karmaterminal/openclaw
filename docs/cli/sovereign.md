@@ -17,7 +17,8 @@ print codes, names, sizes, digests and paths. They never print file content.
 <Note>
 This build ships the loader, its checks and these commands. Prompt assembly does
 not read sovereign files yet, so `agents.entries.<agentId>.sovereignPrompts.mode`
-stays `"off"`. `"enforce"` is accepted but refused (`enforce_unwired`).
+accepts only `"off"` until the phase A wiring slice lands. Config validation
+refuses `"enforce"`, so `openclaw config validate` rejects a config that sets it.
 </Note>
 
 | Command | Role                                                                                                  |
@@ -35,7 +36,9 @@ openclaw sovereign check --agent main --generation ~/.openclaw/agents/main/agent
 ```
 
 Exit codes: `0` when the agent resolves (`paths`) or the generation loads
-(`check`); `1` on any refusal, with the refusal code in the output.
+(`check`); `1` on any refusal, with the refusal code in the output. An invalid
+config, such as one that sets `"enforce"` on this build, exits `1` with the config
+error before either command runs.
 
 ## Layout
 
@@ -107,7 +110,7 @@ Every check is mechanical; nothing reads or judges the text.
 | `placeholder_invalid`, `placeholder_unknown`       | A `{{oc:…}}` token is malformed or names a fact its slot does not provide                                                                                                                                                          |
 | `generation_changed`                               | `CURRENT` changed during the load twice in a row                                                                                                                                                                                   |
 | `io_error`                                         | Any other read failure; the output carries the errno name only                                                                                                                                                                     |
-| `enforce_unwired`                                  | `paths`: the agent's mode is `"enforce"`, which this build does not apply                                                                                                                                                          |
+| `enforce_unwired`                                  | `paths`: the loader was given mode `"enforce"`, which this build does not apply. Config validation refuses `"enforce"` first                                                                                                       |
 | `agent_unknown`                                    | `--agent` names no configured agent                                                                                                                                                                                                |
 
 An empty optional file counts as absent. Refusal output names the code and, where

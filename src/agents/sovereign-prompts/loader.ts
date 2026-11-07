@@ -550,7 +550,9 @@ export function resolveSovereignPromptTarget(
  * early and nothing falls back to code text.
  */
 export function loadAgentSovereignPrompts(
-  target: Pick<ReturnType<typeof resolveSovereignPromptTarget>, "mode">,
+  // Wider than the config schema, which refuses "enforce" until the wiring slice; direct
+  // callers still reach this refusal.
+  target: { mode: "off" | "enforce" },
 ): { state: "off" } | { state: "refused"; refusal: SovereignPromptRefusal } {
   if (target.mode === "off") {
     return { state: "off" };
