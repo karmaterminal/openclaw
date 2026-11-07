@@ -226,9 +226,6 @@ function readPrivateFile(filePath: string, ctx: LoadContext, read: PrivateFileRe
     if (size > read.maxBytes) {
       refuse(read.invalid ?? "size_exceeded", { ...details, bytes: size, limit: read.maxBytes });
     }
-    if (read.expectedBytes !== undefined && size !== read.expectedBytes) {
-      refuse("partial_read", { ...details, bytes: size });
-    }
     const length = read.expectedBytes ?? size;
     // One spare byte proves EOF at exactly `length`.
     const buffer = Buffer.alloc(length + 1);
@@ -308,32 +305,28 @@ function readManifest(dir: string, ctx: LoadContext, expectedGeneration: string 
   return manifest;
 }
 
-/** Every manifest path is a registry file; required files are listed and non-empty; sizes fit. */
-function assertManifestFiles(files: readonly ManifestFile[]): void {
-  if (files.some((file) => !lookupSovereignPromptFile(file.path))) {
-    // The name is not a registry name, so it is never echoed.
-    refuse("unknown_slot");
-  }
+/** Resolves every manifest path against the registry; required files are listed; the set fits. */
+function resolveManifestFiles(files: readonly ManifestFile[]) {
+  // A name outside the registry is never echoed.
+  const resolved = files.map((file) => ({
+    ...file,
+    entry: lookupSovereignPromptFile(file.path) ?? refuse("unknown_slot"),
+  }));
   for (const required of SOVEREIGN_PROMPT_REQUIRED_FILES) {
-    const listed = files.find((file) => file.path === required);
-    const details = { slot: lookupSovereignPromptFile(required)?.slot.slot, file: required };
-    if (!listed) {
-      refuse("required_missing", details);
-    }
-    if (listed.bytes === 0) {
-      refuse("required_empty", details);
+    if (!files.some((file) => file.path === required)) {
+      refuse("required_missing", {
+        slot: lookupSovereignPromptFile(required)?.slot.slot,
+        file: required,
+      });
     }
   }
-  let total = 0;
-  for (const file of files) {
-    if (file.bytes > FILE_MAX_BYTES) {
-      refuse("size_exceeded", { file: file.path, bytes: file.bytes, limit: FILE_MAX_BYTES });
-    }
-    total += file.bytes;
-  }
+  // Also bounds the read buffers, which are sized from manifest counts.
+  const total = files.reduce((sum, file) => sum + file.bytes, 0);
   if (total > SET_MAX_BYTES) {
     refuse("size_exceeded", { bytes: total, limit: SET_MAX_BYTES });
   }
+  // Path order, as in `setDigest`, so receipts do not depend on manifest order.
+  return resolved.toSorted(byPath);
 }
 
 /** No directory entry outside the manifest; fragment directories are real, private directories. */
@@ -349,15 +342,14 @@ function assertListing(dir: string, listed: ReadonlySet<string>, ctx: LoadContex
     if (entry.name === MANIFEST_FILE || listed.has(entry.name)) {
       continue;
     }
-    if (!SOVEREIGN_PROMPT_FRAGMENT_DIRS.has(entry.name) || entry.isFile()) {
-      refuse("unexpected_file");
-    }
     const details = { file: entry.name };
-    if (entry.isSymbolicLink()) {
+    const stat = SOVEREIGN_PROMPT_FRAGMENT_DIRS.has(entry.name)
+      ? lstatIfPresent(path.join(dir, entry.name), details)
+      : undefined;
+    if (stat?.isSymbolicLink()) {
       // Opening a file through a symlinked parent would follow it despite O_NOFOLLOW.
       refuse("symlink", details);
     }
-    const stat = lstatIfPresent(path.join(dir, entry.name), details);
     if (!stat?.isDirectory()) {
       refuse("unexpected_file");
     }
@@ -398,14 +390,12 @@ function loadGeneration(
   expectedGeneration: string | undefined,
 ): SovereignPromptSnapshot {
   const manifest = readManifest(dir, ctx, expectedGeneration);
-  assertManifestFiles(manifest.files);
+  const files = resolveManifestFiles(manifest.files);
   assertListing(dir, new Set(manifest.files.map((file) => file.path)), ctx);
   const bodies = new Map<string, string>();
   const receipts = [];
   let bytes = 0;
-  // Path order, as in `setDigest`, so receipts do not depend on manifest order.
-  for (const file of manifest.files.toSorted(byPath)) {
-    const entry = lookupSovereignPromptFile(file.path) ?? refuse("unknown_slot");
+  for (const { entry, ...file } of files) {
     const details = { slot: entry.slot.slot, file: file.path };
     const buffer = readPrivateFile(path.join(dir, entry.path), ctx, {
       maxBytes: FILE_MAX_BYTES,

@@ -270,11 +270,11 @@ describe.skipIf(process.platform === "win32")("loadSovereignPromptSnapshot", () 
 
   it("refuses a symlinked root ancestor", async () => {
     const base = newRoot();
-    const real = path.join(base, "real");
-    fs.mkdirSync(real, { mode: 0o700 });
-    writeRoot(real);
-    fs.symlinkSync(real, path.join(base, "alias"));
-    expectRefused(await loadRoot(path.join(base, "alias")), "root_unsafe");
+    const root = path.join(base, "real", "root");
+    fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+    writeRoot(root);
+    fs.symlinkSync(path.join(base, "real"), path.join(base, "alias"));
+    expectRefused(await loadRoot(path.join(base, "alias", "root")), "root_unsafe");
   });
 
   it("retries once when CURRENT flips mid-load, then refuses generation_changed", async () => {
