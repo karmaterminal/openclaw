@@ -1293,10 +1293,9 @@ export default {
     async ({ onTestFinished }) => {
       const fixture = await startGatewayModeTui("collectGatewayClient", onTestFinished);
       const terminalObserver = createChatTerminalObserver();
-      // External-user provenance is not a human turn, so these authorized prompts take the
-      // collect path rather than the human individual drain. Each chat.send still owns its
-      // invocation authority, and queued input groups only with that exact owner, so one
-      // invocation never runs inside another's turn: collect admits two FIFO followup turns.
+      // External-user provenance is not a human turn, so these prompts take the collect path,
+      // not the human individual drain. Queued input groups only with its own chat.send's
+      // invocation authority, so collect admits each prompt as its own FIFO followup turn.
       const queueClient = await connectGatewayClient({
         url: fixture.gateway.url,
         token: fixture.gateway.gatewayToken,
@@ -1352,7 +1351,6 @@ export default {
         );
         fixture.mockModel.releaseFirstResponse();
         await Promise.all(queuedTerminalPromises);
-
         const requests = fixture.mockModel.requests();
         expect(
           requests,
@@ -1362,14 +1360,12 @@ export default {
             2,
           )}\n${fixture.gateway.logs()}`,
         ).toHaveLength(3);
-        // Each followup turn ends with its own prompt as a separate user message; a merged
-        // collect envelope would put both prompts in one message of a single turn.
+        // Separate user messages per turn; a merged collect envelope is one message, one turn.
         const queuedPrompts = requests.slice(1).map((request) =>
           (request.body.input as Array<{ role?: string; content?: Array<{ text?: string }> }>)
-            .filter((item) => item.role === "user")
-            .map((item) => item.content?.map((part) => part.text ?? "").join("") ?? "")
-            .filter((text) => text.includes("collect prompt"))
-            .map((text) => text.slice(text.lastIndexOf("\n") + 1)),
+            .flatMap((item) => (item.role === "user" ? (item.content ?? []) : []))
+            .map(({ text = "" }) => text.slice(text.lastIndexOf("\n") + 1))
+            .filter((line) => line.startsWith("collect prompt")),
         );
         expect(queuedPrompts).toEqual([
           ["collect prompt alpha"],
