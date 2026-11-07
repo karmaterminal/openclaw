@@ -12,7 +12,7 @@ export const GENERATION = "20261107T120000Z-0123456789ab";
 const COMMIT = "0123456789ab".padEnd(40, "c");
 
 type ManifestFile = { path: string; bytes: number; sha256: string };
-export type Manifest = {
+type Manifest = {
   schema: string;
   agentId: string;
   generation: string;
@@ -29,7 +29,7 @@ export function body(file: string): string {
 const sha256 = (data: string | Buffer) => createHash("sha256").update(data).digest("hex");
 
 /** Independent of the loader: RFC 8785 JSON of `{bytes, path, sha256}` sorted by path. */
-export function setDigestOf(files: readonly ManifestFile[]): string {
+function setDigestOf(files: readonly ManifestFile[]): string {
   const sorted = files.toSorted((a, b) => (a.path < b.path ? -1 : 1));
   return sha256(
     JSON.stringify(sorted.map((f) => ({ bytes: f.bytes, path: f.path, sha256: f.sha256 }))),
@@ -156,7 +156,7 @@ export function expectNoSentinel(outcome: Outcome, forbidden: readonly string[] 
 export function expectNoSentinelFilesSince(since: number): void {
   const leaked: string[] = [];
   const walk = (dir: string, depth: number) => {
-    let entries: fs.Dirent[] = [];
+    let entries: fs.Dirent[];
     try {
       entries = fs.readdirSync(dir, { withFileTypes: true });
     } catch {
