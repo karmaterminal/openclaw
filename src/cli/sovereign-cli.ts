@@ -111,11 +111,16 @@ export function registerSovereignCli(program: Command) {
     .option("--json", "Print JSON", false)
     .action(async (opts: SovereignOptions & { generation?: string }) => {
       await runSovereignCommand(opts, (target) => {
+        // An empty value is a scripting error, never a request for the live generation.
+        if (opts.generation?.trim() === "") {
+          throw new SovereignPromptRefusal("generation_missing");
+        }
         const snapshot = loadSovereignPromptSnapshot({
           agentId: target.agentId,
-          target: opts.generation
-            ? { generationDir: path.resolve(opts.generation) }
-            : { root: target.root },
+          target:
+            opts.generation === undefined
+              ? { root: target.root }
+              : { generationDir: path.resolve(opts.generation) },
         });
         const { line, fields } = describeSovereignPromptsLoaded(snapshot);
         return { ok: true, payload: { ok: true, ...fields }, lines: [line] };

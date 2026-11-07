@@ -203,6 +203,29 @@ function readPrivateFile(filePath: string, ctx: LoadContext, read: PrivateFileRe
       errno: errnoOf(error),
     });
   }
+  let buffer: Buffer | undefined;
+  try {
+    buffer = readOpenedFile(fd, before, ctx, read);
+  } finally {
+    try {
+      fs.closeSync(fd);
+    } catch (error) {
+      // A refusal already in flight wins; a failed close after a good read still fails closed.
+      if (buffer) {
+        refuse("io_error", { ...details, errno: errnoOf(error) });
+      }
+    }
+  }
+  return buffer;
+}
+
+function readOpenedFile(
+  fd: number,
+  before: fs.BigIntStats,
+  ctx: LoadContext,
+  read: PrivateFileRead,
+): Buffer {
+  const details = read.details;
   try {
     const opened = fs.fstatSync(fd, { bigint: true });
     if (!opened.isFile()) {
@@ -250,8 +273,6 @@ function readPrivateFile(filePath: string, ctx: LoadContext, read: PrivateFileRe
       throw error;
     }
     return refuse("io_error", { ...details, errno: errnoOf(error) });
-  } finally {
-    fs.closeSync(fd);
   }
 }
 

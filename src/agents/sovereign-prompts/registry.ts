@@ -166,13 +166,15 @@ export function lookupSovereignPromptFile(path: string): SovereignPromptFileEntr
 /** Prefix of the slot-and-digest marker that replaces a rendered span on echo surfaces. */
 const SOVEREIGN_REDACTION_MARKER_PREFIX = "<!-- openclaw:sovereign";
 
-/** Code markers a sovereign body may never contain. */
+/** Code markers a sovereign body may never contain, matched anywhere as code matches them. */
 const RESERVED_MARKERS: readonly string[] = [
   SYSTEM_PROMPT_CACHE_BOUNDARY.trim(),
   SYSTEM_PROMPT_RELOCATABLE_BOUNDARY.trim(),
   SYSTEM_PROMPT_RELOCATABLE_BOUNDARY_END.trim(),
   "openclaw:attempt:",
   SOVEREIGN_REDACTION_MARKER_PREFIX,
+  // extensions/anthropic/cli-tool-naming.ts skips its append when the prompt contains this.
+  "## OpenClaw tool names in Claude Code",
 ];
 
 /** Headings code string-matches; a body line equal to one would be mistaken for the section. */
@@ -180,15 +182,21 @@ const RESERVED_HEADINGS: ReadonlySet<string> = new Set([
   "# Project Context",
   "## Skills",
   "## Delegation",
-  // Owned by extensions/anthropic/cli-tool-naming.ts; its presence skips that transform.
-  "## OpenClaw tool names in Claude Code",
 ]);
 
-/** True when raw text carries a code marker, or a normalized line equals a code-matched heading. */
+// appendModelIdentitySystemPrompt (src/agents/system-prompt.ts) rewrites every line that
+// starts with this after whitespace, so the per-run fact must stay on its code-owned line.
+const MODEL_IDENTITY_PREFIX = "Current model identity:";
+
+/** True when a body carries a code marker or a line code would match as its own. */
 export function containsReservedSovereignToken(raw: string, normalized: string): boolean {
   return (
     RESERVED_MARKERS.some((marker) => raw.includes(marker)) ||
-    normalized.split("\n").some((line) => RESERVED_HEADINGS.has(line))
+    normalized
+      .split("\n")
+      .some(
+        (line) => RESERVED_HEADINGS.has(line) || line.trimStart().startsWith(MODEL_IDENTITY_PREFIX),
+      )
   );
 }
 

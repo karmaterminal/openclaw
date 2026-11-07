@@ -42,13 +42,14 @@ function configure(mode: "off" | "enforce") {
   } satisfies OpenClawConfig;
 }
 
-async function run(...args: string[]) {
+/** Runs the command; `forbidden` strings (fixture paths) must never reach its output. */
+async function run(args: string[], forbidden: string[] = []) {
   const program = new Command().exitOverride();
   registerSovereignCli(program);
   const outcome = await capture(async () => {
     await program.parseAsync(["sovereign", ...args], { from: "user" });
   });
-  expectNoSentinel(outcome);
+  expectNoSentinel(outcome, forbidden);
   if (outcome.error !== undefined) {
     expect(outcome.error).toBeInstanceOf(ExitError);
   }
@@ -59,7 +60,7 @@ async function run(...args: string[]) {
 
 describe.skipIf(process.platform === "win32")("openclaw sovereign", () => {
   it("paths reports the agent-dir root and the off state", async () => {
-    const result = await run("paths", "--agent", "main", "--json");
+    const result = await run(["paths", "--agent", "main", "--json"]);
     expect(result.exitCode).toBe(0);
     expect(result.json()).toEqual({
       ok: true,
@@ -74,7 +75,7 @@ describe.skipIf(process.platform === "win32")("openclaw sovereign", () => {
 
   it("paths refuses an enforce agent with enforce_unwired and a nonzero exit", async () => {
     configure("enforce");
-    const result = await run("paths", "--agent", "main", "--json");
+    const result = await run(["paths", "--agent", "main", "--json"]);
     expect(result.exitCode).toBe(1);
     expect(result.json()).toMatchObject({
       ok: false,
@@ -86,7 +87,7 @@ describe.skipIf(process.platform === "win32")("openclaw sovereign", () => {
 
   it("check loads CURRENT's generation into content-free JSON", async () => {
     writeRoot(root);
-    const result = await run("check", "--agent", "main", "--json");
+    const result = await run(["check", "--agent", "main", "--json"], [root]);
     expect(result.exitCode).toBe(0);
     expect(result.json()).toMatchObject({
       ok: true,
@@ -100,22 +101,31 @@ describe.skipIf(process.platform === "win32")("openclaw sovereign", () => {
   it("check refuses a candidate generation with its code and a nonzero exit", async () => {
     const staging = path.join(root, ".staging-1");
     writeGeneration(staging, { files: { "tool-section.md": null } });
-    const json = await run("check", "--agent", "main", "--generation", staging, "--json");
+    const json = await run(["check", "--agent", "main", "--generation", staging, "--json"], [root]);
     expect(json.exitCode).toBe(1);
     expect(json.json()).toMatchObject({
       ok: false,
       code: "required_missing",
       file: "tool-section.md",
     });
-    const human = await run("check", "--agent", "main", "--generation", staging);
+    const human = await run(["check", "--agent", "main", "--generation", staging], [root]);
     expect(human.exitCode).toBe(1);
     expect(human.output).toContain(
       "[SOVEREIGN_PROMPTS_REFUSED] agent:main code=required_missing slot=tool/call-style file=tool-section.md",
     );
   });
 
+  it("refuses an empty --generation instead of checking the live generation", async () => {
+    writeRoot(root);
+    for (const generation of ["", " "]) {
+      const result = await run(["check", "--agent", "main", "--generation", generation, "--json"]);
+      expect(result.exitCode).toBe(1);
+      expect(result.json()).toMatchObject({ ok: false, code: "generation_missing" });
+    }
+  });
+
   it("refuses an unconfigured agent", async () => {
-    const result = await run("check", "--agent", "ghost", "--json");
+    const result = await run(["check", "--agent", "ghost", "--json"]);
     expect(result.exitCode).toBe(1);
     expect(result.json()).toMatchObject({ ok: false, agentId: "ghost", code: "agent_unknown" });
   });

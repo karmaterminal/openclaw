@@ -21,8 +21,9 @@ export type Manifest = {
   setDigest: string;
 };
 
+/** The sentinel opens and closes every body, so a leaked excerpt from either end shows it. */
 export function body(file: string): string {
-  return `Synthetic fixture prose for ${file}. ${SENTINEL}\n`;
+  return `${SENTINEL} Synthetic fixture prose for ${file}. ${SENTINEL}\n`;
 }
 
 const sha256 = (data: string | Buffer) => createHash("sha256").update(data).digest("hex");
@@ -92,7 +93,13 @@ type Outcome = { value?: unknown; error?: unknown; logs: string[] };
 export async function capture(run: () => unknown): Promise<Outcome> {
   const logs: string[] = [];
   const record = (...args: unknown[]) => {
-    logs.push(args.map((arg) => (typeof arg === "string" ? arg : inspect(arg))).join(" "));
+    const text = (arg: unknown) =>
+      typeof arg === "string"
+        ? arg
+        : arg instanceof Uint8Array
+          ? Buffer.from(arg).toString("utf8")
+          : inspect(arg);
+    logs.push(args.map(text).join(" "));
     return true;
   };
   const spies = [
@@ -115,9 +122,10 @@ export async function capture(run: () => unknown): Promise<Outcome> {
 
 /**
  * The redaction assertion for every case: no log line, error (message, stack, cause,
- * inspect, JSON) or returned value shows the sentinel.
+ * inspect, JSON) or returned value shows the sentinel or any `forbidden` string, such
+ * as a fixture's absolute path.
  */
-export function expectNoSentinel(outcome: Outcome): void {
+export function expectNoSentinel(outcome: Outcome, forbidden: readonly string[] = []): void {
   const surfaces = [...outcome.logs];
   for (const value of [outcome.error, outcome.value]) {
     if (value === undefined) {
@@ -134,13 +142,16 @@ export function expectNoSentinel(outcome: Outcome): void {
     }
   }
   for (const surface of surfaces) {
-    expect(surface).not.toContain(SENTINEL);
+    for (const token of [SENTINEL, ...forbidden]) {
+      expect(surface).not.toContain(token);
+    }
   }
 }
 
 /**
  * Run once per file after fixtures are cleaned up: no file under the system temp root
- * written since `since` carries the sentinel. The token is unique per run.
+ * written since `since` carries the sentinel. The token is unique per run, so the
+ * one-minute margin for coarse file clocks costs nothing.
  */
 export function expectNoSentinelFilesSince(since: number): void {
   const leaked: string[] = [];
@@ -148,24 +159,28 @@ export function expectNoSentinelFilesSince(since: number): void {
     let entries: fs.Dirent[] = [];
     try {
       entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {}
+    } catch {
+      return;
+    }
     for (const entry of entries) {
       const full = path.join(dir, entry.name);
+      if (entry.isDirectory() && depth < 8) {
+        walk(full, depth + 1);
+        continue;
+      }
       try {
         const stat = fs.lstatSync(full);
-        if (stat.mtimeMs < since) {
-          continue;
-        }
-        if (stat.isDirectory() && depth < 4) {
-          walk(full, depth + 1);
-        } else if (
+        if (
           stat.isFile() &&
+          stat.mtimeMs >= since - 60_000 &&
           stat.size < 1 << 20 &&
           fs.readFileSync(full, "utf8").includes(SENTINEL)
         ) {
           leaked.push(full);
         }
-      } catch {}
+      } catch {
+        // Entries owned by concurrent tests can disappear mid-walk.
+      }
     }
   };
   walk(fs.realpathSync(os.tmpdir()), 0);
