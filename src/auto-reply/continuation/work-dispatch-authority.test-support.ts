@@ -12,6 +12,10 @@ import {
   getPluginRuntimeGenerationRegistry,
   withPluginRuntimeGenerationScope,
 } from "../../plugins/runtime/generation-scope.js";
+import {
+  bindPreparedReplyDispatchRuntime,
+  getPreparedReplyDispatchRuntime,
+} from "../reply/prepared-reply-dispatch-context.js";
 import { dispatchPendingContinuationWorkFromDetachedCallback } from "./work-dispatch.js";
 import { enqueuePendingWork } from "./work-store.test-support.js";
 
@@ -60,13 +64,14 @@ export async function runDetachedAuthorityFossil(params: {
   expect(params.turnGrants).toHaveLength(1);
 }
 
-type ObservedGenerations = { prepared: boolean; pluginRegistry: boolean };
+type ObservedGenerations = { prepared: boolean; pluginRegistry: boolean; dispatchRuntime: boolean };
 
 /** What the wake's reply path sees of the admitted generations it was armed under. */
 export function observeAdmittedGenerations(): ObservedGenerations {
   return {
     prepared: getPreparedModelRuntimePluginGeneration() !== undefined,
     pluginRegistry: getPluginRuntimeGenerationRegistry() !== undefined,
+    dispatchRuntime: getPreparedReplyDispatchRuntime() !== undefined,
   };
 }
 
@@ -82,7 +87,7 @@ export async function runDetachedGenerationFossil(params: {
 }): Promise<void> {
   const sessionKey = "agent:main:detached-generation";
   params.mockSessionStore[sessionKey] = { sessionKey };
-  params.observedDetachedGenerations.push({ prepared: true, pluginRegistry: true });
+  params.observedDetachedGenerations.push({ prepared: true, pluginRegistry: true, dispatchRuntime: true });
   await enqueuePendingWork({
     sessionKey,
     hop: 2,
@@ -92,21 +97,27 @@ export async function runDetachedGenerationFossil(params: {
     maxChainLength: 8,
     reason: "detached generation",
   });
-  // A closed turn lease: the generation is still in the frame, its borrow is gone.
+  // A closed turn lease: the generation is still in the frame, its borrow is gone. The arming
+  // request's prepared reply dispatch runtime pins that generation too (get-reply-run acquires on it).
   const closedTurnGeneration = { remoteCatalog: null } as unknown as PreparedModelRuntimePluginGeneration;
+  const armingDispatchRuntime = { pluginGeneration: closedTurnGeneration } as unknown as Parameters<
+    typeof bindPreparedReplyDispatchRuntime
+  >[0];
   await withPreparedModelRuntimePluginGenerationScope(
     closedTurnGeneration,
     () =>
       withPluginRuntimeGenerationScope(
         { metadataSnapshot: createPluginMetadataSnapshotFixture(), pluginRegistry: createEmptyPluginRegistry() },
-        async () => {
-          // Control: the arming frame does carry both generations.
-          expect(observeAdmittedGenerations()).toEqual({ prepared: true, pluginRegistry: true });
+        bindPreparedReplyDispatchRuntime(armingDispatchRuntime, async () => {
+          // Control: the arming frame does carry all three.
+          expect(observeAdmittedGenerations()).toEqual({ prepared: true, pluginRegistry: true, dispatchRuntime: true });
           await dispatchPendingContinuationWorkFromDetachedCallback({ sessionKey });
-        },
+        }),
       ),
     () => undefined,
   );
-  expect(params.observedDetachedGenerations).toEqual([{ prepared: false, pluginRegistry: false }]);
+  expect(params.observedDetachedGenerations).toEqual([
+    { prepared: false, pluginRegistry: false, dispatchRuntime: false },
+  ]);
   expect(params.turnGrants).toHaveLength(1);
 }

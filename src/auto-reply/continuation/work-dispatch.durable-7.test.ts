@@ -29,7 +29,11 @@ const observedDetachedAuthority: Array<{
   resolver: boolean;
 }> = [];
 const observedOperatorScopes: string[][] = [];
-const observedDetachedGenerations: Array<{ prepared: boolean; pluginRegistry: boolean }> = [];
+const observedDetachedGenerations: Array<{
+  prepared: boolean;
+  pluginRegistry: boolean;
+  dispatchRuntime: boolean;
+}> = [];
 // test state: toggle continuation enablement (disabled-gate), capture the
 // active diagnostic traceparent at reply time (traceparent re-entry), and force
 // a revision race after the turn ran (failed durable delivered-mark).
