@@ -63,7 +63,7 @@ export class SovereignPromptRefusal extends Error {
     super(`sovereign prompts refused: code=${code}${details.file ? ` file=${details.file}` : ""}`);
     this.name = "SovereignPromptRefusal";
     this.code = code;
-    this.details = Object.freeze({ ...details });
+    this.details = Object.freeze(details);
   }
 
   toJSON() {
@@ -102,8 +102,8 @@ export class SovereignPromptSnapshot {
     this.generation = metadata.generation;
     this.setDigest = metadata.setDigest;
     this.bytes = metadata.bytes;
-    this.files = Object.freeze(metadata.files.map((file) => Object.freeze({ ...file })));
-    this.#bodies = new Map(bodies);
+    this.files = Object.freeze(metadata.files.map((file) => Object.freeze(file)));
+    this.#bodies = bodies;
     Object.freeze(this);
   }
 

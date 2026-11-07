@@ -9,11 +9,12 @@
  *   CURRENT                       one line, the generation id
  *   generations/<id>/MANIFEST.json and the registry files it lists
  */
-import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { TextDecoder } from "node:util";
 import { normalizeStructuredPromptSection } from "@openclaw/ai/internal/shared";
+import { extractErrorCode } from "@openclaw/normalization-core/error-coercion";
+import { sha256Hex } from "@openclaw/normalization-core/node-crypto";
 import { z } from "zod";
 import type { OpenClawConfig } from "../../config/types.js";
 import { normalizeAgentIdStrict } from "../../routing/session-key.js";
@@ -75,8 +76,8 @@ function refuse(code: RefusalCode, details?: RefusalDetails): never {
 
 /** Errno names only; native messages can carry paths. */
 function errnoOf(error: unknown): string {
-  const code = (error as NodeJS.ErrnoException | undefined)?.code;
-  return typeof code === "string" && /^E[A-Z0-9]+$/.test(code) ? code : "EUNKNOWN";
+  const code = extractErrorCode(error);
+  return code && /^E[A-Z0-9]+$/.test(code) ? code : "EUNKNOWN";
 }
 
 function octal(mode: number): string {
@@ -86,10 +87,6 @@ function octal(mode: number): string {
 /** Code-unit order, which RFC 8785 also uses and equals byte order for registry names. */
 function byPath(left: { path: string }, right: { path: string }): number {
   return left.path < right.path ? -1 : left.path > right.path ? 1 : 0;
-}
-
-function sha256Hex(data: string | Uint8Array): string {
-  return createHash("sha256").update(data).digest("hex");
 }
 
 /**

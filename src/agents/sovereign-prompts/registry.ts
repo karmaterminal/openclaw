@@ -19,10 +19,6 @@ type SovereignPromptSlot = {
   slot: string;
   /** The key file or `<key stem>.d/<fragment>.md`, plus gate-selected variants. */
   files: readonly string[];
-  /** Inventory rows the slot replaces. */
-  rows: readonly string[];
-  /** `S<n>` above the cache boundary, `D<n>` below it. */
-  position: string;
   required: boolean;
   phase: SovereignPromptPhase;
   /** Closed list of `{{oc:<fact>}}` placeholders the slot's gate guarantees. */
@@ -32,16 +28,12 @@ type SovereignPromptSlot = {
 function slot(
   id: string,
   phase: SovereignPromptPhase,
-  position: string,
-  rows: readonly string[],
   files: readonly string[],
   options: { required?: boolean; facts?: readonly string[] } = {},
 ): SovereignPromptSlot {
   return {
     slot: id,
     files,
-    rows,
-    position,
     required: options.required ?? false,
     phase,
     facts: options.facts ?? [],
@@ -52,148 +44,92 @@ const TOOL = "tool-section.d";
 const EXECUTION = "execution-section.d";
 const SAFETY = "safety-section.d";
 
-/** Slots in assembly order within each phase, as listed in the loader design § 4.4. */
+// Slots of the loader design § 4.4. Inventory rows and S/D positions arrive with the
+// renderer wiring, which pins them by test.
 const SOVEREIGN_PROMPT_SLOTS: readonly SovereignPromptSlot[] = [
   // Phase A: the four #1001 keys.
-  slot("identity/opening", "A", "S1", ["M02", "M01"], ["identity-section.md"], { required: true }),
-  slot("execution/bias", "A", "S3", ["M03"], ["execution-section.md"]),
-  slot("tool/workspace-only", "A", "S8", ["M07"], [`${TOOL}/workspace-only.md`]),
-  slot("tool/tooling", "A", "D1", ["M15"], [`${TOOL}/tooling.md`]),
-  slot("tool/automations-entry", "A", "D1", ["M70"], [`${TOOL}/automations-entry.md`]),
-  slot("tool/mcp-framing", "A", "D1", ["M71"], [`${TOOL}/mcp-framing.md`]),
-  slot(
-    "tool/fallback-rule",
-    "A",
-    "D1",
-    ["M72"],
-    [`${TOOL}/fallback-rule.main.md`, `${TOOL}/fallback-rule.other.md`],
-  ),
-  slot("tool/long-wait", "A", "D3", ["M21"], [`${TOOL}/long-wait.md`]),
-  slot("tool/screen-turn", "A", "D3", ["M23"], [`${TOOL}/screen-turn.md`]),
-  slot("execution/default-execution", "A", "D3", ["M22"], [`${EXECUTION}/default-execution.md`]),
-  slot(
-    "execution/automations-promotion",
-    "A",
-    "D3",
-    ["M24"],
-    [`${EXECUTION}/automations-promotion.md`],
-  ),
-  slot("tool/acp-routing", "A", "D6", ["M26"], [`${TOOL}/acp-routing.md`]),
-  slot("execution/status-polling", "A", "D7", ["M27"], [`${EXECUTION}/status-polling.md`]),
-  slot("execution/session-lookup", "A", "D7", ["M27"], [`${EXECUTION}/session-lookup.md`]),
-  slot("tool/process-input", "A", "D8", ["M28"], [`${TOOL}/process-input.md`]),
-  slot(
-    "execution/spawn-collection",
-    "A",
-    "D9",
-    ["M29"],
-    [`${EXECUTION}/spawn-collection.yield.md`, `${EXECUTION}/spawn-collection.events.md`],
-  ),
-  slot("tool/media-dedupe", "A", "D10", ["M30"], [`${TOOL}/media-dedupe.md`], {
-    facts: ["tool:current"],
-  }),
-  slot("tool/call-style", "A", "D11", ["M31"], ["tool-section.md"], { required: true }),
-  slot("safety/care", "A", "D12", ["M32"], ["safety-section.md"], { required: true }),
-  slot(
-    "safety/credentials",
-    "A",
-    "D12",
-    ["M33"],
-    [`${SAFETY}/credentials.control-tools.md`, `${SAFETY}/credentials.no-control-tools.md`],
-  ),
-  slot("safety/sandbox-acp", "A", "D19", ["M39"], [`${SAFETY}/sandbox-acp.md`]),
-  slot("safety/sandbox-elevated-send", "A", "D19", ["M39"], [`${SAFETY}/sandbox-elevated-send.md`]),
-  slot(
-    "safety/sandbox-elevated-advice",
-    "A",
-    "D19",
-    ["M39"],
-    [`${SAFETY}/sandbox-elevated-advice.md`],
-  ),
-  slot(
-    "tool/acp-thread",
-    "A",
-    "D21",
-    ["M40"],
-    [`${TOOL}/acp-thread.md`, `${TOOL}/acp-thread.discord.md`],
-  ),
-  slot(
-    "tool/exec-approval",
-    "A",
-    "D27",
-    ["M48"],
-    [`${TOOL}/exec-approval.native-ui.md`, `${TOOL}/exec-approval.chat.md`],
-  ),
-  slot("identity/model", "A", "D40", ["M63"], ["identity-section.d/model.md"]),
+  slot("identity/opening", "A", ["identity-section.md"], { required: true }),
+  slot("identity/model", "A", ["identity-section.d/model.md"]),
+  slot("execution/bias", "A", ["execution-section.md"]),
+  slot("execution/default-execution", "A", [`${EXECUTION}/default-execution.md`]),
+  slot("execution/automations-promotion", "A", [`${EXECUTION}/automations-promotion.md`]),
+  slot("execution/status-polling", "A", [`${EXECUTION}/status-polling.md`]),
+  slot("execution/session-lookup", "A", [`${EXECUTION}/session-lookup.md`]),
+  slot("execution/spawn-collection", "A", [
+    `${EXECUTION}/spawn-collection.yield.md`,
+    `${EXECUTION}/spawn-collection.events.md`,
+  ]),
+  slot("tool/call-style", "A", ["tool-section.md"], { required: true }),
+  slot("tool/workspace-only", "A", [`${TOOL}/workspace-only.md`]),
+  slot("tool/tooling", "A", [`${TOOL}/tooling.md`]),
+  slot("tool/automations-entry", "A", [`${TOOL}/automations-entry.md`]),
+  slot("tool/mcp-framing", "A", [`${TOOL}/mcp-framing.md`]),
+  slot("tool/fallback-rule", "A", [
+    `${TOOL}/fallback-rule.main.md`,
+    `${TOOL}/fallback-rule.other.md`,
+  ]),
+  slot("tool/long-wait", "A", [`${TOOL}/long-wait.md`]),
+  slot("tool/screen-turn", "A", [`${TOOL}/screen-turn.md`]),
+  slot("tool/acp-routing", "A", [`${TOOL}/acp-routing.md`]),
+  slot("tool/process-input", "A", [`${TOOL}/process-input.md`]),
+  slot("tool/media-dedupe", "A", [`${TOOL}/media-dedupe.md`], { facts: ["tool:current"] }),
+  slot("tool/acp-thread", "A", [`${TOOL}/acp-thread.md`, `${TOOL}/acp-thread.discord.md`]),
+  slot("tool/exec-approval", "A", [
+    `${TOOL}/exec-approval.native-ui.md`,
+    `${TOOL}/exec-approval.chat.md`,
+  ]),
+  slot("safety/care", "A", ["safety-section.md"], { required: true }),
+  slot("safety/credentials", "A", [
+    `${SAFETY}/credentials.control-tools.md`,
+    `${SAFETY}/credentials.no-control-tools.md`,
+  ]),
+  slot("safety/sandbox-acp", "A", [`${SAFETY}/sandbox-acp.md`]),
+  slot("safety/sandbox-elevated-send", "A", [`${SAFETY}/sandbox-elevated-send.md`]),
+  slot("safety/sandbox-elevated-advice", "A", [`${SAFETY}/sandbox-elevated-advice.md`]),
   // Phase B: the remaining main-assembly keys. Variants the design leaves unnamed are
   // declared when their phase converts them.
-  slot("promised-work/main", "B", "S4", ["M04"], ["promised-work-section.md"]),
-  slot("runtime-context/main", "B", "S6", ["M05"], ["runtime-context-section.md"]),
-  slot("bootstrap/full", "B", "S10", ["M08"], ["bootstrap-section.md"]),
-  slot("bootstrap/limited", "B", "S10", ["M09"], ["bootstrap-section.d/limited.md"]),
-  slot("project-context/main", "B", "S14", ["M13"], ["project-context-section.md"]),
+  slot("promised-work/main", "B", ["promised-work-section.md"]),
+  slot("runtime-context/main", "B", ["runtime-context-section.md"]),
+  slot("bootstrap/full", "B", ["bootstrap-section.md"]),
+  slot("bootstrap/limited", "B", ["bootstrap-section.d/limited.md"]),
+  slot("project-context/main", "B", ["project-context-section.md"]),
   ...["personal-user", "precedence-soul", "precedence-memory", "precedence-user"].map((name) =>
-    slot(`project-context/${name}`, "B", "S14", ["M14"], [`project-context-section.d/${name}.md`]),
+    slot(`project-context/${name}`, "B", [`project-context-section.d/${name}.md`]),
   ),
-  slot(
-    "delegation/session-routing",
-    "B",
-    "D9",
-    ["M42"],
-    ["delegation-section.d/session-routing.md"],
-  ),
-  slot("openclaw-control/main", "B", "D13", ["M34"], ["openclaw-control-section.md"]),
-  slot("skills/main", "B", "D14", ["M35"], ["skills-section.md"]),
-  slot("skill-workshop/main", "B", "D15", ["M36"], ["skill-workshop-section.md"]),
-  slot("documentation/main", "B", "D18", ["M38"], ["documentation-section.md"]),
-  slot("ultra/main", "B", "D22", ["M41"], ["ultra-section.md"]),
-  slot("delegation/main", "B", "D23", ["M43"], ["delegation-section.md"]),
-  slot("trust/main", "B", "D28", ["M49"], ["trust-section.md"]),
-  slot("ui-presentation/main", "B", "D29", ["M50"], ["ui-presentation-section.md"]),
-  slot("control-ui/main", "B", "D31", ["M52"], ["control-ui-section.md"]),
-  slot("messaging/main", "B", "D32", ["M53"], ["messaging-section.md"]),
-  slot(
-    "messaging/target-rule",
-    "B",
-    "D32",
-    ["M73"],
-    [
-      "messaging-section.d/target-rule.explicit.md",
-      "messaging-section.d/target-rule.source-default.md",
-    ],
-  ),
-  slot(
-    "delegation/child-collection",
-    "B",
-    "D32",
-    ["M44"],
-    ["delegation-section.d/child-collection.md"],
-  ),
-  slot("reply-format/main", "B", "D33", ["M55"], ["reply-format-section.md"]),
-  slot("voice/main", "B", "D34", ["M56"], ["voice-section.md"]),
-  slot("incognito/main", "B", "D35", ["M65"], ["incognito-section.md"]),
-  slot("progress-card/main", "B", "D35", ["M66"], ["progress-card-section.md"]),
-  slot(
-    "reactions/main",
-    "B",
-    "D36",
-    ["M58"],
-    ["reactions-section.md", "reactions-section.minimal.md", "reactions-section.extensive.md"],
-  ),
-  slot("permission-change/main", "B", "PERMISSION", ["M68"], ["permission-change-section.md"]),
+  slot("openclaw-control/main", "B", ["openclaw-control-section.md"]),
+  slot("skills/main", "B", ["skills-section.md"]),
+  slot("skill-workshop/main", "B", ["skill-workshop-section.md"]),
+  slot("documentation/main", "B", ["documentation-section.md"]),
+  slot("ultra/main", "B", ["ultra-section.md"]),
+  slot("delegation/main", "B", ["delegation-section.md"]),
+  slot("delegation/session-routing", "B", ["delegation-section.d/session-routing.md"]),
+  slot("delegation/child-collection", "B", ["delegation-section.d/child-collection.md"]),
+  slot("trust/main", "B", ["trust-section.md"]),
+  slot("ui-presentation/main", "B", ["ui-presentation-section.md"]),
+  slot("control-ui/main", "B", ["control-ui-section.md"]),
+  slot("messaging/main", "B", ["messaging-section.md"]),
+  slot("messaging/target-rule", "B", [
+    "messaging-section.d/target-rule.explicit.md",
+    "messaging-section.d/target-rule.source-default.md",
+  ]),
+  slot("reply-format/main", "B", ["reply-format-section.md"]),
+  slot("voice/main", "B", ["voice-section.md"]),
+  slot("reactions/main", "B", [
+    "reactions-section.md",
+    "reactions-section.minimal.md",
+    "reactions-section.extensive.md",
+  ]),
+  slot("incognito/main", "B", ["incognito-section.md"]),
+  slot("progress-card/main", "B", ["progress-card-section.md"]),
+  slot("permission-change/main", "B", ["permission-change-section.md"]),
   // Phase C: continuation keys, coordinated with the continuation line's owners.
-  slot(
-    "continuation/delegate-hint",
-    "C",
-    "D5",
-    ["M25"],
-    ["continuation-section.d/delegate-hint.md"],
-  ),
-  slot("continuation/main", "C", "D39", ["M60"], ["continuation-section.md"]),
-  slot("continuation-chain/main", "C", "D39", ["M61"], ["continuation-chain-section.md"]),
+  slot("continuation/main", "C", ["continuation-section.md"]),
+  slot("continuation/delegate-hint", "C", ["continuation-section.d/delegate-hint.md"]),
+  slot("continuation-chain/main", "C", ["continuation-chain-section.md"]),
 ];
 
-/** Phases whose slots this build renders from the snapshot. */
+// Phase A is this loader line's conversion. Nothing renders from a snapshot until the
+// renderer wiring lands; until then `enforce` is refused (`enforce_unwired`).
 const CONVERTED_PHASES: ReadonlySet<SovereignPromptPhase> = new Set(["A"]);
 
 type SovereignPromptFileEntry = {
