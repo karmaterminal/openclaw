@@ -1,6 +1,17 @@
 import { expect } from "vitest";
+import {
+  getPreparedModelRuntimePluginGeneration,
+  withPreparedModelRuntimePluginGenerationScope,
+} from "../../agents/prepared-model-runtime-generation-scope.js";
+import type { PreparedModelRuntimePluginGeneration } from "../../agents/prepared-model-runtime.types.js";
 import { runWithOperatorToolGatewayAuthority } from "../../gateway/operator-tool-gateway-authority.js";
+import { createPluginMetadataSnapshotFixture } from "../../plugins/plugin-metadata.test-support.js";
+import { createEmptyPluginRegistry } from "../../plugins/registry-empty.js";
 import { withPluginRuntimeGatewayRequestScope } from "../../plugins/runtime/gateway-request-scope.js";
+import {
+  getPluginRuntimeGenerationRegistry,
+  withPluginRuntimeGenerationScope,
+} from "../../plugins/runtime/generation-scope.js";
 import { dispatchPendingContinuationWorkFromDetachedCallback } from "./work-dispatch.js";
 import { enqueuePendingWork } from "./work-store.test-support.js";
 
@@ -46,5 +57,56 @@ export async function runDetachedAuthorityFossil(params: {
   expect(params.observedDetachedAuthority).toEqual([
     { direct: false, requestClient: false, resolver: true },
   ]);
+  expect(params.turnGrants).toHaveLength(1);
+}
+
+type ObservedGenerations = { prepared: boolean; pluginRegistry: boolean };
+
+/** What the wake's reply path sees of the admitted generations it was armed under. */
+export function observeAdmittedGenerations(): ObservedGenerations {
+  return {
+    prepared: getPreparedModelRuntimePluginGeneration() !== undefined,
+    pluginRegistry: getPluginRuntimeGenerationRegistry() !== undefined,
+  };
+}
+
+/**
+ * #1550: a work timer armed inside a turn inherits that turn's admitted generations. The
+ * turn's lease closes before the wake fires, so the wake must re-admit on the current
+ * generation rather than carry one it can no longer borrow.
+ */
+export async function runDetachedGenerationFossil(params: {
+  mockSessionStore: Record<string, unknown>;
+  observedDetachedGenerations: ObservedGenerations[];
+  turnGrants: unknown[];
+}): Promise<void> {
+  const sessionKey = "agent:main:detached-generation";
+  params.mockSessionStore[sessionKey] = { sessionKey };
+  params.observedDetachedGenerations.push({ prepared: true, pluginRegistry: true });
+  await enqueuePendingWork({
+    sessionKey,
+    hop: 2,
+    delayMs: 0,
+    electedAt: Date.now(),
+    dueAt: Date.now(),
+    maxChainLength: 8,
+    reason: "detached generation",
+  });
+  // A closed turn lease: the generation is still in the frame, its borrow is gone.
+  const closedTurnGeneration = { remoteCatalog: null } as unknown as PreparedModelRuntimePluginGeneration;
+  await withPreparedModelRuntimePluginGenerationScope(
+    closedTurnGeneration,
+    () =>
+      withPluginRuntimeGenerationScope(
+        { metadataSnapshot: createPluginMetadataSnapshotFixture(), pluginRegistry: createEmptyPluginRegistry() },
+        async () => {
+          // Control: the arming frame does carry both generations.
+          expect(observeAdmittedGenerations()).toEqual({ prepared: true, pluginRegistry: true });
+          await dispatchPendingContinuationWorkFromDetachedCallback({ sessionKey });
+        },
+      ),
+    () => undefined,
+  );
+  expect(params.observedDetachedGenerations).toEqual([{ prepared: false, pluginRegistry: false }]);
   expect(params.turnGrants).toHaveLength(1);
 }
