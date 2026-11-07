@@ -46,8 +46,6 @@ const READ_FLAGS =
 type RefusalCode = SovereignPromptRefusal["code"];
 type RefusalDetails = SovereignPromptRefusal["details"];
 type LoadContext = { agentId: string; euid: number };
-/** Wider than the config schema, which accepts only "off" until the wiring slice. */
-type SovereignPromptMode = "off" | "enforce";
 
 const Sha256HexSchema = z.string().regex(/^[0-9a-f]{64}$/);
 const ManifestSchema = z.strictObject({
@@ -537,10 +535,9 @@ export function resolveSovereignPromptTarget(
     "sovereign",
     "systemprompts",
   );
-  const mode: SovereignPromptMode = agent.sovereignPrompts?.mode ?? "off";
   return {
     agentId: id,
-    mode,
+    mode: agent.sovereignPrompts?.mode ?? "off",
     root,
     current: path.join(root, CURRENT_FILE),
     generations: path.join(root, GENERATIONS_DIR),
@@ -554,7 +551,8 @@ export function resolveSovereignPromptTarget(
  * `enforce` first; this refusal remains for direct callers.
  */
 export function loadAgentSovereignPrompts(
-  target: Pick<ReturnType<typeof resolveSovereignPromptTarget>, "mode">,
+  // Wider than the config schema, which accepts only "off" until the wiring slice.
+  target: { mode: "off" | "enforce" },
 ): { state: "off" } | { state: "refused"; refusal: SovereignPromptRefusal } {
   if (target.mode === "off") {
     return { state: "off" };

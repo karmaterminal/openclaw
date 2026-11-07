@@ -136,7 +136,7 @@ export const AgentEntryBaseSchema = z.strictObject({
       // Nothing at runtime consults the loader yet, so an accepted "enforce" would render stock
       // text. The wiring slice widens this in the same change that lands the chokepoint.
       mode: z
-        .literal("off", {
+        .enum(["off"], {
           error:
             'Only "off" is accepted in this build: "enforce" needs the phase A prompt wiring from the next slice. Set "off" or remove the setting.',
         })
