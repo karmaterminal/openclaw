@@ -547,11 +547,11 @@ export function resolveSovereignPromptTarget(
 /**
  * The per-agent start-time load. `off` reads nothing and changes nothing. `enforce` is
  * refused until the snapshot is wired into prompt assembly, so a seat cannot flip
- * early and nothing falls back to code text. On this build config validation refuses
- * `enforce` first; this refusal remains for direct callers.
+ * early and nothing falls back to code text.
  */
 export function loadAgentSovereignPrompts(
-  // Wider than the config schema, which accepts only "off" until the wiring slice.
+  // Wider than the config schema, which refuses "enforce" until the wiring slice; direct
+  // callers still reach this refusal.
   target: { mode: "off" | "enforce" },
 ): { state: "off" } | { state: "refused"; refusal: SovereignPromptRefusal } {
   if (target.mode === "off") {

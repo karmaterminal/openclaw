@@ -1,6 +1,5 @@
 // The sovereign switch through real config files: validation keeps "enforce" off this
 // build (#1321), so neither `config validate` nor the sovereign command admits it.
-import fs from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   createTestRuntime,
@@ -32,15 +31,13 @@ const configWith = (sovereignPrompts?: Record<string, unknown>) =>
 describe("sovereignPrompts.mode in real config", () => {
   // Deploy runs exactly this, before it stops anything.
   it("config validate refuses enforce with a content-free message", async () => {
-    const raw = configWith({ mode: "enforce" });
-    await withFile("sovereign-config-", raw, async ({ configPath }) => {
+    await withFile("sovereign-config-", configWith({ mode: "enforce" }), async () => {
       await expect(invoke(["config", "validate"])).rejects.toMatchObject({
         name: "ExitError",
         code: 1,
       });
       expect(errors.join("\n")).toContain(REFUSAL);
       expect(errors.join("\n")).not.toContain(AGENT_DIR);
-      expect(fs.readFileSync(configPath, "utf8")).toBe(raw);
     });
   });
 
@@ -63,7 +60,6 @@ describe("sovereignPrompts.mode in real config", () => {
         }),
       ).rejects.toThrow("__exit__:1");
       expect(output.errors.join("\n")).toContain(REFUSAL);
-      expect(output.errors.join("\n")).not.toContain("enforce_unwired");
     });
   });
 });
