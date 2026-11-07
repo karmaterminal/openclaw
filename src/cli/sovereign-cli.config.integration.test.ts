@@ -60,6 +60,7 @@ describe("sovereignPrompts.mode in real config", () => {
         }),
       ).rejects.toThrow("__exit__:1");
       expect(output.errors.join("\n")).toContain(REFUSAL);
+      expect(output.errors.join("\n")).not.toContain(AGENT_DIR);
     });
   });
 });

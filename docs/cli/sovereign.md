@@ -36,7 +36,9 @@ openclaw sovereign check --agent main --generation ~/.openclaw/agents/main/agent
 ```
 
 Exit codes: `0` when the agent resolves (`paths`) or the generation loads
-(`check`); `1` on any refusal, with the refusal code in the output.
+(`check`); `1` on any refusal, with the refusal code in the output. An invalid
+config, such as one that sets `"enforce"` on this build, exits `1` with the config
+error before either command runs.
 
 ## Layout
 

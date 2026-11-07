@@ -474,7 +474,10 @@ describe.skipIf(process.platform === "win32")("loadAgentSovereignPrompts", () =>
       }
       spies.forEach((spy) => spy.mockClear());
       // Config validation refuses "enforce" on this build, so the branch is reached directly.
-      const outcome = await capture(() => loadAgentSovereignPrompts({ mode: "enforce" }));
+      const target = resolveSovereignPromptTarget(configFor(agentDir), "main");
+      const outcome = await capture(() =>
+        loadAgentSovereignPrompts({ ...target, mode: "enforce" }),
+      );
       expect(fsCalls()).toBe(0);
       expect(outcome.value).toMatchObject({
         state: "refused",

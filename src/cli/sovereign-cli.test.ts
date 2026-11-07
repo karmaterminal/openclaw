@@ -72,7 +72,7 @@ describe.skipIf(process.platform === "win32")("openclaw sovereign", () => {
     });
   });
 
-  it("paths refuses an enforce agent with enforce_unwired and a nonzero exit", async () => {
+  it("paths reports a loader refusal (enforce_unwired) with a nonzero exit", async () => {
     configure("enforce");
     const result = await run(["paths", "--agent", "main", "--json"]);
     expect(result.exitCode).toBe(1);
