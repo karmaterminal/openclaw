@@ -889,7 +889,7 @@ The relay pattern proved the need for `continue_work()`, but it also clarified w
 
 A lighter precursor also existed (historical; upstream has since retired the heartbeat runner): `requestHeartbeatNow()` could ring the parent session like a doorbell, but it still lacked task payload, chain tracking, and typed continuation semantics.
 
-Every compaction seam releases staged work: in-run auto-compaction, a queued `request_compaction`, and maintenance compaction, whether preflight or post-run. A reply turn's preflight release leaves the workspace refresh to that turn's prompt. Command preflight and post-run maintenance have no such prompt, so their release enqueues it as a system event, which waits for the session's next reply turn in that process.
+Every compaction seam releases staged work: in-run auto-compaction, a queued `request_compaction`, and maintenance compaction, whether preflight or post-run. A reply turn's preflight release leaves the workspace refresh to that turn's prompt. Command preflight and post-run maintenance have no such prompt, so their release enqueues it as an in-memory system event. It waits for the session's next reply turn in that process, so a one-shot CLI loses it.
 
 For `post-compaction` delegates, the release semantics are intentionally fixed: staged work is delivered as silent-wake work. Release does not mean "spawn already happened"; the after-compaction path first consumes staged delegates, drops stale work older than the TTL, applies the combined `maxDelegatesPerTurn` budget, enqueues accepted delegates into `session-delivery-queue`, and then drains that queue asynchronously.
 

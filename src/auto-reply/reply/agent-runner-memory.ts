@@ -119,7 +119,8 @@ export async function runSessionCompactionIfNeeded(params: {
   agentHarnessId?: string;
   /**
    * Only a reply turn's prompt carries this pass's refresh. Every other caller's release queues
-   * it as a system event; commands drain none, so it waits for the session's next reply turn.
+   * it as an in-memory system event. Commands drain none, so it waits for the session's next
+   * reply turn in that process; a one-shot CLI exits first and loses it.
    */
   promptCarriesRefresh?: boolean;
   abortSignal?: AbortSignal;

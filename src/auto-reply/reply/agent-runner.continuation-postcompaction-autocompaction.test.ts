@@ -587,7 +587,7 @@ describe("runReplyAgent :: pressure warning to post-compaction handoff", () => {
     await expectCustody(false);
   });
 
-  it("keeps the delegate staged when the release throws, and the turn proceeds", async () => {
+  it("keeps the delegate staged when the staged read throws, and the turn proceeds", async () => {
     const armed = await armPreflight();
     faults.custodyRead = new Error("custody store unavailable");
     compactState.compactEmbeddedAgentSessionMock.mockResolvedValueOnce(compacted);

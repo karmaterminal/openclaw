@@ -152,7 +152,8 @@ export async function releaseQueuedCompactionTolerant(
 
 /**
  * Maintenance compaction releases staged delegates like an in-run seam: the warning that had
- * the agent stage them promised this. A failed release stays staged and the turn proceeds.
+ * the agent stage them promised this. The turn proceeds if the release fails: a delegate not yet
+ * claimed stays staged, and one claimed before the failure waits for startup recovery.
  */
 export async function releaseMaintenanceCompactionDelegates(params: {
   activeSessionStore: Record<string, SessionEntry>;
