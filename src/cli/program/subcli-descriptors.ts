@@ -7,6 +7,7 @@ import { resolveOpenClawPackageRootSync } from "../../infra/openclaw-root.js";
 import { isCronMachineOutput } from "../cron-cli/output-mode.js";
 import { isDevicesMachineOutput } from "../devices-output-mode.js";
 import { isGatewayMachineOutput } from "../gateway-cli/output-mode.js";
+import { hasMachineOutputOption } from "../machine-output-argv.js";
 import { isModelsPlainMachineOutput, isModelsStatusJsonOutput } from "../models-output-mode.js";
 import { isNodesMachineOutput } from "../nodes-cli/output-mode.js";
 import { isProxyMachineOutput } from "../proxy-output-mode.js";
@@ -213,6 +214,11 @@ const registrations = {
   },
   secrets: {
     register: async (program) => (await import("../secrets-cli.js")).registerSecretsCli(program),
+  },
+  sovereign: {
+    register: async (program) =>
+      (await import("../sovereign-cli.js")).registerSovereignCli(program),
+    machineOutput: ({ argv }) => hasMachineOutputOption(argv, "--json"),
   },
   skills: {
     register: async (program, argv) =>
