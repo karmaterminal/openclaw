@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { captureRuntimeConfigAsyncReader } from "../../config/io.runtime.js";
 import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
+import { createLiveGatewayHolder } from "../../gateway/server-plugin-in-process-dispatch.test-support.js";
 import { enqueueSystemEvent, peekSystemEvents } from "../../infra/system-events.js";
 import { resetGatewayWorkAdmission } from "../../process/gateway-work-admission.js";
 import { isSessionRunActiveForKey } from "../../sessions/session-controller.queries.js";
@@ -302,6 +303,7 @@ describe("a due continue_work wake with follow-ups pending and no active run", (
       resetGatewayWorkAdmission();
       await runContinuationCustodyBoot({
         armedAt: Date.now(),
+        resolveGatewayContext: createLiveGatewayHolder(),
         whenSubagentRegistryActivated: async () => {},
       });
       await advanceToRetry(recordId);

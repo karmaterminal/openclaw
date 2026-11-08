@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { captureRuntimeConfigAsyncReader } from "../../config/io.runtime.js";
 import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import * as accessor from "../../config/sessions/session-accessor.js";
+import { createLiveGatewayHolder } from "../../gateway/server-plugin-in-process-dispatch.test-support.js";
 import { loadPendingSessionDeliveries } from "../../infra/session-delivery-queue-storage.js";
 import { drainSystemEventEntries, peekSystemEvents } from "../../infra/system-events.js";
 import { createEmptyPluginRegistry } from "../../plugins/registry-empty.js";
@@ -217,6 +218,7 @@ function restart(at: number) {
 const boot = () =>
   runContinuationCustodyBoot({
     armedAt: Date.now(),
+    resolveGatewayContext: createLiveGatewayHolder(),
     whenSubagentRegistryActivated: async () => {},
   });
 

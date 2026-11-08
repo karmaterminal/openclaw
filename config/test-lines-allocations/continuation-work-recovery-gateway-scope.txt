@@ -1,0 +1,3 @@
+# A continuation work hop recovered at Gateway boot must announce its completion through the booting
+# Gateway (#1560); only the real reply owner, registry and announce composition shows it.
+328

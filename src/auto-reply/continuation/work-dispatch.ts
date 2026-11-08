@@ -6,6 +6,7 @@ import {
   getGatewayToolCallerIdentity,
 } from "../../agents/tools/gateway-caller-context.js";
 import { runOutsideOperatorToolGatewayAuthority } from "../../gateway/operator-tool-gateway-authority.js";
+import type { GatewayContextResolver } from "../../gateway/server-methods/types.js";
 import { emitContinuationWorkSpan } from "../../infra/continuation-tracer.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { enqueueSystemEventRaw as enqueueSystemEvent } from "../../infra/system-events.js";
@@ -746,7 +747,12 @@ export async function scheduleContinuationWorkBatch(
   return scheduleContinuationWorkBatchWith(params, scheduleContinuationWork);
 }
 
-export async function recoverPendingContinuationWork(): Promise<{
+export async function recoverPendingContinuationWork(
+  params: {
+    /** The booting Gateway: recovered wakes run under it, as live wakes run under their arming scope. */
+    resolveGatewayContext?: GatewayContextResolver;
+  } = {},
+): Promise<{
   sessions: number;
   dispatched: number;
   failed: number;
@@ -761,17 +767,34 @@ export async function recoverPendingContinuationWork(): Promise<{
     return { sessions: 0, dispatched: 0, failed: 0, reaped: 0, terminalNotices };
   }
   const sessionKeys = await listPendingWorkSessionKeysForRecovery();
+  // A wake's turn binds a subagent follow-up to its scope's Gateway, and that run's completion
+  // announces through it (#1560). Use the instance's own fenced resolver, as registry activation
+  // does: the startup holder can outlive the instance.
+  const resolveGatewayContext = params.resolveGatewayContext?.()?.resolveGatewayContext;
+  if (sessionKeys.length > 0 && !resolveGatewayContext?.()) {
+    // Driving them anyway would buy turns whose completions cannot be announced. The records stay
+    // as they are, queued or running, for the next boot to recover.
+    log.warn(
+      `[continuation:work-recovery-no-gateway] sessions=${sessionKeys.length} left for the next boot: no Gateway to run recovered wakes under`,
+    );
+    return { sessions: sessionKeys.length, dispatched: 0, failed: 0, reaped: 0, terminalNotices };
+  }
   const includeRunningUpdatedAtOrBefore = Date.now() - RUNNING_WORK_RECOVERY_STALE_MS;
   let dispatched = 0;
   let failed = 0;
   let reaped = 0;
   for (const sessionKey of sessionKeys) {
-    const result = await dispatchPendingContinuationWork({
-      sessionKey,
-      recoverRunning: true,
-      includeRunningUpdatedAtOrBefore,
-      includeIdleRetry: true,
-    });
+    const result = await withPluginRuntimeGatewayContextResolver(
+      resolveGatewayContext,
+      () =>
+        dispatchPendingContinuationWork({
+          sessionKey,
+          recoverRunning: true,
+          includeRunningUpdatedAtOrBefore,
+          includeIdleRetry: true,
+        }),
+      { inheritRequestScope: false },
+    );
     dispatched += result.dispatched;
     failed += result.failed;
     reaped += result.reaped;

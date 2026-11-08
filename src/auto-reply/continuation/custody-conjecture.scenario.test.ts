@@ -41,6 +41,7 @@ vi.mock("../reply/get-reply.js", async (importOriginal) => ({
   getReplyFromConfig: (...args: unknown[]) => getReplyFromConfigMock(...args),
 }));
 
+import { createLiveGatewayHolder } from "../../gateway/server-plugin-in-process-dispatch.test-support.js";
 import {
   noopTracer,
   resetContinuationTracer,
@@ -148,6 +149,7 @@ async function bootGateway() {
     const armedAt = Date.now();
     await custodyBoot.runContinuationCustodyBoot({
       armedAt,
+      resolveGatewayContext: createLiveGatewayHolder(),
       whenSubagentRegistryActivated: async () => {},
     });
   }
