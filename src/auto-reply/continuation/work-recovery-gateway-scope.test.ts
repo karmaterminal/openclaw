@@ -289,7 +289,7 @@ describe("a continuation work hop and the Gateway it announces through", () => {
     });
   });
 
-  it("recovered at boot with no available Gateway, is left queued visibly rather than run", async () => {
+  it("recovered with no available Gateway, is left for the next boot, visibly", async () => {
     await withChainState(async (cfg) => {
       const retired = gatewayInstance({ available: false });
       const { recordId, work } = await hopRecoveredAtBoot(cfg, retired);
@@ -298,7 +298,7 @@ describe("a continuation work hop and the Gateway it announces through", () => {
       expect(world.runIds).toEqual([]);
       expect(await recordStatus(recordId)).toBe("queued");
       expect(world.warnings).toContainEqual(
-        expect.stringContaining("[continuation:work-recovery-no-gateway] sessions=1 left queued"),
+        expect.stringContaining("work-recovery-no-gateway] sessions=1 left for the next boot"),
       );
     });
   });

@@ -773,9 +773,9 @@ export async function recoverPendingContinuationWork(
   const resolveGatewayContext = params.resolveGatewayContext?.()?.resolveGatewayContext;
   if (sessionKeys.length > 0 && !resolveGatewayContext?.()) {
     // Driving them anyway would buy turns whose completions cannot be announced. The records stay
-    // queued for the next boot to recover.
+    // as they are, queued or running, for the next boot to recover.
     log.warn(
-      `[continuation:work-recovery-no-gateway] sessions=${sessionKeys.length} left queued: no Gateway to run recovered wakes under`,
+      `[continuation:work-recovery-no-gateway] sessions=${sessionKeys.length} left for the next boot: no Gateway to run recovered wakes under`,
     );
     return { sessions: sessionKeys.length, dispatched: 0, failed: 0, reaped: 0, terminalNotices };
   }
