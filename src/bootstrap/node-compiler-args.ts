@@ -19,16 +19,18 @@ export function resolveForwardedNodeCompilerArgs(): string[] {
   return Array.isArray(inherited) ? inherited.filter(isNodeCompilerArg) : [];
 }
 
-/** Worker threads already run under the process's V8 flags, and Node rejects them in Worker execArgv. */
-export function withoutNodeCompilerArgs(options?: WorkerOptions): WorkerOptions | undefined {
+/**
+ * Options for an OpenClaw-owned Worker constructed next. Threads already run under the process's
+ * V8 flags and Node rejects them in Worker execArgv, so they leave execArgv and are published for
+ * the thread's own children instead. Each Worker copies that data at construction, so publishing
+ * at launch rather than at import still reaches it; a parent without a policy publishes nothing.
+ */
+export function prepareWorkerCompilerPolicy(options?: WorkerOptions): WorkerOptions | undefined {
+  const policy = isMainThread ? resolveForwardedNodeCompilerArgs() : [];
+  if (policy.length > 0) {
+    setEnvironmentData(COMPILER_ARGS_KEY, policy);
+  }
   return options?.execArgv
     ? { ...options, execArgv: options.execArgv.filter((arg) => !isNodeCompilerArg(arg)) }
     : options;
-}
-
-// Every Worker copies a reviewed policy at construction; Worker launch owners import this module
-// first. A parent without one publishes nothing, so Workers fall back to the same empty policy.
-const policy = isMainThread ? resolveForwardedNodeCompilerArgs() : [];
-if (policy.length > 0) {
-  setEnvironmentData(COMPILER_ARGS_KEY, policy);
 }
