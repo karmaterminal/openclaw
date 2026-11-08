@@ -63,7 +63,10 @@ export async function maintainContinuationCustody(params: {
  */
 export async function runContinuationCustodyBoot(params: {
   armedAt: number;
-  /** The booting Gateway; recovered operator delegates restore their grants on it. */
+  /**
+   * The booting Gateway; recovered operator delegates restore their grants on it, and recovered
+   * work wakes run under it.
+   */
   resolveGatewayContext?: GatewayContextResolver;
   whenSubagentRegistryActivated: () => Promise<void>;
   /**
@@ -119,7 +122,7 @@ async function recoverContinuationCustody(
   } catch (err) {
     log.warn(`[continuation:work-replay-refusal-failed] error=${formatErrorMessage(err)}`);
   }
-  const work = await workModule.recoverPendingContinuationWork();
+  const work = await workModule.recoverPendingContinuationWork({ resolveGatewayContext });
   // Upkeep runs after recovery: the backlog recovery dispatches after an
   // outage is not orphaned. What is left (a missing owner, or a row nothing
   // took) is reaped here. Upkeep is best effort: a failed sweep is logged and
