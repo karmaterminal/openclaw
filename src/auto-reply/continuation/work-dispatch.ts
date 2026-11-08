@@ -749,7 +749,7 @@ export async function scheduleContinuationWorkBatch(
 
 export async function recoverPendingContinuationWork(
   params: {
-    /** The booting Gateway. Recovered wakes run under it, as live wakes run under their arming request's. */
+    /** The booting Gateway: recovered wakes run under it, as live wakes run under their arming scope. */
     resolveGatewayContext?: GatewayContextResolver;
   } = {},
 ): Promise<{

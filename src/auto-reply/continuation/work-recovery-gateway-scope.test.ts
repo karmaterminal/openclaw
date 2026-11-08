@@ -86,7 +86,7 @@ const PREVIOUS_HOP = "guard-hop-1";
 const realSetImmediate = globalThis.setImmediate;
 const realNow = performance.now.bind(performance);
 
-type AgentTurn = { sessionKey?: string; message?: string; internalEvents?: unknown };
+type AgentTurn = { sessionKey?: string; internalEvents?: unknown };
 
 /** A Gateway instance: real in-process dispatch; the requester turns it starts are recorded. */
 function gatewayInstance(options: { available?: false } = {}) {
@@ -100,11 +100,7 @@ function gatewayInstance(options: { available?: false } = {}) {
   }
   context.createAgentTurnFacade = () => ({
     dispatch: async <T>(request: AgentTurn & { idempotencyKey?: string }) => {
-      turns.push({
-        sessionKey: request.sessionKey,
-        message: request.message,
-        internalEvents: request.internalEvents,
-      });
+      turns.push({ sessionKey: request.sessionKey, internalEvents: request.internalEvents });
       return { runId: request.idempotencyKey, status: "accepted" } as T;
     },
     dispatchRaw: async () => {
@@ -133,11 +129,11 @@ afterEach(async () => {
 });
 
 /** Yield real macrotasks until `done` holds; injected time stands still, so only due timers fire. */
-async function until(done: () => boolean, describe: () => unknown) {
+async function until(done: () => boolean, observed: () => unknown) {
   const deadline = realNow() + 30_000;
   while (!done()) {
     if (realNow() > deadline) {
-      throw new Error(`stalled: ${JSON.stringify(describe())}`);
+      throw new Error(`stalled: ${JSON.stringify(observed())}`);
     }
     await new Promise<void>((resolve) => {
       realSetImmediate(resolve);
@@ -219,13 +215,29 @@ async function electNextHop() {
   return { recordId: record!.recordId, dueAt: record!.dueAt! };
 }
 
-/** The Gateway dies before the hop falls due; the new process restores the registry and boots. */
-async function restartAfter(dueAt: number) {
+/**
+ * The chain elects its next hop, then the Gateway dies before it falls due. The new process
+ * restores the registry and boots as startup does: registry activation, then custody recovery
+ * handed the same holder of `gateway`.
+ */
+async function hopRecoveredAtBoot(
+  cfg: OpenClawConfig,
+  gateway: ReturnType<typeof gatewayInstance>,
+) {
+  await chainWithOneHop(cfg);
+  const { recordId, dueAt } = await electNextHop();
   resetContinuationWorkDispatchForTests();
   resetContinuationCustodyProjection();
   await resetSubagentRegistryForTests({ persist: false });
   vi.setSystemTime(dueAt + 1);
   await initSubagentRegistry();
+  await activateSubagentRegistry(gateway.holder);
+  const summary = await runContinuationCustodyBoot({
+    armedAt: Date.now(),
+    resolveGatewayContext: gateway.holder,
+    whenSubagentRegistryActivated: async () => {},
+  });
+  return { recordId, work: summary.work };
 }
 
 const recordStatus = async (recordId: string) =>
@@ -248,20 +260,10 @@ async function expectHopAnnouncedToRoom(gateway: ReturnType<typeof gatewayInstan
 describe("a continuation work hop and the Gateway it announces through", () => {
   it("recovered at boot, announces its completion to the requester room", async () => {
     await withChainState(async (cfg) => {
-      await chainWithOneHop(cfg);
-      const { recordId, dueAt } = await electNextHop();
-      await restartAfter(dueAt);
-
-      // Gateway startup: registry activation, then custody recovery handed the same holder.
       const gateway = gatewayInstance();
-      await activateSubagentRegistry(gateway.holder);
-      const summary = await runContinuationCustodyBoot({
-        armedAt: Date.now(),
-        resolveGatewayContext: gateway.holder,
-        whenSubagentRegistryActivated: async () => {},
-      });
+      const { recordId, work } = await hopRecoveredAtBoot(cfg, gateway);
 
-      expect(summary.work).toMatchObject({ sessions: 1, dispatched: 1, failed: 0 });
+      expect(work).toMatchObject({ sessions: 1, dispatched: 1, failed: 0 });
       await expectHopAnnouncedToRoom(gateway);
       expect(await recordStatus(recordId)).toBe("succeeded");
     });
@@ -289,19 +291,10 @@ describe("a continuation work hop and the Gateway it announces through", () => {
 
   it("recovered at boot with no available Gateway, is left queued visibly rather than run", async () => {
     await withChainState(async (cfg) => {
-      await chainWithOneHop(cfg);
-      const { recordId, dueAt } = await electNextHop();
-      await restartAfter(dueAt);
-
       const retired = gatewayInstance({ available: false });
-      await activateSubagentRegistry(retired.holder);
-      const summary = await runContinuationCustodyBoot({
-        armedAt: Date.now(),
-        resolveGatewayContext: retired.holder,
-        whenSubagentRegistryActivated: async () => {},
-      });
+      const { recordId, work } = await hopRecoveredAtBoot(cfg, retired);
 
-      expect(summary.work).toMatchObject({ sessions: 1, dispatched: 0, failed: 0 });
+      expect(work).toMatchObject({ sessions: 1, dispatched: 0, failed: 0 });
       expect(world.runIds).toEqual([]);
       expect(await recordStatus(recordId)).toBe("queued");
       expect(world.warnings).toContainEqual(
