@@ -220,7 +220,7 @@ describe("session event target custody", () => {
       skillLibrarySelections: skills,
     };
     for (const targetSessionId of ["", "existing-session"]) {
-      const ctx = buildSessionEventContext({
+      const ctx = await buildSessionEventContext({
         cfg,
         ...eventScope,
         text: "Check the report",

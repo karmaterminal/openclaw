@@ -23,6 +23,7 @@ import {
   selectInboundHistoryContext,
 } from "./channel-prompt-context.js";
 import { CURRENT_MESSAGE_MARKER } from "./history.js";
+import type { HistoryEntry } from "./history.types.js";
 import { markInboundContextLabel } from "./inbound-context-marker.js";
 
 const MAX_UNTRUSTED_TRANSCRIPT_FIELD_CHARS = 500;
@@ -371,6 +372,49 @@ export function buildInboundMetaSystemPrompt(
   return deliveryFormat ? `${messageContext}\n${deliveryFormat}` : messageContext;
 }
 
+function formatInboundHistoryLines(
+  entries: readonly HistoryEntry[],
+  envelope?: EnvelopeFormatOptions,
+): string[] {
+  return entries.flatMap((entry) => {
+    const mediaTypes = [
+      ...new Set(
+        entry.media?.flatMap((media) => {
+          const contentType = normalizePromptMetadataString(media.contentType);
+          return contentType ? [contentType] : [];
+        }) ?? [],
+      ),
+    ];
+    const line = formatChatWindowMessage(
+      {
+        message_id: entry.messageId,
+        sender: entry.sender,
+        timestamp_ms: entry.timestamp,
+        body: entry.body,
+        media_type: mediaTypes.length > 0 ? mediaTypes.join(", ") : undefined,
+      },
+      envelope,
+    );
+    return line ? [line] : [];
+  });
+}
+
+// Frond (karmaterminal, #1415): an internal event carries history only when a scheduled turn read
+// its room session's channel, whose own room turns answer room messages.
+const SCHEDULED_ROOM_HISTORY_LABEL =
+  "Recent room history (this conversation's room turns already handled the messages marked as already seen):";
+
+/** The room history a scheduled turn read from its conversation, as one marked block. */
+export function buildScheduledRoomHistoryContext(
+  ctx: Pick<TemplateContext, "InboundHistory">,
+  envelope?: EnvelopeFormatOptions,
+): string {
+  const lines = formatInboundHistoryLines(ctx.InboundHistory ?? [], envelope);
+  return lines.length > 0
+    ? [markInboundContextLabel(SCHEDULED_ROOM_HISTORY_LABEL), ...lines].join("\n")
+    : "";
+}
+
 /** Builds per-turn context with host-generated structural facts and untrusted human content. */
 export function buildInboundUserContextPrefix(
   ctx: TemplateContext,
@@ -593,27 +637,7 @@ export function buildInboundUserContextPrefix(
   }
 
   if (boundedHistory.length > 0 && !chatWindowCoversHistory) {
-    const historyLines = boundedHistory.flatMap((entry) => {
-      const mediaTypes = [
-        ...new Set(
-          entry.media?.flatMap((media) => {
-            const contentType = normalizePromptMetadataString(media.contentType);
-            return contentType ? [contentType] : [];
-          }) ?? [],
-        ),
-      ];
-      const line = formatChatWindowMessage(
-        {
-          message_id: entry.messageId,
-          sender: entry.sender,
-          timestamp_ms: entry.timestamp,
-          body: entry.body,
-          media_type: mediaTypes.length > 0 ? mediaTypes.join(", ") : undefined,
-        },
-        envelope,
-      );
-      return line ? [line] : [];
-    });
+    const historyLines = formatInboundHistoryLines(boundedHistory, envelope);
     if (historyLines.length > 0) {
       blocks.push([markInboundContextLabel(historyLabel), ...historyLines].join("\n"));
     }
