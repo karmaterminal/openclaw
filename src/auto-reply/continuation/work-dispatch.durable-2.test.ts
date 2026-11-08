@@ -357,6 +357,7 @@ import {
   deleteSubagentSessionForCleanup,
   resetSubagentSessionCleanupForTests,
 } from "../../agents/subagents/registry/subagent-session-cleanup.js";
+import { createLiveGatewayHolder } from "../../gateway/server-plugin-in-process-dispatch.test-support.js";
 import { resetGatewayWorkAdmission } from "../../process/gateway-work-admission.js";
 import { runWithGatewayRootWorkAdmissionForTest as runWithGatewayRootWorkAdmission } from "../../process/gateway-work-admission.test-helpers.js";
 import { getReplyFromConfig } from "../reply/get-reply.js";
@@ -949,7 +950,7 @@ describe("durable continuation_work dispatch", () => {
     expect(turnGrants).toHaveLength(0);
 
     resetContinuationWorkDispatchForTests();
-    await recoverPendingContinuationWork();
+    await recoverPendingContinuationWork({ resolveGatewayContext: createLiveGatewayHolder() });
     await advanceTimers(999);
     expect(turnGrants).toHaveLength(0);
     await advanceTimers(1);

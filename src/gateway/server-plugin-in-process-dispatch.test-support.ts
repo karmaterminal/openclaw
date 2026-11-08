@@ -53,6 +53,13 @@ export function createContext(
   return context;
 }
 
+/** Gateway startup's holder of one live instance, which resolves itself as production's does. */
+export function createLiveGatewayHolder(): () => GatewayRequestContext {
+  const context = createContext();
+  context.resolveGatewayContext = () => context;
+  return () => context;
+}
+
 export function createOperatorClient(
   params: { caps?: string[]; scopes: string[] } & ({ profileId: string } | { profileName: string }),
 ): NonNullable<GatewayRequestOptions["client"]> {

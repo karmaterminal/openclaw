@@ -18,8 +18,7 @@ import { captureRuntimeConfigAsyncReader } from "../../config/io.runtime.js";
 import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import type { GatewayRequestContext } from "../../gateway/server-methods/types.js";
-import { createContext } from "../../gateway/server-plugin-in-process-dispatch.test-support.js";
+import { createLiveGatewayHolder } from "../../gateway/server-plugin-in-process-dispatch.test-support.js";
 import { withPluginRuntimeGatewayContextResolver } from "../../plugins/runtime/gateway-request-scope.js";
 import { resetGatewayWorkAdmission } from "../../process/gateway-work-admission.js";
 import { closeOpenClawAgentDatabasesForTest } from "../../state/openclaw-agent-db.js";
@@ -92,9 +91,13 @@ type AgentTurn = { sessionKey?: string; message?: string; internalEvents?: unkno
 /** A Gateway instance: real in-process dispatch; the requester turns it starts are recorded. */
 function gatewayInstance(options: { available?: false } = {}) {
   const turns: AgentTurn[] = [];
-  const context: GatewayRequestContext = createContext([], () => ({}));
-  // Production's instance fence: the context resolves itself only while the instance is available.
-  context.resolveGatewayContext = () => (options.available === false ? undefined : context);
+  // Gateway startup hands recovery its holder of the current instance.
+  const holder = createLiveGatewayHolder();
+  const context = holder();
+  if (options.available === false) {
+    // Production's instance fence: a retired instance no longer resolves itself.
+    context.resolveGatewayContext = () => undefined;
+  }
   context.createAgentTurnFacade = () => ({
     dispatch: async <T>(request: AgentTurn & { idempotencyKey?: string }) => {
       turns.push({
@@ -111,8 +114,7 @@ function gatewayInstance(options: { available?: false } = {}) {
       throw new Error("unexpected wait");
     },
   });
-  // Gateway startup hands recovery its holder of the current instance.
-  return { context, turns, holder: () => context };
+  return { context, turns, holder };
 }
 
 beforeEach(() => {

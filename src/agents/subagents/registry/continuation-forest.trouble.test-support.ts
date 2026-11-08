@@ -22,6 +22,7 @@ import {
   deleteSessionEntryLifecycle,
   upsertSessionEntryCore,
 } from "../../../config/sessions/session-accessor.js";
+import { createLiveGatewayHolder } from "../../../gateway/server-plugin-in-process-dispatch.test-support.js";
 import { recoverPendingProducedSessionDeliveries } from "../../../gateway/server-restart-sentinel.js";
 import { performGatewaySessionReset } from "../../../gateway/session-reset-service.js";
 import { schedulePendingSessionDeliveries } from "../../../infra/session-delivery-queue-runtime.js";
@@ -140,6 +141,7 @@ export async function restartGateway(forest: ForestWorld): Promise<void> {
     await forest.sleep(1_400);
     await runContinuationCustodyBoot({
       armedAt: startedAt,
+      resolveGatewayContext: createLiveGatewayHolder(),
       whenSubagentRegistryActivated: async () => {},
     });
     bootedAt = Date.now();

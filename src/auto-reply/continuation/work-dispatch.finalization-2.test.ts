@@ -357,6 +357,7 @@ import {
   deleteSubagentSessionForCleanup,
   resetSubagentSessionCleanupForTests,
 } from "../../agents/subagents/registry/subagent-session-cleanup.js";
+import { createLiveGatewayHolder } from "../../gateway/server-plugin-in-process-dispatch.test-support.js";
 import { resetGatewayWorkAdmission } from "../../process/gateway-work-admission.js";
 import { runWithGatewayRootWorkAdmissionForTest as runWithGatewayRootWorkAdmission } from "../../process/gateway-work-admission.test-helpers.js";
 import { getReplyFromConfig } from "../reply/get-reply.js";
@@ -646,7 +647,7 @@ describe("continue_work end-of-turn finalization park + cross-turn coalesce", ()
     resetContinuationWorkDispatchForTests();
     activeSessions.add(sessionKey);
 
-    await recoverPendingContinuationWork();
+    await recoverPendingContinuationWork({ resolveGatewayContext: createLiveGatewayHolder() });
 
     expect(activeQueueDeliveries).toHaveLength(1);
     expect(turnGrants).toHaveLength(0);

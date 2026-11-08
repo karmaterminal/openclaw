@@ -357,6 +357,7 @@ import {
   deleteSubagentSessionForCleanup,
   resetSubagentSessionCleanupForTests,
 } from "../../agents/subagents/registry/subagent-session-cleanup.js";
+import { createLiveGatewayHolder } from "../../gateway/server-plugin-in-process-dispatch.test-support.js";
 import { resetGatewayWorkAdmission } from "../../process/gateway-work-admission.js";
 import { runWithGatewayRootWorkAdmissionForTest as runWithGatewayRootWorkAdmission } from "../../process/gateway-work-admission.test-helpers.js";
 import { cleanupSessionStateForTest } from "../../test-utils/session-state-cleanup.js";
@@ -655,7 +656,7 @@ describe("durable continuation_work dispatch", () => {
     resetContinuationWorkDispatchForTests();
     activeSessions.delete(sessionKey);
 
-    await recoverPendingContinuationWork();
+    await recoverPendingContinuationWork({ resolveGatewayContext: createLiveGatewayHolder() });
 
     expect(turnGrants).toEqual([
       expect.objectContaining({
@@ -697,11 +698,11 @@ describe("durable continuation_work dispatch", () => {
     await consumePendingWork(sessionKey, { includeIdleRetry: true });
 
     await advanceTimers(59_999);
-    await recoverPendingContinuationWork();
+    await recoverPendingContinuationWork({ resolveGatewayContext: createLiveGatewayHolder() });
     expect(turnGrants).toHaveLength(0);
 
     await advanceTimers(1);
-    await recoverPendingContinuationWork();
+    await recoverPendingContinuationWork({ resolveGatewayContext: createLiveGatewayHolder() });
 
     expect(turnGrants).toEqual([
       expect.objectContaining({
