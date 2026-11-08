@@ -20,10 +20,10 @@ describe("explicit Node compiler policy", () => {
     ];
     const actual = resolveForwardedNodeCompilerArgs();
     expect(actual).toEqual(["--maglev", "--no_concurrent_sparkplug", "--no-maglev", "--no-opt"]);
-    // A real main thread without reviewed flags publishes no Worker policy.
+    // Importing publishes no Worker policy, even beside reviewed flags: Worker launches do.
     const policy = `(await import("node:worker_threads")).getEnvironmentData("openclaw.nodeCompilerArgs.v1")`;
     const url = new URL("./node-compiler-args.ts", import.meta.url).href;
-    const source = `await import(${JSON.stringify(url)}); console.log(${policy});`;
+    const source = `process.execArgv.push("--no-opt"); await import(${JSON.stringify(url)}); console.log(${policy});`;
     expect(execNodeEvalSync(source, { imports: ["tsx"] })).toBe("undefined\n");
   });
 });

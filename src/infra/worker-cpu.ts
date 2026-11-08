@@ -4,7 +4,7 @@ import { isMainThread, MessagePort, receiveMessageOnPort, Worker } from "node:wo
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import type { WorkerRetirementReason } from "@openclaw/worker-runtime";
 import { createRetainedOperation } from "@openclaw/worker-runtime/lifecycle";
-import { withoutNodeCompilerArgs } from "../bootstrap/node-compiler-args.js";
+import { prepareWorkerCompilerPolicy } from "../bootstrap/node-compiler-args.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import type {
   DiagnosticMemoryUsage,
@@ -98,7 +98,7 @@ export function createCpuTrackedWorker(
   const worker = runWithMainThreadTask(
     `worker:${workerScriptName(filename, options?.eval)}`,
     // Plugins pass resolveRuntimeWorkerArgv's child launch prefix as thread execArgv.
-    () => new Worker(filename, withoutNodeCompilerArgs(options)),
+    () => new Worker(filename, prepareWorkerCompilerPolicy(options)),
   );
   trackNativeWorkerForCpu(worker, filename, options?.eval);
   Object.assign(trackedWorkers.workers.get(worker)!, { internalMessages: true, requestClass });

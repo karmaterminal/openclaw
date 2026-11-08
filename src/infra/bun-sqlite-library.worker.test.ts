@@ -6,7 +6,6 @@ import { Worker } from "node:worker_threads";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "../test-utils/prepare-compiled-subprocesses.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
-import { resolveForwardedNodeCompilerArgs } from "../bootstrap/node-compiler-args.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import type { RuntimeWorkerGeneration } from "./runtime-worker-generation.js";
 import { SQLITE_DATABASE_ADMISSIONS_KEY } from "./sqlite-database-admission-key.js";
@@ -534,8 +533,8 @@ describe("Bun SQLite process selection and worker inheritance", () => {
     const { ensureSqliteLibrarySelected } = await import("./bun-sqlite-library.js");
     expect(() => ensureSqliteLibrarySelected()).toThrow("Native selection failed");
     expect(runtime.select).toHaveBeenCalledTimes(1);
-    const policy = resolveForwardedNodeCompilerArgs();
-    expect([...runtime.environment.values()]).toEqual(policy.length ? [policy] : []);
+    expect(runtime.environment.size).toBe(0);
+    expect(runtime.setEnvironmentData).not.toHaveBeenCalled();
     expect(runtime.launches).toBe(0);
     expect(existsSync(databasePath)).toBe(false);
   });
