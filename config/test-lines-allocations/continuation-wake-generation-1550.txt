@@ -1,0 +1,4 @@
+# #1550: the detached continuation wake must re-admit on the current generation, not its closed
+# turn's. One durable-7 row plus its test-support arming frame (closed-borrow prepared-model
+# generation, plugin runtime generation, prepared reply dispatch runtime) and observation.
+108
