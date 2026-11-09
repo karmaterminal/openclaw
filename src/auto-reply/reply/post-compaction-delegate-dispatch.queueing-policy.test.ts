@@ -2,8 +2,9 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
+import { createTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import * as sessionAccessorModule from "../../config/sessions/session-accessor.js";
 import * as sessionStoreModule from "../../config/sessions/store-writer-state.js";
 import type { SessionEntry, SessionPostCompactionDelegate } from "../../config/sessions/types.js";
@@ -38,6 +39,11 @@ import type { FollowupRun } from "./queue/types.js";
 // post-compaction dispatch enqueues under the agent-qualified queue key
 // (withSystemEventOwner), so the expectations name that key, not the bare one.
 const MAIN_QUEUE_KEY = resolveSystemEventQueueKey("main", "main");
+const stateDirs = createTempDirTracker();
+
+beforeEach(() => {
+  vi.stubEnv("OPENCLAW_STATE_DIR", stateDirs.make("post-compaction-queueing-state-"));
+});
 
 const mockRegistryState = vi.hoisted(() => ({
   acceptedChildSessionKeys: new Set<string>(),
@@ -346,6 +352,8 @@ function readSessionStore(storePath: string): Record<string, SessionEntry> {
 afterEach(() => {
   closeRetainedOpenClawStateReadConnections();
   vi.useRealTimers();
+  vi.unstubAllEnvs();
+  stateDirs.cleanup();
   mockRegistryState.acceptedChildSessionKeys.clear();
   sessionStoreModule.clearSessionStoreCacheForTest();
 });
