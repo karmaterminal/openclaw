@@ -13,6 +13,7 @@ import {
 } from "../../infra/session-delivery-queue-storage.js";
 import { resolveSystemEventQueueKey } from "../../infra/system-event-ownership.js";
 import { formatContinuationChildRunId } from "../../shared/continuation-run-key.js";
+import { closeRetainedOpenClawStateReadConnections } from "../../state/openclaw-state-db-read-connection.js";
 import { withTestDir } from "../../test-helpers/temp-dir.js";
 import type { ChainState, ContinuationRuntimeConfig } from "../continuation/types.js";
 import {
@@ -359,6 +360,7 @@ function readSessionEntry(storePath: string, sessionKey = "main"): SessionEntry 
 }
 
 afterEach(() => {
+  closeRetainedOpenClawStateReadConnections();
   vi.useRealTimers();
   mockRegistryState.acceptedChildSessionKeys.clear();
   mockRegistryState.admittedRunIds.clear();

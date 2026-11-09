@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { FailoverError } from "../../agents/failover-error.js";
 import {
   generateNarrationWithUtilityModel,
@@ -6,6 +7,7 @@ import {
 } from "./progress-narrator-model.js";
 
 const complete = vi.hoisted(() => vi.fn());
+const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 // mock-isolation: Narration fixtures control completion without loading live auth/provider state.
 vi.mock("../../agents/isolated-completion.js", () => ({ runIsolatedCompletion: complete }));
 const prepared: Parameters<typeof generateNarrationWithUtilityModel>[0]["prepared"] = {
@@ -28,10 +30,14 @@ const utilityConfig = {
   plugins: { enabled: false },
 };
 beforeEach(() => {
+  vi.stubEnv("OPENCLAW_STATE_DIR", tempDirs.make("progress-narrator-state-"));
   vi.useFakeTimers();
   complete.mockReset();
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllEnvs();
+});
 
 it.each(["fallback", "exhausted", "direct", "aborted"] as const)(
   "narration completion: %s",
