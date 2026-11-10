@@ -10,6 +10,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { zstdCompressSync } from "node:zlib";
 import { expect, it } from "vitest";
+import { listDirectoryTreeStrictSync } from "../infra/directory-walk.js";
 import { inspectScopedMigrationSnapshot } from "../infra/sqlite-migration-scoped-snapshot.js";
 import { migrateSessionColdNavigation } from "../infra/state-migrations.cold-navigation.js";
 import { OPENCLAW_AGENT_SCHEMA_VERSION } from "../state/openclaw-agent-db-contract.js";
@@ -137,6 +138,14 @@ function readStore(database: DatabaseSync) {
   };
 }
 
+/** Every Doctor pre-migration image under the state directory, scoped or full. */
+function migrationBackups(stateDir: string): string[] {
+  return listDirectoryTreeStrictSync(stateDir)
+    .filter(({ dirent }) => dirent.isFile() && dirent.name.includes(".pre-startup-migration-"))
+    .map(({ relativePath }) => relativePath)
+    .toSorted();
+}
+
 const SHAPES = [
   {
     shape: "fleet 38",
@@ -253,6 +262,10 @@ it.each([
         .filter((name) => name.startsWith(`${path.basename(pathname)}.pre-startup-migration-`));
       expect(backups).toHaveLength(1);
       expect(backups[0]!.endsWith(".scoped.bak")).toBe(false);
+      // Positive control for the refusal rows: the same scan sees this agent image.
+      expect(migrationBackups(state.stateDir)).toContain(
+        path.relative(state.stateDir, path.join(path.dirname(pathname), backups[0]!)),
+      );
       using image = new DatabaseSync(path.join(path.dirname(pathname), backups[0]!), {
         readOnly: true,
       });
@@ -294,5 +307,7 @@ it.each([
     );
     await closeOpenClawAgentDatabasesAsync();
     expect(readStore(database)).toEqual(original);
+    // The refusal lands before Doctor's version phase saves any image, scoped or full.
+    expect(migrationBackups(state.stateDir)).toEqual([]);
   });
 });
