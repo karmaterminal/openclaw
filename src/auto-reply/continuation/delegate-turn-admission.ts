@@ -20,7 +20,7 @@ type DelegateTurnBudget = { scheduled: number };
 const delegatesScheduledThisTurn = new Map<string, DelegateTurnBudget>();
 
 /** A held per-turn slot. Release it if the delegate is not durably accepted. */
-export type ContinueDelegateTurnSlot = {
+type ContinueDelegateTurnSlot = {
   /** 1-based position of this delegate among the turn's admitted delegates. */
   index: number;
   release: () => void;

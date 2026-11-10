@@ -276,7 +276,7 @@ async function acknowledgeAdoptedReturns(occurrences: readonly SystemEvent[]): P
   }
 }
 
-/** Runs every coalesced wake now and waits for their handoffs to settle. Test-only. */
+/** Runs every coalesced wake now and waits for their handoffs to settle. @internal Test-only. */
 export async function settleContinuationWakesForTest(): Promise<void> {
   for (const [key, wake] of pendingWakes) {
     clearTimeout(wake.timer);
@@ -285,7 +285,7 @@ export async function settleContinuationWakesForTest(): Promise<void> {
   await Promise.allSettled(inFlightWakes);
 }
 
-/** Drops queued wakes without running them. Test-only. */
+/** Drops queued wakes without running them. @internal Test-only. */
 export function resetContinuationWakesForTest(): void {
   for (const wake of pendingWakes.values()) {
     clearTimeout(wake.timer);

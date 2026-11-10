@@ -55,7 +55,7 @@ const PayloadSchema = z
 export type ContinuationCustodyPayload = z.infer<typeof PayloadSchema>;
 
 /** The bytes themselves are unacceptable (shape or size); retrying cannot store them. */
-export class ContinuationCustodyPayloadRejectedError extends Error {
+class ContinuationCustodyPayloadRejectedError extends Error {
   constructor(reason: "invalid" | "too-large") {
     super(
       reason === "invalid"

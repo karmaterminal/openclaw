@@ -1,0 +1,2 @@
+# Jump 14 baseline shift, not new coverage. Upstream U14 (401a1de38b) left 30 fewer lines of test-lines slack than U13 (480d503053): U13 measures 6,498,888 against a ceiling of 6,498,919 (slack 31); U14 measures 6,628,676 against 6,628,677 (slack 1). Same accounting as continuation-j12-baseline-shift.txt and continuation-j13-baseline-shift.txt. Measured with scripts/check-test-lines-ratchet.mts semantics (LF bytes over its pathspecs). Pending review; no approval claimed.
+30

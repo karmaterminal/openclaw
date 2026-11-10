@@ -91,5 +91,4 @@ export async function readSubagentSessionEntry(
 }
 export const callSubagentLifecycleGateway: typeof GatewayCaller = (request) =>
   bindGatewayLifecycleRequest()(request);
-export { callGateway } from "../../../gateway/call.js";
 export { readSessionMessagesAsync } from "../../../gateway/session-transcript-readers.js";

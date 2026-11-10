@@ -43,19 +43,3 @@ export function externalCliClient(): GatewayRequestOptions["client"] {
     },
   } as GatewayRequestOptions["client"];
 }
-
-export async function waitForAssertion(assertion: () => void, timeoutMs = 2_000): Promise<void> {
-  let lastError: unknown;
-  for (let elapsed = 0; elapsed <= timeoutMs; elapsed += 10) {
-    try {
-      assertion();
-      return;
-    } catch (error) {
-      lastError = error;
-    }
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 10);
-    });
-  }
-  throw lastError;
-}

@@ -19,8 +19,6 @@ import {
 } from "../reply/session-reset-cleanup.js";
 import { resolveContinuationResetRetentions } from "./session-reset-retention-resolve.js";
 
-export { resolveContinuationResetRetentions };
-
 const log = createSubsystemLogger("continuation/reset-retention");
 
 /** One explicit reset's retention of its session's continuation-elected delegate tree. */

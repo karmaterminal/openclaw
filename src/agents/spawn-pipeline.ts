@@ -48,7 +48,7 @@ type SpawnProgressOrigin = {
   messageId?: string | number;
 };
 
-export type SpawnAcceptanceOutcome = "confirmed" | "refused" | "uncertain";
+type SpawnAcceptanceOutcome = "confirmed" | "refused" | "uncertain";
 
 type SpawnPipelineResult<TState> =
   | {

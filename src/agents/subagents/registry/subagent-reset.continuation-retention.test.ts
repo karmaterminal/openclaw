@@ -6,10 +6,8 @@
 // oxfmt-ignore
 import { useSubagentControlFixture } from "./subagent-control.test-support.js";
 import { beforeEach, expect, it, vi } from "vitest";
-import {
-  prepareContinuationResetRetention,
-  resolveContinuationResetRetentions,
-} from "../../../auto-reply/continuation/session-reset-retention.js";
+import { resolveContinuationResetRetentions } from "../../../auto-reply/continuation/session-reset-retention-resolve.js";
+import { prepareContinuationResetRetention } from "../../../auto-reply/continuation/session-reset-retention.js";
 import { finalizeInboundContext } from "../../../auto-reply/reply/inbound-context.js";
 import { stopSessionResetSubagents } from "../../../auto-reply/reply/session-reset-cleanup.js";
 import { initSessionState } from "../../../auto-reply/reply/session.js";

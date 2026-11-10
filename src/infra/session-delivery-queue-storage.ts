@@ -157,12 +157,10 @@ export async function withSessionDeliveryEnqueueAdmission<T>(
 export type {
   ContinuationReturnWake,
   SessionDeliveryContext,
-  SessionDeliveryRoute,
   SessionDeliverySettledOutcome,
 } from "./session-delivery-queue-codec.js";
 
 export {
-  SESSION_DELIVERY_QUEUE_NAME,
   SessionDeliveryDeadLetteredError,
   SessionDeliveryDeferredError,
   SessionDeliverySafeRetryError,
@@ -256,7 +254,7 @@ function canonicalizeIdempotencyKey(key: string): string {
   return key.replace(/[ \t\r\f\v]+(?=\n|$)/g, "").replace(/\s+$/, "");
 }
 
-export function prepareClaimedSessionDelivery(
+function prepareClaimedSessionDelivery(
   params: QueuedSessionDeliveryPayload,
   initialAttemptLeaseMs: number,
   now = Date.now(),

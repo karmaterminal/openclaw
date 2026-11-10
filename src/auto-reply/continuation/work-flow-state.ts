@@ -162,7 +162,10 @@ export function workRecordDueAt(state: Pick<PendingWorkState, "dueAt" | "recover
   return Math.max(state.dueAt, state.recoveryDueAt ?? state.dueAt);
 }
 
-/** The work codec over parsed state JSON; the Doctor custody import decodes source rows with it. */
+/**
+ * The work codec over parsed state JSON.
+ * @internal The PostgreSQL state-port test decodes rows with it; production goes through decodeWorkState.
+ */
 export function decodeWorkStateJson(value: unknown): PendingWorkState | undefined {
   const parsed = PendingWorkStateSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;

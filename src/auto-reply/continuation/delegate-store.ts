@@ -724,14 +724,6 @@ export async function cancelPendingDelegates(sessionKey: string): Promise<void> 
   }
 }
 
-/** Remove a delegate that was never accepted (RFC §5.4.8 capability 4). */
-export async function removeUnacceptedContinuationDelegate(flowId: string): Promise<void> {
-  const record = await getDelegateRecord(flowId);
-  if (record && record.status === "queued") {
-    await deleteDelegateRecord(record);
-  }
-}
-
 export async function failQueuedDelegatesOwnedByRun(
   sessionKey: string,
   owner: {

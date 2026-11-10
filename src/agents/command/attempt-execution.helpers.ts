@@ -343,7 +343,10 @@ function formatFallbackTurns(
   return lines.join("\n");
 }
 
-/** Prefer the harvested summary, then retain recent turns within the fallback prompt budget. */
+/**
+ * Prefer the harvested summary, then retain recent turns within the fallback prompt budget.
+ * @internal Directly tested; production calls it in this module.
+ */
 export async function buildClaudeCliFallbackContextPrelude(params: {
   cliSessionId: string | undefined;
   homeDir?: string;

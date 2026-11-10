@@ -241,7 +241,6 @@ type SessionStoreSummaryWorkerInput = {
 export const MAX_SESSION_ROW_FACTS_KEYS = 64;
 
 export type {
-  SessionRowAvailabilityWorkerInput,
   SessionRowFactsWorkerInput,
   SessionRowFactsWorkerResult,
   SessionRowPresenceWorkerInput,

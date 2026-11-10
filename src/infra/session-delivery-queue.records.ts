@@ -10,7 +10,6 @@ import type {
 export const SESSION_DELIVERY_QUEUE_NAME = "session";
 
 export type {
-  SessionDeliveryContext,
   SessionDeliveryRequesterBinding,
   SessionDeliveryRoute,
   SessionDeliverySettledOutcome,

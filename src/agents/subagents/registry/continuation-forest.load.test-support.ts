@@ -30,7 +30,7 @@ export function progress(forest: ContinuationForest, label: string): void {
 }
 
 /** Forest shapes for the load sizes (rooms, princes included). */
-export const LOAD_SHAPES: Readonly<Record<number, AnnexShape>> = {
+const LOAD_SHAPES: Readonly<Record<number, AnnexShape>> = {
   10: { trees: 2, depth: 2, fanOut: 4 },
   1_000: { trees: 4, depth: 4, fanOut: 6 },
   // One whole-forest alarm: each `all` return writes and adopts a row in every room.
@@ -48,7 +48,7 @@ export function loadShape(size: number): AnnexShape {
 }
 
 /** mulberry32: a seeded generator, so any failing storm reproduces from its seed. */
-export function seededRandom(seed: number): () => number {
+function seededRandom(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
     state = (state + 0x6d2b79f5) >>> 0;

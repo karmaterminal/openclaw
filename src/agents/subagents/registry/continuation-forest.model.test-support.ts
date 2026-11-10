@@ -23,10 +23,7 @@ export const AGENT_ID = "main";
 export const OWNER_A = { type: "human" as const, source: "unknown" as const, id: "owner-a" };
 export const OWNER_B = { type: "human" as const, id: "owner-b" };
 
-export type Routing =
-  | { kind: "requester" }
-  | { kind: "out-of-tree"; target: AnnexNode }
-  | { kind: "all" };
+type Routing = { kind: "requester" } | { kind: "out-of-tree"; target: AnnexNode } | { kind: "all" };
 
 export type AnnexNode = {
   /** Story id: `t1` is prince 1, `t1.0.2` the third child of its first child. */
@@ -46,7 +43,7 @@ export type AnnexNode = {
  * `interrupted`: an attic wake whose turn ran once, then whose Gateway died before its delivery was
  * recorded. It never runs again; its record fails as interrupted and its room is told once.
  */
-export type ElectionOutcome = "executed" | "interrupted" | "refused" | "cancelled";
+type ElectionOutcome = "executed" | "interrupted" | "refused" | "cancelled";
 /** `deferred`: why it may run after its due time (refused while its room was busy, run after). */
 export type ElectionExpectation = {
   outcome: ElectionOutcome;
@@ -135,23 +132,6 @@ export const USER_TAG = /\[annex:user ([^\]]+)\]/;
 /** Wall time, which the fake clock does not move. */
 export function realNowMs(): number {
   return Number(process.hrtime.bigint()) / 1e6;
-}
-
-/** The scale knob: OPENCLAW_CONTINUATION_FOREST_{TREES,DEPTH,FANOUT}, default 3 x 4 x 3. */
-export function annexShapeFromEnv(env: NodeJS.ProcessEnv = process.env): AnnexShape {
-  const read = (name: string, fallback: number) => {
-    const raw = env[name];
-    const value = raw === undefined ? fallback : Number(raw);
-    if (!Number.isInteger(value) || value < 1) {
-      throw new Error(`${name} must be a positive integer, got ${raw}`);
-    }
-    return value;
-  };
-  return {
-    trees: read("OPENCLAW_CONTINUATION_FOREST_TREES", DEFAULT_ANNEX_SHAPE.trees),
-    depth: read("OPENCLAW_CONTINUATION_FOREST_DEPTH", DEFAULT_ANNEX_SHAPE.depth),
-    fanOut: read("OPENCLAW_CONTINUATION_FOREST_FANOUT", DEFAULT_ANNEX_SHAPE.fanOut),
-  };
 }
 
 /** Rooms in a forest of this shape, princes included. */

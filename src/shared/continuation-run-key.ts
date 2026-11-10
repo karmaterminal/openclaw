@@ -10,7 +10,10 @@
  * it rather than deriving their own.
  */
 
-/** Run IDs with this prefix are reserved for backend continuation callers. */
+/**
+ * Run IDs with this prefix are reserved for backend continuation callers.
+ * @internal The test pins this wire literal; production reads it in this module.
+ */
 export const CONTINUATION_CHILD_RUN_ID_PREFIX = "continuation:";
 
 /** Phase in which an in-process continuation spawn failed (RFC §5.4.4). */

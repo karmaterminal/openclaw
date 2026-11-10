@@ -28,7 +28,7 @@ import {
 import { settlePendingTerminalNotice } from "./work-terminal-notice.js";
 
 /** The selected state root has no state database: wrong environment, or nothing to read. */
-export class ContinuationStateDatabaseMissingError extends Error {
+class ContinuationStateDatabaseMissingError extends Error {
   readonly code = "STATE_DATABASE_MISSING";
 
   constructor(databasePath: string) {

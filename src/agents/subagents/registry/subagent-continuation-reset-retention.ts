@@ -38,7 +38,7 @@ export function findContinuationResetHold(
 }
 
 /** Continuation-elected runs the reset of this session may retain. Ordinary runs never qualify. */
-export function selectRetainableContinuationRuns(params: {
+function selectRetainableContinuationRuns(params: {
   cfg: OpenClawConfig;
   sessionKey: string;
   agentId: string;

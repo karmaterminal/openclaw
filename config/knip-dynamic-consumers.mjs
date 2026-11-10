@@ -394,6 +394,76 @@ function optionalImportMemberEdges(source, consumerFile) {
   return edges;
 }
 
+function promiseAllImportMemberEdges(source, consumerFile) {
+  const edges = new Map();
+  const ast = parse(source, {
+    sourceType: "module",
+    plugins: ["typescript"],
+    createImportExpressions: true,
+  });
+  // Link each namespace bound by `const [a, b] = await Promise.all([import("./a.js"), ...])`
+  // to calls on that same binding. Binding identity excludes types, text and shadowing.
+  traverse(ast, {
+    VariableDeclarator(declaration) {
+      const { id, init } = declaration.node;
+      if (
+        id.type !== "ArrayPattern" ||
+        init?.type !== "AwaitExpression" ||
+        init.argument.type !== "CallExpression"
+      ) {
+        return;
+      }
+      const { callee, arguments: loads } = init.argument;
+      if (
+        callee.type !== "MemberExpression" ||
+        callee.computed ||
+        callee.object.type !== "Identifier" ||
+        callee.object.name !== "Promise" ||
+        callee.property.type !== "Identifier" ||
+        callee.property.name !== "all" ||
+        loads.length !== 1 ||
+        loads[0].type !== "ArrayExpression"
+      ) {
+        return;
+      }
+      id.elements.forEach((element, index) => {
+        const load = loads[0].elements[index];
+        if (
+          element?.type !== "Identifier" ||
+          load?.type !== "ImportExpression" ||
+          load.source.type !== "StringLiteral" ||
+          !load.source.value.startsWith(".")
+        ) {
+          return;
+        }
+        const binding = declaration.scope.getBinding(element.name);
+        if (!binding) {
+          return;
+        }
+        const targetFile = path.resolve(path.dirname(consumerFile), load.source.value);
+        const names = edges.get(targetFile) ?? new Set();
+        for (const reference of binding.referencePaths) {
+          const member = reference.parentPath;
+          if (
+            member.isMemberExpression() &&
+            !member.node.computed &&
+            member.node.object === reference.node &&
+            member.node.property.type === "Identifier" &&
+            member.parentPath.isCallExpression() &&
+            member.parentPath.node.callee === member.node
+          ) {
+            names.add(member.node.property.name);
+          }
+        }
+        if (names.size > 0) {
+          edges.set(targetFile, names);
+        }
+      });
+    },
+  });
+  return edges;
+}
+
 function typedCheckoutImportEdges(source, consumerFile) {
   const edges = new Map();
   const ast = parse(source, { sourceType: "module", plugins: ["typescript"] });
@@ -722,6 +792,15 @@ export function compileDynamicConsumerEdges(source, filePath, scriptEntrypoints 
     generationBenchmarkPath,
   )) {
     addNamedImport(names, targetFile);
+  }
+
+  // Boot recovery loads its owners together and calls them on the destructured namespaces.
+  const custodyBootPath = "src/auto-reply/continuation/custody-boot.ts";
+  for (const [targetFile, names] of promiseAllImportMemberEdges(
+    fs.readFileSync(custodyBootPath, "utf8"),
+    custodyBootPath,
+  )) {
+    addNamedImport([...names], targetFile);
   }
 
   return `${source}\n${imports.join("\n")}`;

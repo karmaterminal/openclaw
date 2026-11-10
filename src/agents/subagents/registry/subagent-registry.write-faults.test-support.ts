@@ -30,7 +30,7 @@ export type WriteRule = {
 
 let writeRules: WriteRule[] = [];
 
-export function rowsOfRegistryWrite(write: RegistryWrite): SubagentRunRecord[] {
+function rowsOfRegistryWrite(write: RegistryWrite): SubagentRunRecord[] {
   return write.values.map((value) => {
     const parsed = JSON.parse(value.payload_json) as
       | SubagentRunRecord

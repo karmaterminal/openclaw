@@ -51,10 +51,6 @@ export function markSubagentSpawnDisarmUncertain(entry: SubagentRunRecord): void
   held.delete(key);
 }
 
-export function isSubagentSpawnDisarmUncertain(entry: SubagentRunRecord): boolean {
-  return uncertainDisarm.has(getSubagentRunRuntimeKey(entry));
-}
-
 /**
  * Records a deferred resume; confirmation replays it exactly once. An unheld armed row
  * has no acceptance owner left to confirm it, so the sweeper is woken to fail it closed.

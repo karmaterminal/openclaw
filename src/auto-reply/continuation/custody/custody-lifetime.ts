@@ -47,7 +47,7 @@ export function invalidateContinuationCustodyLifetime(databasePath: string): voi
 }
 
 /** Thrown when work started in a custody database lifetime that has since ended. */
-export class ContinuationCustodyLifetimeEndedError extends Error {
+class ContinuationCustodyLifetimeEndedError extends Error {
   constructor() {
     super("continuation custody database closed during readiness; retry");
     this.name = "ContinuationCustodyLifetimeEndedError";

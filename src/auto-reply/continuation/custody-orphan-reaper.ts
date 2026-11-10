@@ -43,13 +43,14 @@ const log = createSubsystemLogger("continuation/orphan-reaper");
  * running is reaped even when its owner is alive: no dispatcher that still
  * exists would leave it that long. Policy proposed in #1469; it is not yet
  * confirmed.
+ * @internal Directly tested; production reads it in this module.
  */
 export const CONTINUATION_DELEGATE_ORPHAN_CUTOFF_MS = 24 * 60 * 60 * 1000;
 
 /** Nothing is reaped until it has been due (or staged) at least this long. */
-export const CONTINUATION_ORPHAN_REAP_GRACE_MS = 60 * 60 * 1000;
+const CONTINUATION_ORPHAN_REAP_GRACE_MS = 60 * 60 * 1000;
 
-export const CONTINUATION_ORPHAN_REAPED_NOTICE_TAG = "[continuation:delegate-orphan-reaped]";
+const CONTINUATION_ORPHAN_REAPED_NOTICE_TAG = "[continuation:delegate-orphan-reaped]";
 const REAPED_PHASE = "Reaped: no dispatcher";
 
 /**

@@ -253,7 +253,7 @@ async function terminalizeRecord(
 }
 
 /** What an explicit cancel did to one named record. */
-export type ContinuationCancelOutcome =
+type ContinuationCancelOutcome =
   /** A live election ended: its pending wake or spawn will not run, and one in flight is aborted. */
   | "cancelled"
   /** A post-compaction delegate handed to the session queue will not spawn. */

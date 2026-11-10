@@ -649,6 +649,40 @@ function other(lineageCompletion: typeof lineageWriter) {
     ).toBe("");
   });
 
+  it("models boot recovery's Promise.all namespaces only through their bound calls", () => {
+    const consumerPath = path.resolve("src/auto-reply/continuation/custody-boot.ts");
+    const source = fs.readFileSync(consumerPath, "utf8");
+    const compile = createDynamicConsumerCompiler();
+    const call = "workAuthority.refuseStaleContinuationWorkAtReplay()";
+    const member = "refuseStaleContinuationWorkAtReplay as";
+    const project = (consumer = source) => {
+      const compiled = compile(new Map([[consumerPath, consumer]]));
+      expect(compiled).toContain("runtimeProcessDeployManifest");
+      return compiled
+        .split("\n")
+        .filter((line) =>
+          line.endsWith('from "../src/auto-reply/continuation/work-recipient-authority.js";'),
+        )
+        .join("\n");
+    };
+
+    expect(project()).toContain(member);
+    expect(project(source.replaceAll("workAuthority", "replayAuthority"))).toContain(member);
+    const withoutCall = replaceFixture(source, call, "Promise.resolve()");
+    expect(project(withoutCall)).toBe("");
+    expect(project(`${withoutCall}\n/* ${call} */\nconst text = ${JSON.stringify(call)};`)).toBe(
+      "",
+    );
+    expect(
+      project(`${withoutCall}
+function other(workAuthority: { refuseStaleContinuationWorkAtReplay(): void }) {
+  ${call};
+}`),
+    ).toBe("");
+    const load = 'import("./work-recipient-authority.js"),';
+    expect(project(replaceFixture(source, load, 'import("./other.js"),'))).toBe("");
+  });
+
   it("models a computed checkout module member only while its binding and call exist", () => {
     const consumerPath = path.resolve(
       ".agents/skills/telegram-e2e-userbot/scripts/published-upgrade-scenario.mjs",

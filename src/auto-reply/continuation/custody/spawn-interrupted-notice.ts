@@ -8,6 +8,7 @@
 import type { QueuedSessionDeliveryPayload } from "../../../infra/session-delivery-queue-storage.js";
 import { formatDelegateTaskForSystemEvent } from "../delegate-system-event.js";
 
+/** @internal Tests find the notice by this tag; production emits it in this module. */
 export const CONTINUATION_SPAWN_INTERRUPTED_NOTICE_TAG =
   "[continuation:delegate-spawn-interrupted]";
 

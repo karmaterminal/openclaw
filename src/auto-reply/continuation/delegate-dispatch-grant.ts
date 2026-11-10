@@ -36,7 +36,7 @@ const log = createSubsystemLogger("continuation/delegate-dispatch");
  * A grant outlives its delegate's due time by this much: room for hedge retries, busy
  * re-arms and a Gateway restart, but an operator's hour-old authorization never fires.
  */
-export const CONTINUATION_DELEGATE_GRANT_SLACK_MS = 60 * 60 * 1000;
+const CONTINUATION_DELEGATE_GRANT_SLACK_MS = 60 * 60 * 1000;
 
 export const DELEGATE_GRANT_RESTORE_RETRY_PHASE = "Waiting for the Gateway to restore its grant";
 

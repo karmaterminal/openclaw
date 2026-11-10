@@ -399,6 +399,7 @@ const ENTRY_LOCAL_RECIPIENT_EPOCH =
  * Moves the unshipped entry-local return epoch to its logical session-key owner. Like the
  * creator migration below, entry JSON is parsed and rewritten in JavaScript, its writer,
  * so the epoch's shape is checked here rather than with SQLite JSON functions.
+ * @internal Directly tested; production runs it from this module's migration step.
  */
 export function migrateSessionRecipientAuthority(db: DatabaseSync): boolean {
   if (!readSqliteTableColumns(db, "session_nodes")) {

@@ -145,7 +145,7 @@ export type ContinuationUpdateResult =
   | ContinuationCasFailure
   | { outcome: "invalid_transition"; recordId: string; reason: string };
 
-export type ContinuationLiveSnapshotEntry = {
+type ContinuationLiveSnapshotEntry = {
   recordId: string;
   revision: number;
   status: ContinuationLiveStatus;

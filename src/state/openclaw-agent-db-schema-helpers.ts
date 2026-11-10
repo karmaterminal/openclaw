@@ -1,6 +1,4 @@
 import type { DatabaseSync } from "node:sqlite";
-import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
-import { normalizeNullableString as migratedText } from "@openclaw/normalization-core/string-coerce";
 import {
   ensureMemoryChunkProvenance,
   ensureMemoryRecallMetadataSchema,
@@ -597,40 +595,6 @@ export function readOpenClawAgentSchema26Shape(
   }
   throw new Error(
     `OpenClaw agent database ${pathname} has an unrecognized schema-26 shape (recipient authority: ${authority}, JSON predicate columns: ${predicates ? "all" : noPredicates ? "none" : "some"}); restore its pre-upgrade backup rather than migrating it.`,
-  );
-}
-
-export function migratedEntryChannel(entry: Record<string, unknown>): string | null {
-  const delivery = asNullableRecord(entry.delivery);
-  const deliveryContext =
-    asNullableRecord(delivery?.context) ?? asNullableRecord(entry.deliveryContext);
-  const origin = asNullableRecord(delivery?.origin) ?? asNullableRecord(entry.origin);
-  return (
-    migratedText(entry.channel) ??
-    migratedText(deliveryContext?.channel) ??
-    migratedText(entry.lastChannel) ??
-    migratedText(origin?.provider)
-  );
-}
-
-export function migratedEntryAccountId(entry: Record<string, unknown>): string | null {
-  const delivery = asNullableRecord(entry.delivery);
-  const deliveryContext =
-    asNullableRecord(delivery?.context) ?? asNullableRecord(entry.deliveryContext);
-  const origin = asNullableRecord(delivery?.origin) ?? asNullableRecord(entry.origin);
-  return (
-    migratedText(deliveryContext?.accountId) ??
-    migratedText(entry.lastAccountId) ??
-    migratedText(origin?.accountId)
-  );
-}
-
-export function migratedEntryDisplayName(entry: Record<string, unknown>): string | null {
-  return (
-    migratedText(entry.displayName) ??
-    migratedText(entry.label) ??
-    migratedText(entry.subject) ??
-    migratedText(entry.groupId)
   );
 }
 
