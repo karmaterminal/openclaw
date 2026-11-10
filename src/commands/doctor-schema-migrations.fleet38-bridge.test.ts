@@ -1,8 +1,9 @@
 // Frond (karmaterminal): fleet-38 bridge. Fork-only: Doctor's version phase takes the deployed
-// fleet's 38 (upstream's 38 plus recipient authority) and upstream's 39 to 41 inside their declared
-// backup scopes, keeps authority rows, restores the exact predecessor, refuses every other 38-40
-// shape before any write, and leaves a bridged store to the same cold-navigation backfill as any
-// other.
+// fleet's 38 (upstream's 38 plus recipient authority) and upstream's 39 to 42 inside their declared
+// backup scopes, keeps authority rows, restores the exact predecessor, and leaves a bridged store
+// to the same cold-navigation backfill as any other. The fleet's 38 DDL stamped 39 (jump 9-F″) and
+// the jump-13 41 sit above their physical shape, so Doctor keeps an exact full image for them.
+// Every other 38-41 shape is refused before any write.
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -12,6 +13,8 @@ import { expect, it } from "vitest";
 import { inspectScopedMigrationSnapshot } from "../infra/sqlite-migration-scoped-snapshot.js";
 import { migrateSessionColdNavigation } from "../infra/state-migrations.cold-navigation.js";
 import { OPENCLAW_AGENT_SCHEMA_VERSION } from "../state/openclaw-agent-db-contract.js";
+import { withAgentDatabaseMaintenanceLease } from "../state/openclaw-agent-db-maintenance-lease.js";
+import { ensureOpenClawAgentDatabaseSchema } from "../state/openclaw-agent-db-schema.js";
 import { closeOpenClawAgentDatabasesAsync } from "../state/openclaw-agent-db.js";
 import { readCapturedAgentSchema } from "../state/openclaw-agent-db.schema-bridge.test-support.js";
 import { sessionRecipientAuthoritySchemaSql } from "../state/openclaw-agent-recipient-authority-schema.js";
@@ -26,7 +29,12 @@ import { withMaintenance } from "./doctor-schema-migrations.test-support.js";
 // Deployed fleet build 3d3364ddc5's fresh DDL, and upstream's 39 as U12 wrote it.
 const FLEET = readCapturedAgentSchema("openclaw-agent-schema-v38-fleet.sql");
 const UPSTREAM = readCapturedAgentSchema("openclaw-agent-schema-v39.sql");
-const WITH_AUTHORITY = `${UPSTREAM}\n${sessionRecipientAuthoritySchemaSql(OPENCLAW_AGENT_SCHEMA_SQL)}`;
+const AUTHORITY_DDL = sessionRecipientAuthoritySchemaSql(OPENCLAW_AGENT_SCHEMA_SQL);
+const WITH_AUTHORITY = `${UPSTREAM}\n${AUTHORITY_DDL}`;
+// Upstream's 40 and 41 as U13 and U14 wrote them, and the jump-13 candidate's 41 (d15065f6a6).
+const UPSTREAM40 = readCapturedAgentSchema("openclaw-agent-schema-v40.sql");
+const UPSTREAM41 = readCapturedAgentSchema("openclaw-agent-schema-v41.sql");
+const JUMP13 = readCapturedAgentSchema("openclaw-agent-schema-v41-jump13.sql");
 const AUTHORITY_ROW = {
   session_key: "agent:main:fleet-authority",
   epoch: "88888888-8888-4888-8888-888888888888",
@@ -139,6 +147,7 @@ const SHAPES = [
       "schema_meta",
       "session_creation_operations",
       "session_recipient_authority",
+      "session_transcript_active_event_facts",
       "transcript_events",
     ],
   },
@@ -147,7 +156,12 @@ const SHAPES = [
     ddl: UPSTREAM,
     version: 39,
     authority: false,
-    scope: ["schema_meta", "session_creation_operations", "session_recipient_authority"],
+    scope: [
+      "schema_meta",
+      "session_creation_operations",
+      "session_recipient_authority",
+      "session_transcript_active_event_facts",
+    ],
   },
 ] as const;
 
@@ -175,7 +189,7 @@ async function runDoctor(env: NodeJS.ProcessEnv, pathname: string, foundVersion:
 }
 
 it.each(SHAPES)(
-  "takes the $shape store to 41 through Doctor and restores it from its declared backup",
+  "takes the $shape store to 42 through Doctor and restores it from its declared backup",
   async ({ ddl, version, authority, scope }) => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
       openOpenClawStateDatabase({ env: state.env });
@@ -194,7 +208,7 @@ it.each(SHAPES)(
       });
       expect(database.prepare("PRAGMA integrity_check").all()).toEqual([{ integrity_check: "ok" }]);
 
-      // A bridged store reaches the same Doctor backfill as any other 41.
+      // A bridged store reaches the same Doctor backfill as any other 42.
       const backfill = await migrateSessionColdNavigation({ env: state.env });
       expect(backfill.warnings).toEqual([]);
       expect(database.prepare("SELECT session_id, seq FROM transcript_events").all()).toEqual([
@@ -215,10 +229,60 @@ it.each(SHAPES)(
   },
 );
 
+// Ronan's j14 ruling: the fleet's 38 DDL stamped 39 and the jump-13 41 migrate by their markers.
+// Their crossing runs upstream steps below the marker's declared scope, so Doctor's version phase
+// saves an exact full image and writes nothing; the schema owner then migrates on open.
+it.each([
+  { shape: "fleet-shaped 39", ddl: FLEET, version: 39 },
+  { shape: "jump-13 41", ddl: JUMP13, version: 41 },
+] as const)(
+  "keeps an exact full image of the $shape store through Doctor, then migrates it to 42",
+  async ({ ddl, version }) => {
+    await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+      openOpenClawStateDatabase({ env: state.env });
+      const pathname = state.statePath("agents", "main", "agent", "openclaw-agent.sqlite");
+      using database = stage(pathname, ddl, version, true);
+      const original = readStore(database);
+
+      await runDoctor(state.env, pathname, version);
+      await closeOpenClawAgentDatabasesAsync();
+      // The full-image path backs up only; the store is untouched until its owner opens it.
+      expect(readStore(database)).toEqual(original);
+      const backups = fs
+        .readdirSync(path.dirname(pathname))
+        .filter((name) => name.startsWith(`${path.basename(pathname)}.pre-startup-migration-`));
+      expect(backups).toHaveLength(1);
+      expect(backups[0]!.endsWith(".scoped.bak")).toBe(false);
+      using image = new DatabaseSync(path.join(path.dirname(pathname), backups[0]!), {
+        readOnly: true,
+      });
+      expect(readStore(image)).toEqual(original);
+
+      await withAgentDatabaseMaintenanceLease({ env: state.env }, async () => {
+        ensureOpenClawAgentDatabaseSchema(database, {
+          agentId: "main",
+          path: pathname,
+          env: state.env,
+        });
+      });
+      expect(readStore(database)).toMatchObject({
+        userVersion: OPENCLAW_AGENT_SCHEMA_VERSION,
+        schemaVersion: OPENCLAW_AGENT_SCHEMA_VERSION,
+        authority: [AUTHORITY_ROW],
+        sessions: original.sessions,
+      });
+      expect(database.prepare("PRAGMA integrity_check").all()).toEqual([{ integrity_check: "ok" }]);
+      expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    });
+  },
+);
+
 it.each([
   ["a 38 with upstream's widened CHECK", UPSTREAM, 38],
-  ["the earlier candidates' 39", FLEET, 39],
   ["the earlier candidates' 40", WITH_AUTHORITY, 40],
+  // Ronan's j14 ruling: an unknown same-version 41 is refused, never relabelled.
+  ["a 41 with authority and active event facts", `${UPSTREAM41}\n${AUTHORITY_DDL}`, 41],
+  ["a 41 without authority or active event facts", UPSTREAM40, 41],
 ] as const)("refuses %s before any write", async (_shape, ddl, version) => {
   await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
     openOpenClawStateDatabase({ env: state.env });

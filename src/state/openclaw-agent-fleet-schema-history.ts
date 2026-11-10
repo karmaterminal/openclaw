@@ -120,8 +120,8 @@ export function isAgentFleetSchema26Migration(migration: {
  * Whether a pending agent migration starts from a bridged shape that sits below its marker: the
  * fleet-shaped 39 (upstream's 38 plus authority) and jump 13's 41 (upstream's 40 plus authority).
  * Each run also crosses an upstream step its marker says it already holds, outside every declared
- * backup scope, so Doctor must keep a full image for it. An unrecognized shape at 38-41 also
- * keeps a full image; the migration then refuses it.
+ * backup scope, so Doctor must keep a full image for it. An unrecognized shape at 38-41 is
+ * refused here, before any backup or write, with the schema owner's own refusal.
  */
 export function isAgentBridgedSchemaBelowMarkerMigration(migration: {
   kind: "agent" | "state";
@@ -136,11 +136,10 @@ export function isAgentBridgedSchemaBelowMarkerMigration(migration: {
     return false;
   }
   using database = openNodeSqliteDatabase(migration.path, { readOnly: true });
-  let shapeVersion: number | undefined;
-  try {
-    shapeVersion = readAgentBridgedShapeVersion(database, migration.path, migration.foundVersion);
-  } catch {
-    return true;
-  }
+  const shapeVersion = readAgentBridgedShapeVersion(
+    database,
+    migration.path,
+    migration.foundVersion,
+  );
   return shapeVersion !== undefined && shapeVersion < migration.foundVersion;
 }
