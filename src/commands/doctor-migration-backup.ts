@@ -51,7 +51,10 @@ import { DoctorMaintenanceRefusalError } from "../infra/update-doctor-result.js"
 import { OPENCLAW_AGENT_SCHEMA_VERSION } from "../state/openclaw-agent-db-contract.js";
 import { agentEngineInput } from "../state/openclaw-agent-db-engine.js";
 import { invalidateOpenClawAgentDatabaseIntegrityBeforeMutation } from "../state/openclaw-agent-db-lease.js";
-import { isAgentFleetSchema26Migration } from "../state/openclaw-agent-fleet-schema-history.js";
+import {
+  isAgentFleetSchema26Migration,
+  isAgentBridgedSchemaBelowMarkerMigration,
+} from "../state/openclaw-agent-fleet-schema-history.js";
 import type { OpenClawDatabaseSchemaPreflight } from "../state/openclaw-database-preflight.types.js";
 import { getOpenClawDatabaseMaintenanceScope } from "../state/openclaw-state-db-async-lifecycle.js";
 import {
@@ -263,6 +266,7 @@ export async function backupDoctorMigrationDatabases(params: {
       const tables =
         migration &&
         !isAgentFleetSchema26Migration(migration) &&
+        !isAgentBridgedSchemaBelowMarkerMigration(migration) &&
         resolveSchemaMigrationBackupTables(migration);
       if (!tables) {
         migrationTables.clear();

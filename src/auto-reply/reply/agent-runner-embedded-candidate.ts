@@ -244,7 +244,7 @@ export async function runEmbeddedFallbackCandidate(
                   operatorAuthority?.assertCurrent();
                 };
                 try {
-                  const { compactEmbeddedAgentSession } =
+                  const { compactQueuedEmbeddedAgentSession: compactEmbeddedAgentSession } =
                     await import("../../agents/embedded-agent-runner/compact.queued.js");
                   const compactionResult = await compactEmbeddedAgentSession(
                     {

@@ -25,7 +25,7 @@ vi.mock("../../agents/embedded-agent.js", () => ({
 
 // mock-isolation: Compaction is recorded without loading the compaction runtime (context engines, plugins, harness).
 vi.mock("../../agents/embedded-agent-runner/compact.queued.js", () => ({
-  compactEmbeddedAgentSession: mocks.compactEmbeddedAgentSession,
+  compactQueuedEmbeddedAgentSession: mocks.compactEmbeddedAgentSession,
 }));
 
 // mock-isolation: Fixed run params replace the builder, which reads config, channel plugins and secrets.

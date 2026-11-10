@@ -376,7 +376,10 @@ describe("system events (session routing)", () => {
 
   it("strips trace ancestry from activated plugin runtime producers", () => {
     const queueKey = "agent:runtime-trace:main";
-    createRuntimeSystem().enqueueSystemEvent("plugin trace injection", {
+    // Host session-event enqueue is not exercised; the system-event producer must not reach it.
+    createRuntimeSystem(() => {
+      throw new Error("unexpected host session-event enqueue");
+    }).enqueueSystemEvent("plugin trace injection", {
       sessionKey: queueKey,
       traceparent: "00-77777777777777777777777777777777-8888888888888888-01",
     });

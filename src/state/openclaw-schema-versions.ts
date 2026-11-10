@@ -1,7 +1,10 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 
-// v41 (continuation) records durable session-key recipient-authority generations for delayed
-// named returns on top of upstream's v40 (AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION).
+export const AGENT_ACTIVE_EVENT_FACTS_SCHEMA_VERSION = 41;
+
+// v42 (continuation) records durable session-key recipient-authority generations for delayed
+// named returns on top of upstream's v41 (AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION).
+// v41 keeps active transcript byte and dependency facts outside payload overflow chains.
 // v40 commits durable session creation receipts with their original incarnation.
 // v39 retains cold transcript navigation while payloads remain in their verified archives.
 // v38 splits punctuation-joined PostgreSQL full-text tokens like SQLite FTS5.
@@ -11,7 +14,7 @@ import { isRecord } from "@openclaw/normalization-core/record-coerce";
 // v34 aligns non-null PostgreSQL index keys with default query ordering.
 // v33 adds a stored PostgreSQL binary vector candidate projection.
 // v32 replaces the PostgreSQL vector decoder without rewriting canonical rows.
-export const OPENCLAW_AGENT_SCHEMA_VERSION = 41;
+export const OPENCLAW_AGENT_SCHEMA_VERSION = 42;
 
 // v39 retains worker policy and uncertain pause/resume operations across restart.
 // v38 retains repository disk authority and the original authority of pending results.

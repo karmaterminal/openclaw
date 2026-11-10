@@ -647,6 +647,8 @@ describe("runReplyAgent :: pressure warning to post-compaction handoff", () => {
         ...model,
         sessionEntry: crossed,
         thinkLevel: "low",
+        // Upstream now requires the route's catalog; this fixture route has none.
+        thinkingCatalog: undefined,
         senderIsOwner: false,
       });
       withPluginRuntimeGatewayRequestScope(

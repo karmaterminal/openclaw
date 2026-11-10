@@ -22,6 +22,7 @@ describe.skipIf(!connection)("PostgreSQL creation receipt migration", () => {
         version: 39,
         postgresMigrations: [],
       };
+      const target = { ...agentEngineSchema, ...migration.schema, version: 40 };
       using fixture = createPostgresEngineTestFixture({
         directory: dirs.make("creation-receipt-upgrade-"),
         connection: connection!,
@@ -56,14 +57,12 @@ describe.skipIf(!connection)("PostgreSQL creation receipt migration", () => {
       ).toEqual([]);
       const before = original.prepare("SELECT entry_json FROM session_nodes").all();
       fixture.invalidate();
-      const upgraded = fixture.open(agentEngineSchema);
-      // Continuation (karmaterminal): recipient authority (41) follows step 40, so the upgrade
-      // lands on the current schema.
+      const upgraded = fixture.open(target);
       expect(
         upgraded.prepare("SELECT version FROM openclaw_schema_meta WHERE store='agent'").get(),
-      ).toEqual({ version: agentEngineSchema.version });
+      ).toEqual({ version: 40 });
       expect(upgraded.prepare("SELECT schema_version FROM schema_meta").get()).toEqual({
-        schema_version: agentEngineSchema.version,
+        schema_version: 40,
       });
       expect(upgraded.prepare("SELECT entry_json FROM session_nodes").all()).toEqual(before);
       expect(upgraded.prepare("SELECT * FROM session_creation_operations").all()).toEqual([]);
@@ -89,7 +88,7 @@ describe.skipIf(!connection)("PostgreSQL creation receipt migration", () => {
           Date.now() + 300000,
         );
       fixture.invalidate();
-      const reopened = fixture.open(agentEngineSchema);
+      const reopened = fixture.open(target);
       expect(
         reopened
           .prepare("SELECT session_id,lifecycle_revision FROM session_creation_operations")

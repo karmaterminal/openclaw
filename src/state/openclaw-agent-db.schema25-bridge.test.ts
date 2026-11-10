@@ -1,7 +1,7 @@
 // Agent schema 25 has two histories. Upstream's schema 25 retired the canonical
 // validation triggers; the fleet's earlier (unreleased) schema 25 instead added
-// session recipient authority and kept those triggers. Schema 41 must tell them
-// apart by shape, migrate each to the same schema-41 database, and refuse a mix.
+// session recipient authority and kept those triggers. Schema 42 must tell them
+// apart by shape, migrate each to the same schema-42 database, and refuse a mix.
 import { constants } from "node:sqlite";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { cleanupTempDirs, makeTempDir } from "../../test/helpers/temp-dir.js";
@@ -84,9 +84,9 @@ afterEach(() => {
   closeOpenClawStateDatabaseForTest();
 });
 
-describe("agent schema 25 → 41 bridge", () => {
-  it("is schema 41", () => {
-    expect(OPENCLAW_AGENT_SCHEMA_VERSION).toBe(41);
+describe("agent schema 25 → 42 bridge", () => {
+  it("is schema 42", () => {
+    expect(OPENCLAW_AGENT_SCHEMA_VERSION).toBe(42);
   });
 
   it("migrates the fleet's recipient-authority schema 25, retiring the legacy triggers and keeping authority rows", async () => {
@@ -102,15 +102,15 @@ describe("agent schema 25 → 41 bridge", () => {
     await migrateAgentDatabase(env, tempDirs);
 
     expect(readShape(databasePath)).toEqual({
-      userVersion: 41,
-      schemaVersion: 41,
+      userVersion: 42,
+      schemaVersion: 42,
       authorityTable: true,
       legacyTriggers: false,
       predicateColumns: "all",
       authorityRows: [{ session_key: AUTHORITY.sessionKey, epoch: AUTHORITY.epoch }],
     });
     // Ordinary opens accept the migrated file.
-    expect(readSqliteUserVersion(openAgentDatabase(env, tempDirs).db)).toBe(41);
+    expect(readSqliteUserVersion(openAgentDatabase(env, tempDirs).db)).toBe(42);
   });
 
   it("migrates upstream's canonical-writer schema 25 by adding predicates and recipient authority", async () => {
@@ -126,8 +126,8 @@ describe("agent schema 25 → 41 bridge", () => {
     await migrateAgentDatabase(env, tempDirs);
 
     expect(readShape(databasePath)).toEqual({
-      userVersion: 41,
-      schemaVersion: 41,
+      userVersion: 42,
+      schemaVersion: 42,
       authorityTable: true,
       legacyTriggers: false,
       predicateColumns: "all",
@@ -135,7 +135,7 @@ describe("agent schema 25 → 41 bridge", () => {
     });
   });
 
-  it("migrates schema 24 through every step to schema 41", async () => {
+  it("migrates schema 24 through every step to schema 42", async () => {
     const env = { OPENCLAW_STATE_DIR: makeTempDir(tempDirs, "schema24-") };
     const databasePath = stageAgentDatabase(env, "schema-24");
     expect(readShape(databasePath)).toMatchObject({
@@ -148,8 +148,8 @@ describe("agent schema 25 → 41 bridge", () => {
     await migrateAgentDatabase(env, tempDirs);
 
     expect(readShape(databasePath)).toEqual({
-      userVersion: 41,
-      schemaVersion: 41,
+      userVersion: 42,
+      schemaVersion: 42,
       authorityTable: true,
       legacyTriggers: false,
       predicateColumns: "all",
@@ -157,14 +157,14 @@ describe("agent schema 25 → 41 bridge", () => {
     });
   });
 
-  it("reopens a migrated schema 41 database unchanged", async () => {
+  it("reopens a migrated schema 42 database unchanged", async () => {
     const env = { OPENCLAW_STATE_DIR: makeTempDir(tempDirs, "schema25-reopen-") };
     const databasePath = stageAgentDatabase(env, "fleet-25");
     await migrateAgentDatabase(env, tempDirs);
     const migrated = readShape(databasePath);
 
     await migrateAgentDatabase(env, tempDirs);
-    expect(readSqliteUserVersion(openAgentDatabase(env, tempDirs).db)).toBe(41);
+    expect(readSqliteUserVersion(openAgentDatabase(env, tempDirs).db)).toBe(42);
     closeOpenClawAgentDatabasesForTest();
 
     expect(readShape(databasePath)).toEqual(migrated);
@@ -192,7 +192,7 @@ describe("agent schema 25 → 41 bridge", () => {
     let reachedPublication = false;
     // Fail at the final marker publication, after every migration step has run.
     database.setAuthorizer((action, name, value) => {
-      if (action === constants.SQLITE_PRAGMA && name === "user_version" && value === "41") {
+      if (action === constants.SQLITE_PRAGMA && name === "user_version" && value === "42") {
         reachedPublication = true;
         return constants.SQLITE_DENY;
       }
@@ -227,8 +227,8 @@ describe("agent schema 25 → 41 bridge", () => {
       await migrateAgentDatabase(env, tempDirs);
 
       expect(readShape(databasePath)).toEqual({
-        userVersion: 41,
-        schemaVersion: 41,
+        userVersion: 42,
+        schemaVersion: 42,
         authorityTable: true,
         legacyTriggers: false,
         predicateColumns: "all",
@@ -241,7 +241,7 @@ describe("agent schema 25 → 41 bridge", () => {
       expect(readCapturedSessionStartedAt(databasePath)).toBe(
         CAPTURED_SESSION.entry.sessionStartedAt,
       );
-      expect(readSqliteUserVersion(openAgentDatabase(env, tempDirs).db)).toBe(41);
+      expect(readSqliteUserVersion(openAgentDatabase(env, tempDirs).db)).toBe(42);
     });
 
     it("migrates a captured upstream schema 25 database by adding predicates and recipient authority", async () => {
@@ -257,8 +257,8 @@ describe("agent schema 25 → 41 bridge", () => {
       await migrateAgentDatabase(env, tempDirs);
 
       expect(readShape(databasePath)).toEqual({
-        userVersion: 41,
-        schemaVersion: 41,
+        userVersion: 42,
+        schemaVersion: 42,
         authorityTable: true,
         legacyTriggers: false,
         predicateColumns: "all",
@@ -271,7 +271,7 @@ describe("agent schema 25 → 41 bridge", () => {
       expect(readCapturedSessionStartedAt(databasePath)).toBe(
         CAPTURED_SESSION.entry.sessionStartedAt,
       );
-      expect(readSqliteUserVersion(openAgentDatabase(env, tempDirs).db)).toBe(41);
+      expect(readSqliteUserVersion(openAgentDatabase(env, tempDirs).db)).toBe(42);
     });
 
     it.each(["fleet", "upstream"] as const)(

@@ -177,7 +177,7 @@ export async function spawnSubagentDirect(
       sandboxMode,
       swarmEnabled: swarmConfig.enabled,
       requesterSandboxed: ctx.sandboxed,
-      creatorProfileId,
+      spawnedBy: { profileId: creatorProfileId, operatorScopes: operatorAuthority?.scopes },
     });
     if (!childPlan.ok) {
       return childPlan.result;
@@ -245,6 +245,7 @@ export async function spawnSubagentDirect(
           cleanupUnlaunchedSession = () => cleanupCreatedSession(threadBindingReady);
         },
         cfg,
+        projectRequester: childPlan.resolved.projectRequester,
         requesterAgentId,
         targetAgentId,
         childSessionKey,

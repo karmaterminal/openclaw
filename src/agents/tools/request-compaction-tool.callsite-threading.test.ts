@@ -95,7 +95,7 @@ async function drainRequestCompactionMicrotasks(): Promise<void> {
 
 // mock-isolation: Compaction params are captured without loading the compaction runtime (context engines, plugins, harness).
 vi.mock("../../agents/embedded-agent-runner/compact.queued.js", () => ({
-  compactEmbeddedAgentSession: (params: CapturedCompactParams) =>
+  compactQueuedEmbeddedAgentSession: (params: CapturedCompactParams) =>
     compactEmbeddedAgentSessionMock(params),
 }));
 
@@ -132,7 +132,7 @@ function buildTriggerCompactionClosure(
   return async (request = {}) => {
     try {
       // Inline the import pattern from the call sites
-      const { compactEmbeddedAgentSession } =
+      const { compactQueuedEmbeddedAgentSession: compactEmbeddedAgentSession } =
         await import("../../agents/embedded-agent-runner/compact.queued.js");
 
       // Thread the session's active provider/model through so volitional

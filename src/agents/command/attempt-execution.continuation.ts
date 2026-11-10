@@ -93,7 +93,7 @@ export function startAttemptContinuation(params: AttemptContinuationParams) {
                 params.opts.operatorAuthority?.assertCurrent();
               };
               try {
-                const { compactEmbeddedAgentSession } =
+                const { compactQueuedEmbeddedAgentSession: compactEmbeddedAgentSession } =
                   await import("../embedded-agent-runner/compact.queued.js");
                 const result = await compactEmbeddedAgentSession(
                   {

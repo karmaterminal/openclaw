@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { openNodeSqliteDatabase } from "../infra/node-sqlite.js";
 import {
   AGENT_JSON_PREDICATE_SCHEMA_VERSION,
+  AGENT_TEXT_SEARCH_SCHEMA_VERSION,
   CANONICAL_SESSION_WRITER_VALIDATION_SCHEMA_VERSION,
 } from "./openclaw-agent-db-contract.js";
 import {
@@ -15,7 +16,10 @@ import {
   migrateSessionRecipientAuthorityInTransaction,
   readSqliteTableColumns,
 } from "./openclaw-agent-db-session-migrations.js";
-import { planAgentFleet38Bridge } from "./openclaw-agent-fleet38-bridge.js";
+import {
+  planAgentFleet38Bridge,
+  readAgentBridgedShapeVersion,
+} from "./openclaw-agent-fleet38-bridge.js";
 import { AGENT_JSON_PREDICATE_COLUMNS } from "./openclaw-agent-json-predicate-schema.js";
 import {
   AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
@@ -42,7 +46,7 @@ type AgentFleetSchemaHistoryPlan = {
   migrateInTransaction: (db: DatabaseSync) => void;
 };
 
-/** Reads which history a database at schema 25, 26 or 38-40 follows; mixed shapes are refused. */
+/** Reads which history a database at schema 25, 26 or 38-41 follows; mixed shapes are refused. */
 export function planAgentFleetSchemaHistory(
   db: DatabaseSync,
   pathname: string,
@@ -60,7 +64,11 @@ export function planAgentFleetSchemaHistory(
     readOpenClawAgentSchema26Shape(db, pathname) === "recipient-authority";
   // Frond (karmaterminal): fleet-38 bridge.
   const fleet38 = planAgentFleet38Bridge(db, pathname, previousVersion, targetVersion);
-  const shapeVersion = fleetSchema25 || fleetSchema26 ? previousVersion - 1 : previousVersion;
+  // The fleet's 38 DDL (at 38 or 39) physically holds upstream's 38, jump 13's 41 upstream's 40.
+  const shapeVersion =
+    fleetSchema25 || fleetSchema26
+      ? previousVersion - 1
+      : (fleet38?.shapeVersion ?? previousVersion);
   const addsRecipientAuthority =
     reachesAuthority && previousVersion < AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION;
   return {
@@ -106,4 +114,33 @@ export function isAgentFleetSchema26Migration(migration: {
     readSqliteTableColumns(database, RECIPIENT_AUTHORITY_TABLE) !== null &&
     !AGENT_JSON_PREDICATE_COLUMNS.session_nodes.some((column) => sessionColumns?.has(column))
   );
+}
+
+/**
+ * Whether a pending agent migration starts from a bridged shape that sits below its marker: the
+ * fleet-shaped 39 (upstream's 38 plus authority) and jump 13's 41 (upstream's 40 plus authority).
+ * Each run also crosses an upstream step its marker says it already holds, outside every declared
+ * backup scope, so Doctor must keep a full image for it. An unrecognized shape at 38-41 also
+ * keeps a full image; the migration then refuses it.
+ */
+export function isAgentBridgedSchemaBelowMarkerMigration(migration: {
+  kind: "agent" | "state";
+  path: string;
+  foundVersion: number;
+}): boolean {
+  if (
+    migration.kind !== "agent" ||
+    migration.foundVersion < AGENT_TEXT_SEARCH_SCHEMA_VERSION ||
+    migration.foundVersion >= AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION
+  ) {
+    return false;
+  }
+  using database = openNodeSqliteDatabase(migration.path, { readOnly: true });
+  let shapeVersion: number | undefined;
+  try {
+    shapeVersion = readAgentBridgedShapeVersion(database, migration.path, migration.foundVersion);
+  } catch {
+    return true;
+  }
+  return shapeVersion !== undefined && shapeVersion < migration.foundVersion;
 }

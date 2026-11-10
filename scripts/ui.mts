@@ -19,6 +19,7 @@ import {
   controlUiBuildSiblingPid,
 } from "./lib/output-root-guard.mjs";
 import { prepareControlUiSettings } from "./lib/prepare-control-ui-settings.mts";
+import { resolveVitestNodeArgs } from "./lib/vitest-node-args.mts";
 import { createPnpmRunnerSpawnSpec } from "./pnpm-runner.mts";
 import { resolveNodePackageBin } from "./run-node-package-bin.mts";
 
@@ -615,7 +616,12 @@ export async function runUiCli(argv: string[] = process.argv.slice(2)): Promise<
   const env = action === "build" ? resolveUiBuildEnvironment() : process.env;
   const toolCall = resolveSpawnCall(
     process.execPath,
-    [resolveNodePackageBin(tool, requireFromUi), ...args, ...rest],
+    [
+      ...(action === "test" && !process.versions.bun ? resolveVitestNodeArgs(env) : []),
+      resolveNodePackageBin(tool, requireFromUi),
+      ...args,
+      ...rest,
+    ],
     env,
   );
   if (action === "build") {

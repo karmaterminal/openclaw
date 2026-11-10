@@ -436,7 +436,8 @@ export function createStreamingReplyResolver(): StreamingReplyResolver {
       text === undefined &&
       params.evtType !== "text_end" &&
       params.parsedStreamDirectives &&
-      params.parsedStreamDirectives.text === params.visibleDelta &&
+      hasDirectiveMarker &&
+      params.parsedStreamDirectives.text.trim() === params.visibleDelta.trim() &&
       params.appendDelta !== null &&
       params.previousCleaned &&
       params.previousText.length > params.previousCleaned.length &&

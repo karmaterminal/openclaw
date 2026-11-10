@@ -48,7 +48,7 @@ vi.mock("../../auto-reply/reply/agent-runner-post-compaction-release.js", async 
 // driven without performing a real compaction.
 // mock-isolation: Compaction is recorded without loading the compaction runtime (context engines, plugins, harness).
 vi.mock("../embedded-agent-runner/compact.queued.js", () => ({
-  compactEmbeddedAgentSession: compactEmbeddedAgentSessionMock,
+  compactQueuedEmbeddedAgentSession: compactEmbeddedAgentSessionMock,
 }));
 
 // mock-isolation: Provider ids normalize locally; the real module imports the catalog lookup and model config resolvers.

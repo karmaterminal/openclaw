@@ -119,8 +119,9 @@ describe.skipIf(!connection)("shared-state database port", () => {
     expect(await rows(`SELECT sequence FROM "${namespace}".audit_events`)).toEqual([
       { sequence: "9007199254740993" },
     ]);
-    // Continuation (karmaterminal): the first-use continuation_records custody table ports too.
-    expect(Object.keys(staged.tables)).toHaveLength(137);
+    // Continuation (karmaterminal): the first-use continuation_records custody table ports too,
+    // alongside upstream's device_pairing_browser_requests (136 -> 138).
+    expect(Object.keys(staged.tables)).toHaveLength(138);
     expect(Object.keys(staged.tables)).toContain("continuation_records");
     expect(
       decodeWork(

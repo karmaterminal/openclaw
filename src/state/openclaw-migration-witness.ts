@@ -11,6 +11,7 @@ import {
 import { parseSqliteTableDefinition } from "../infra/sqlite-schema-contract-assembly.js";
 import { runSqliteReadSnapshotSync } from "../infra/sqlite-transaction.js";
 import { readSqliteUserVersion } from "../infra/sqlite-user-version.js";
+import { AGENT_ACTIVE_EVENT_FACTS_SCHEMA_VERSION } from "./openclaw-agent-active-event-facts-schema.js";
 import { LEGACY_CANONICAL_VALIDATION_TRIGGER_NAMES } from "./openclaw-agent-canonical-validation-migration.js";
 import { withoutAgentColdNavigation } from "./openclaw-agent-cold-navigation-schema.js";
 import { AGENT_CREATION_OPERATIONS_SCHEMA_VERSION } from "./openclaw-agent-creation-operations-schema.js";
@@ -29,6 +30,7 @@ import { assertMigrationWitnessRegistryPreserved } from "./openclaw-migration-wi
 import {
   AGENT_WITNESS_SCHEMA_VERSIONS,
   assertAgentWitnessHistoricalSchema,
+  isJump13AuthorityWitness,
   omitAddedRecipientAuthority,
   RECIPIENT_AUTHORITY_TABLE,
 } from "./openclaw-migration-witness.continuation.js";
@@ -108,6 +110,10 @@ function parseOpenClawMigrationWitness(value: unknown): OpenClawMigrationWitness
           "transcript_events",
           "session_key_contract",
           "session_canonical_validation_pending",
+          ...(witness.schemaVersion >= AGENT_ACTIVE_EVENT_FACTS_SCHEMA_VERSION &&
+          !isJump13AuthorityWitness(witness)
+            ? ["session_transcript_active_event_facts"]
+            : []),
           ...(witness.schemaVersion >= AGENT_CREATION_OPERATIONS_SCHEMA_VERSION
             ? ["session_creation_operations"]
             : []),
@@ -484,14 +490,16 @@ export function captureOpenClawMigrationWitness(
         continue;
       }
       schemaHash.update(JSON.stringify(object)).update("\n");
-      // Schemas 37 and 40 add empty companion tables. Admission validates their canonical
+      // Schemas 37, 40 and 41 add empty companion tables. Admission validates their canonical
       // definitions; the crossing comparison below still rejects added rows.
       if (
         role === "agent" &&
         ((schemaVersion >= AGENT_COLD_ARCHIVE_CHUNKS_SCHEMA_VERSION &&
           object.tbl_name === "session_transcript_cold_archive_chunks") ||
           (schemaVersion >= AGENT_CREATION_OPERATIONS_SCHEMA_VERSION &&
-            object.tbl_name === "session_creation_operations"))
+            object.tbl_name === "session_creation_operations") ||
+          (schemaVersion >= AGENT_ACTIVE_EVENT_FACTS_SCHEMA_VERSION &&
+            object.tbl_name === "session_transcript_active_event_facts"))
       ) {
         continue;
       }
@@ -678,7 +686,9 @@ export function assertOpenClawMigrationWitnessPreserved(
             ((original.schemaVersion < AGENT_COLD_ARCHIVE_CHUNKS_SCHEMA_VERSION &&
               table.name === "session_transcript_cold_archive_chunks") ||
               (original.schemaVersion < AGENT_CREATION_OPERATIONS_SCHEMA_VERSION &&
-                table.name === "session_creation_operations")) &&
+                table.name === "session_creation_operations") ||
+              (original.schemaVersion < AGENT_ACTIVE_EVENT_FACTS_SCHEMA_VERSION &&
+                table.name === "session_transcript_active_event_facts")) &&
             table.rowCount === 0
           ),
       )
@@ -709,7 +719,7 @@ export function assertOpenClawMigrationWitnessPreserved(
     }
     currentTables.delete(table.name);
   }
-  omitAddedRecipientAuthority(currentTables, crossing);
+  omitAddedRecipientAuthority(currentTables, crossing, original);
   if (currentTables.size > 0) {
     throw new Error("Migration added unclassified database content");
   }

@@ -1,4 +1,8 @@
 import { extractSqliteTableSchema } from "../infra/sqlite-schema-sql.js";
+import {
+  AGENT_ACTIVE_EVENT_FACTS_SCHEMA_VERSION,
+  withoutAgentActiveEventFacts,
+} from "./openclaw-agent-active-event-facts-schema.js";
 import { withoutAgentColdArchiveChunks } from "./openclaw-agent-cold-archive-chunks-schema.js";
 import { withoutAgentColdNavigation } from "./openclaw-agent-cold-navigation-schema.js";
 import {
@@ -321,8 +325,11 @@ function withLegacyAgentWriteLayout(schema: string): string {
     );
 }
 
-const AGENT_SCHEMA_BEFORE_CREATION_OPERATIONS =
-  withoutAgentCreationOperations(OPENCLAW_AGENT_SCHEMA_SQL);
+const AGENT_SCHEMA_BEFORE_ACTIVE_EVENT_FACTS =
+  withoutAgentActiveEventFacts(OPENCLAW_AGENT_SCHEMA_SQL);
+const AGENT_SCHEMA_BEFORE_CREATION_OPERATIONS = withoutAgentCreationOperations(
+  AGENT_SCHEMA_BEFORE_ACTIVE_EVENT_FACTS,
+);
 
 // Same-version schema-39 additions must not rewrite earlier admission contracts.
 const AGENT_SCHEMA_BEFORE_SESSION_DELETION_INDEXES =
@@ -338,7 +345,9 @@ export function getOpenClawAgentMigrationSchema(targetVersion: number): string {
       ? AGENT_SCHEMA_BEFORE_SESSION_DELETION_INDEXES
       : targetVersion < AGENT_CREATION_OPERATIONS_SCHEMA_VERSION
         ? AGENT_SCHEMA_BEFORE_CREATION_OPERATIONS
-        : OPENCLAW_AGENT_SCHEMA_SQL;
+        : targetVersion < AGENT_ACTIVE_EVENT_FACTS_SCHEMA_VERSION
+          ? AGENT_SCHEMA_BEFORE_ACTIVE_EVENT_FACTS
+          : OPENCLAW_AGENT_SCHEMA_SQL;
   // Continuation's recipient authority (AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION) sits above every
   // upstream step.
   const authoritySchemaSql =
