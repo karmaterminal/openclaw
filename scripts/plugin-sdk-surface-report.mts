@@ -314,9 +314,9 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +2: settled execution lifecycle classifiers on agent-lifecycle (#192413).
       // +2: channel display-mention and mention-adapter types (#192473).
       // +1: shared plugin-owned Control UI message translation.
+      // +1: GatewayIngressPrincipalRecovery on gateway-ingress (#193098).
       // +11: the continuation feature's public contracts (runtime, trace, channel-ingress,
       // system-event, diagnostics), carried unchanged on upstream's 3865.
-      // +1 (upstream): GatewayIngressPrincipalRecovery on gateway-ingress (#193098).
       3876,
       env,
     ),
