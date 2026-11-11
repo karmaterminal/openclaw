@@ -1,0 +1,2 @@
+# Jump 14 update admission guard: openclaw-schema-versions.test.ts adds 19 lines to ensure package.json advertises the agent schema version implemented by the code. At 6909b643c731, check:test-lines-ratchet --base 414d836ca261 --no-merge-base measures 6,742,771 lines against a 6,742,752 ceiling (over by 19); the upstream carry nets to zero against its own allocation. Keep the manifest/code consistency check rather than losing regression coverage.
+19
