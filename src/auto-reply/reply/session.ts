@@ -127,7 +127,7 @@ import type {
   SessionInitResult,
 } from "./session-init.types.js";
 import {
-  assertReplySessionInitializationAllowed,
+  assertSessionInitAllowed,
   prepareReplySessionInitialization,
   resolveInitSessionStateAttemptContext,
   resolveInitializationSessionReader,
@@ -385,9 +385,8 @@ async function initSessionStateAttemptLocked(
   });
   const entry = initializationSnapshot.currentEntry;
   const parentSessionKey = normalizeOptionalString(ctx.ParentSessionKey);
-  assertReplySessionInitializationAllowed(sessionKey, entry, {
-    providerReviewAcknowledgment: params.providerReviewAcknowledgment,
-  });
+  const resetAdmission = { ctx, resetTriggered, resetAuthorized, isSystemEvent };
+  assertSessionInitAllowed(sessionKey, entry, params.providerReviewAcknowledgment, resetAdmission);
   // Locked model selection is coupled to the current native session id. Reject before
   // lifecycle cleanup so a reset cannot detach the durable harness binding.
   const lockedModelSelection = isModelSelectionLocked(entry);

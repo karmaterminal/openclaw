@@ -25,6 +25,7 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
 import { isSubagentSessionKey } from "../sessions/session-key-utils.js";
 import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
+import { deliverRestartSentinelEvent } from "./server-restart-sentinel-session-event.js";
 import { findCanonicalStoreMatch } from "./session-utils-store-selection.js";
 import { resolveGatewaySessionStoreTargetInWorker } from "./session-utils-store-worker.js";
 
@@ -187,13 +188,64 @@ export async function deliverQueuedSessionDeliveryCore(params: {
     });
     return;
   }
+  if (
+    params.entry.kind === "agentTurn" &&
+    params.entry.idempotencyKey?.startsWith("restart-sentinel:")
+  ) {
+    const cfg = getRuntimeConfig();
+    const { agentId, store, storeKeys, canonicalKey } =
+      await resolveGatewaySessionStoreTargetInWorker({
+        cfg,
+        key: params.entry.sessionKey,
+        env: params.queueContext.environment,
+        assertActive: () => params.queueContext.admission.assertCurrent(),
+      });
+    params.queueContext.admission.assertCurrent();
+    const current = findCanonicalStoreMatch(store, storeKeys)?.entry;
+    if (params.entry.expectedSessionId && current?.sessionId !== params.entry.expectedSessionId) {
+      log.warn("restart continuation skipped: session changed", {
+        sessionKey: canonicalKey,
+        queueId: params.entry.id,
+      });
+      return;
+    }
+    await deliverRestartSentinelEvent(params.entry, canonicalKey, agentId, params.queueContext);
+    return;
+  }
   if (params.entry.kind !== "systemEvent") {
     return;
   }
   const isContinuationReturn = params.entry.idempotencyKey?.startsWith("continuation-return:");
   // A continuation return settles only on prompt adoption, whether or not it
   // carries recipient authority; rows written before that rule replay the same way.
+  const isRestartSentinelEvent =
+    params.entry.idempotencyKey?.startsWith("restart-sentinel:") ||
+    params.entry.idempotencyKey?.startsWith("restart-sentinel-wake:");
   const awaitsTurnAdoption = params.entry.awaitPromptAdoption === true || isContinuationReturn;
+  if (isRestartSentinelEvent) {
+    const cfg = getRuntimeConfig();
+    const { agentId, canonicalKey, store, storeKeys } =
+      await resolveGatewaySessionStoreTargetInWorker({
+        cfg,
+        key: params.entry.sessionKey,
+        env: params.queueContext.environment,
+        assertActive: () => params.queueContext.admission.assertCurrent(),
+        ...(params.entry.agentId ? { agentId: params.entry.agentId } : {}),
+      });
+    params.queueContext.admission.assertCurrent();
+    if (
+      params.entry.expectedSessionId &&
+      findCanonicalStoreMatch(store, storeKeys)?.entry?.sessionId !== params.entry.expectedSessionId
+    ) {
+      log.warn("restart continuation skipped: session changed", {
+        sessionKey: canonicalKey,
+        queueId: params.entry.id,
+      });
+      return;
+    }
+    await deliverRestartSentinelEvent(params.entry, canonicalKey, agentId, params.queueContext);
+    return;
+  }
   if (!awaitsTurnAdoption) {
     // A plain legacy restart notice carries no continuation custody (#185730: inert).
     return;

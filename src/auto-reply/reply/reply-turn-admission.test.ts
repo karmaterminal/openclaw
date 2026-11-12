@@ -7,6 +7,10 @@ import {
   loadSessionEntry,
   replaceSessionEntry,
 } from "../../config/sessions/session-accessor.js";
+import {
+  resolveSqliteScope,
+  toDatabaseOptions,
+} from "../../config/sessions/session-accessor.sqlite-scope.js";
 import type { InternalSessionEntry as SessionEntry } from "../../config/sessions/types.js";
 import { resetDiagnosticRunActivityForTest } from "../../logging/diagnostic-run-activity.js";
 import {
@@ -24,6 +28,7 @@ import {
   retireSessionControllerInput,
 } from "../../sessions/session-controller.mailbox.js";
 import { testing } from "../../sessions/session-controller.test-support.js";
+import { openOpenClawAgentDatabase } from "../../state/openclaw-agent-db.js";
 import { runWithReplyOperationLifecycleAdmission } from "./reply-turn-admission.js";
 import { admitTestReplyTurn, createSessionStore } from "./reply-turn-admission.test-support.js";
 
@@ -133,6 +138,46 @@ it("rejects a reply when an archive commits before admission", async () => {
     retryable: false,
     message: `Session "${sessionKey}" is archived. Restore it before starting new work.`,
   });
+});
+it("refuses a retired restart source and admits only an authorized explicit reset", async () => {
+  const storePath = store();
+  const db = openOpenClawAgentDatabase(
+    toDatabaseOptions(resolveSqliteScope({ sessionKey, storePath })),
+  ).db;
+  const row = db
+    .prepare("SELECT entry_json FROM session_nodes WHERE session_key = ?")
+    .get(sessionKey) as {
+    entry_json: string;
+  };
+  db.prepare("UPDATE session_nodes SET entry_json = ? WHERE session_key = ?").run(
+    JSON.stringify({
+      ...JSON.parse(row.entry_json),
+      mainRestartRecovery: {
+        cycleId: "cycle-1",
+        tombstone: { reason: "automatic replay refused" },
+      },
+    }),
+    sessionKey,
+  );
+  await expect(admitStored(storePath)).rejects.toMatchObject({
+    code: "SESSION_RESTART_RECOVERY_TOMBSTONE",
+  });
+  await expect(admitStored(storePath, { resetTriggered: true })).rejects.toMatchObject({
+    code: "SESSION_RESTART_RECOVERY_TOMBSTONE",
+  });
+  const admitted = owned(
+    await admitStored(storePath, {
+      resetTriggered: true,
+      allowRestartTombstoneReset: true,
+    }),
+  );
+  const persisted = db
+    .prepare("SELECT entry_json FROM session_nodes WHERE session_key = ?")
+    .get(sessionKey) as { entry_json: string };
+  expect(JSON.parse(persisted.entry_json).mainRestartRecovery?.tombstone?.reason).toBe(
+    "automatic replay refused",
+  );
+  admitted.complete();
 });
 it("rejects a reply when deletion commits before admission", async () => {
   const storePath = store();

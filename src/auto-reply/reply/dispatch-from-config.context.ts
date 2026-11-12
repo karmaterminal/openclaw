@@ -183,6 +183,7 @@ export async function resolveDispatchResetAdmission(params: {
   sessionKey?: string;
 }): Promise<{
   resetTriggered: boolean;
+  allowRestartTombstoneReset: boolean;
 }> {
   const { ctx, entry } = params;
   const commandTarget = resolveCommandTurnTargetSessionKey(ctx);
@@ -214,5 +215,6 @@ export async function resolveDispatchResetAdmission(params: {
   }
   return {
     resetTriggered,
+    allowRestartTombstoneReset: resetTriggered,
   };
 }

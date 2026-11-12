@@ -756,8 +756,15 @@ export type InternalSessionEntryCore = SessionEntryCore & {
     string,
     import("../../gateway/operator-run-recovery-source.codec.js").OperatorRunRecoverySnapshot
   >;
-  /** Upgrade-only cycle; remove once stable includes the restart redesign (#185730). */
-  mainRestartRecovery?: { cycleId: string };
+  /** Upgrade-only cycle. A terminal tombstone must survive admission until an explicit successor. */
+  mainRestartRecovery?: {
+    cycleId: string;
+    tombstone?: {
+      reason: string;
+      recoveredSessionId?: string;
+      recoveredSessionKey?: string;
+    };
+  };
 };
 
 export interface InternalSessionEntry extends InternalSessionEntryCore {}
