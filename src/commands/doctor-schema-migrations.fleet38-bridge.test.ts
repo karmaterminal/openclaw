@@ -10,6 +10,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { zstdCompressSync } from "node:zlib";
 import { expect, it } from "vitest";
+import { resolveSessionWorkStartBlock } from "../config/sessions/session-work-start.js";
 import { listDirectoryTreeStrictSync } from "../infra/directory-walk.js";
 import { inspectScopedMigrationSnapshot } from "../infra/sqlite-migration-scoped-snapshot.js";
 import { migrateSessionColdNavigation } from "../infra/state-migrations.cold-navigation.js";
@@ -204,6 +205,24 @@ it.each(SHAPES)(
       openOpenClawStateDatabase({ env: state.env });
       const pathname = state.statePath("agents", "main", "agent", "openclaw-agent.sqlite");
       using database = stage(pathname, ddl, version, authority);
+      if (authority) {
+        database
+          .prepare("UPDATE session_nodes SET entry_json = ? WHERE session_key = 'agent:main:main'")
+          .run(
+            JSON.stringify({
+              sessionId: "kept",
+              updatedAt: 1,
+              mainRestartRecovery: {
+                cycleId: "old-cycle",
+                tombstone: {
+                  reason: "delegated recovery sender authority is unavailable",
+                  recoveredSessionId: "successor-id",
+                  recoveredSessionKey: "agent:main:successor",
+                },
+              },
+            }),
+          );
+      }
       const original = readStore(database);
 
       expect(await runDoctor(state.env, pathname, version)).toEqual(scope);
@@ -215,6 +234,21 @@ it.each(SHAPES)(
         authority: authority ? [AUTHORITY_ROW] : [],
         sessions: original.sessions,
       });
+      if (authority) {
+        const entry = JSON.parse(
+          String(
+            database
+              .prepare("SELECT entry_json FROM session_nodes WHERE session_key = 'agent:main:main'")
+              .get()?.entry_json,
+          ),
+        );
+        expect(entry.mainRestartRecovery.tombstone.recoveredSessionKey).toBe(
+          "agent:main:successor",
+        );
+        expect(resolveSessionWorkStartBlock("agent:main:main", entry)?.reason).toBe(
+          "restart_tombstone",
+        );
+      }
       expect(database.prepare("PRAGMA integrity_check").all()).toEqual([{ integrity_check: "ok" }]);
 
       // A bridged store reaches the same Doctor backfill as any other 42.
