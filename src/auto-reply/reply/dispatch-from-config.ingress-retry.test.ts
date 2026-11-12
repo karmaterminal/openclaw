@@ -462,6 +462,167 @@ it.each(["old", "new", "summarize"] as const)(
   },
 );
 
+describe("dispatch retry after queued ingress abandonment", () => {
+  it.each(["watchdog-after-commit", "abandon-before-commit"] as const)(
+    "retries ingress after %s but suppresses duplicates",
+    async (abandonment) => {
+      await withTempState(async (stateDir) => {
+        let clock = Date.now();
+        const key = `agent:main:discord:direct:ingress-${abandonment}`;
+        const messageId = `retry-${abandonment}`;
+        const text = "Please deliver this queued message";
+        const ctx = buildTestCtx({
+          Provider: "discord",
+          Surface: "discord",
+          ChatType: "direct",
+          From: "user:ingress-fixture",
+          To: "channel:ingress-fixture",
+          SessionKey: key,
+          MessageSid: messageId,
+          BodyForAgent: text,
+        });
+        const queue = createTestIngressQueue(stateDir, { now: () => clock });
+        const released = observeChannelIngressQueueWrite(queue, "release");
+        await queue.enqueue(messageId, { text }, { laneKey: key });
+        let dispatcher = createDispatcher();
+        const outcomes: Array<DispatchProcessedNote | undefined> = [];
+        const lifecycles: ChannelIngressDispatchLifecycle[] = [];
+        const finishAbortedFollowup = vi.fn(async (run: FollowupRun) => {
+          expect(run.abortSignal?.aborted).toBe(true);
+        });
+        const enqueue = (
+          run: FollowupRun,
+          settings: Parameters<typeof enqueueFollowupRun>[2] = { mode: "followup", debounceMs: 0 },
+        ) => {
+          expect(
+            enqueueFollowupRun(key, run, settings, "message-id", finishAbortedFollowup, false),
+          ).toBe(true);
+        };
+        const resolver = vi.fn(async (_ctx: MsgContext, options?: GetReplyOptions) => {
+          if (resolver.mock.calls.length > 1) {
+            return { text: "Queued message delivered" };
+          }
+          const run = createQueueTestRun({
+            prompt: text,
+            messageId,
+            originatingChannel: "discord",
+            originatingTo: "channel:ingress-fixture",
+          });
+          run.run.agentId = "main";
+          run.run.config = {
+            session: { store: sessionStoreMocks.resolveSessionStorePathCore() },
+          };
+          run.turnAdoptionLifecycle = options?.turnAdoptionLifecycle;
+          run.abortSignal = options?.turnAdoptionLifecycle?.abortSignal;
+          let renewalFailed = false;
+          const lifecycle = run.turnAdoptionLifecycle;
+          const heartbeat = lifecycle?.onDeferredHeartbeat;
+          if (lifecycle) {
+            lifecycle.onDeferredHeartbeat = () => {
+              if (renewalFailed) {
+                throw new Error("deferred heartbeat owner failed");
+              }
+              heartbeat?.();
+            };
+          }
+          enqueue(run, { mode: "followup", debounceMs: 0, cap: 10, dropPolicy: "summarize" });
+          if (abandonment === "watchdog-after-commit") {
+            renewalFailed = true;
+            enqueue(
+              createQueueTestRun({
+                prompt: "Healthy pending sibling",
+                messageId: "healthy-sibling",
+              }),
+            );
+          }
+          const runState = resolveReplyOperationRunState(options);
+          if (!runState) {
+            throw new Error("dispatch did not bind its run state");
+          }
+          runState.admission = { status: "accepted", mode: "followup" };
+          if (abandonment === "abandon-before-commit") {
+            clearSessionQueues([key]);
+          }
+          return undefined;
+        });
+        const drain = createChannelIngressDrain({
+          queue,
+          now: () => clock,
+          adoptionStallTimeoutMs: 1_000,
+          retryPolicy: { baseMs: 1, maxMs: 1 },
+          dispatchClaimedEvent: async (_event, lifecycle) => {
+            lifecycles.push(lifecycle);
+            dispatcher = createDispatcher();
+            const { processedOutcome } = await withDispatchProcessedOutcomeSink(() =>
+              dispatchReplyFromConfig({
+                ctx,
+                cfg: automaticDirectReplyConfig,
+                dispatcher,
+                replyOptions: bindIngressLifecycleToReplyOptions(lifecycle),
+                replyResolver: resolver,
+              }),
+            );
+            outcomes.push(processedOutcome);
+          },
+        });
+        try {
+          await drain.drainOnce();
+          await drain.waitForIdle();
+          expect(resolver).toHaveBeenCalledOnce();
+          expect(dispatcher.sendFinalReply).not.toHaveBeenCalled();
+          if (abandonment === "watchdog-after-commit") {
+            expect(await queue.listClaims()).toHaveLength(1);
+            clock += 1_000;
+            await vi.advanceTimersByTimeAsync(1_000);
+            await drain.waitForIdle();
+            expect(lifecycles[0]?.abortSignal.aborted).toBe(true);
+          }
+          await expect(released).resolves.toBe(true);
+          // A queue clear relinquishes the turn on purpose, so it cancels the
+          // claim without spending budget; the watchdog timeout is a real attempt.
+          expect(await queue.listPending()).toMatchObject([
+            { id: messageId, attempts: abandonment === "abandon-before-commit" ? 0 : 1 },
+          ]);
+          clock += 1_000;
+          expect(await drain.drainOnce()).toEqual({ started: 1 });
+          await drain.waitForIdle();
+          // The old bug tombstones this retry as a duplicate without invoking the resolver.
+          expect(resolver).toHaveBeenCalledTimes(2);
+          if (abandonment === "watchdog-after-commit") {
+            expect(finishAbortedFollowup).toHaveBeenCalledOnce();
+            expect(getExistingFollowupQueue(key)?.items.map((run) => run.messageId)).toEqual([
+              "healthy-sibling",
+            ]);
+          }
+          expect(dispatcher.sendFinalReply).toHaveBeenCalledWith({
+            text: "Queued message delivered",
+          });
+          expect(outcomes.at(-1)).toMatchObject({ outcome: "completed" });
+          expect(await Promise.all([queue.listPending(), queue.listClaims()])).toEqual([[], []]);
+          expect((await queue.enqueue(messageId, { text: "duplicate" })).kind).toBe("completed");
+
+          const duplicateDispatcher = createDispatcher();
+          const duplicate = await withDispatchProcessedOutcomeSink(() =>
+            dispatchReplyFromConfig({
+              ctx,
+              cfg: automaticDirectReplyConfig,
+              dispatcher: duplicateDispatcher,
+              replyResolver: resolver,
+            }),
+          );
+          expect(duplicate.processedOutcome).toEqual({ outcome: "skipped", reason: "duplicate" });
+          expect(resolver).toHaveBeenCalledTimes(2);
+          expect(dispatcher.sendFinalReply).toHaveBeenCalledOnce();
+          expect(duplicateDispatcher.sendFinalReply).not.toHaveBeenCalled();
+        } finally {
+          drain.dispose();
+          clearSessionQueues([key]);
+        }
+      });
+    },
+  );
+});
+
 it.each(["completed", "cancelled", "adoption-rejected", "non-finalized-context"] as const)(
   "holds ACP ingress custody through %s",
   async (outcome) => {

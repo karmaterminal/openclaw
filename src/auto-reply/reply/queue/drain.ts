@@ -35,6 +35,9 @@ import {
   collectCurrentInboundContext,
   collectRuntimeMetadata,
   resolveFollowupReplyDeliveryKey,
+  isRoomAggregateBatch,
+  resolveFollowupDeliveryStorageKey,
+  resolveRoomAggregateExecution,
 } from "./delivery-context.js";
 import { runOutsideAdmittedGenerationScopes } from "./drain-admission-scope.js";
 import {
@@ -44,15 +47,18 @@ import {
   createCollectUserTurnTranscriptRecorder,
   renderCollectItem,
   resolveAggregateOwner,
+  resolveCollectSenderLabel,
   resolveFollowupTranscriptTarget,
   resolveOriginRoutingMetadata,
 } from "./envelope.js";
 import {
   admitFollowupRunLifecycle,
   completeFollowupRunLifecycle,
+  isFollowupRunAdopted,
   retireFollowupRunCancellation,
   updateFollowupRetryHeartbeats,
 } from "./lifecycle.js";
+import { deferRoomAggregateForUnauditedPlugins } from "./room-aggregate-plugin-gate.js";
 import { followupQueueSources, followupSourceRunners } from "./state.js";
 import { isFollowupRunAborted, type FollowupRun } from "./types.js";
 
@@ -91,7 +97,7 @@ export function handoffCompletedSourceReply(operation: ReplyOperation, source: F
 function consumeQueueSummaryDelivery(
   queue: Pick<SessionControllerMailbox, "summaryEntries" | "summaryElisions" | "droppedCount">,
   delivery: { droppedCount: number; sources: readonly FollowupRun[] },
-  completeLifecycles = true,
+  settlement: "abandoned" | "cancelled" | "retained" = "abandoned",
 ): void {
   let consumedCount = delivery.sources.length === 0 ? delivery.droppedCount : 0;
   for (const source of delivery.sources) {
@@ -125,8 +131,8 @@ function consumeQueueSummaryDelivery(
         }
       }
     }
-    if (completeLifecycles) {
-      completeFollowupRunLifecycle(source);
+    if (settlement !== "retained") {
+      completeFollowupRunLifecycle(source, settlement === "cancelled" ? "cancelled" : undefined);
     }
   }
   queue.droppedCount = Math.max(0, queue.droppedCount - consumedCount);
@@ -142,7 +148,14 @@ function buildOverflowTranscriptIdempotencyKey(source: FollowupRun, prompt: stri
   return `followup-overflow:${source.run.sessionId}:${routeHash}:${source.messageId ?? source.enqueuedAt}:${promptHash}`;
 }
 
-function resolveCollectedRun(items: readonly FollowupRun[], source: FollowupRun["run"]) {
+function resolveCollectedRun(
+  items: readonly FollowupRun[],
+  source: FollowupRun["run"],
+  crossSender: boolean,
+) {
+  if (crossSender) {
+    return resolveRoomAggregateExecution(source);
+  }
   const participantComparison = compareChannelAdmissionParticipants(
     items.map((item) => item.channelAdmissionEvidence),
   );
@@ -210,10 +223,20 @@ async function executeClaim(
   }
   // A summary prompt shows only the newest cap lines; source context pairs with those lines.
   const summarizedSources = queue.cap > 0 ? sources.slice(-queue.cap) : sources;
-  const summaryLines = summarizedSources.map((item) => {
-    const summary = queue.summaryEntries.find((entry) => entry.source === item);
-    if (summary) {
-      return summary.line;
+  // Frond (karmaterminal, #1415): differing per-sender identities only batch through the room
+  // aggregate key; that turn runs as the senderless room baseline, never as any one member, so
+  // each summary line names its sender.
+  const mixedSenders =
+    sources.length > 1 && new Set(sources.map(resolveFollowupDeliveryStorageKey)).size > 1;
+  const crossSender = mixedSenders && isRoomAggregateBatch(sources);
+  // Frond (karmaterminal, #1415): any other mixed claim breaks the selection invariant. It fails
+  // closed before execution, refused like a pre-execution rejection: each member retries alone,
+  // or is released unadopted when the claim can no longer be deferred.
+  const refuseMixedClaim = mixedSenders && !crossSender;
+  const readSummaryLine = (item: FollowupRun) => {
+    const entry = queue.summaryEntries.find((candidate) => candidate.source === item);
+    if (entry) {
+      return entry.line;
     }
     for (const elision of queue.summaryElisions) {
       const entry = elision.entries.find((candidate) => candidate.source === item);
@@ -222,6 +245,11 @@ async function executeClaim(
       }
     }
     return item.summaryLine ?? item.prompt;
+  };
+  const summaryLines = summarizedSources.map((item) => {
+    const line = readSummaryLine(item);
+    const sender = crossSender ? resolveCollectSenderLabel(item) : undefined;
+    return sender ? `(from ${sender}) ${line}` : line;
   });
   const prompt = claim.summary
     ? (previewQueueSummaryPrompt({ droppedCount: sources.length, summaryLines }) ?? "")
@@ -237,14 +265,16 @@ async function executeClaim(
     await Promise.all(sources.flatMap((item) => item.controllerInput?.custody.settling ?? []));
   };
   let run = source;
-  if (claim.summary || sources.length > 1) {
+  if (!refuseMixedClaim && (claim.summary || sources.length > 1)) {
+    const execution = resolveCollectedRun(sources, source.run, crossSender);
+    // Frond (karmaterminal, #1415): the transcript turn records the authority the turn runs as.
     const recorder = claim.summary
       ? createUserTurnTranscriptRecorder({
           input: {
             text: prompt,
             idempotencyKey: buildOverflowTranscriptIdempotencyKey(source, prompt),
-            senderIsOwner: source.run.senderIsOwner,
-            requesterOrigin: source.run.requesterOrigin,
+            senderIsOwner: execution.senderIsOwner,
+            requesterOrigin: execution.requesterOrigin,
             provenance: source.run.inputProvenance,
           },
           pendingInputSources: sources.flatMap((item) => item.userTurnTranscriptRecorder ?? []),
@@ -252,7 +282,7 @@ async function executeClaim(
           beforeMessageWrite: runAgentHarnessBeforeMessageWriteHook,
           errorContext: "mailbox overflow transcript",
         })
-      : createCollectUserTurnTranscriptRecorder(sources);
+      : createCollectUserTurnTranscriptRecorder(sources, execution);
     run = {
       ...source,
       ...resolveOriginRoutingMetadata(sources),
@@ -264,7 +294,9 @@ async function executeClaim(
       prompt,
       transcriptPrompt: claim.summary ? prompt : buildCollectTranscriptInput(sources).text,
       userTurnTranscriptRecorder: recorder,
-      run: resolveCollectedRun(sources, source.run),
+      run: execution,
+      // Frond (karmaterminal, #1415): the room baseline drops an owner memory audience too.
+      memoryAudienceSenderIsOwner: crossSender ? undefined : source.memoryAudienceSenderIsOwner,
       controllerInput: source.controllerInput,
       controllerClaim: claim,
       turnAdoptionLifecycle: {
@@ -283,6 +315,21 @@ async function executeClaim(
   let pluginUnavailable = false;
   let executionFailed = false;
   try {
+    if (refuseMixedClaim) {
+      for (const item of sources) {
+        item.disableCollectBatching = true;
+      }
+      const retry = deferSessionControllerClaimBeforeExecution(claim);
+      defaultRuntime.error?.(
+        `mailbox refused a mixed claim for ${queue.key}: not every member may run as the room ` +
+          `baseline; ${sources.length} members ${retry ? "retry alone" : "released unadopted"}`,
+      );
+      return;
+    }
+    // Frond (karmaterminal, #1415): a plugin activated since selection splits the room again.
+    if (crossSender && deferRoomAggregateForUnauditedPlugins(claim, source.run)) {
+      return;
+    }
     if (admissionSessionRebind && run.run.sessionId === admissionSessionRebind.from) {
       run = { ...run, admissionSessionId: admissionSessionRebind.to };
     }
@@ -364,7 +411,7 @@ async function executeClaim(
       consumeQueueSummaryDelivery(
         queue,
         { sources: consumed, droppedCount: consumed.length },
-        false,
+        "retained",
       );
     }
     for (const item of retrySources) {
@@ -385,9 +432,14 @@ async function executeClaim(
         continue;
       }
       try {
+        // A run that returned normally without adopting this source never started
+        // its model/tool work: it releases the source (an aborted owner cancels, an
+        // unadmitted one abandons) instead of consuming its durable claim. Throws
+        // keep upstream's no-replay rule unless the producer refused explicitly.
+        const unadopted = !executionFailed && !isFollowupRunAdopted(item);
         completeFollowupRunLifecycle(
           item,
-          preparationRefused || (executionFailed && item.turnAdoptionLifecycle)
+          preparationRefused || (executionFailed && item.turnAdoptionLifecycle) || unadopted
             ? undefined
             : "consumed",
         );
@@ -457,7 +509,7 @@ export function rememberFollowupDrainCallback(
         consumeQueueSummaryDelivery(
           mailbox,
           { sources: claim.sources, droppedCount: claim.sources.length },
-          false,
+          "retained",
         );
       }
       releaseSessionControllerClaim(claim);
@@ -491,7 +543,7 @@ export async function dropAbortedFollowups(
       !queue.inFlight.has(source),
   );
   detachSessionControllerSources(sources);
-  consumeQueueSummaryDelivery(queue, { sources, droppedCount: 0 }, false);
+  consumeQueueSummaryDelivery(queue, { sources, droppedCount: 0 }, "retained");
   for (const source of sources) {
     const execute =
       (source.controllerInput && followupSourceRunners.get(source.controllerInput)) ?? runFollowup;
@@ -499,7 +551,8 @@ export async function dropAbortedFollowups(
     if (source.controllerInput) {
       trackSessionControllerSourceWork(source.controllerInput, presentation);
     }
-    completeFollowupRunLifecycle(source);
+    // The owner aborted before admission: settle as cancelled, not abandoned.
+    completeFollowupRunLifecycle(source, "cancelled");
     try {
       await presentation;
     } catch (error) {

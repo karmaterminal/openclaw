@@ -363,6 +363,8 @@ export type ReplyPayloadMetadata = {
   beforeAgentRunBlocked?: boolean;
   /** Payload preparation generated this provider error; it is not an authored answer. */
   terminalProviderError?: true;
+  /** The run-failure owner rendered this notice after the run failed; it is not an authored answer. */
+  agentRunFailure?: true;
   /** Model fallback uses observed failure facts, never the displayed wording. */
   providerFailure?: {
     reason: FailoverReason | null;
@@ -593,6 +595,12 @@ export function isHostNoticePayload(payload: ReplyPayload): boolean {
     isReplyPayloadStatusNotice(payload) ||
     getReplyPayloadMetadata(payload)?.hostNotice === true
   );
+}
+
+/** Failure copy rendered for a failed run, thrown or as a provider-error payload. */
+export function isAgentRunFailurePayload(payload: object): boolean {
+  const metadata = getReplyPayloadMetadata(payload);
+  return metadata?.agentRunFailure === true || metadata?.terminalProviderError === true;
 }
 
 /** Classifies terminal vs. supplemental reply lanes, not content, sendability, or authority. */

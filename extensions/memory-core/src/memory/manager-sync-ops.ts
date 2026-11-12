@@ -20,7 +20,8 @@ import {
   resolveMemoryPrimaryProviderRequest,
 } from "./manager-provider-state.js";
 import type { MemoryManagerProviderFactory } from "./manager-registry.js";
-import { MemoryManagerReindexOps } from "./manager-reindex-ops.js";
+import { isMemoryReindexResourceFailureBlocking } from "./manager-reindex-failure.js";
+import { isMemoryWorkerOutOfMemoryError, MemoryManagerReindexOps } from "./manager-reindex-ops.js";
 import {
   canUpgradeMemoryIndexProviderKey,
   resolveConfiguredSourcesForMeta,
@@ -176,6 +177,7 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerReindexOps {
     const progress = params?.progress ? this.createSyncProgress(params.progress) : undefined;
     let hasTargetArchiveFiles = hasTargetSessionRequest;
     let recoveringSessionFullRetry = false;
+    let syncingFullSessionCorpus = false;
     let syncingSources = false;
     try {
       if (await this.resumeReindex(params)) {
@@ -319,11 +321,23 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerReindexOps {
         (!params?.force || params.reason === "embedding-bootstrap-recovery") &&
         // A semantic failure must still allow the distinct keyword-only publication.
         !(this.fullReindexRetryBackoff.failedWithEmbeddings && !syncProvider) &&
-        performance.now() < this.fullReindexRetryBackoff.retryAt;
+        performance.now() < this.fullReindexRetryBackoff.retryAt &&
+        // Once the persisted worker-OOM cooldown expires, its retry is due even if
+        // the shorter generic backoff has not elapsed in this process's clock.
+        !(
+          this.reindexResourceFailure &&
+          !isMemoryReindexResourceFailureBlocking(
+            this.reindexResourceFailure,
+            resolveConfiguredSourcesForMeta(this.sources),
+            Date.now(),
+          )
+        );
       const deferAutomaticFullReindex = retryFullReindexBackedOff && !needsExplicitIdentityReindex;
       if (deferAutomaticFullReindex && !hasTargetArchiveFiles) {
         // Automatic identity repair honors the failure cooldown. An explicit
-        // CLI index request still retries immediately.
+        // CLI index request still retries immediately. Retry any resource-failure
+        // record that the worker lost before this generic backoff began.
+        await this.persistReindexResourceFailure();
         this.requestSessionIndexRetry();
         return MEMORY_SYNC_DEFERRED;
       }
@@ -343,6 +357,23 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerReindexOps {
         needsFullReindex ||
         (this.sessionsFullRetryDirty && !hasTargetArchiveFiles && !deferAutomaticFullReindex) ||
         isSearchBootstrap;
+      if (
+        !hasTargetArchiveFiles &&
+        needsFullSessionReindex &&
+        params?.reason !== "cli" &&
+        isMemoryReindexResourceFailureBlocking(
+          this.reindexResourceFailure,
+          resolveConfiguredSourcesForMeta(this.sources),
+          Date.now(),
+        )
+      ) {
+        // A worker heap OOM repeats on the same corpus, so no automatic path may start another
+        // full rebuild or full session sync, search bootstrap included, before its cooldown.
+        // An explicit CLI index still may.
+        await this.persistReindexResourceFailure();
+        this.requestSessionIndexRetry();
+        return MEMORY_SYNC_DEFERRED;
+      }
       if (indexIdentity.status !== "valid" && !needsFullReindex) {
         this.dirty = true;
         const sessionsDirty = this.markTargetArchiveFilesDirty(targetArchiveFiles);
@@ -377,6 +408,9 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerReindexOps {
       const shouldSyncMemory = this.sources.has("memory") && (this.dirty || isSearchBootstrap);
       const shouldSyncSessions = this.shouldSyncSessions(params, needsFullSessionReindex);
       recoveringSessionFullRetry = this.sessionsFullRetryDirty && shouldSyncSessions;
+      // A full session read repeats its worker OOM whether a retry or a search bootstrap
+      // started it; a bootstrap need not carry the retry flag.
+      syncingFullSessionCorpus = needsFullSessionReindex && shouldSyncSessions;
 
       await this.executeSourceSync({
         shouldSyncMemory,
@@ -397,6 +431,9 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerReindexOps {
       if (recoveringSessionFullRetry && !this.memoryFullRetryDirty) {
         this.markFailedFullReindexRetry({ memory: false, sessions: true });
         this.recordFullReindexFailure(syncProvider !== null);
+      }
+      if (syncingFullSessionCorpus && isMemoryWorkerOutOfMemoryError(err)) {
+        await this.recordReindexResourceFailure();
       }
       const reason = formatErrorMessage(err);
       const shouldFallback = isMemoryEmbeddingOperationError(err);

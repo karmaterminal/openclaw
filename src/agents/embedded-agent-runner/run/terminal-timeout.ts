@@ -2,6 +2,7 @@ import {
   getReplyPayloadMetadata,
   isHostNoticePayload,
   isReplyPayloadTerminalContent,
+  setReplyPayloadMetadata,
 } from "../../../auto-reply/reply-payload.js";
 import { projectAgentRunAttemptTerminal } from "../../agent-run-terminal-outcome.js";
 import { hasMessagingToolDeliveryEvidence } from "../delivery-evidence.js";
@@ -100,7 +101,7 @@ export function resolveEmbeddedRunTerminalTimeout(input: {
       ...(input.terminalPrepared.hasPartialAssistantTextAfterPromptTimeout && !timeoutFinal
         ? []
         : input.terminalPrepared.payloadsWithToolMedia || []),
-      { text: timeoutText, isError: true },
+      setReplyPayloadMetadata({ text: timeoutText, isError: true }, { agentRunFailure: true }),
     ],
     meta: {
       modelFallbackStopReason: "agent_run_terminal_timeout",

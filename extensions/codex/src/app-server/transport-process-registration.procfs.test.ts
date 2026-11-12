@@ -167,6 +167,32 @@ describe.skipIf(process.platform !== "linux")("Codex procfs registration", () =>
     },
   );
 
+  it("fingerprints Codex, not the systemd-run scope launcher it execs from", async (ctx) => {
+    addProcess(child.pid, process.pid);
+    const scopeLauncher = {
+      command: "/usr/bin/systemd-run",
+      args: ["--user", "--scope", "--quiet", "--collect", "--", ...command.split(" ")],
+    };
+    let reads = 0;
+    // systemd-run keeps its own argv until its scope job completes and it execs Codex.
+    procfs.files.set(procFile(child.pid, "cmdline"), () =>
+      (reads++ < 2 ? [scopeLauncher.command, ...scopeLauncher.args] : command.split(" ")).join(
+        "\0",
+      ),
+    );
+    const spawned = createRegistrationChild(ctx, child.pid);
+    const register = await prepareCodexAppServerProcessRegistration();
+    const registered = register(spawned, scopeLauncher);
+    spawned.emit("spawn");
+    await registered;
+
+    expect(store.entries().map((entry) => entry.value)).toEqual([
+      { parent: identity(process.pid), child: { ...child, commandFingerprint } },
+    ]);
+    spawned.emit("exit", 0, null);
+    await waitForCodexAppServerProcessRegistrationCleanup(spawned);
+  });
+
   it("keeps full-tree inspection fail-closed with the same unreadable neighbor", async () => {
     await expect(readCodexAppServerProcessSnapshot()).rejects.toMatchObject({
       reason: "permission",

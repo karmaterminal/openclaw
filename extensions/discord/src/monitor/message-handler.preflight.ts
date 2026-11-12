@@ -9,14 +9,12 @@ import {
   resolveGroupThreadMentionFacts,
   resolveUnmentionedGroupInboundPolicy,
   toHistoryMediaEntries,
-  toInboundMediaFactsWithMetadata,
 } from "openclaw/plugin-sdk/channel-inbound";
 import { isRecentOutboundMessageIdentity } from "openclaw/plugin-sdk/channel-outbound";
 import { hasControlCommand } from "openclaw/plugin-sdk/command-detection";
 import { isAbortRequestText } from "openclaw/plugin-sdk/command-primitives-runtime";
 import { shouldHandleTextCommands } from "openclaw/plugin-sdk/command-surface";
 import { isDangerousNameMatchingEnabled } from "openclaw/plugin-sdk/dangerous-name-runtime";
-import { mimeTypeFromFilePath } from "openclaw/plugin-sdk/media-mime";
 import { parseDateStringTimestampMs } from "openclaw/plugin-sdk/number-runtime";
 import { createChannelHistoryWindow } from "openclaw/plugin-sdk/reply-history";
 import { getChildLogger, logVerbose } from "openclaw/plugin-sdk/runtime-env";
@@ -51,7 +49,11 @@ import {
   resolveDiscordMentionState,
   shouldIgnoreBoundThreadWebhookMessage,
 } from "./message-handler.preflight-helpers.js";
-import { buildDiscordPreflightHistoryEntry } from "./message-handler.preflight-history.js";
+import {
+  DISCORD_HISTORY_MEDIA_MAX_ATTACHMENTS,
+  buildDiscordPreflightHistoryEntry,
+  resolveDiscordHistoryMediaForPendingRecord,
+} from "./message-handler.preflight-history.js";
 import { resolveDiscordPreflightPluralKitInfo } from "./message-handler.preflight-pluralkit.js";
 import {
   loadPreflightAudioRuntime,
@@ -75,56 +77,6 @@ import {
   DISCORD_ATTACHMENT_IDLE_TIMEOUT_MS,
   DISCORD_ATTACHMENT_TOTAL_TIMEOUT_MS,
 } from "./timeouts.js";
-
-const DISCORD_HISTORY_MEDIA_MAX_ATTACHMENTS = 4;
-const DISCORD_HISTORY_MEDIA_MAX_BYTES = 10 * 1024 * 1024;
-const DISCORD_HISTORY_MEDIA_IDLE_TIMEOUT_MS = 1_000;
-const DISCORD_HISTORY_MEDIA_TOTAL_TIMEOUT_MS = 3_000;
-
-function isDiscordImageAttachmentCandidate(attachment: {
-  content_type?: string | null;
-  filename?: string | null;
-  url?: string | null;
-}) {
-  const contentType = attachment.content_type?.split(";")[0]?.trim().toLowerCase();
-  if (contentType?.startsWith("image/")) {
-    return true;
-  }
-  return Boolean(
-    mimeTypeFromFilePath(attachment.filename)?.startsWith("image/") ||
-    mimeTypeFromFilePath(attachment.url)?.startsWith("image/"),
-  );
-}
-
-async function resolveDiscordHistoryMediaForPendingRecord(params: {
-  preflight: DiscordMessagePreflightParams;
-  message: DiscordMessagePreflightContext["message"];
-}) {
-  const imageAttachments = (params.message.attachments ?? [])
-    .filter(isDiscordImageAttachmentCandidate)
-    .slice(0, DISCORD_HISTORY_MEDIA_MAX_ATTACHMENTS);
-  const stickers = resolveDiscordMessageStickers(params.message).slice(
-    0,
-    Math.max(0, DISCORD_HISTORY_MEDIA_MAX_ATTACHMENTS - imageAttachments.length),
-  );
-  if (imageAttachments.length === 0 && stickers.length === 0) {
-    return [];
-  }
-  const mediaList = await resolveMediaList(
-    { attachments: imageAttachments, stickers },
-    Math.min(params.preflight.mediaMaxBytes, DISCORD_HISTORY_MEDIA_MAX_BYTES),
-    {
-      fetchImpl: params.preflight.discordRestFetch,
-      ssrfPolicy: params.preflight.cfg.browser?.ssrfPolicy,
-      readIdleTimeoutMs: DISCORD_HISTORY_MEDIA_IDLE_TIMEOUT_MS,
-      totalTimeoutMs: DISCORD_HISTORY_MEDIA_TOTAL_TIMEOUT_MS,
-      abortSignal: params.preflight.abortSignal,
-    },
-  );
-  return (await toInboundMediaFactsWithMetadata(mediaList, { messageId: params.message.id })).map(
-    (media) => Object.assign({}, media, { kind: media.kind ?? "image" }),
-  );
-}
 
 export async function preflightDiscordMessage(
   params: DiscordMessagePreflightParams,
@@ -805,6 +757,7 @@ export async function preflightDiscordMessage(
     abortSignal: params.abortSignal,
     isPolicyCurrent: params.isPolicyCurrent,
     guildHistories: params.guildHistories,
+    roomHistoryWatermarks: params.roomHistoryWatermarks,
     historyLimit: params.historyLimit,
     mediaMaxBytes: params.mediaMaxBytes,
     textLimit: params.textLimit,

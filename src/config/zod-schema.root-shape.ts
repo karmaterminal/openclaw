@@ -30,6 +30,7 @@ import { GatewayConfigSchema } from "./zod-schema.gateway.js";
 import { HookMappingSchema, HooksGmailSchema, InternalHooksSchema } from "./zod-schema.hooks.js";
 import { DiagnosticsConfigSchema, LoggingConfigSchema } from "./zod-schema.logging.js";
 import { BrowserSnapshotDefaultsSchema } from "./zod-schema.node-host.js";
+import { ProcessConfigSchema } from "./zod-schema.process.js";
 import { ProxyConfigSchema } from "./zod-schema.proxy.js";
 import {
   AccessGroupsSchema,
@@ -640,5 +641,6 @@ export const OpenClawSchemaShape = {
       }),
     )
     .optional(),
+  process: ProcessConfigSchema,
   proxy: ProxyConfigSchema,
 };

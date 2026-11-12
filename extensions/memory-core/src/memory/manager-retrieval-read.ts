@@ -12,6 +12,11 @@ import {
   getNodeSqliteKysely,
   tableExists,
 } from "openclaw/plugin-sdk/sqlite-worker-runtime";
+import {
+  MEMORY_REINDEX_FAILURE_META_KEY,
+  parseMemoryReindexFailure,
+  type MemoryReindexResourceFailure,
+} from "./manager-reindex-failure.js";
 import type { MemoryIndexMeta } from "./manager-reindex-state.js";
 import { loadMemorySourceFileState } from "./manager-source-state.js";
 import {
@@ -31,6 +36,7 @@ export type MemoryDatabaseFacts = {
   invalidatedSources: MemorySource[];
   hasVectorTable: boolean;
   vectorState: ReturnType<typeof resolveMemoryVectorIndexState>;
+  reindexFailure: MemoryReindexResourceFailure | null;
 };
 
 const corpusFacts = new WeakMap<
@@ -68,6 +74,11 @@ export function readMemoryDatabaseFacts(
           .select("value")
           .where("key", "=", VECTOR_REBUILD_META_KEY)
           .as("vectorMarker"),
+        eb
+          .selectFrom("memory_index_meta")
+          .select("value")
+          .where("key", "=", MEMORY_REINDEX_FAILURE_META_KEY)
+          .as("reindexFailure"),
         eb.exists(eb.selectFrom("memory_index_chunks").select("model")).as("hasIndexedChunks"),
         ...(
           [
@@ -133,6 +144,7 @@ export function readMemoryDatabaseFacts(
       metaVectorDims: metadata.meta?.vectorDims,
       hasSemanticChunks: Boolean(row.hasSemanticChunks),
     }),
+    reindexFailure: parseMemoryReindexFailure(row.reindexFailure),
   };
 }
 

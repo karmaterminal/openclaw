@@ -42,6 +42,11 @@ export function bindCommandOwnerAuthority(context: object, authority: CommandOwn
   Object.assign(context, { [COMMAND_OWNER_AUTHORITY]: capability });
 }
 
+// Frond (karmaterminal, #1415): a copy that runs as no sender keeps no sender's check.
+export function unbindCommandOwnerAuthority(context: object): void {
+  Reflect.deleteProperty(context, COMMAND_OWNER_AUTHORITY);
+}
+
 export function getCommandOwnerAuthority(context: object): CommandOwnerAuthority | undefined {
   const value: unknown = Reflect.get(context, COMMAND_OWNER_AUTHORITY);
   return typeof value === "object" && value !== null ? capabilities.get(value) : undefined;

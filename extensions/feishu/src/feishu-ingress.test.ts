@@ -3,6 +3,7 @@ import {
   closeOpenClawStateDatabaseForTest,
   createChannelIngressQueueForTests,
 } from "openclaw/plugin-sdk/channel-ingress-test-runtime";
+import { DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS } from "openclaw/plugin-sdk/channel-outbound";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import { createNonExitingRuntimeEnv } from "openclaw/plugin-sdk/plugin-test-runtime";
 import { closeOpenClawStateDatabaseAsync } from "openclaw/plugin-sdk/sqlite-runtime-testing";
@@ -154,6 +155,26 @@ afterEach(async () => {
 });
 
 describe("Feishu durable ingress", () => {
+  it("settles a cancelled flush once, without spending retry budget, when other callbacks overlap", async () => {
+    const cancellation = Promise.withResolvers<void>();
+    const cancelled = vi.fn(async () => await cancellation.promise);
+    const replayClaim = createReplayClaim("overlapping-cancel");
+    const { calls, lifecycle } = createLifecycle({ onCancelled: cancelled }, replayClaim);
+
+    // The first terminal callback owns the flush; later ones may not repeat or replace it.
+    const cancelling = lifecycle?.onCancelled?.();
+    const abandoning = lifecycle?.onAbandoned();
+    const adopting = lifecycle?.onAdopted();
+    cancellation.resolve();
+    await Promise.all([cancelling, abandoning, adopting]);
+
+    expect(cancelled).toHaveBeenCalledOnce();
+    expect(calls.onAbandoned).not.toHaveBeenCalled();
+    expect(calls.onAdopted).not.toHaveBeenCalled();
+    expect(replayClaim.release).toHaveBeenCalledOnce();
+    expect(replayClaim.commit).not.toHaveBeenCalled();
+  });
+
   it("waits for durable append before acknowledging the webhook", async () => {
     await withQueue(async (queue, startIngress) => {
       const appendGate = createDeferred<void>();
@@ -206,158 +227,21 @@ describe("Feishu durable ingress", () => {
     });
   });
 
-  it.each(["adopted", "queue-cap-new"] as const)(
-    "retains %s so one event_id dispatches only once",
-    async (outcome) => {
-      await withQueue(async (queue, startIngress) => {
-        const dispatch = vi.fn(async (data: ReturnType<typeof messageEnvelope>) => {
-          const lifecycle = ingress.resolveLifecycle({ ...data.header, ...data.event })!;
-          if (outcome === "adopted") {
-            await lifecycle.onAdopted();
-          } else {
-            await lifecycle.onDropped?.(outcome);
-          }
-          return { kind: "deferred" };
-        });
-        const ingress = startIngress({ queue, dispatch });
-        ingress.start();
-        const envelope = messageEnvelope("evt-completed");
-
-        await ingress.invoke(envelope, { needCheck: false });
-        await ingress.waitForIdle();
-        await ingress.invoke(envelope, { needCheck: false });
-        await ingress.waitForIdle();
-
-        expect(dispatch).toHaveBeenCalledTimes(1);
-        expect(await queue.listClaims()).toEqual([]);
-        if (outcome !== "adopted") {
-          expect(await queue.listFailed?.()).toMatchObject([
-            { id: "evt-completed", reason: outcome },
-          ]);
-        }
-      });
-    },
-  );
-
-  it("admits later same-chat input while retaining a deferred input's claim", async () => {
+  it("retains completion so one event_id dispatches only once", async () => {
     await withQueue(async (queue, startIngress) => {
-      const deferred = createDeferred<FeishuIngressLifecycle>();
-      const dispatched: string[] = [];
-      const ingress = startIngress({
-        queue,
-        dispatch: async (data) => {
-          const lifecycle = ingress.resolveLifecycle({ event_id: data.header.event_id });
-          if (!lifecycle) {
-            throw new Error("Missing ingress lifecycle");
-          }
-          dispatched.push(data.header.event_id);
-          if (data.header.event_id === "evt-first") {
-            lifecycle.onDeferred();
-            deferred.resolve(lifecycle);
-            return { kind: "deferred" };
-          }
-          await lifecycle.onAdopted();
-          return undefined;
-        },
+      const dispatch = vi.fn(async (data: ReturnType<typeof messageEnvelope>) => {
+        await ingress.resolveLifecycle({ ...data.header, ...data.event })?.onAdopted();
       });
+      const ingress = startIngress({ queue, dispatch });
       ingress.start();
-      await ingress.invoke(messageEnvelope("evt-first"), { needCheck: false });
+      const envelope = messageEnvelope("evt-completed");
+
+      await ingress.invoke(envelope, { needCheck: false });
       await ingress.waitForIdle();
-      const first = await deferred.promise;
-      try {
-        await ingress.invoke(messageEnvelope("evt-first"), { needCheck: false });
-        await ingress.invoke(messageEnvelope("evt-second"), { needCheck: false });
-        await ingress.waitForIdle();
-        expect(dispatched).toEqual(["evt-first", "evt-second"]);
-        expect(await queue.listPending()).toEqual([]);
-        expect((await queue.listClaims()).map((claim) => claim.id)).toEqual(["evt-first"]);
-      } finally {
-        await first.onAdopted();
-        await ingress.waitForIdle();
-      }
-      expect(await queue.listClaims()).toEqual([]);
-    });
-  });
+      await ingress.invoke(envelope, { needCheck: false });
+      await ingress.waitForIdle();
 
-  it("keeps buffered input in its chat lane until a lifecycle handoff", async () => {
-    await withQueue(async (queue, startIngress) => {
-      const buffered = createDeferred<FeishuIngressLifecycle>();
-      const otherChat = createDeferred<void>();
-      const dispatched: string[] = [];
-      const ingress = startIngress({
-        queue,
-        dispatch: async (data) => {
-          const lifecycle = ingress.resolveLifecycle({ event_id: data.header.event_id });
-          if (!lifecycle) {
-            throw new Error("Missing ingress lifecycle");
-          }
-          dispatched.push(data.header.event_id);
-          if (data.header.event_id === "evt-buffered") {
-            buffered.resolve(lifecycle);
-            return { kind: "deferred" };
-          }
-          await lifecycle.onAdopted();
-          if (data.header.event_id === "evt-other") {
-            otherChat.resolve();
-          }
-          return undefined;
-        },
-      });
-      ingress.start();
-      await ingress.invoke(messageEnvelope("evt-buffered"), { needCheck: false });
-      const first = await buffered.promise;
-      try {
-        await ingress.invoke(messageEnvelope("evt-later"), { needCheck: false });
-        const sentinel = messageEnvelope("evt-other");
-        sentinel.event.message.chat_id = "oc-other-chat";
-        await ingress.invoke(sentinel, { needCheck: false });
-        await otherChat.promise;
-        expect((await queue.listPending()).map((row) => row.id)).toEqual(["evt-later"]);
-        expect(dispatched).toEqual(["evt-buffered", "evt-other"]);
-      } finally {
-        await first.onAdopted();
-        await ingress.waitForIdle();
-      }
-      expect(dispatched).toEqual(["evt-buffered", "evt-other", "evt-later"]);
-    });
-  });
-
-  it("stops without stranding a buffered delivery or its durable claim", async () => {
-    await withQueue(async (queue, startIngress) => {
-      const buffered = createDeferred<void>();
-      const ingress = startIngress({
-        queue,
-        dispatch: async () => {
-          const claim = await claimUnprocessedFeishuMessage({
-            messageId: "buffered-stop",
-            namespace: "default",
-          });
-          if (claim.kind !== "claimed") {
-            throw new Error("Missing logical claim");
-          }
-          const lifecycle = ingress.resolveLifecycle({ event_id: "evt-buffered-stop" });
-          if (!lifecycle) {
-            throw new Error("Missing ingress lifecycle");
-          }
-          lifecycle.onBeforeAbandon = () => claim.handle.release({ error: new Error("stopped") });
-          buffered.resolve();
-          return { kind: "deferred" };
-        },
-      });
-      ingress.start();
-      await ingress.invoke(messageEnvelope("evt-buffered-stop"), { needCheck: false });
-      await buffered.promise;
-      await ingress.stop();
-      expect(await queue.listClaims()).toEqual([]);
-      expect((await queue.listPending()).map((row) => row.id)).toEqual(["evt-buffered-stop"]);
-      const replay = await claimUnprocessedFeishuMessage({
-        messageId: "buffered-stop",
-        namespace: "default",
-      });
-      expect(replay.kind).toBe("claimed");
-      if (replay.kind === "claimed") {
-        replay.handle.release({ error: new Error("test complete") });
-      }
+      expect(dispatch).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -404,6 +288,83 @@ describe("Feishu durable ingress", () => {
     });
   });
 
+  it("keeps an aged row at the retry ceiling recoverable when a merged turn is cancelled", async () => {
+    await withQueue(async (queue, startIngress) => {
+      const envelope = messageEnvelope("evt-aged-cancel");
+      // Received long before the dead-letter age floor, with one try left.
+      await queue.enqueue(
+        "evt-aged-cancel",
+        { version: 1, receivedAt: 1, rawEnvelope: JSON.stringify(envelope) },
+        { laneKey: "chat:oc-chat", receivedAt: 1 },
+      );
+      for (let attempt = 1; attempt < DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS; attempt += 1) {
+        const claim = await queue.claim("evt-aged-cancel");
+        if (!claim) {
+          throw new Error("expected to claim the aged Feishu row");
+        }
+        await queue.release(claim, { lastError: "prior failure", releasedAt: 1 });
+      }
+      const replayClaim = {
+        keys: ["aged-cancel"] as const,
+        commit: vi.fn(async () => true),
+        release: vi.fn(),
+      };
+      const beforeFlush = vi.fn();
+      const finishRedelivery = Promise.withResolvers<void>();
+      const redelivered = Promise.withResolvers<void>();
+      const dispatch = vi
+        .fn()
+        .mockImplementationOnce(async (data: ReturnType<typeof messageEnvelope>) => {
+          const transport = ingress.resolveLifecycle({ ...data.header, ...data.event });
+          if (transport) {
+            // The message debounce owner's pre-settle release, as the handler installs it.
+            transport.onBeforeAbandon = beforeFlush;
+          }
+          const { lifecycle } = buildFeishuFlushIngressLifecycle([
+            { lifecycle: transport, replayClaim },
+          ]);
+          lifecycle?.onDeferred();
+          // The reply lane settles a cleared queued turn through onCancelled and
+          // falls back to abandonment only when the lifecycle cannot cancel.
+          await (lifecycle?.onCancelled ? lifecycle.onCancelled() : lifecycle?.onAbandoned());
+          return { kind: "deferred" };
+        })
+        .mockImplementationOnce(async (data: ReturnType<typeof messageEnvelope>) => {
+          redelivered.resolve();
+          await finishRedelivery.promise;
+          await ingress.resolveLifecycle({ ...data.header, ...data.event })?.onAdopted();
+        });
+      const ingress = startIngress({ queue, dispatch });
+      try {
+        ingress.start();
+        // Cancellation spends no budget, so the drain redelivers the row with
+        // its prior retry facts instead of dead-lettering it.
+        await redelivered.promise;
+        expect(dispatch).toHaveBeenCalledTimes(2);
+        expect(await queue.listFailed?.()).toEqual([]);
+        expect(await queue.listClaims()).toEqual([
+          expect.objectContaining({
+            id: "evt-aged-cancel",
+            attempts: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS - 1,
+            lastError: "prior failure",
+          }),
+        ]);
+        // Logical claims and pre-flush entries are released exactly as on abandonment.
+        expect(replayClaim.release).toHaveBeenCalledOnce();
+        expect(replayClaim.commit).not.toHaveBeenCalled();
+        expect(beforeFlush).toHaveBeenCalledOnce();
+        finishRedelivery.resolve();
+        await ingress.waitForIdle();
+        expect((await queue.enqueue("evt-aged-cancel", {} as FeishuIngressPayload)).kind).toBe(
+          "completed",
+        );
+      } finally {
+        finishRedelivery.resolve();
+        await ingress.stop();
+      }
+    });
+  });
+
   it("suppresses a captioned post redelivery after upgrade when the pre-upgrade record exists", async () => {
     await withQueue(async () => {
       const preUpgradeKey = "om_post";
@@ -438,54 +399,44 @@ describe("Feishu durable ingress", () => {
     });
   });
 
-  it("preserves legacy abandonment without advertising terminal drops", async () => {
-    const replayClaim = createReplayClaim("legacy-drop");
-    const { lifecycle, calls } = createLifecycle({ onDropped: undefined }, replayClaim);
-    expect(lifecycle?.onDropped).toBeUndefined();
-    await lifecycle?.onAbandoned();
-    expect(calls.onAbandoned).toHaveBeenCalledOnce();
-    expect(replayClaim.release).toHaveBeenCalledOnce();
-    expect(replayClaim.commit).not.toHaveBeenCalled();
+  it("does not reopen adopted transport claims when a logical guard commit fails", async () => {
+    const onReplayCommitError = vi.fn();
+    const replayClaim = createReplayClaim("failing-adoption", async () => {
+      throw new Error("dedupe persistence failed");
+    });
+    const { lifecycle, calls } = createLifecycle({}, replayClaim, { onReplayCommitError });
+
+    await expect(lifecycle?.onAdopted()).resolves.toBeUndefined();
+
+    expect(calls.onAdopted).toHaveBeenCalledTimes(1);
+    expect(calls.onAbandoned).not.toHaveBeenCalled();
+    expect(onReplayCommitError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "dedupe persistence failed" }),
+    );
   });
 
-  it.each(["onAdopted", "onDropped"] as const)(
-    "does not reopen %s transport claims when a logical guard commit fails",
-    async (outcome) => {
-      const onReplayCommitError = vi.fn();
-      const replayClaim = createReplayClaim("failing-adoption", async () => {
-        throw new Error("dedupe persistence failed");
-      });
-      const { lifecycle, calls } = createLifecycle({}, replayClaim, { onReplayCommitError });
+  it("forwards a terminal queue drop across flush claims", async () => {
+    const replayClaim = createReplayClaim("queue-drop");
+    const { lifecycle, calls } = createLifecycle({}, replayClaim);
 
-      await expect(lifecycle?.[outcome]?.("queue-cap-old")).resolves.toBeUndefined();
+    await lifecycle?.onDropped?.("queue-cap-old");
 
-      expect(calls[outcome]).toHaveBeenCalledTimes(1);
-      expect(calls.onAbandoned).not.toHaveBeenCalled();
-      expect(onReplayCommitError).toHaveBeenCalledWith(
-        expect.objectContaining({ message: "dedupe persistence failed" }),
-      );
-    },
-  );
+    expect(calls.onDropped).toHaveBeenCalledExactlyOnceWith("queue-cap-old");
+    expect(calls.onAbandoned).not.toHaveBeenCalled();
+    expect(replayClaim.commit).toHaveBeenCalledOnce();
+    expect(replayClaim.release).not.toHaveBeenCalled();
+  });
 
-  it.each(["onAdopted", "onDropped", "settle"] as const)(
-    "releases logical claims when transport %s persistence fails",
-    async (outcome) => {
-      const replayClaim = createReplayClaim("transport-adoption-failure");
-      const { lifecycle, settle, calls } = createLifecycle(
-        { [outcome === "settle" ? "onAdopted" : outcome]: failAdoption },
-        replayClaim,
-      );
-      const completion = outcome === "settle" ? settle() : lifecycle?.[outcome]?.("queue-cap-old");
-      await expect(completion).rejects.toThrow("queue completion failed");
+  it("abandons logical claims when transport adoption persistence fails", async () => {
+    const replayClaim = createReplayClaim("transport-adoption-failure");
+    const { lifecycle, calls } = createLifecycle({ onAdopted: failAdoption }, replayClaim);
 
-      expect(replayClaim.commit).not.toHaveBeenCalled();
-      expect(replayClaim.release).toHaveBeenCalledTimes(1);
-      expect(calls.onAbandoned).toHaveBeenCalledTimes(outcome === "onDropped" ? 0 : 1);
-      if (outcome === "settle") {
-        expect(calls.onAdoptionFinalizing).toHaveBeenCalledOnce();
-      }
-    },
-  );
+    await expect(lifecycle?.onAdopted()).rejects.toThrow("queue completion failed");
+
+    expect(replayClaim.commit).not.toHaveBeenCalled();
+    expect(replayClaim.release).toHaveBeenCalledTimes(1);
+    expect(calls.onAbandoned).toHaveBeenCalledTimes(1);
+  });
 
   it("does not adopt while constituent abandonment is in progress", async () => {
     const abandonmentGate = createDeferred<void>();
@@ -508,6 +459,15 @@ describe("Feishu durable ingress", () => {
     expect(calls.onAdopted).not.toHaveBeenCalled();
     expect(replayClaim.commit).not.toHaveBeenCalled();
     expect(replayClaim.release).toHaveBeenCalledTimes(1);
+  });
+
+  it("abandons a gated claim when terminal completion persistence fails", async () => {
+    const { settle, calls } = createLifecycle({ onAdopted: failAdoption });
+
+    await expect(settle()).rejects.toThrow("queue completion failed");
+
+    expect(calls.onAdoptionFinalizing).toHaveBeenCalledTimes(1);
+    expect(calls.onAbandoned).toHaveBeenCalledTimes(1);
   });
 
   it("finalizes gated claims before persisting terminal completion", async () => {

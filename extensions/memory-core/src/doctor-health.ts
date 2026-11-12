@@ -94,6 +94,11 @@ async function readExistingVectorModel(databasePath: string): Promise<string | n
   return model;
 }
 
+// A custom agentDir does not move the canonical per-agent memory index.
+function resolveAgentMemoryDatabasePath(stateDir: string, agentId: string): string {
+  return path.join(stateDir, "agents", agentId, "agent", "openclaw-agent.sqlite");
+}
+
 function resolveConfigPrefix(config: unknown, agentId: string): string {
   const { keyed, listed } = readDoctorAgentEntries(config);
   const keyedEntry = asOptionalObjectRecord(keyed?.[agentId]);
@@ -118,17 +123,11 @@ async function collectVectorProviderFindings(
 ): Promise<HealthFinding[]> {
   const findings: HealthFinding[] = [];
   for (const agentId of listConfiguredAgentIds(params.config).filter(params.shouldInspectAgent)) {
-    // A custom agentDir does not move the canonical per-agent memory index.
-    const agentDatabasePath = path.join(
-      params.stateDir,
-      "agents",
-      agentId,
-      "agent",
-      "openclaw-agent.sqlite",
-    );
     let model: string | null;
     try {
-      model = await readExistingVectorModel(agentDatabasePath);
+      model = await readExistingVectorModel(
+        resolveAgentMemoryDatabasePath(params.stateDir, agentId),
+      );
     } catch (error) {
       const { isSqliteSnapshotCapacityError } = await import("openclaw/plugin-sdk/sqlite-runtime");
       if (!isSqliteSnapshotCapacityError(error)) {
@@ -178,6 +177,7 @@ async function collectVectorProviderFindings(
 
 export const MEMORY_MANAGED_LOCAL_EMBEDDING_SETUP_CHECK_ID =
   "memory-core/managed-local-embedding-setup";
+export const MEMORY_REINDEX_RESOURCE_FAILURE_CHECK_ID = "memory-core/reindex-resource-failure";
 
 export const pluginStateIsolatedDoctorCheckIds = [
   MEMORY_MANAGED_LOCAL_EMBEDDING_SETUP_CHECK_ID,
@@ -209,7 +209,7 @@ type MemoryCoreDoctorCheck = HealthCheck & {
 const registrationsByHost = new WeakMap<
   MemoryCoreDoctorRegistrationHost["registerHealthCheck"],
   {
-    readonly check: MemoryCoreDoctorCheck;
+    readonly checks: readonly HealthCheck[];
     readonly state: MemoryCoreDoctorRegistrationState;
   }
 >();
@@ -291,6 +291,60 @@ function createManagedLocalEmbeddingSetupCheck(
   };
 }
 
+/** Rebuilds stopped by the persisted worker-OOM backoff stay stopped until an operator acts. */
+function createReindexResourceFailureCheck(state: MemoryCoreDoctorRegistrationState): HealthCheck {
+  return {
+    id: MEMORY_REINDEX_RESOURCE_FAILURE_CHECK_ID,
+    kind: "plugin",
+    source: "memory-core",
+    description: "Reports memory indexes whose automatic rebuild hit worker memory limits.",
+    async detect(ctx) {
+      if (!state.memoryCoreActive) {
+        return [];
+      }
+      const stateDir = resolveStateDir(ctx.env ?? process.env);
+      // The read-only index worker reads one admission snapshot through the selected
+      // engine, like status; a missing index reads as no facts, and no copy is made.
+      const [{ runMemoryDatabaseAdmission }, { describeMemoryReindexResourceFailure }] =
+        await Promise.all([
+          import("./memory/manager-cpu-worker-runtime.js"),
+          import("./memory/manager-reindex-failure.js"),
+        ]);
+      const findings: HealthFinding[] = [];
+      for (const agentId of listConfiguredAgentIds(ctx.cfg)) {
+        const databasePath = resolveAgentMemoryDatabasePath(stateDir, agentId);
+        let failure;
+        try {
+          failure = (await runMemoryDatabaseAdmission({ agentId, databasePath })).facts
+            ?.reindexFailure;
+        } catch (error) {
+          findings.push({
+            checkId: MEMORY_REINDEX_RESOURCE_FAILURE_CHECK_ID,
+            severity: "info",
+            source: "memory-core",
+            target: `${agentId}/memory-index`,
+            message: `Memory index for agent ${agentId} could not be inspected for stopped rebuilds (${formatErrorMessage(error)}).`,
+          });
+          continue;
+        }
+        if (failure) {
+          const { state: summary, fix } = describeMemoryReindexResourceFailure(failure, agentId);
+          findings.push({
+            checkId: MEMORY_REINDEX_RESOURCE_FAILURE_CHECK_ID,
+            severity: "warning",
+            source: "memory-core",
+            target: `${agentId}/memory-index`,
+            requirement: "memory-reindex-resource",
+            message: `Memory index for agent ${agentId}: ${summary}.`,
+            fixHint: fix,
+          });
+        }
+      }
+      return findings;
+    },
+  };
+}
+
 export function registerMemoryCoreDoctorChecks(host: MemoryCoreDoctorRegistrationHost): void {
   let registration = registrationsByHost.get(host.registerHealthCheck);
   if (registration) {
@@ -302,13 +356,17 @@ export function registerMemoryCoreDoctorChecks(host: MemoryCoreDoctorRegistratio
       memoryCoreActive: host.memoryCoreActive,
     };
     registration = {
-      check: createManagedLocalEmbeddingSetupCheck(state),
+      checks: [
+        createManagedLocalEmbeddingSetupCheck(state),
+        createReindexResourceFailureCheck(state),
+      ],
       state,
     };
     registrationsByHost.set(host.registerHealthCheck, registration);
   }
-  if (host.getHealthCheck(MEMORY_MANAGED_LOCAL_EMBEDDING_SETUP_CHECK_ID) === registration.check) {
-    return;
+  for (const check of registration.checks) {
+    if (host.getHealthCheck(check.id) !== check) {
+      host.registerHealthCheck(check);
+    }
   }
-  host.registerHealthCheck(registration.check);
 }

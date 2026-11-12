@@ -26,6 +26,7 @@ import { InboundDedupePendingError } from "./inbound-dedupe-error.js";
 import { claimInboundDedupe } from "./inbound-dedupe.js";
 import { emitMessageReceivedHooks as emitSharedMessageReceivedHooks } from "./message-received-hooks.js";
 import { resolveOriginMessageProvider } from "./origin-routing.js";
+import { releaseBeforeTurnAdoptionRetry } from "./queue/lifecycle.js";
 import { recordReplyOperationAgentTurn } from "./reply-operation-run-state.js";
 import { resolveDispatchConversationBinding } from "./session-conversation-binding.js";
 import {
@@ -410,14 +411,12 @@ export async function prepareDispatchOperationContext(state: PrepareDispatchDeli
       inboundDedupeClaim.commit();
       return onSettled?.();
     };
-    const onAbandoned = lifecycle.onAbandoned;
-    lifecycle.onAbandoned = () => {
-      // Release before ingress retries, including abandonment before commit.
+    releaseBeforeTurnAdoptionRetry(lifecycle, () => {
+      // Release before ingress retries, including cancellation before commit.
       if (!state.inboundDedupeReplayUnsafe && !state.turnAdoptionState?.adopted) {
         inboundDedupeClaim.release();
       }
-      return onAbandoned?.();
-    };
+    });
   }
   const finishReplyOperationBusyDispatch = (opts?: {
     dedupeDisposition?: "commit" | "release";

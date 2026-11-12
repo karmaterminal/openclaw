@@ -19,6 +19,7 @@ import { setProcessTimeout } from "../process-deadline.js";
 import { createChildAdapter } from "./adapters/child.js";
 import { createPtyAdapter } from "./adapters/pty.js";
 import { GRACEFUL_CANCEL_TIMEOUT_MS, isTimeoutReason } from "./cancellation-policy.js";
+import { resolveSpawnArgv } from "./spawn-argv.js";
 import { waitForExecRootCompletion } from "./supervisor-completion.js";
 import type {
   ManagedRun,
@@ -236,25 +237,7 @@ export function createProcessSupervisor(): ProcessSupervisor & {
     }
 
     // Finish fallible argument preparation before affecting a surviving scope or arming cancellation.
-    if (input.mode !== "anchored-shell" && input.argv.length === 0) {
-      throw new Error("spawn argv cannot be empty");
-    }
-    const resolvedArgs = input.mode === "child" ? input.resolveArgs?.() : undefined;
-    const argv =
-      input.mode === "anchored-shell"
-        ? []
-        : resolvedArgs
-          ? [...input.argv, ...resolvedArgs]
-          : input.argv;
-    if (
-      argv.some((argument) => argument.includes("\0")) ||
-      (input.mode === "child" && input.argv0?.includes("\0")) ||
-      (input.mode === "anchored-shell" && input.command.includes("\0"))
-    ) {
-      throw new Error(
-        "Execution command and arguments must not contain NUL bytes. Remove them and retry.",
-      );
-    }
+    const argv = resolveSpawnArgv(input);
     if (owner.terminationReason) {
       return settleConstructionResult(owner.terminationReason);
     }
@@ -393,6 +376,7 @@ export function createProcessSupervisor(): ProcessSupervisor & {
         initiateSpawn: input.initiateSpawn,
         cwd: input.cwd,
         env: input.env,
+        childMemoryScope: input.mode === "anchored-shell" ? undefined : input.childMemoryScope,
         abortSignal: constructionAbort.signal,
         onSpawnCleanup: (promise: Promise<ProcessExtinctionResult>) => {
           constructionCleanup = promise;

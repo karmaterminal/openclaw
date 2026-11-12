@@ -193,8 +193,10 @@ agent is active, pending changes keep their original age. After about five minut
 indexing starts in the next gap between turns without waiting for another quiet
 period. Ordinary session passes wait for a gap between turns. One pass covers the agent's pending
 sessions, sharing transcript preparation, embedding-cache reads, and bounded
-publication transactions. If a turn starts during a pass, indexing finishes its
-current bounded group and resumes after the next quiet period.
+publication transactions. Each prepared group holds at most 16 MiB of transcript
+source until it is published; a larger transcript is prepared on its own. If a turn
+starts during a pass, indexing finishes its current bounded group and resumes after
+the next quiet period.
 The same indexing timer also checks for missed file and transcript events every
 five minutes, using the existing maximum-deferral interval. This recovery pass
 runs even during an active turn and keeps the published index available to searches.
@@ -235,6 +237,13 @@ failures double that delay up to 30 minutes; a successful rebuild resets it.
 Searches keep reading the published index, and targeted session updates can
 still publish when its identity is valid. Explicit CLI repair bypasses the
 process-local cooldown.
+
+A rebuild stopped by a worker's memory limit is recorded in the index, so its
+cooldown survives restarts. Automatic rebuilds of the same sources wait one hour
+after the first such failure and six hours after the second, then stop after the
+third. `openclaw memory status` and `openclaw doctor` report the stopped rebuild.
+Index fewer sources or give the Gateway more memory, then run
+`openclaw memory index --force`; a successful rebuild clears the record.
 
 Optional embedding-provider failures also share their 30-second recovery cooldown
 with background maintenance. Searches retain keyword recall, and existing

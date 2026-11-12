@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { OpenClawConfig } from "../config/config.js";
+import { FIELD_HELP } from "../config/schema.help.js";
 import { resolveRememberAcrossConversations } from "../memory-host-sdk/host/config-utils.js";
 import {
   clearEmbeddingProviders,
@@ -233,6 +234,21 @@ describe("memory search config", () => {
     ],
   ])("resolves %s", (_name, defaults, overrides, expected) => {
     expect(resolve(defaults, overrides, "personal")).toMatchObject(expected);
+  });
+
+  it("keeps transcripts indexed behind memory-only sources while recall across conversations is on", () => {
+    // #1536: sources narrows search; cross-conversation recall owns transcript indexing.
+    expect(resolve({ sources: ["memory"] }, { rememberAcrossConversations: true })).toMatchObject({
+      sources: ["memory", "sessions"],
+      searchSources: ["memory"],
+    });
+    expect(resolve({ sources: ["memory"] }, { rememberAcrossConversations: false })).toMatchObject({
+      sources: ["memory"],
+      searchSources: ["memory"],
+    });
+    expect(FIELD_HELP["memory.search.sources"]).toContain(
+      "transcripts stay indexed for private cross-conversation recall even when this list omits",
+    );
   });
 
   it("resolves providers from the generic embedding provider registry", () => {

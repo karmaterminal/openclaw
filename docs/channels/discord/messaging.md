@@ -26,6 +26,10 @@ How inbound and outbound Discord messages are routed, formatted, acknowledged, a
 
 Messages in the same channel continue reaching the [reply queue](/concepts/queue) while an earlier message waits for its turn. Discord messages use durable ingress admission, so `collect` keeps queued messages as separate followup turns, like `followup`. This prevents one message from committing before another rejects a combined turn. Deferring a message preserves its durable recovery state.
 
+<!-- Frond (karmaterminal, #1415): unaddressed room events collect. -->
+
+[Ambient room events](/channels/ambient-room-events) are the exception: under `collect`, consecutive room events with the same route and reply target combine into one followup turn, and each message's admission still settles once. Room events from different senders also combine. A message with sender-scoped authority keeps its own turn, in order: an owner or operator message (unless [`ambientOwnerAggregate`](/channels/ambient-room-events#owner-messages-in-a-busy-room) lets unaddressed prose from listed owner bots join), an elevated grant, a sender-specific tool policy entry, or exec settings the other messages don't share. Messages in a spawned session never combine across senders. The combined turn, and any overflow summary of it, names each sender but runs with no sender identity or sender-scoped authority. Room events still never steer or interrupt.
+
 During recovery, native bot mentions sent within the last 15 minutes take priority
 over other pending messages. An active claim or retry backoff can still delay them.
 Ambient messages remain queued and pass through normal preflight and history recording.

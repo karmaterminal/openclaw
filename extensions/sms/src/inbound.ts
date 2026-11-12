@@ -113,11 +113,27 @@ export async function dispatchSmsInboundEvent(params: {
           log: params.log,
         })
       : { body: params.msg.body, media: [], cleanup: async () => undefined };
-  let adoptionState: "pending" | "deferred" | "adopted" | "abandoned" = "pending";
-  const releaseMedia = async (settle: () => void | Promise<void>) => {
-    adoptionState = "abandoned";
-    await materialized.cleanup();
-    await settle();
+  let adoptionState: "pending" | "deferred" | "adopted" | "cancelled" | "abandoned" = "pending";
+  // A failed unlink must never strand the durable claim: settle it regardless,
+  // and report each failure on its own.
+  const cleanupThenSettle = async (
+    action: "cancel" | "abandon",
+    settle: () => void | Promise<void> | undefined,
+  ) => {
+    try {
+      await materialized.cleanup();
+    } catch (error) {
+      params.log?.warn?.(
+        `Failed to clean up Twilio MMS ingress ${params.msg.messageSid} before ${action}: ${String(error)}`,
+      );
+    }
+    try {
+      await settle();
+    } catch (error) {
+      params.log?.warn?.(
+        `Failed to ${action} Twilio MMS ingress ${params.msg.messageSid}: ${String(error)}`,
+      );
+    }
   };
   try {
     const turnAdoptionLifecycle: typeof params.turnAdoptionLifecycle =
@@ -140,19 +156,28 @@ export async function dispatchSmsInboundEvent(params: {
               }
               return deferred;
             },
+            onCancelled: async () => {
+              adoptionState = "cancelled";
+              // Cancellation releases the claim without retry budget, but the
+              // deferred files are just as orphaned as after abandonment.
+              await cleanupThenSettle("cancel", () =>
+                params.turnAdoptionLifecycle?.onCancelled
+                  ? params.turnAdoptionLifecycle.onCancelled()
+                  : params.turnAdoptionLifecycle?.onAbandoned?.(),
+              );
+            },
             onAbandoned: () => {
               // Queue abandonment can be fire-and-forget. Start cleanup before
               // releasing the durable claim and contain asynchronous failures.
-              void releaseMedia(() => params.turnAdoptionLifecycle?.onAbandoned?.()).catch(
-                (error: unknown) => {
-                  params.log?.warn?.(
-                    `Failed to abandon Twilio MMS ingress ${params.msg.messageSid}: ${String(error)}`,
-                  );
-                },
+              void cleanupThenSettle("abandon", () =>
+                params.turnAdoptionLifecycle?.onAbandoned?.(),
               );
             },
             onDropped: params.turnAdoptionLifecycle?.onDropped
-              ? (reason) => releaseMedia(() => params.turnAdoptionLifecycle?.onDropped?.(reason))
+              ? (reason) =>
+                  cleanupThenSettle("abandon", () =>
+                    params.turnAdoptionLifecycle?.onDropped?.(reason),
+                  )
               : undefined,
           }
         : params.turnAdoptionLifecycle;
@@ -282,7 +307,11 @@ export async function dispatchSmsInboundEvent(params: {
       },
     });
   } finally {
-    if (adoptionState === "pending" || adoptionState === "abandoned") {
+    if (
+      adoptionState === "pending" ||
+      adoptionState === "cancelled" ||
+      adoptionState === "abandoned"
+    ) {
       await materialized.cleanup();
     }
   }

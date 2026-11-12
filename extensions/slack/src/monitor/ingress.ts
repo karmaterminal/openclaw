@@ -371,6 +371,15 @@ export function createSlackDurableIngress(
           settleRoutedTurn(() =>
             lifecycle.onDropped ? lifecycle.onDropped(reason) : lifecycle.onAbandoned(),
           ),
+        // Cancellation ends the turn before adoption too, so it must release
+        // the session order and migration fence before settling budget-free.
+        onCancelled: async () => {
+          try {
+            await (lifecycle.onCancelled ? lifecycle.onCancelled() : lifecycle.onAbandoned());
+          } finally {
+            settleTurn();
+          }
+        },
       };
       try {
         const event = raw.kind === "events-api" ? asOptionalRecord(raw.body)?.event : undefined;
