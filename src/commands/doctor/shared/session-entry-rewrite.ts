@@ -65,6 +65,18 @@ import {
 } from "./session-entry-shape.js";
 
 const DOCTOR_SESSION_REWRITE_BATCH_SIZE = 64;
+const RETAINED_RESTART_TOMBSTONE_WARNING =
+  "Restart tombstone retained; ordinary turns stay refused and nothing resumes automatically. Next step: an owner or operator calls sessions.recover with this session's current session ID to reopen it in place, or /new starts a replacement.";
+
+/** Terminal unmatched rows are reported once per agent instead of per session. */
+function startupRestartTombstoneWarning(
+  tombstone: NonNullable<ReturnType<typeof inspectLegacyRestartTombstone>>,
+): string | undefined {
+  if (tombstone.doctorOnly) {
+    return undefined;
+  }
+  return tombstone.retire ? RETAINED_RESTART_TOMBSTONE_WARNING : tombstone.warning;
+}
 
 type StartupSessionRow = Parameters<typeof parseSqliteSessionEntryRecord>[0] & {
   session_key: string;
@@ -208,13 +220,12 @@ export async function repairLegacySessionRunOutcomes(
       if (tombstone?.doctorOnly) {
         terminalUnmatched += 1;
       }
-      if (tombstone && !tombstone.doctorOnly) {
-        warnings.set(sessionKey, tombstone.warning);
+      const warning = tombstone && startupRestartTombstoneWarning(tombstone);
+      if (warning) {
+        warnings.set(sessionKey, warning);
       }
-      if (
-        (tombstone?.retire && !tombstone.doctorOnly) ||
-        (tombstone && hasLegacySessionEntryState(entry))
-      ) {
+      // Tombstoned rows are rewritten only to canonicalize legacy scalar fields.
+      if (tombstone && hasLegacySessionEntryState(entry)) {
         tombstones.add(sessionKey);
       }
       if (entry.status === "running" || entry.status === "queued" || tombstones.has(sessionKey)) {
@@ -255,13 +266,12 @@ export async function repairLegacySessionRunOutcomes(
         sessionKeys,
         rawTransform: (entry, sessionKey, updatedAt) => {
           const tombstone = inspectLegacyRestartTombstone(entry);
-          if (tombstone && !tombstone.doctorOnly) {
-            warnings.set(sessionKey, tombstone.warning);
+          const warning = tombstone && startupRestartTombstoneWarning(tombstone);
+          if (warning) {
+            warnings.set(sessionKey, warning);
           }
           return tombstone
-            ? migrateLegacySessionEntryState(entry, updatedAt, {
-                preserveTerminalRestartCustody: true,
-              })
+            ? migrateLegacySessionEntryState(entry, updatedAt, { preserveRestartTombstones: true })
             : { entry: migrateLegacySessionRunOutcome(entry, updatedAt) };
         },
         expectedIdentity,

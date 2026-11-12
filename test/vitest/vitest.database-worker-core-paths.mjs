@@ -1101,6 +1101,8 @@ export const databaseWorkerCoreTestFiles = [
   "src/state/openclaw-agent-db.schema26-bridge.test.ts",
   // Frond (karmaterminal): fleet-38 bridge; migrates through the agent schema owner.
   "src/state/openclaw-agent-db.fleet38-bridge.test.ts",
+  // Real fleet-38 store migration plus in-place tombstone recovery.
+  "src/gateway/session-tombstone-recovery.test.ts",
   "src/state/openclaw-agent-db.integrity-recovery.test.ts",
   "src/state/openclaw-agent-db-disposal.test.ts",
   "src/state/openclaw-agent-admission-order.diagnostic.test.ts",

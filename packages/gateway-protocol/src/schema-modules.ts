@@ -48,6 +48,7 @@ export * from "./schema/session-discussion.js";
 export * from "./schema/sessions.js";
 export * from "./schema/session-processes.js";
 export * from "./schema/sessions-resolve.js";
+export * from "./schema/sessions-recover.js";
 export * from "./schema/session-github-publication.js";
 export * from "./schema/sessions-viewer-presence.js";
 export * from "./schema/sessions-sharing.js";

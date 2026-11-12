@@ -140,6 +140,8 @@ export {
   SessionsPatchManyResultSchema,
   SessionsPluginPatchParamsSchema,
   SessionsResetParamsSchema,
+  SessionsRecoverParamsSchema,
+  SessionsRecoverResultSchema,
   SessionsDeleteParamsSchema,
   SessionsAssignOwnerParamsSchema,
   SessionsAssignOwnerResultSchema,

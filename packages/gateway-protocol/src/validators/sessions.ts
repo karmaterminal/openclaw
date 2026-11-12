@@ -255,6 +255,10 @@ export const validateSessionsResetParams = createProtocolValidator(
   S.SessionsResetParamsSchema,
   Checks.isSessionsResetParams,
 );
+export const validateSessionsRecoverParams = createProtocolValidator(
+  S.SessionsRecoverParamsSchema,
+  Checks.isSessionsRecoverParams,
+);
 export const validateSessionsDeleteParams = createProtocolValidator(
   S.SessionsDeleteParamsSchema,
   Checks.isSessionsDeleteParams,
