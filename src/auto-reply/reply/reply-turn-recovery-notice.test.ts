@@ -10,12 +10,15 @@ const fixture = vi.hoisted(() => ({
   },
 }));
 
+// mock-isolation: Do not initialize ACP session machinery for this notice-only unit test.
 vi.mock("../../acp/runtime/session-meta.js", () => ({
   readAcpSessionEntryAsync: vi.fn(async () => null),
 }));
+// mock-isolation: Supply a fixed tombstone without opening the session store.
 vi.mock("../../config/sessions/session-accessor.js", () => ({
   loadSessionEntryReadOnly: vi.fn(() => fixture.entry),
 }));
+// mock-isolation: Pin delivery policy while exercising notice deduplication, not policy resolution.
 vi.mock("../../sessions/send-policy.js", () => ({
   resolveSendPolicy: vi.fn(() => "allow"),
 }));

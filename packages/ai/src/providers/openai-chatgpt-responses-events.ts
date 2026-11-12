@@ -157,31 +157,30 @@ export function parseErrorResponse(raw: string, response: Response): CodexApiErr
   let payload: Record<string, unknown> | undefined;
 
   try {
-    const parsed = JSON.parse(raw) as {
-      error?: {
-        code?: string;
-        type?: string;
-        message?: string;
-        plan_type?: string;
-        resets_at?: number;
-      };
-    };
+    const parsed: unknown = JSON.parse(raw);
     payload = isRecord(parsed) ? parsed : undefined;
-    const err = parsed?.error;
+    const err = isRecord(payload?.error) ? payload.error : undefined;
     if (err) {
-      code = err.code || err.type || undefined;
+      code =
+        (typeof err.code === "string" && err.code) ||
+        (typeof err.type === "string" && err.type) ||
+        undefined;
       if (
         /usage_limit_reached|usage_not_included|rate_limit_exceeded/i.test(code ?? "") ||
         status === 429
       ) {
-        const plan = err.plan_type ? ` (${err.plan_type.toLowerCase()} plan)` : "";
-        const mins = err.resets_at
-          ? Math.max(0, Math.round((err.resets_at * 1000 - Date.now()) / 60000))
+        const plan =
+          typeof err.plan_type === "string" && err.plan_type
+            ? ` (${err.plan_type.toLowerCase()} plan)`
+            : "";
+        const resetsAt = typeof err.resets_at === "number" ? err.resets_at : undefined;
+        const mins = resetsAt
+          ? Math.max(0, Math.round((resetsAt * 1000 - Date.now()) / 60000))
           : undefined;
         const when = mins !== undefined ? ` Try again in ~${mins} min.` : "";
         friendlyMessage = `You have hit your ChatGPT usage limit${plan}.${when}`.trim();
       }
-      message = err.message || friendlyMessage || message;
+      message = (typeof err.message === "string" && err.message) || friendlyMessage || message;
     }
   } catch {}
 

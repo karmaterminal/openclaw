@@ -3554,6 +3554,7 @@ const workerModules = new Set([
   "src/state/openclaw-agent-execution-maintenance.ts", // Only openclaw-agent-execution.worker.ts constructs this owner; admission invokes its startup repair callback solely inside that worker.
   "src/config/sessions/session-accessor.sqlite-entry-identity.ts", // Only reaction (agent execution worker), suggestion (sharing/transcript workers), and sharing native (sharing worker; host imports are types) kernels call this reader.
   "extensions/memory-core/src/memory/manager-publication-postgres.ts", // Only manager-publication.worker.ts binds this adapter to the admitted agent execution worker connection.
+  "extensions/memory-core/src/memory/manager-reindex-failure.ts", // Native writes run only via manager-publication.worker.ts (directly and through manager-publication-postgres.ts and manager-db-kernel.ts); host status reads use pure parsing helpers.
   "src/infra/database-engine/postgres-vector.ts", // Accepts only an admitted PostgresSqlConnection; the shared executor dispatches through PostgresSyncConnection to postgres-sync/bridge.worker.ts, never native SQLite.
   "src/infra/database-engine/port-descriptor.ts", // SQL entry points run only in port-command.entry.worker.ts, port.worker.ts, and database-backup.operations.ts in its dedicated worker.
   "src/plugin-state/plugin-state.worker.ts", // Only openclaw-state.worker.ts imports and calls this command dispatcher; its nested callbacks share that worker ownership.

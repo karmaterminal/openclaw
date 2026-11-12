@@ -28,13 +28,18 @@ type MetadataDatabase = { memory_index_meta: { key: string; value: string } };
 
 /** Accept only the shape this module writes; another release's record reads as absent. */
 export function readMemoryReindexFailure(value: unknown): MemoryReindexResourceFailure | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  // SAFETY: The input is a non-array object; optional fields are checked below before use.
   const record = value as Partial<MemoryReindexResourceFailure> | null | undefined;
   return record?.kind === "worker-out-of-memory" &&
     Array.isArray(record.sources) &&
+    record.sources.every((source) => source === "memory" || source === "sessions") &&
     Number.isSafeInteger(record.attempts) &&
     Number.isFinite(record.failedAt) &&
     (record.retryAt === undefined || Number.isFinite(record.retryAt))
-    ? (record as MemoryReindexResourceFailure)
+    ? (record as MemoryReindexResourceFailure) // SAFETY: Discriminant, sources, counters, and retry timestamp were validated.
     : null;
 }
 

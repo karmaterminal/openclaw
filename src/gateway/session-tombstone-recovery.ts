@@ -11,18 +11,15 @@ import {
   migrateLegacySessionEntryState,
 } from "../commands/doctor/shared/session-entry-shape.js";
 import { getRuntimeConfig } from "../config/io.js";
-import { getSessionKysely } from "../config/sessions/session-accessor.sqlite-scope-helpers.js";
 import {
   resolveSqliteScope,
   toDatabaseOptions,
 } from "../config/sessions/session-accessor.sqlite-scope.js";
+import { withSessionHistoryWorkerDatabase } from "../config/sessions/session-transcript-worker-runtime.js";
 import { SESSION_LIFECYCLE_CHANGED_ERROR_REASON } from "../config/sessions/session-work-start.js";
-import { withEngineStoreAdmission } from "../infra/database-engine/admission-scope.js";
 import { formatErrorMessage } from "../infra/errors.js";
-import { executeSqliteQuerySync } from "../infra/kysely-sync.js";
 import { createVerifiedSqliteSnapshot } from "../infra/sqlite-snapshot.js";
 import { isSessionControllerWorkActive } from "../sessions/session-controller.lifecycle.js";
-import { withOpenClawAgentDatabaseReadOnly } from "../state/openclaw-agent-db-readonly.js";
 import { resolveOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
 import { resolveSessionResetTarget } from "./session-reset-target.js";
 
@@ -48,24 +45,14 @@ type RecoveryScope = { agentId: string; storePath: string; env?: NodeJS.ProcessE
 const databaseOptions = (scope: RecoveryScope) =>
   toDatabaseOptions(resolveSqliteScope({ ...scope, sessionKey: "" }));
 
-function readRawSessionEntry(
+async function readRawSessionEntry(
   scope: RecoveryScope,
   sessionKey: string,
-): Record<string, unknown> | undefined {
-  const read = withEngineStoreAdmission(() =>
-    withOpenClawAgentDatabaseReadOnly(
-      (database) =>
-        executeSqliteQuerySync(
-          database.db,
-          getSessionKysely(database.db)
-            .selectFrom("session_nodes")
-            .select("entry_json")
-            .where("session_key", "=", sessionKey),
-        ).rows[0]?.entry_json,
-      databaseOptions(scope),
-    ),
+): Promise<Record<string, unknown> | undefined> {
+  const entryJson = await withSessionHistoryWorkerDatabase(databaseOptions(scope), (reader) =>
+    reader.readRawEntry({ sessionKey, env: scope.env ?? process.env }),
   );
-  return read.found && typeof read.value === "string" ? safeParseJsonRecord(read.value) : undefined;
+  return entryJson === undefined ? undefined : safeParseJsonRecord(entryJson);
 }
 
 /**
@@ -130,7 +117,8 @@ export async function recoverGatewaySessionTombstone(params: {
   });
   try {
     params.assertCurrent();
-    const original = readRawSessionEntry(scope, sessionKey);
+    const original = await readRawSessionEntry(scope, sessionKey);
+    params.assertCurrent();
     if (!decide(original)) {
       return success(false);
     }

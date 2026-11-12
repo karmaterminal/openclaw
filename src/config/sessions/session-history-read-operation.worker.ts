@@ -40,6 +40,15 @@ async function prepareHistoryRead(
   retainedDatabase?: OpenClawAgentReadOnlyDatabase,
 ): Promise<() => SessionTranscriptWorkerValues[SessionHistoryReadOperationRequest["kind"]]> {
   switch (request.kind) {
+    case "session-raw-entry": {
+      const { readRawSessionEntryJson } = await import("./session-entry-raw.worker.js");
+      const read = await prepareDatabaseRead(
+        { ...request.database, env: cloneEnvWithPlatformSemantics(request.env) },
+        (database) => readRawSessionEntryJson(database, request.sessionKey),
+        () => undefined,
+      );
+      return () => ({ kind: request.kind, entryJson: read() });
+    }
     case "trajectory-events": {
       const { loadSqliteTrajectoryRuntimeEventRowsSync } =
         await import("../../trajectory/runtime-store.sqlite.js");

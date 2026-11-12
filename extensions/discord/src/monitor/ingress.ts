@@ -178,7 +178,7 @@ export function createDiscordIngressMonitor(params: {
         params.client,
         GatewayDispatchEvents.MessageCreate,
         rawMessage,
-      ) as DiscordMessageEvent;
+      ) as DiscordMessageEvent; // SAFETY: MESSAGE_CREATE mapping constructs the event used by ingress.
       return await params.dispatch(event, lifecycle);
     },
     pollIntervalMs: DISCORD_INGRESS_DRAIN_INTERVAL_MS,
@@ -234,7 +234,7 @@ export function createDiscordIngressMonitor(params: {
             params.client,
             GatewayDispatchEvents.MessageCreate,
             rawMessage,
-          ) as DiscordMessageEvent,
+          ) as DiscordMessageEvent, // SAFETY: Decoded dead-letter payload is a MESSAGE_CREATE event.
           signal,
         );
       },
