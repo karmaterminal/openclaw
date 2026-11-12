@@ -11,7 +11,6 @@ import { openNodeSqliteDatabase } from "openclaw/plugin-sdk/sqlite-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MEMORY_MANAGED_LOCAL_EMBEDDING_SETUP_CHECK_ID,
-  MEMORY_REINDEX_RESOURCE_FAILURE_CHECK_ID,
   registerMemoryCoreDoctorChecks,
 } from "./doctor-health.js";
 
@@ -20,6 +19,7 @@ type InspectManagedLocalEmbeddingSetup = Parameters<
 >[0]["inspectEmbeddingProviderSetup"];
 
 const roots = new Set<string>();
+const MEMORY_REINDEX_RESOURCE_FAILURE_CHECK_ID = "memory-core/reindex-resource-failure";
 const model = "embeddinggemma-300m";
 const setupFailure = {
   reason: "Local embeddings need the managed llama.cpp server config.",

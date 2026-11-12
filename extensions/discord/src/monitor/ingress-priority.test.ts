@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isRecentNativeDiscordMention } from "./ingress.js";
+import { isRecentNativeDiscordMention } from "./ingress-priority.js";
 
 describe("Discord recovery priority", () => {
   const now = Date.parse("2026-11-01T12:00:00Z");

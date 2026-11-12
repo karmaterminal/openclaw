@@ -177,7 +177,7 @@ async function collectVectorProviderFindings(
 
 export const MEMORY_MANAGED_LOCAL_EMBEDDING_SETUP_CHECK_ID =
   "memory-core/managed-local-embedding-setup";
-export const MEMORY_REINDEX_RESOURCE_FAILURE_CHECK_ID = "memory-core/reindex-resource-failure";
+const MEMORY_REINDEX_RESOURCE_FAILURE_CHECK_ID = "memory-core/reindex-resource-failure";
 
 export const pluginStateIsolatedDoctorCheckIds = [
   MEMORY_MANAGED_LOCAL_EMBEDDING_SETUP_CHECK_ID,

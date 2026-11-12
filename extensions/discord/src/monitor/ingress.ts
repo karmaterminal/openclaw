@@ -20,6 +20,7 @@ import type { DiscordGatewayChannelInfo } from "../internal/gateway-channel-inve
 import { mapGatewayDispatchData } from "../internal/gateway-dispatch.js";
 import { getDiscordRuntime } from "../runtime.js";
 import { getGateway } from "./gateway-registry.js";
+import { isRecentNativeDiscordMention } from "./ingress-priority.js";
 import { createDiscordStaleAmbientPendingDisposition } from "./ingress-stale-policy.js";
 import { asStoredDiscordMessage } from "./ingress-stored-message.js";
 import type { DiscordMessageEvent } from "./listeners.js";
@@ -27,21 +28,6 @@ import type { DiscordLivePolicyReader } from "./live-policy.js";
 
 const DISCORD_INGRESS_PAYLOAD_VERSION = 1;
 const DISCORD_INGRESS_DRAIN_INTERVAL_MS = 1_000;
-
-export function isRecentNativeDiscordMention(
-  raw: { guild_id?: string; timestamp?: unknown; mentions?: Array<{ id: string }> } | undefined,
-  botUserId: string | undefined,
-  nowMs = Date.now(),
-): boolean {
-  return Boolean(
-    botUserId &&
-    raw?.guild_id &&
-    typeof raw.timestamp === "string" &&
-    Date.parse(raw.timestamp) >= nowMs - 15 * 60_000 &&
-    Array.isArray(raw.mentions) &&
-    raw.mentions.some((user) => user?.id === botUserId),
-  );
-}
 
 type DiscordIngressPayload = {
   version: 1;

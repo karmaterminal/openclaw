@@ -12,7 +12,7 @@ export const MEMORY_REINDEX_FAILURE_META_KEY = "memory_reindex_failure_v1";
 // A worker heap OOM repeats on the same corpus, and each attempt costs a full rebuild.
 // Retry it rarely, then stop automatic rebuilds until an explicit CLI index succeeds.
 const RESOURCE_RETRY_DELAYS_MS = [60 * 60_000, 6 * 60 * 60_000];
-export const MEMORY_REINDEX_RESOURCE_MAX_ATTEMPTS = RESOURCE_RETRY_DELAYS_MS.length + 1;
+const MEMORY_REINDEX_RESOURCE_MAX_ATTEMPTS = RESOURCE_RETRY_DELAYS_MS.length + 1;
 
 export type MemoryReindexResourceFailure = {
   kind: "worker-out-of-memory";
