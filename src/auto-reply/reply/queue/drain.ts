@@ -239,9 +239,9 @@ async function executeClaim(
       return entry.line;
     }
     for (const elision of queue.summaryElisions) {
-      const entry = elision.entries.find((candidate) => candidate.source === item);
-      if (entry) {
-        return entry.line;
+      const elidedEntry = elision.entries.find((candidate) => candidate.source === item);
+      if (elidedEntry) {
+        return elidedEntry.line;
       }
     }
     return item.summaryLine ?? item.prompt;

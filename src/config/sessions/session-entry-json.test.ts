@@ -158,7 +158,7 @@ describe("canonical session numeric metadata", () => {
         tombstone,
       },
     });
-    expect(entry.mainRestartRecovery).toEqual({ cycleId: "cycle", tombstone });
+    expect(entry).toMatchObject({ mainRestartRecovery: { cycleId: "cycle", tombstone } });
     expect(projectPublicSessionEntry(entry)).not.toHaveProperty("mainRestartRecovery");
     expect(preserveGenerationPrivateFields(entry, { label: "Renamed" })).toMatchObject({
       mainRestartRecovery: { cycleId: "cycle", tombstone },

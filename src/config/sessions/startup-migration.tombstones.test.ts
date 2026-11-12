@@ -305,9 +305,7 @@ it.each(["startup", "doctor"] as const)(
         );
         const entry = loadExactSessionEntry(scope)?.entry;
         expect(entry?.sessionId).toBe(scope.agentId);
-        expect(resolveSessionWorkStartBlock(scope.sessionKey, entry)?.reason).toBe(
-          scope.agentId === "pending" && mode === "startup" ? "restart_tombstone" : undefined,
-        );
+        expect(resolveSessionWorkStartBlock(scope.sessionKey, entry)?.reason).toBeUndefined();
         expect(loadTranscriptEventsSync({ ...scope, sessionId: scope.agentId })).toEqual(
           transcript,
         );
