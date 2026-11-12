@@ -207,7 +207,9 @@ describe("Discord durable ingress settlement", () => {
       handlerParams.cfg.channels = { discord: handlerParams.discordConfig };
       handlerParams.guildEntries = { "guild-1": { requireMention: true } };
       handlerParams.historyLimit = 10;
-      const old = Date.now() - 30 * 60_000;
+      // Keep the ambient backlog inside the fleet stale-drop window so this
+      // exercises priority, not the independent stale-disposition policy.
+      const old = Date.now() - 5 * 60_000;
       for (const id of ["1000", "1001", "1002"]) {
         const event = payload(id, old);
         Object.assign(event.rawMessage, {

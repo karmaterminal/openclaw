@@ -369,4 +369,32 @@ describe("broadcast dispatch", () => {
     expect(transport.onAdopted).toHaveBeenCalledTimes(1);
     expect(broadcastClaim.commit).toHaveBeenCalledTimes(1);
   });
+
+  it("settles a deferred broadcast queue-cap drop before committing replay custody", async () => {
+    const { broadcastClaim, susanClaim, mainClaim } = mockBroadcastClaims("deferred-drop");
+    let deferredLifecycle: NonNullable<
+      (typeof resolvedTurnCalls)[number]["replyOptions"]
+    >["turnAdoptionLifecycle"];
+    mockDispatchReply.mockImplementation(async ({ ctx, replyOptions }) => {
+      if (String(ctx.SessionKey).startsWith("agent:susan:")) {
+        deferredLifecycle = replyOptions?.turnAdoptionLifecycle;
+        deferredLifecycle?.onDeferred?.();
+        return { queuedFinal: false, counts: { final: 1 }, deferAdoption: true };
+      }
+      return { queuedFinal: false, counts: { final: 1 } };
+    });
+    const transport = { ...createIngressLifecycle(), onDropped: vi.fn(async () => {}) };
+
+    await dispatchBroadcast("deferred-drop", { turnAdoptionLifecycle: transport });
+    expect(broadcastClaim.commit).not.toHaveBeenCalled();
+    expect(susanClaim.commit).not.toHaveBeenCalled();
+    expect(mainClaim.commit).toHaveBeenCalledOnce();
+
+    await deferredLifecycle?.onDropped?.("queue-cap-old");
+
+    expect(transport.onDropped).toHaveBeenCalledExactlyOnceWith("queue-cap-old");
+    expect(transport.onAdopted).not.toHaveBeenCalled();
+    expect(broadcastClaim.commit).toHaveBeenCalledOnce();
+    expect(susanClaim.commit).toHaveBeenCalledOnce();
+  });
 });

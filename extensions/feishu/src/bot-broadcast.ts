@@ -185,10 +185,6 @@ export function createFeishuBroadcastIngressSettlement(params: {
       await abandon(new Error("feishu broadcast turn cancelled"), cancelTransport);
       return;
     }
-    if ([...lanes].some((lane) => lane.status === "cancelled")) {
-      await abandon(new Error("feishu broadcast turn cancelled"), cancelTransport);
-      return;
-    }
     if ([...lanes].some((lane) => lane.status !== "completed" && lane.status !== "dropped")) {
       return;
     }

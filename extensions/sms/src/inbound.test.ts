@@ -240,6 +240,31 @@ describe("dispatchSmsInboundEvent", () => {
     expect(events).toEqual(["cleanup", "cancel"]);
   });
 
+  it("propagates failed terminal-drop settlement so durable MMS ingress can retry", async () => {
+    const mocks = createAuthorizedRuntime();
+    const failure = new Error("drop settlement failed");
+    const originalLifecycle: SmsTurnAdoptionLifecycle = {
+      ...lifecycle(),
+      onDropped: vi.fn(async () => {
+        throw failure;
+      }),
+    };
+    let wrappedLifecycle: SmsTurnAdoptionLifecycle | undefined;
+    mocks.run.mockImplementationOnce(async ({ turnAdoptionLifecycle }) => {
+      wrappedLifecycle = turnAdoptionLifecycle;
+      wrappedLifecycle?.onDeferred?.();
+    });
+
+    await dispatch(mocks.runtime, createMmsMessage("MM-drop-failed"), {
+      turnAdoptionLifecycle: originalLifecycle,
+    });
+
+    await expect(wrappedLifecycle?.onDropped?.("queue-cap-new")).rejects.toBe(failure);
+    expect(originalLifecycle.onDropped).toHaveBeenCalledExactlyOnceWith("queue-cap-new");
+    expect(originalLifecycle.onAbandoned).not.toHaveBeenCalled();
+    expectCleanedMedia();
+  });
+
   it.each(["onCancelled", "onAbandoned"] as const)(
     "settles the durable claim through %s when MMS cleanup fails",
     async (terminal) => {

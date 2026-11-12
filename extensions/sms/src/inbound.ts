@@ -117,8 +117,9 @@ export async function dispatchSmsInboundEvent(params: {
   // A failed unlink must never strand the durable claim: settle it regardless,
   // and report each failure on its own.
   const cleanupThenSettle = async (
-    action: "cancel" | "abandon",
+    action: "cancel" | "abandon" | "drop",
     settle: () => void | Promise<void> | undefined,
+    propagateSettlementFailure = false,
   ) => {
     try {
       await materialized.cleanup();
@@ -133,6 +134,10 @@ export async function dispatchSmsInboundEvent(params: {
       params.log?.warn?.(
         `Failed to ${action} Twilio MMS ingress ${params.msg.messageSid}: ${String(error)}`,
       );
+      // A failed terminal drop must remain retryable by its durable owner.
+      if (propagateSettlementFailure) {
+        throw error;
+      }
     }
   };
   try {
@@ -175,8 +180,10 @@ export async function dispatchSmsInboundEvent(params: {
             },
             onDropped: params.turnAdoptionLifecycle?.onDropped
               ? (reason) =>
-                  cleanupThenSettle("abandon", () =>
-                    params.turnAdoptionLifecycle?.onDropped?.(reason),
+                  cleanupThenSettle(
+                    "drop",
+                    () => params.turnAdoptionLifecycle?.onDropped?.(reason),
+                    true,
                   )
               : undefined,
           }
