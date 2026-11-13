@@ -1,11 +1,11 @@
 // Frond (karmaterminal, #1564): core settles the human owner's room message refused at a full
 // protected reply queue as backpressure. Slack's own lifecycle must carry it to the durable retry
 // owner as a paced retry that spends no attempt, while every other settlement keeps its accounting.
+import type { ReceiverEvent } from "@slack/bolt";
 import {
   closeOpenClawStateDatabaseForTest,
   createChannelIngressQueueForTests,
 } from "openclaw/plugin-sdk/channel-ingress-test-runtime";
-import type { PluginJsonValue } from "openclaw/plugin-sdk/plugin-entry";
 import { withOpenClawTestState } from "openclaw/plugin-sdk/test-state";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installSlackTestRuntime } from "../test-runtime.test-support.js";
@@ -20,7 +20,7 @@ type RoomHarness = {
   queue: SlackIngressQueue;
   advance: (ms: number) => Promise<void>;
   restart: () => Promise<void>;
-  receive: (body: PluginJsonValue) => Promise<void>;
+  receive: (body: ReceiverEvent["body"]) => Promise<void>;
 };
 
 const replyLane = vi.hoisted(() => ({
@@ -43,7 +43,7 @@ const HOUR_MS = 60 * 60_000;
 // The ingress backoff for attempt-free retries: 1 s doubling to the 3 min cap.
 const PACING_MS = [1_000, 2_000, 4_000, 8_000, 16_000, 32_000, 64_000, 128_000, 180_000, 180_000];
 
-function roomEvent(eventId: string, ts: string): PluginJsonValue {
+function roomEvent(eventId: string, ts: string) {
   return {
     team_id: "T_TEST",
     api_app_id: "A_TEST",
