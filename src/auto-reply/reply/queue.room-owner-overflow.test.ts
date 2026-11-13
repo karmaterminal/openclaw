@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { ChannelIngressDispatchLifecycle } from "../../channels/message/ingress-drain-lifecycle.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { testing as controllerTesting } from "../../sessions/session-controller.test-support.js";
-import { bindCommandOwnerAuthority } from "../command-owner-authority.js";
+import { bindCommandOwnerAuthority, getCommandOwnerAuthority } from "../command-owner-authority.js";
 import { createQueueCase } from "./queue.case.test-support.js";
 import { enqueueFollowupRun, type FollowupRun, type QueueSettings } from "./queue.js";
 import {
@@ -87,6 +87,8 @@ describe("the human owner's room message at queue capacity (#1564)", () => {
         async (harness) => {
           admission.bind(harness);
           await harness.dispatchRows();
+          // r4 reaches the queue holding live command-owner authority, yet stays ambient.
+          expect(getCommandOwnerAuthority(harness.runs.get("r4")!.run)?.isCurrent()).toBe(true);
           // drop:new keeps the backlog and sheds arrivals; the others keep the newest chatter.
           const kept = dropPolicy === "new" ? ["r2", "r3"] : ["r3", "r5"];
           const shed = rows.map((row) => row.id).filter((id) => !kept.includes(id));
@@ -211,7 +213,11 @@ describe("room overflow protection follows the channel-verified owner identity (
       false,
       sender("mallory", { config: OWNERS, senderName: "figs", senderUsername: "figs" }),
     ],
-    ["a webhook relay under an unlisted id", false, sender("webhook-1", { config: OWNERS })],
+    [
+      "an unlisted sender the channel did not flag as a bot",
+      false,
+      sender("relay-1", { config: OWNERS }),
+    ],
     [
       "the owner's id listed only for another channel",
       false,
