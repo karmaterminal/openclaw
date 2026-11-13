@@ -43,6 +43,42 @@ export function textOf(row: Row): string {
   return `${row.kind === "user_request" ? "mention" : "room"} message ${row.id}`;
 }
 
+/** The queued source channel admission builds for one claimed room row. */
+export function createRoomRun(
+  key: string,
+  row: Row,
+  lifecycle: ChannelIngressDispatchLifecycle,
+  transcripts = false,
+): FollowupRun {
+  const { turnAdoptionLifecycle } = bindIngressLifecycleToReplyOptions(lifecycle);
+  return createQueueTestRun(
+    {
+      prompt: textOf(row),
+      messageId: row.id,
+      originatingChannel: "discord",
+      originatingTo: "channel:room",
+      originatingChatType: "channel",
+      currentInboundEventKind: row.kind ?? "room_event",
+      turnAdoptionLifecycle,
+      // Room events inherit the ingress admission fence as their queued cancel signal.
+      abortSignal: turnAdoptionLifecycle.abortSignal,
+      userTurnTranscriptRecorder: transcripts
+        ? createUserTurnTranscriptRecorder({
+            input: {
+              text: textOf(row),
+              senderIsOwner: row.from?.senderIsOwner,
+              requesterOrigin: row.from?.requesterOrigin,
+            },
+            target: createTestUserTurnTranscriptTarget(),
+            updateMode: "none",
+          })
+        : undefined,
+      ...row.source?.(),
+    },
+    { sessionKey: key, senderId: "peer", messageProvider: "discord", ...row.from },
+  );
+}
+
 /**
  * Real durable ingress (SQLite rows, drain, exclusive lifecycles) feeding the real
  * session mailbox. Only the model turn and the Discord transport are replaced.
@@ -100,33 +136,7 @@ export async function openRoomIngress(
   const runs = new Map<string, FollowupRun>();
   let dispatched = createDeferred();
   const enqueueRoomRun = (row: Row, lifecycle: ChannelIngressDispatchLifecycle) => {
-    const { turnAdoptionLifecycle } = bindIngressLifecycleToReplyOptions(lifecycle);
-    const run = createQueueTestRun(
-      {
-        prompt: textOf(row),
-        messageId: row.id,
-        originatingChannel: "discord",
-        originatingTo: "channel:room",
-        originatingChatType: "channel",
-        currentInboundEventKind: row.kind ?? "room_event",
-        turnAdoptionLifecycle,
-        // Room events inherit the ingress admission fence as their queued cancel signal.
-        abortSignal: turnAdoptionLifecycle.abortSignal,
-        userTurnTranscriptRecorder: options.transcripts
-          ? createUserTurnTranscriptRecorder({
-              input: {
-                text: textOf(row),
-                senderIsOwner: row.from?.senderIsOwner,
-                requesterOrigin: row.from?.requesterOrigin,
-              },
-              target: createTestUserTurnTranscriptTarget(),
-              updateMode: "none",
-            })
-          : undefined,
-        ...row.source?.(),
-      },
-      { sessionKey: key, senderId: "peer", messageProvider: "discord", ...row.from },
-    );
+    const run = createRoomRun(key, row, lifecycle, options.transcripts);
     // A mid-turn source waits behind the active turn; the turn's end starts the drain.
     expect(enqueueFollowupRun(key, run, settings, "message-id", undefined, false)).toBe(true);
     return run;
@@ -178,6 +188,7 @@ export async function openRoomIngress(
   };
   return {
     key,
+    settings,
     queue,
     drain,
     addRow,

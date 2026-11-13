@@ -375,6 +375,8 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/reply/queue.room-event-collect.test.ts",
   // Frond (karmaterminal, #1415): the ambient owner room aggregate over the same durable ingress.
   "src/auto-reply/reply/queue.room-ambient-owner.test.ts",
+  // Frond (karmaterminal, #1564): the human owner's room message at queue capacity, same ingress.
+  "src/auto-reply/reply/queue.room-owner-overflow.test.ts",
   "test/discord-room-ambient-owner-echo.integration.test.ts",
   "src/auto-reply/reply/reply-run-registry.preparation.test.ts",
   "src/auto-reply/reply/reply-run-registry.question-registration.test.ts",
