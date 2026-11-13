@@ -203,11 +203,19 @@ export function enqueueFollowupRun(
       });
       const lifecycle = run.turnAdoptionLifecycle;
       if (lifecycle) {
-        releaseBeforeTurnAdoptionRetry(lifecycle, () => {
+        const releaseRecentSource = () => {
           if (mailbox.recentSources.get(recentMessageIdKey)?.inputInstance === inputInstance) {
             mailbox.recentSources.delete(recentMessageIdKey);
           }
-        });
+        };
+        releaseBeforeTurnAdoptionRetry(lifecycle, releaseRecentSource);
+        const onDropped = lifecycle.onDropped;
+        if (onDropped) {
+          lifecycle.onDropped = (reason) => {
+            releaseRecentSource();
+            return onDropped(reason);
+          };
+        }
       }
     }
     if (runFollowup) {
