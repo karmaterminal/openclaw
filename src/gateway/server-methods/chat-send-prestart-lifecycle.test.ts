@@ -254,7 +254,7 @@ it("cancels a reserved chat.send whose input is not yet staged when drain begins
       expect.objectContaining({ code: "UNAVAILABLE" }),
     ]);
     await persistRunningSessionsForRestart({ cfg: {} });
-    expect(loadSessionEntry(fixture.scope)?.resumeAfterRestart?.queuedInputIds ?? []).toEqual([]);
+    expect(loadSessionEntry(fixture.scope)?.resumeAfterRestart?.queuedInputIds).toEqual([]);
     expect((await listSessionPendingInputs(fixture.scope)).items).toEqual([]);
   } finally {
     queued.release();
@@ -275,7 +275,7 @@ it("cancels a queued chat.send whose pending owner is settling when drain begins
     markGatewayRestartDraining();
     expect(isAgentRunRestartAbortReason(queued.input.abortSignal.reason)).toBe(true);
     await persistRunningSessionsForRestart({ cfg: {} });
-    expect(loadSessionEntry(fixture.scope)?.resumeAfterRestart?.queuedInputIds ?? []).toEqual([]);
+    expect(loadSessionEntry(fixture.scope)?.resumeAfterRestart?.queuedInputIds).toEqual([]);
     await vi.waitFor(async () =>
       expect(await readSessionPendingInput(fixture.scope, row.id)).toMatchObject({
         state: "cancelled",
