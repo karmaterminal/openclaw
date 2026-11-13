@@ -42,6 +42,7 @@ import {
 import { isFinalizedInboundContext } from "./inbound-context.js";
 import { resetInboundDedupe } from "./inbound-dedupe.js";
 import {
+  admitFollowupRunLifecycle,
   completeFollowupRunLifecycle,
   enqueueFollowupRun,
   scheduleFollowupDrain,
@@ -51,6 +52,7 @@ import { createQueueTestRun, rejectQueuePreparation } from "./queue.test-helpers
 import { clearSessionQueues } from "./queue/cleanup.js";
 import { resetRecentQueuedMessageIdDedupe } from "./queue/recent-message-ids.test-support.js";
 import { getExistingFollowupQueue } from "./queue/state.js";
+import { bindReplyOperationQueueDisposition } from "./queue/types.js";
 import { resolveReplyOperationRunState } from "./reply-operation-run-state.js";
 import { buildTestCtx } from "./test-ctx.js";
 import { createAcpSessionMeta } from "./test-fixtures/acp-runtime.js";
@@ -470,6 +472,113 @@ it.each(["old", "new", "summarize"] as const)(
     });
   },
 );
+
+// Frond (karmaterminal, #1564): backpressure releases the inbound dedupe claim before its retry.
+it("redelivers the owner's room message refused at a full protected cap, spending no attempt", async () => {
+  await withTempState(async (stateDir) => {
+    let clock = Date.now();
+    const key = "agent:main:discord:channel:owner-backpressure";
+    const messageId = "owner-backpressure";
+    const ctx = buildTestCtx({
+      Provider: "discord",
+      Surface: "discord",
+      ChatType: "channel",
+      From: "discord:figs",
+      To: "channel:room",
+      SessionKey: key,
+      MessageSid: messageId,
+      BodyForAgent: "figs here",
+    });
+    const queue = createTestIngressQueue(stateDir, { now: () => clock });
+    const settings = { mode: "followup", debounceMs: 0, cap: 1, dropPolicy: "old" } as const;
+    const held = createQueueTestRun({ prompt: "held", messageId: "held" });
+    // Protected work fills the cap.
+    expect(
+      enqueueFollowupRun(key, held, settings, "message-id", undefined, false, {
+        position: "front",
+      }),
+    ).toBe(true);
+    const sources: FollowupRun[] = [];
+    const admitted: boolean[] = [];
+    const resolver = vi.fn(async (_ctx: MsgContext, options?: GetReplyOptions) => {
+      const source = createQueueTestRun(
+        {
+          prompt: "figs here",
+          messageId,
+          currentInboundEventKind: "room_event",
+          originatingChannel: "discord",
+          originatingTo: "channel:room",
+        },
+        {
+          messageProvider: "discord",
+          senderId: "figs",
+          config: { commands: { ownerAllowFrom: ["figs"] } },
+        },
+      );
+      source.turnAdoptionLifecycle = options?.turnAdoptionLifecycle;
+      bindReplyOperationQueueDisposition(source, resolveReplyOperationRunState(options));
+      sources.push(source);
+      const accepted = enqueueFollowupRun(key, source, settings, "message-id", undefined, false);
+      admitted.push(accepted);
+      if (accepted) {
+        resolveReplyOperationRunState(options)!.admission = {
+          status: "accepted",
+          mode: "followup",
+        };
+      }
+      return undefined;
+    });
+    const drain = createChannelIngressDrain({
+      queue,
+      now: () => clock,
+      dispatchClaimedEvent: async (_event, incoming) => {
+        await dispatchReplyFromConfig({
+          ctx,
+          cfg: automaticDirectReplyConfig,
+          dispatcher: createDispatcher(),
+          replyOptions: bindIngressLifecycleToReplyOptions(incoming),
+          replyResolver: resolver,
+        });
+      },
+    });
+    const executed: FollowupRun[] = [];
+    const runQueued = async () => {
+      scheduleFollowupDrain(key, async (run) => {
+        executed.push(run);
+        await admitFollowupRunLifecycle(run);
+      });
+      await vi.waitFor(() => expect(getExistingFollowupQueue(key)).toBeUndefined());
+    };
+    const redeliver = async (delayMs: number) => {
+      // The retry waits for its backoff, then runs dispatch again: its dedupe claim was released.
+      expect(await drain.drainOnce()).toEqual({ started: 0 });
+      clock += delayMs;
+      expect(await drain.drainOnce()).toEqual({ started: 1 });
+      await drain.waitForIdle();
+    };
+    try {
+      await queue.enqueue(messageId, { text: "figs here" });
+      await drain.drainOnce();
+      await drain.waitForIdle();
+      expect(await queue.listPending()).toMatchObject([
+        { id: messageId, attempts: 0, lastError: expect.stringContaining("backpressure") },
+      ]);
+      await redeliver(1_000);
+      expect(await queue.listPending()).toMatchObject([{ id: messageId, attempts: 0 }]);
+      await runQueued();
+      await redeliver(2_000);
+      expect(admitted).toEqual([false, false, true]);
+      await runQueued();
+      expect(executed).toEqual([held, sources[2]]);
+      expect(await queue.listPending()).toEqual([]);
+      expect(await queue.listFailed?.()).toEqual([]);
+      expect(resolver).toHaveBeenCalledTimes(3);
+    } finally {
+      drain.dispose();
+      clearSessionQueues([key]);
+    }
+  });
+});
 
 it.each(["completed", "cancelled", "adoption-rejected", "non-finalized-context"] as const)(
   "holds ACP ingress custody through %s",
