@@ -17,6 +17,7 @@ import {
 } from "../../../sessions/session-controller.mailbox.js";
 import { extractTextFromChatContent } from "../../../shared/chat-content.js";
 import { applyQueueDropPolicy, countPendingQueueItems } from "../../../utils/queue-helpers.js";
+import { isConfiguredCommandOwner } from "../../command-auth.js";
 import { preserveAmbientOverflowContext } from "./ambient-context.js";
 import {
   createOverflowSummaryRetrySource,
@@ -85,7 +86,7 @@ export function enqueueFollowupRun(
   if (isFollowupRunAborted(run)) {
     return false;
   }
-  if (options.position === "front") {
+  if (options.position === "front" || isHumanOwnerRoomEvent(run)) {
     run.protectFromQueueOverflow = true;
   }
   // Peek before getFollowupQueue: rejecting a redelivery after the original
@@ -278,6 +279,23 @@ function settleFollowupQueueRefusal(
   completeFollowupRunLifecycle(
     run,
     reason === "queue-cap-new" ? { kind: "dropped", reason } : undefined,
+  );
+}
+
+// Frond (karmaterminal, #1564): the human owner's unaddressed room message is not ambient chatter.
+// Ownership is the channel-verified sender in commands.ownerAllowFrom, never the wider owner bit
+// (operator.admin scope, operator profiles); a listed bot account, such as a prince, stays ambient.
+function isHumanOwnerRoomEvent(run: FollowupRun): boolean {
+  const execution = run.run;
+  return (
+    run.currentInboundEventKind === "room_event" &&
+    execution.senderIsBot !== true &&
+    isConfiguredCommandOwner(execution.config, {
+      channel: execution.messageProvider,
+      accountId: execution.agentAccountId,
+      senderId: execution.senderId,
+      senderE164: execution.senderE164,
+    })
   );
 }
 
