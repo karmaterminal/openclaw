@@ -1,17 +1,27 @@
 // Frond (karmaterminal, #1564): core settles the human owner's room message refused at a full
 // protected reply queue as backpressure. Slack's own lifecycle must carry it to the durable retry
 // owner as a paced retry that spends no attempt, while every other settlement keeps its accounting.
-import { closeOpenClawStateDatabaseForTest } from "openclaw/plugin-sdk/channel-ingress-test-runtime";
+import {
+  closeOpenClawStateDatabaseForTest,
+  createChannelIngressQueueForTests,
+} from "openclaw/plugin-sdk/channel-ingress-test-runtime";
 import type { PluginJsonValue } from "openclaw/plugin-sdk/plugin-entry";
+import { withOpenClawTestState } from "openclaw/plugin-sdk/test-state";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installSlackTestRuntime } from "../test-runtime.test-support.js";
 import { registerSlackMessageEvents } from "./events/messages.js";
-import { attachBoltIngress, withQueue, type SlackIngressQueue } from "./ingress.test-support.js";
+import { attachBoltIngress, type SlackIngressQueue } from "./ingress.test-support.js";
 import { createSlackMessageHandler } from "./message-handler.js";
 import type { PreparedSlackMessage } from "./message-handler/types.js";
 import { createMonitorTestContext } from "./monitor-context.test-support.js";
 
 type ReplyLifecycle = NonNullable<PreparedSlackMessage["turnAdoptionLifecycle"]>;
+type RoomHarness = {
+  queue: SlackIngressQueue;
+  advance: (ms: number) => Promise<void>;
+  restart: () => Promise<void>;
+  receive: (body: PluginJsonValue) => Promise<void>;
+};
 
 const replyLane = vi.hoisted(() => ({
   dispatch: vi.fn<(prepared: { message: { ts?: string } }) => Promise<void>>(),
@@ -51,16 +61,11 @@ function roomEvent(eventId: string, ts: string): PluginJsonValue {
   };
 }
 
-// The queue and the monitor capture their clock at construction.
-function useIngressClock() {
-  vi.useFakeTimers({
-    toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
-  });
-}
-
 function attachRoomIngress(queue: SlackIngressQueue) {
   installSlackTestRuntime();
-  const { app, ingress } = attachBoltIngress(queue, { adoptionStallTimeoutMs: 10 * 60_000 });
+  const { app, ingress, receive } = attachBoltIngress(queue, {
+    adoptionStallTimeoutMs: 10 * 60_000,
+  });
   const ctx = createMonitorTestContext({
     app,
     teamId: "T_TEST",
@@ -69,11 +74,50 @@ function attachRoomIngress(queue: SlackIngressQueue) {
   });
   ctx.readRuntimeContext = async () => ctx;
   registerSlackMessageEvents({ ctx, handleSlackMessage: createSlackMessageHandler({ ctx }) });
-  const advance = async (ms: number) => {
-    await vi.advanceTimersByTimeAsync(ms);
-    await ingress.waitForIdle();
-  };
-  return { ingress, advance };
+  app.event("channel_id_changed", async () => {});
+  return { ingress, receive };
+}
+
+async function withRoomIngress(
+  run: (harness: RoomHarness) => Promise<void>,
+  seed: (queue: SlackIngressQueue) => Promise<void>,
+) {
+  // The queue and the monitor capture their clock at construction.
+  vi.useFakeTimers({
+    toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+  });
+  await withOpenClawTestState({ label: "slack-owner-backpressure" }, async ({ stateDir }) => {
+    const openQueue = (): SlackIngressQueue =>
+      createChannelIngressQueueForTests({ channelId: "slack", accountId: "default", stateDir });
+    const queue = openQueue();
+    let { ingress, receive } = attachRoomIngress(queue);
+    const start = async () => {
+      ingress.start();
+      await ingress.waitForIdle();
+    };
+    const advance = async (ms: number) => {
+      await vi.advanceTimersByTimeAsync(ms);
+      await ingress.waitForIdle();
+    };
+    // A process restart reopens the queue, whose retry owner keeps pacing in memory.
+    const restart = async () => {
+      await ingress.stop();
+      ({ ingress, receive } = attachRoomIngress(openQueue()));
+      await start();
+    };
+    try {
+      await seed(queue);
+      await start();
+      await run({
+        queue,
+        advance,
+        restart,
+        receive: async (body) => await receive({ body, ack: async () => {} }),
+      });
+    } finally {
+      await ingress.stop();
+    }
+  });
 }
 
 async function enqueue(queue: SlackIngressQueue, eventId: string, ts: string, receivedAt: number) {
@@ -99,6 +143,12 @@ function refuse(lifecycle: ReplyLifecycle) {
   void (lifecycle.onBackpressure ? lifecycle.onBackpressure() : lifecycle.onAbandoned?.());
 }
 
+function onReplyLane(settle: (lifecycle: ReplyLifecycle, ts: string | undefined) => Promise<void>) {
+  replyLane.dispatch.mockImplementation(async (prepared) => {
+    await settle((prepared as PreparedSlackMessage).turnAdoptionLifecycle!, prepared.message.ts);
+  });
+}
+
 describe("Slack owner backpressure", () => {
   beforeEach(() => {
     replyLane.dispatch.mockReset();
@@ -109,30 +159,23 @@ describe("Slack owner backpressure", () => {
   });
 
   it("holds a refused owner message past 24 h and 8 refusals with no attempt spent, paced, then admits each once in order", async () => {
-    useIngressClock();
-    await withQueue(async (queue) => {
-      const { ingress, advance } = attachRoomIngress(queue);
-      // Already past the dead-letter age floor.
-      await enqueue(queue, "Ev-owner-1", "1700000000.000101", Date.now() - 25 * HOUR_MS);
-      const claims: Array<{ ts: string | undefined; at: number }> = [];
-      const admitted: Array<string | undefined> = [];
-      let capacityFree = false;
-      replyLane.dispatch.mockImplementation(async (prepared) => {
-        const lifecycle = (prepared as PreparedSlackMessage).turnAdoptionLifecycle!;
-        claims.push({ ts: prepared.message.ts, at: Date.now() });
-        // drop:old / drop:summarize: core defers the source before overflow refuses it.
-        lifecycle.onDeferred?.();
-        if (!capacityFree) {
-          refuse(lifecycle);
-          return;
-        }
-        admitted.push(prepared.message.ts);
-        await lifecycle.onAdopted();
-      });
-      const ownerClaims = () => claims.filter((claim) => claim.ts === "1700000000.000101");
-      try {
-        ingress.start();
-        await ingress.waitForIdle();
+    const claims: Array<{ ts: string | undefined; at: number }> = [];
+    const admitted: Array<string | undefined> = [];
+    let capacityFree = false;
+    onReplyLane(async (lifecycle, ts) => {
+      claims.push({ ts, at: Date.now() });
+      // drop:old / drop:summarize: core defers the source before overflow refuses it.
+      lifecycle.onDeferred?.();
+      if (!capacityFree) {
+        refuse(lifecycle);
+        return;
+      }
+      admitted.push(ts);
+      await lifecycle.onAdopted();
+    });
+    const ownerClaims = () => claims.filter((claim) => claim.ts === "1700000000.000101");
+    await withRoomIngress(
+      async ({ queue, advance }) => {
         const trace = [];
         for (const [step, delayMs] of PACING_MS.entries()) {
           if (step === 3) {
@@ -165,39 +208,33 @@ describe("Slack owner backpressure", () => {
         expect(ownerClaims()).toHaveLength(PACING_MS.length + 2);
         expect(await queue.listPending({ limit: "all" })).toEqual([]);
         expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
-      } finally {
-        await ingress.stop();
-      }
-    });
+      },
+      // Already past the dead-letter age floor when the monitor first claims it.
+      async (queue) =>
+        await enqueue(queue, "Ev-owner-1", "1700000000.000101", Date.now() - 25 * HOUR_MS),
+    );
   });
 
   it("retains an owner message by backpressure on a drop:new cap while an addressed arrival drops once", async () => {
-    useIngressClock();
-    await withQueue(async (queue) => {
-      const { ingress, advance } = attachRoomIngress(queue);
-      await enqueue(queue, "Ev-addressed", "1700000000.000101", Date.now());
-      await enqueue(queue, "Ev-owner", "1700000000.000201", Date.now());
-      const dispatched: Array<string | undefined> = [];
-      let capacityFree = false;
-      replyLane.dispatch.mockImplementation(async (prepared) => {
-        const lifecycle = (prepared as PreparedSlackMessage).turnAdoptionLifecycle!;
-        dispatched.push(prepared.message.ts);
-        if (prepared.message.ts === "1700000000.000101") {
-          // An addressed message keeps upstream drop:new: a terminal, undeferred refusal.
-          await lifecycle.onDropped?.("queue-cap-new");
-          return;
-        }
-        if (!capacityFree) {
-          // drop:new refuses before deferral; the owner's room message is backpressure.
-          refuse(lifecycle);
-          return;
-        }
-        lifecycle.onDeferred?.();
-        await lifecycle.onAdopted();
-      });
-      try {
-        ingress.start();
-        await ingress.waitForIdle();
+    const dispatched: Array<string | undefined> = [];
+    let capacityFree = false;
+    onReplyLane(async (lifecycle, ts) => {
+      dispatched.push(ts);
+      if (ts === "1700000000.000101") {
+        // An addressed message keeps upstream drop:new: a terminal, undeferred refusal.
+        await lifecycle.onDropped?.("queue-cap-new");
+        return;
+      }
+      if (!capacityFree) {
+        // drop:new refuses before deferral; the owner's room message is backpressure.
+        refuse(lifecycle);
+        return;
+      }
+      lifecycle.onDeferred?.();
+      await lifecycle.onAdopted();
+    });
+    await withRoomIngress(
+      async ({ queue, advance }) => {
         expect(await rowState(queue, "Ev-addressed")).toEqual({
           state: "failed",
           reason: "queue-cap-new",
@@ -217,10 +254,93 @@ describe("Slack owner backpressure", () => {
         expect(await queue.listFailed?.({ limit: "all" })).toMatchObject([
           { id: "Ev-addressed", reason: "queue-cap-new" },
         ]);
-      } finally {
-        await ingress.stop();
+      },
+      async (queue) => {
+        await enqueue(queue, "Ev-addressed", "1700000000.000101", Date.now());
+        await enqueue(queue, "Ev-owner", "1700000000.000201", Date.now());
+      },
+    );
+  });
+
+  it("keeps a held owner message attempt-free across a restart, whose fresh drain redelivers it", async () => {
+    const claimedAt: number[] = [];
+    let capacityFree = false;
+    onReplyLane(async (lifecycle) => {
+      claimedAt.push(Date.now());
+      lifecycle.onDeferred?.();
+      if (!capacityFree) {
+        refuse(lifecycle);
+        return;
       }
+      await lifecycle.onAdopted();
     });
+    await withRoomIngress(
+      async ({ queue, advance, restart }) => {
+        await advance(1_000);
+        expect(await rowState(queue, "Ev-owner")).toEqual({ state: "pending", attempts: 0 });
+        // The pacing record lives with the retry owner, so a fresh drain claims at once.
+        const restartedAt = Date.now();
+        await restart();
+        expect(claimedAt).toEqual([restartedAt - 1_000, restartedAt, restartedAt]);
+        expect(await rowState(queue, "Ev-owner")).toEqual({ state: "pending", attempts: 0 });
+        capacityFree = true;
+        await advance(1_000);
+        expect(claimedAt).toHaveLength(4);
+        expect(await queue.listPending({ limit: "all" })).toEqual([]);
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      },
+      async (queue) =>
+        await enqueue(queue, "Ev-owner", "1700000000.000101", Date.now() - 25 * HOUR_MS),
+    );
+  });
+
+  it("releases the channel migration fence when a deferred owner message is refused later", async () => {
+    const deferred = Promise.withResolvers<ReplyLifecycle>();
+    let capacityFree = false;
+    onReplyLane(async (lifecycle) => {
+      lifecycle.onDeferred?.();
+      if (!capacityFree) {
+        // Queued now; core's deferred-overflow reconciliation refuses it after dispatch returns.
+        deferred.resolve(lifecycle);
+        return;
+      }
+      await lifecycle.onAdopted();
+    });
+    await withRoomIngress(
+      async ({ queue, advance, receive }) => {
+        await receive(roomEvent("Ev-owner", "1700000000.000101"));
+        const owner = await deferred.promise;
+        const migrationClaimed = Promise.withResolvers<void>();
+        const claim = queue.claim.bind(queue);
+        queue.claim = async (...args) => {
+          const claimed = await claim(...args);
+          if (claimed?.id === "Ev-migration") {
+            migrationClaimed.resolve();
+          }
+          return claimed;
+        };
+        await receive({
+          team_id: "T_TEST",
+          api_app_id: "A_TEST",
+          type: "event_callback",
+          event_id: "Ev-migration",
+          event_time: 1_700_000_000,
+          event: { type: "channel_id_changed", old_channel_id: "C_OLD", new_channel_id: "C_ROOM" },
+        });
+        // The migration waits behind the deferred owner message's channel fence.
+        await migrationClaimed.promise;
+        refuse(owner);
+        await advance(0);
+        expect(await queue.listClaims()).toEqual([]);
+        expect(await rowState(queue, "Ev-migration")).toEqual({ state: "settled" });
+        expect(await rowState(queue, "Ev-owner")).toEqual({ state: "pending", attempts: 0 });
+        capacityFree = true;
+        await advance(1_000);
+        expect(await queue.listPending({ limit: "all" })).toEqual([]);
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      },
+      async () => {},
+    );
   });
 
   it.each([
@@ -243,20 +363,10 @@ describe("Slack owner backpressure", () => {
       attempts: [1, 2],
     },
   ])("keeps upstream accounting: $name", async ({ settle, attempts }) => {
-    useIngressClock();
-    await withQueue(async (queue) => {
-      const { ingress, advance } = attachRoomIngress(queue);
-      await enqueue(queue, "Ev-control", "1700000000.000101", Date.now());
-      const seenAttempts: number[] = [];
-      replyLane.dispatch.mockImplementation(async (prepared) => {
-        await settle(
-          (prepared as PreparedSlackMessage).turnAdoptionLifecycle!,
-          replyLane.dispatch.mock.calls.length - 1,
-        );
-      });
-      try {
-        ingress.start();
-        await ingress.waitForIdle();
+    onReplyLane(async (lifecycle) => settle(lifecycle, replyLane.dispatch.mock.calls.length - 1));
+    await withRoomIngress(
+      async ({ queue, advance }) => {
+        const seenAttempts: number[] = [];
         for (const delayMs of [1_000, 2_000]) {
           const row = await rowState(queue, "Ev-control");
           if (row.state === "pending") {
@@ -269,9 +379,8 @@ describe("Slack owner backpressure", () => {
         expect(replyLane.dispatch).toHaveBeenCalledTimes(attempts.length + 1);
         expect(await queue.listPending({ limit: "all" })).toEqual([]);
         expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
-      } finally {
-        await ingress.stop();
-      }
-    });
+      },
+      async (queue) => await enqueue(queue, "Ev-control", "1700000000.000101", Date.now()),
+    );
   });
 });

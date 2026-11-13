@@ -274,6 +274,57 @@ describe("Telegram durable ingress coalescing", () => {
     }
   });
 
+  // Frond (karmaterminal, #1564): the reply lane settles the owner's room message refused at a
+  // full protected queue as backpressure; core's notifier falls back to abandonment without it.
+  it("redelivers a backpressured turn attempt-free, its dispatch dedupe released until adoption", async ({
+    signal,
+  }) => {
+    // The monitor captures Date.now at construction, so install the clock first.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const { monitor, bot } = await createMonitor({ pollIntervalMs: 60_000 });
+    const update = textUpdate({ updateId: 1_501, messageId: 1, text: "owner room message" });
+    const queue = openTelegramIngressQueue({ stateDir });
+    for (let refusal = 0; refusal < 2; refusal += 1) {
+      downstreamTurns.mockImplementationOnce(async (_ctx, _abortSignal, lifecycle) => {
+        lifecycle?.onDeferred?.();
+        void (lifecycle?.onBackpressure ? lifecycle.onBackpressure() : lifecycle?.onAbandoned?.());
+        return { queuedFinal: false, counts: { block: 0, final: 0, tool: 0 } };
+      });
+    }
+    const settle = async () => {
+      await withinTest(monitor.waitForIdle(), signal);
+      await withinTest(monitor.waitForDeferredClaims(), signal);
+    };
+    monitor.start();
+    try {
+      await withinTest(monitor.admit(update), signal);
+      await settle();
+      await expectOnlyPending(queue, [{ id: telegramQueueEventId(1_501), attempts: 0 }]);
+      // A released dispatch dedupe claim lets the paced retry reach the reply lane again.
+      await withinTest(vi.advanceTimersByTimeAsync(1_000), signal);
+      await settle();
+      expect(downstreamTurns).toHaveBeenCalledTimes(2);
+      await expectOnlyPending(queue, [{ id: telegramQueueEventId(1_501), attempts: 0 }]);
+      await withinTest(vi.advanceTimersByTimeAsync(2_000), signal);
+      await settle();
+      expect(downstreamTurns.mock.calls.map(([turn]) => turn.RawBody)).toEqual([
+        "owner room message",
+        "owner room message",
+        "owner room message",
+      ]);
+      await tombstones(1_501);
+      // Adoption committed the dispatch dedupe claim, so a replayed update is skipped.
+      const duplicate = await processingOutcome.runWithTelegramUpdateProcessingFrame(() =>
+        bot.handleUpdate(update),
+      );
+      expect(duplicate.result).toEqual({ kind: "skipped" });
+      expect(downstreamTurns).toHaveBeenCalledTimes(3);
+      expect(runtimeErrors).toEqual([]);
+    } finally {
+      await monitor.stop();
+    }
+  });
+
   it("keeps a later album alive and ordered behind a slowly adopting album", async ({ signal }) => {
     const { monitor } = await createMonitor({ adoptionStallTimeoutMs: 1_000 });
     const { headDispatched, releaseHead } = holdFirstDownstreamTurn();

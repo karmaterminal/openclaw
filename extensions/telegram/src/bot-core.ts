@@ -174,10 +174,13 @@ export async function createTelegramBotCore(
         void deferredWork.task
           .then((deferredResult) => {
             updateTracker.finishUpdate(begin.update, {
-              // A cancelled turn is released for durable redelivery, so it
-              // must not be remembered as handled any more than a retry.
+              // A cancelled or backpressured turn is released for durable
+              // redelivery, so it must not be remembered as handled any more
+              // than a retry.
               completed:
-                deferredResult.kind !== "failed-retryable" && deferredResult.kind !== "cancelled",
+                deferredResult.kind !== "failed-retryable" &&
+                deferredResult.kind !== "cancelled" &&
+                deferredResult.kind !== "backpressure",
             });
           })
           .catch(() => {

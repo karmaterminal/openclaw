@@ -894,8 +894,14 @@ function refuseAtFullCap(lifecycle: OwnerReplyLifecycle) {
   void (lifecycle.onBackpressure ? lifecycle.onBackpressure() : lifecycle.onAbandoned?.());
 }
 
+type OwnerRoomHarness = {
+  queue: Queue;
+  advance: (ms: number) => Promise<void>;
+  restart: () => Promise<void>;
+};
+
 async function withOwnerRoomIngress(
-  run: (harness: { queue: Queue; advance: (ms: number) => Promise<void> }) => Promise<void>,
+  run: (harness: OwnerRoomHarness) => Promise<void>,
   seed: (queue: Queue) => Promise<void> = async () => {},
 ) {
   // The queue and monitor capture their clock at construction.
@@ -905,11 +911,13 @@ async function withOwnerRoomIngress(
   await withOpenClawTestState(
     { layout: "state-only", prefix: "openclaw-telegram-owner-backpressure-", applyEnv: false },
     async ({ stateDir }) => {
-      const queue = createChannelIngressQueueForTests<TelegramSpooledUpdatePayload>({
-        channelId: "telegram",
-        accountId: "default",
-        stateDir,
-      });
+      const openQueue = () =>
+        createChannelIngressQueueForTests<TelegramSpooledUpdatePayload>({
+          channelId: "telegram",
+          accountId: "default",
+          stateDir,
+        });
+      const queue = openQueue();
       const processMessage = createTelegramMessageProcessor({
         bot: {},
         account: {},
@@ -928,31 +936,42 @@ async function withOwnerRoomIngress(
         textLimit: 4096,
         opts: {},
       } as unknown as Parameters<typeof createTelegramMessageProcessor>[0]);
-      const monitor = createTelegramIngressMonitor({
-        queue,
-        getConfig: () => ({}),
-        accountId: "default",
-        adoptionStallTimeoutMs: 10 * 60_000,
-        dispatch: async (claimed) =>
-          await processMessage({
-            ctx: {
-              message: (claimed as ReturnType<typeof roomUpdate>).message,
-              update: claimed,
-            } as unknown as Parameters<typeof processMessage>[0]["ctx"],
-            allMedia: [],
-            storeAllowFrom: [],
-            turnContext: { cfg: {}, telegramCfg: {} },
-          }),
-      });
+      const createMonitor = (monitorQueue = queue) =>
+        createTelegramIngressMonitor({
+          queue: monitorQueue,
+          getConfig: () => ({}),
+          accountId: "default",
+          adoptionStallTimeoutMs: 10 * 60_000,
+          dispatch: async (claimed) =>
+            await processMessage({
+              ctx: {
+                message: (claimed as ReturnType<typeof roomUpdate>).message,
+                update: claimed,
+              } as unknown as Parameters<typeof processMessage>[0]["ctx"],
+              allMedia: [],
+              storeAllowFrom: [],
+              turnContext: { cfg: {}, telegramCfg: {} },
+            }),
+        });
+      let monitor = createMonitor();
+      const start = async () => {
+        monitor.start();
+        await monitor.waitForIdle();
+      };
       const advance = async (ms: number) => {
         await vi.advanceTimersByTimeAsync(ms);
         await monitor.waitForIdle();
       };
+      // A process restart reopens the queue, whose retry owner keeps pacing in memory.
+      const restart = async () => {
+        await monitor.stop();
+        monitor = createMonitor(openQueue());
+        await start();
+      };
       try {
         await seed(queue);
-        monitor.start();
-        await monitor.waitForIdle();
-        await run({ queue, advance });
+        await start();
+        await run({ queue, advance, restart });
       } finally {
         await monitor.stop();
       }
@@ -1126,5 +1145,80 @@ describe("Telegram owner backpressure", () => {
       },
       async (queue) => await enqueueRoomUpdate(queue, 101, Date.now()),
     );
+  });
+
+  it("keeps a held owner message attempt-free across a restart, whose fresh drain redelivers it", async () => {
+    const claimedAt: number[] = [];
+    let capacityFree = false;
+    onRoomDispatch(async (lifecycle) => {
+      claimedAt.push(Date.now());
+      lifecycle.onDeferred?.();
+      if (!capacityFree) {
+        refuseAtFullCap(lifecycle);
+        return;
+      }
+      await lifecycle.onAdopted();
+    });
+    await withOwnerRoomIngress(
+      async ({ queue, advance, restart }) => {
+        await advance(1_000);
+        expect(await roomRowState(queue, 101)).toEqual({ state: "pending", attempts: 0 });
+        // The pacing record lives with the retry owner, so a fresh drain claims at once.
+        const restartedAt = Date.now();
+        await restart();
+        expect(claimedAt).toEqual([restartedAt - 1_000, restartedAt, restartedAt]);
+        expect(await roomRowState(queue, 101)).toEqual({ state: "pending", attempts: 0 });
+        capacityFree = true;
+        await advance(1_000);
+        expect(claimedAt).toHaveLength(4);
+        expect(await queue.listPending({ limit: "all" })).toEqual([]);
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      },
+      async (queue) => await enqueueRoomUpdate(queue, 101, Date.now() - 25 * HOUR_MS),
+    );
+  });
+
+  it("retries a coalesced member paced and budget-free when its participant settles backpressure", async () => {
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+    });
+    await withTempState(async ({ queue, monitor: makeMonitor }) => {
+      await enqueueRoomUpdate(queue, 103, Date.now() - 25 * HOUR_MS);
+      // A non-head album member only defers its participant; the coalesced
+      // turn settles it later with the shared result.
+      const participants: TelegramSpooledReplayDeferredParticipant[] = [];
+      const monitor = makeMonitor({
+        dispatch: async () => {
+          const participant = createTelegramSpooledReplayDeferredParticipant(
+            `test:backpressure-member-${participants.length}`,
+          );
+          if (participant) {
+            participants.push(participant);
+          }
+        },
+      });
+      try {
+        monitor.start();
+        await monitor.waitForIdle();
+        participants[0]?.settle({ kind: "backpressure" });
+        await monitor.waitForDeferredClaims();
+        expect(await roomRowState(queue, 103)).toEqual({ state: "pending", attempts: 0 });
+        await vi.advanceTimersByTimeAsync(999);
+        await monitor.waitForIdle();
+        expect(participants).toHaveLength(1);
+        await vi.advanceTimersByTimeAsync(1);
+        await monitor.waitForIdle();
+        expect(participants).toHaveLength(2);
+        participants[1]?.settle({ kind: "completed" });
+        await monitor.waitForDeferredClaims();
+        expect(await queue.listPending({ limit: "all" })).toEqual([]);
+        expect(await queue.listFailed?.({ limit: "all" })).toEqual([]);
+      } finally {
+        for (const participant of participants) {
+          participant.settle({ kind: "skipped" });
+        }
+        await monitor.stop();
+      }
+    });
   });
 });

@@ -394,7 +394,7 @@ export async function handleTelegramInteractiveCallback(params: {
   };
   const processSubmitText = async (
     text: string,
-  ): Promise<"completed" | "skipped" | "cancelled" | "dropped"> => {
+  ): Promise<"completed" | "skipped" | "cancelled" | "backpressure" | "dropped"> => {
     const synthetic = buildSynthetic(text);
     const participant = isTelegramSpooledReplayUpdate(synthetic.ctx.update)
       ? (getTelegramSpooledReplayDeferredParticipant() ??
@@ -491,7 +491,7 @@ export async function handleTelegramInteractiveCallback(params: {
         return;
       }
       const submitText = normalizeOptionalString(result?.submitText);
-      // Only a completed submission consumed the buttons; skipped, cancelled, or dropped keeps them.
+      // Only a completed submission consumed the buttons; any other outcome keeps them.
       if (!submitText || (await processSubmitText(submitText)) !== "completed") {
         return;
       }
