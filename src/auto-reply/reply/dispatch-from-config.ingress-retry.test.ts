@@ -305,8 +305,17 @@ describe("dispatch retry after queued ingress abandonment", () => {
           expect(lifecycles[0]?.abortSignal.aborted).toBe(true);
         }
         await expect(released).resolves.toBe(true);
+        // A queue clear relinquishes the turn on purpose, so like a refused
+        // replay it cancels the claim without spending retry budget.
         expect(await queue.listPending()).toMatchObject([
-          { id: messageId, attempts: abandonment === "replay-before-abandon" ? 0 : 1 },
+          {
+            id: messageId,
+            attempts:
+              abandonment === "replay-before-abandon" ||
+              abandonment === "abandon-before-dispatch-return"
+                ? 0
+                : 1,
+          },
         ]);
         clock += 30_000;
         expect(await drain.drainOnce()).toEqual({ started: 1 });
