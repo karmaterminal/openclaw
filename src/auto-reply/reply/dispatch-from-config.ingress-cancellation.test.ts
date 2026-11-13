@@ -15,6 +15,10 @@ import {
   markGatewayRestartDraining,
   resetGatewayWorkAdmission,
 } from "../../process/gateway-work-admission.js";
+import {
+  captureSessionControllerStop,
+  stopSession,
+} from "../../sessions/session-controller.stop.js";
 import { testing as controllerTesting } from "../../sessions/session-controller.test-support.js";
 import { createInboundDebouncer } from "../inbound-debounce.js";
 import type { MsgContext } from "../templating.js";
@@ -41,7 +45,7 @@ import {
 import { createQueueTestRun } from "./queue.test-helpers.js";
 import { clearSessionQueues } from "./queue/cleanup.js";
 import { resetRecentQueuedMessageIdDedupe } from "./queue/recent-message-ids.test-support.js";
-import { clearFollowupQueue } from "./queue/state.js";
+import { clearFollowupQueue, getExistingFollowupQueue } from "./queue/state.js";
 import { resolveReplyOperationRunState } from "./reply-operation-run-state.js";
 import { buildTestCtx } from "./test-ctx.js";
 
@@ -307,7 +311,7 @@ describe("queued ingress cancellation through the reply terminal path", () => {
   });
 
   it("cancels a waiting durable turn on gateway restart without charging its retry budget", async () => {
-    // Bind the mailbox restart listener to a fresh drain signal for this case.
+    // Start from open admission; this case begins the restart drain itself.
     resetGatewayWorkAdmission();
     await withTempState(async (stateDir) => {
       const key = "agent:main:discord:direct:ingress-restart";
@@ -315,6 +319,7 @@ describe("queued ingress cancellation through the reply terminal path", () => {
       await queue.enqueue("restart-waiting", { text: "a" }, { laneKey: "lane-a" });
       const cancelled = vi.fn();
       const abandoned = vi.fn();
+      let waiting: FollowupRun | undefined;
       const drain = createChannelIngressDrain({
         queue,
         retryPolicy: ONE_ATTEMPT,
@@ -336,6 +341,7 @@ describe("queued ingress cancellation through the reply terminal path", () => {
             turnAdoptionLifecycle:
               bindIngressLifecycleToReplyOptions(observed).turnAdoptionLifecycle,
           };
+          waiting = run;
           expect(enqueueFollowupRun(key, run, QUEUE_SETTINGS, "message-id", undefined, false)).toBe(
             true,
           );
@@ -361,6 +367,16 @@ describe("queued ingress cancellation through the reply terminal path", () => {
           ),
         ]);
         markGatewayRestartDraining();
+        // Drain begin keeps the turn queued for the restart marker capture; the
+        // committed restart shutdown stop is what relinquishes it.
+        if (!waiting?.controllerInput) {
+          throw new Error("drain did not queue the waiting turn");
+        }
+        expect(getExistingFollowupQueue(key)?.items).toEqual([waiting]);
+        await stopSession({
+          source: "restart",
+          capture: captureSessionControllerStop({ inputs: [waiting.controllerInput] }),
+        }).completed;
         await expect(settled).resolves.toBe("release");
         expect(cancelled).toHaveBeenCalledOnce();
         expect(abandoned).not.toHaveBeenCalled();
