@@ -134,7 +134,11 @@ describe.each(["followup", "collect"] as const)("queued %s", (mode) => {
                 );
               }
               const provider = resolvePluginProvidersCore({ registryScope: "loaded" })[0];
-              delivered.push(provider?.formatApiKey?.(credential));
+              const reply = provider?.formatApiKey?.(credential);
+              // Like the real runner, adopt after preparation and before turn work: the drain
+              // releases an unadopted source on a normal return instead of consuming it.
+              await admitFollowupRunLifecycle(run);
+              delivered.push(reply);
             } catch (error) {
               if (!(error instanceof Error)) {
                 throw error;
