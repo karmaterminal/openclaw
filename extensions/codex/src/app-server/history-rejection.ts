@@ -7,6 +7,8 @@ export type CodexHistoryRejectionReason =
   | "invalid_content"
   | "invalid_pairing"
   | "incomplete_pairing"
+  | "current_pending_calls"
+  | "current_no_completed_results"
   | "provenance_rejected"
   | "malformed_header"
   | "access_rejected"
