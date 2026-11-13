@@ -1,0 +1,2 @@
+255
+# Human-owner room overflow carve-out (karmaterminal/openclaw#1564): real durable-ingress proofs of owner retention, non-owner discard, full protected-cap backpressure and owner identity. This grants only the measured net test-line growth against 39d1945464.
