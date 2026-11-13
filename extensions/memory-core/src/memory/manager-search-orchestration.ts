@@ -20,6 +20,8 @@ import {
   isMemoryEmbeddingOperationError,
 } from "./manager-embedding-errors.js";
 import { acquireMemoryIndexReadGeneration } from "./manager-index-generation-lease.js";
+import { isMemoryReindexResourceFailureBlocking } from "./manager-reindex-failure.js";
+import { resolveConfiguredSourcesForMeta } from "./manager-reindex-state.js";
 import type { MemoryIndexIdentityState } from "./manager-reindex-state.js";
 import type { MemoryRetrievalIndexState } from "./manager-retrieval-read.js";
 import {
@@ -191,10 +193,15 @@ export abstract class MemorySearchOrchestration extends MemorySearchRetrieval {
       opts?.onDebug?.({ backend: "builtin" });
       if (
         this.purpose === "cli" &&
+        !isMemoryReindexResourceFailureBlocking(
+          this.reindexResourceFailure,
+          resolveConfiguredSourcesForMeta(this.sources),
+          Date.now(),
+        ) &&
         this.hasIndexedContent(await this.readRetrievalIndexState(opts?.signal))
       ) {
         // One-shot readers refresh populated indexes before taking a lease; empty
-        // indexes use search-bootstrap's single admitted sync and OOM cooldown.
+        // indexes use search-bootstrap, and worker-OOM retries honor its cooldown.
         this.dirty ||= this.sources.has("memory");
         await this.syncAdmitted(
           { reason: "cli-search" },

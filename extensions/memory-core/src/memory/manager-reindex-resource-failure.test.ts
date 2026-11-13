@@ -305,6 +305,45 @@ describe("memory reindex worker memory failures", () => {
     },
   );
 
+  it("does not rescan a populated session index on CLI search during a worker-OOM cooldown", async () => {
+    fixture.provider.forceNoProvider = true;
+    const cfg = fixture.createConfig({
+      provider: "none",
+      sources: ["sessions"],
+      sessionMemory: true,
+      vectorEnabled: false,
+    });
+    await fixture.seedSessionTranscript({
+      sessionId: "indexed-before-failure",
+      messages: [{ role: "user", timestamp: Date.now(), content: "indexed marker" }],
+    });
+    const owner = await fixture.getFreshManager(cfg);
+    await owner.sync({ reason: "cli", force: true });
+    expect(owner.status().chunks).toBeGreaterThan(0);
+    memoryIndexFixtureWriter(owner).exec(oldChunking);
+    const time = { now: Date.now() };
+    vi.spyOn(Date, "now").mockImplementation(() => time.now);
+    const openShadow = vi.spyOn(MemoryIndexDatabase, "openShadow");
+    failShadowWritesWithWorkerOom();
+    await expect(owner.sync()).rejects.toThrow("JS heap out of memory");
+    expect(openShadow).toHaveBeenCalledTimes(1);
+    const failure = readPersistedFailure(owner);
+    expect(failure).toMatchObject({ attempts: 1, sources: ["sessions"] });
+    await owner.close();
+
+    const prototype = Object.getPrototypeOf(owner) as {
+      listSessionCorpusEntries(): Promise<unknown[]>;
+    };
+    const corpusReads = vi.spyOn(prototype, "listSessionCorpusEntries");
+    const cli = await fixture.getFreshManager(cfg, "cli");
+    time.now += 30_001;
+    const readsBeforeSearch = corpusReads.mock.calls.length;
+    await cli.search("indexed marker");
+    expect(corpusReads).toHaveBeenCalledTimes(readsBeforeSearch);
+    expect(openShadow).toHaveBeenCalledTimes(1);
+    expect(readPersistedFailure(cli)).toEqual(failure);
+  });
+
   it("does not record a search bootstrap failure that is not a worker OOM", async () => {
     const { manager, corpusReads } = await failingSessionBootstrap(workerExited);
 
