@@ -92,6 +92,8 @@ type QueuedSessionDeliveryGenericPayload =
       kind: "systemEvent";
       sessionKey: string;
       text: string;
+      /** Restart handoffs must not enter a replacement incarnation. */
+      expectedSessionId?: string;
       recipientAuthority?: SessionRecipientAuthority;
       deliveryContext?: SessionDeliveryContext;
       idempotencyKey?: string;
@@ -316,6 +318,7 @@ const QueuedPlainSystemEventSchema = z
     kind: z.literal("systemEvent"),
     sessionKey: z.string(),
     text: z.string(),
+    expectedSessionId: z.string().optional(),
     recipientAuthority: SessionRecipientAuthoritySchema.optional(),
     deliveryContext: QueuedGenericDeliveryContextSchema.optional(),
     idempotencyKey: z.string().optional(),

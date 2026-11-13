@@ -160,7 +160,7 @@ function expectCleanedMedia() {
 
 describe("dispatchSmsInboundEvent", () => {
   beforeEach(() => {
-    unlinkIfExistsMock.mockReset().mockResolvedValue(undefined);
+    unlinkIfExistsMock.mockClear();
   });
 
   it("creates and sends a pairing challenge for first-time SMS senders", async () => {
@@ -203,95 +203,176 @@ describe("dispatchSmsInboundEvent", () => {
     expectCleanedMedia();
   });
 
-  it.each([
-    "abandoned",
-    "adopted",
-    "before adoption",
-    "after deferral",
-    "queue-cap-old",
-    "queue-cap-new",
-    "legacy abandonment",
-  ] as const)("settles downloaded MMS files when %s", async (phase) => {
+  it("cleans deferred MMS files before forwarding cancellation", async () => {
     const mocks = createAuthorizedRuntime();
     const events: string[] = [];
-    const failure = new Error("durable adoption failed");
-    const original = lifecycle();
-    const dropReason = phase === "queue-cap-old" || phase === "queue-cap-new" ? phase : undefined;
-    let wrapped: SmsTurnAdoptionLifecycle | undefined;
-    if (phase === "after deferral") {
-      original.onAdopted = vi.fn(async () => {
-        throw failure;
-      });
-    }
-    original.onAbandoned = vi.fn(() => {
-      events.push("abandon");
-    });
-    original.onDropped = vi.fn(async (reason) => {
-      events.push(reason);
-    });
-    if (phase === "legacy abandonment") {
-      original.onDropped = undefined;
-    }
     unlinkIfExistsMock.mockImplementationOnce(async () => {
       events.push("cleanup");
     });
-    const msg = createMmsMessage("MM-lifecycle");
-    mocks.run.mockImplementationOnce(async ({ turnAdoptionLifecycle, adapter }) => {
-      wrapped = turnAdoptionLifecycle;
-      if (phase === "legacy abandonment") {
-        expect(wrapped?.onDropped).toBeUndefined();
-        wrapped?.onDeferred?.();
-        return;
-      }
-      if (phase === "before adoption") {
+    const originalLifecycle: SmsTurnAdoptionLifecycle = {
+      onAdopted: vi.fn(async () => undefined),
+      onDeferred: vi.fn(),
+      onCancelled: vi.fn(async () => {
+        events.push("cancel");
+      }),
+      onAbandoned: vi.fn(),
+    };
+    let wrappedLifecycle: SmsTurnAdoptionLifecycle | undefined;
+    mocks.run.mockImplementationOnce(async (runParams) => {
+      wrappedLifecycle = runParams.turnAdoptionLifecycle;
+      wrappedLifecycle?.onDeferred?.();
+    });
+
+    await dispatchSmsInboundEvent({
+      cfg: {},
+      account: createAccount({ dmPolicy: "allowlist", allowFrom: [SMS_FROM] }),
+      channelRuntime: mocks.runtime,
+      receivedAt: 1_700_000_000_123,
+      turnAdoptionLifecycle: originalLifecycle,
+      msg: createMmsMessage("MM-cancelled"),
+    });
+
+    expect(unlinkIfExistsMock).not.toHaveBeenCalled();
+    await wrappedLifecycle?.onCancelled?.();
+    expect(originalLifecycle.onCancelled).toHaveBeenCalledOnce();
+    expect(originalLifecycle.onAbandoned).not.toHaveBeenCalled();
+    expect(unlinkIfExistsMock).toHaveBeenCalledExactlyOnceWith("/tmp/mms-1.jpg");
+    expect(events).toEqual(["cleanup", "cancel"]);
+  });
+
+  it("propagates failed terminal-drop settlement so durable MMS ingress can retry", async () => {
+    const mocks = createAuthorizedRuntime();
+    const failure = new Error("drop settlement failed");
+    const originalLifecycle: SmsTurnAdoptionLifecycle = {
+      ...lifecycle(),
+      onDropped: vi.fn(async () => {
         throw failure;
-      }
-      if (phase !== "adopted" && phase !== "queue-cap-new") {
-        wrapped?.onDeferred?.();
-      } else if (phase === "adopted") {
-        await adapter.resolveTurn(adapter.ingest(msg));
-        expect(mocks.buildContext.mock.calls[0]?.[0]).toMatchObject({
-          message: { bodyForAgent: "" },
-          media: [{ path: "/tmp/mms-1.jpg", contentType: "image/jpeg", messageId: msg.messageSid }],
+      }),
+    };
+    let wrappedLifecycle: SmsTurnAdoptionLifecycle | undefined;
+    mocks.run.mockImplementationOnce(async ({ turnAdoptionLifecycle }) => {
+      wrappedLifecycle = turnAdoptionLifecycle;
+      wrappedLifecycle?.onDeferred?.();
+    });
+
+    await dispatch(mocks.runtime, createMmsMessage("MM-drop-failed"), {
+      turnAdoptionLifecycle: originalLifecycle,
+    });
+
+    await expect(wrappedLifecycle?.onDropped?.("queue-cap-new")).rejects.toBe(failure);
+    expect(originalLifecycle.onDropped).toHaveBeenCalledExactlyOnceWith("queue-cap-new");
+    expect(originalLifecycle.onAbandoned).not.toHaveBeenCalled();
+    expectCleanedMedia();
+  });
+
+  it.each(["onCancelled", "onAbandoned"] as const)(
+    "settles the durable claim through %s when MMS cleanup fails",
+    async (terminal) => {
+      const mocks = createAuthorizedRuntime();
+      const warn = vi.fn();
+      unlinkIfExistsMock.mockImplementationOnce(async () => {
+        throw new Error("EACCES");
+      });
+      const ownerSettled = Promise.withResolvers<void>();
+      const originalLifecycle: SmsTurnAdoptionLifecycle = {
+        onAdopted: vi.fn(async () => undefined),
+        onDeferred: vi.fn(),
+        onCancelled: vi.fn(async () => {
+          ownerSettled.resolve();
+        }),
+        onAbandoned: vi.fn(() => {
+          ownerSettled.resolve();
+        }),
+      };
+      let wrappedLifecycle: SmsTurnAdoptionLifecycle | undefined;
+      mocks.run.mockImplementationOnce(async (runParams) => {
+        wrappedLifecycle = runParams.turnAdoptionLifecycle;
+        wrappedLifecycle?.onDeferred?.();
+      });
+
+      await dispatchSmsInboundEvent({
+        cfg: {},
+        account: createAccount({ dmPolicy: "allowlist", allowFrom: [SMS_FROM] }),
+        channelRuntime: mocks.runtime,
+        receivedAt: 1_700_000_000_123,
+        turnAdoptionLifecycle: originalLifecycle,
+        log: { warn },
+        msg: createMmsMessage(`MM-cleanup-fails-${terminal}`),
+      });
+
+      await wrappedLifecycle?.[terminal]?.();
+      // A failed unlink must not strand the claim: the owner still settles once.
+      await ownerSettled.promise;
+      expect(originalLifecycle[terminal]).toHaveBeenCalledOnce();
+      const other = terminal === "onCancelled" ? "onAbandoned" : "onCancelled";
+      expect(originalLifecycle[other]).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("EACCES"));
+    },
+  );
+
+  it.each(["abandoned", "adopted", "before adoption", "after deferral"] as const)(
+    "settles downloaded MMS files when %s",
+    async (phase) => {
+      const mocks = createAuthorizedRuntime();
+      const events: string[] = [];
+      const failure = new Error("durable adoption failed");
+      const original = lifecycle();
+      let wrapped: SmsTurnAdoptionLifecycle | undefined;
+      if (phase === "after deferral") {
+        original.onAdopted = vi.fn(async () => {
+          throw failure;
         });
       }
-      if (phase === "queue-cap-new") {
-        await wrapped?.onDropped?.(phase);
-      } else if (phase !== "abandoned" && phase !== "queue-cap-old") {
-        await wrapped?.onAdopted();
+      if (phase === "abandoned") {
+        original.onAbandoned = vi.fn(() => {
+          events.push("abandon");
+        });
+        unlinkIfExistsMock.mockImplementationOnce(async () => {
+          events.push("cleanup");
+        });
       }
-    });
-    const pending = dispatch(mocks.runtime, msg, {
-      turnAdoptionLifecycle: original,
-    });
-    if (phase === "before adoption" || phase === "after deferral") {
-      await expect(pending).rejects.toBe(failure);
-      expectCleanedMedia();
-      return;
-    }
-    await pending;
-    if (dropReason) {
-      if (dropReason === "queue-cap-old") {
-        expect(unlinkIfExistsMock).not.toHaveBeenCalled();
-        await wrapped?.onDropped?.(dropReason);
+      const msg = createMmsMessage("MM-lifecycle");
+      mocks.run.mockImplementationOnce(async ({ turnAdoptionLifecycle, adapter }) => {
+        wrapped = turnAdoptionLifecycle;
+        if (phase === "before adoption") {
+          throw failure;
+        }
+        if (phase !== "adopted") {
+          wrapped?.onDeferred?.();
+        } else {
+          await adapter.resolveTurn(adapter.ingest(msg));
+          expect(mocks.buildContext.mock.calls[0]?.[0]).toMatchObject({
+            message: { bodyForAgent: "" },
+            media: [
+              { path: "/tmp/mms-1.jpg", contentType: "image/jpeg", messageId: msg.messageSid },
+            ],
+          });
+        }
+        if (phase !== "abandoned") {
+          await wrapped?.onAdopted();
+        }
+      });
+      const pending = dispatch(mocks.runtime, msg, {
+        turnAdoptionLifecycle: original,
+      });
+      if (phase === "before adoption" || phase === "after deferral") {
+        await expect(pending).rejects.toBe(failure);
+        expectCleanedMedia();
+        return;
       }
-      expectCleanedMedia();
-      expect(original.onDropped).toHaveBeenCalledExactlyOnceWith(dropReason);
-      expect(original.onAbandoned).not.toHaveBeenCalled();
-      expect(events).toEqual(["cleanup", dropReason]);
-      return;
-    }
-    expect(unlinkIfExistsMock).not.toHaveBeenCalled();
-    if (phase === "adopted") {
-      expect(original.onAdopted).toHaveBeenCalledOnce();
-    } else {
-      expect(original.onDeferred).toHaveBeenCalledOnce();
-      await wrapped?.onAbandoned?.();
-      await vi.waitFor(() => expect(original.onAbandoned).toHaveBeenCalledOnce());
-      expectCleanedMedia();
-      expect(events).toEqual(["cleanup", "abandon"]);
-    }
-  });
+      await pending;
+      expect(unlinkIfExistsMock).not.toHaveBeenCalled();
+      if (phase === "adopted") {
+        expect(original.onAdopted).toHaveBeenCalledOnce();
+      } else {
+        expect(original.onDeferred).toHaveBeenCalledOnce();
+        await wrapped?.onAbandoned?.();
+        await vi.waitFor(() => expect(original.onAbandoned).toHaveBeenCalledOnce());
+        expectCleanedMedia();
+        expect(events).toEqual(["cleanup", "abandon"]);
+      }
+    },
+  );
 
   it.each<[string, string, boolean]>([
     ["/status", "SM-command", true],

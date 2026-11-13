@@ -211,13 +211,20 @@ export function buildFeishuFlushIngressLifecycle(
       claim.release({ error: new Error("feishu-ingress-not-adopted") });
     }
   };
-  const abandonAll = async () => {
+  // Cancellation releases the same claims as abandonment; only the transport
+  // settlement differs, so cancelling spends no retry budget.
+  const abandonTransport = async () => await transportLifecycle.onAbandoned();
+  const cancelTransport = async () =>
+    await (transportLifecycle.onCancelled
+      ? transportLifecycle.onCancelled()
+      : transportLifecycle.onAbandoned());
+  const abandonAll = async (settleTransport = abandonTransport) => {
     if (settled) {
       return;
     }
     settled = true;
     releaseReplayClaims();
-    await transportLifecycle.onAbandoned();
+    await settleTransport();
   };
   const commitReplayClaims = async () => {
     const results = await Promise.allSettled(replayClaims.map((claim) => claim.commit()));
@@ -234,8 +241,13 @@ export function buildFeishuFlushIngressLifecycle(
       return;
     }
     settled = true;
+    if (!transportLifecycle.onDropped) {
+      releaseReplayClaims();
+      await transportLifecycle.onAbandoned();
+      return;
+    }
     try {
-      await transportLifecycle.onDropped?.(reason);
+      await transportLifecycle.onDropped(reason);
     } catch (error) {
       releaseReplayClaims();
       throw error;
@@ -281,12 +293,20 @@ export function buildFeishuFlushIngressLifecycle(
         handedOff = true;
         await abandonAll();
       },
-      onDropped: transportLifecycle.onDropped
-        ? async (reason) => {
-            handedOff = true;
-            await dropAll(reason);
+      onCancelled: async () => {
+        handedOff = true;
+        await abandonAll(cancelTransport);
+      },
+      ...(transportLifecycle.onDropped
+        ? {
+            onDropped: async (
+              reason: Parameters<NonNullable<FeishuIngressLifecycle["onDropped"]>>[0],
+            ) => {
+              handedOff = true;
+              await dropAll(reason);
+            },
           }
-        : undefined,
+        : {}),
     },
     // A gated/no-turn envelope is terminal for transport replay, but its
     // logical claim releases so a different event_id twin can run the gate.
@@ -345,6 +365,12 @@ export function createFeishuDurableIngress(options: FeishuIngressOptions) {
     deliver: async (rawEnvelope, lifecycle, claim) => {
       const handoff = createDeferred();
       // The message debounce owner releases its logical claim before transport abandonment.
+      // Cancellation releases it too, so both terminal paths share this pre-settle step.
+      const releaseBeforeSettle = async () => {
+        await Promise.resolve()
+          .then(() => wrappedLifecycle.onBeforeAbandon?.())
+          .catch(() => undefined);
+      };
       const wrappedLifecycle: FeishuIngressLifecycle = {
         ...lifecycle,
         onDeferred: () => {
@@ -354,6 +380,14 @@ export function createFeishuDurableIngress(options: FeishuIngressOptions) {
         onAdopted: async () => {
           try {
             await lifecycle.onAdopted();
+          } finally {
+            handoff.resolve();
+          }
+        },
+        onCancelled: async () => {
+          try {
+            await releaseBeforeSettle();
+            await (lifecycle.onCancelled ? lifecycle.onCancelled() : lifecycle.onAbandoned());
           } finally {
             handoff.resolve();
           }

@@ -135,6 +135,8 @@ const CORE_GATEWAY_HANDLER_MODULES = {
     import("./sessions-messaging.js").then((module) => module.sessionMessagingHandlers),
   "sessions-mutations": () =>
     import("./sessions-mutations.js").then((module) => module.sessionMutationHandlers),
+  "sessions-recover": () =>
+    import("./sessions-recover.js").then((module) => module.sessionRecoverHandlers),
   "session-processes": () =>
     import("./session-processes.js").then((module) => module.sessionProcessHandlers),
   "sessions-read": () => import("./sessions-read.js").then((module) => module.sessionReadHandlers),

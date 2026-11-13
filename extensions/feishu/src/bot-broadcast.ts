@@ -25,7 +25,7 @@ export function createFeishuBroadcastIngressSettlement(params: {
   type LaneState = {
     replayClaim?: ChannelReplayClaimHandle;
     adopting?: boolean;
-    status: "pending" | "deferred" | "completed" | "dropped" | "failed";
+    status: "pending" | "deferred" | "completed" | "dropped" | "failed" | "cancelled";
   };
 
   const lanes = new Set<LaneState>();
@@ -73,7 +73,12 @@ export function createFeishuBroadcastIngressSettlement(params: {
       // Local cleanup cannot reopen an already adopted durable turn.
     }
   };
-  const abandon = async (error: unknown) => {
+  const abandonTransport = async () => await params.lifecycle?.onAbandoned();
+  const cancelTransport = async () =>
+    await (params.lifecycle?.onCancelled
+      ? params.lifecycle.onCancelled()
+      : params.lifecycle?.onAbandoned());
+  const abandon = async (error: unknown, settleTransport = abandonTransport) => {
     if (terminal) {
       return;
     }
@@ -85,7 +90,7 @@ export function createFeishuBroadcastIngressSettlement(params: {
       }
     }
     try {
-      await params.lifecycle?.onAbandoned();
+      await settleTransport();
     } finally {
       fallbackAbort.abort(error);
       terminalSettled = true;
@@ -176,6 +181,10 @@ export function createFeishuBroadcastIngressSettlement(params: {
       );
       return;
     }
+    if ([...lanes].some((lane) => lane.status === "cancelled")) {
+      await abandon(new Error("feishu broadcast turn cancelled"), cancelTransport);
+      return;
+    }
     if ([...lanes].some((lane) => lane.status !== "completed" && lane.status !== "dropped")) {
       return;
     }
@@ -199,7 +208,8 @@ export function createFeishuBroadcastIngressSettlement(params: {
               lane.adopting ||
               lane.status === "completed" ||
               lane.status === "dropped" ||
-              lane.status === "failed"
+              lane.status === "failed" ||
+              lane.status === "cancelled"
             ) {
               return;
             }
@@ -235,7 +245,8 @@ export function createFeishuBroadcastIngressSettlement(params: {
               lane.adopting ||
               lane.status === "completed" ||
               lane.status === "dropped" ||
-              lane.status === "failed"
+              lane.status === "failed" ||
+              lane.status === "cancelled"
             ) {
               return;
             }
@@ -249,7 +260,8 @@ export function createFeishuBroadcastIngressSettlement(params: {
                   lane.adopting ||
                   lane.status === "completed" ||
                   lane.status === "dropped" ||
-                  lane.status === "failed"
+                  lane.status === "failed" ||
+                  lane.status === "cancelled"
                 ) {
                   return;
                 }
@@ -264,6 +276,20 @@ export function createFeishuBroadcastIngressSettlement(params: {
                 }
               }
             : undefined,
+          onCancelled: async () => {
+            if (
+              lane.adopting ||
+              lane.status === "completed" ||
+              lane.status === "dropped" ||
+              lane.status === "failed" ||
+              lane.status === "cancelled"
+            ) {
+              return;
+            }
+            lane.status = "cancelled";
+            lane.replayClaim?.release({ error: new Error("feishu-broadcast-turn-cancelled") });
+            await maybeSettle();
+          },
         },
         onDispatchComplete: async (dispatched) => {
           if (lane.adopting || lane.status !== "pending") {

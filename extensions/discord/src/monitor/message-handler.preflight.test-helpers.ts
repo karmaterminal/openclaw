@@ -6,6 +6,7 @@ import { onTestFinished } from "vitest";
 import { ChannelType, Message, MessageType } from "../internal/discord.js";
 import { createInternalTestClient } from "../internal/test-builders.test-support.js";
 import type { preflightDiscordMessage } from "./message-handler.preflight.js";
+import { createDiscordRoomHistoryWatermarks } from "./room-history-watermark.js";
 import { createNoopThreadBindingManager, type ThreadBindingManager } from "./thread-bindings.js";
 type PreflightArgs = Parameters<typeof preflightDiscordMessage>[0];
 
@@ -122,6 +123,7 @@ export function createDiscordPreflightArgs(
     runtime: {} as import("openclaw/plugin-sdk/runtime-env").RuntimeEnv,
     botUserId: params.botUserId ?? "openclaw-bot",
     guildHistories: new Map(),
+    roomHistoryWatermarks: createDiscordRoomHistoryWatermarks(),
     historyLimit: 0,
     mediaMaxBytes: 1_000_000,
     textLimit: 2_000,

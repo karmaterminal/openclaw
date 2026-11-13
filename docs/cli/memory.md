@@ -185,6 +185,9 @@ SQLite background rebuilds retain completed work when foreground activity interr
 indexing. The next sync resumes the rebuild, incorporating source changes before
 publishing the complete index. Closing the memory owner or restarting the Gateway
 discards this unfinished work. PostgreSQL rebuilds restart after an interruption.
+Temporary rebuild files that a crashed or killed process left behind are removed
+when the memory owner next starts and before the next full rebuild. Files that a
+running or suspended rebuild still owns are kept.
 
 When an embedding provider rate-limits indexing, each embedding operation gets
 up to five attempts. Retries honor valid provider cooldown hints, capped at
@@ -231,6 +234,15 @@ openclaw memory status --agent <id>
 `openclaw memory status --index --agent <id>` also rebuilds an incompatible index.
 Both repair commands replace the derived memory index while preserving other agent
 state. Use `--agent` to limit the repair to the affected agent.
+
+If automatic rebuilds keep exhausting a worker's memory limit, status shows a
+`Reindex` line and `openclaw doctor` reports `memory-core/reindex-resource-failure`.
+Automatic rebuilds of the same sources then wait one hour, then six hours, and stop
+after the third failure while searches keep the published index. Index fewer
+sources, for example `memory.search.rememberAcrossConversations: false` to stop
+transcript indexing, or give the Gateway more memory. Then run
+`openclaw memory index --force --agent <id>`; a successful rebuild clears the
+record.
 
 <Warning>
 The default `openclaw-agent.sqlite` database also contains stored sessions,

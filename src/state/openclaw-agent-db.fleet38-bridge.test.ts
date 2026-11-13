@@ -9,6 +9,7 @@
 // declared backup restores the fleet's 38.
 import { constants, type DatabaseSync } from "node:sqlite";
 import { afterEach, expect, it, vi } from "vitest";
+import { resolveSessionWorkStartBlock } from "../config/sessions/session-work-start.js";
 import { openNodeSqliteDatabase } from "../infra/node-sqlite.js";
 import { AGENT_ACTIVE_EVENT_FACTS_SQL } from "./openclaw-agent-active-event-facts-schema.js";
 import * as coldNavigation from "./openclaw-agent-cold-navigation-schema.js";
@@ -170,6 +171,35 @@ const fleet38 = (ddl = SCHEMA.fleet38, predecessor = 38) =>
     target,
     scope: FLEET_SCOPE,
   });
+
+it("keeps a fleet-38 restart tombstone and its recorded successor through the 42 cut", async () => {
+  await fleet38()("fleet38-tombstone.sqlite", async ({ database, migrate }) => {
+    const sessionKey = "agent:main:retained";
+    const tombstone = {
+      reason: "delegated recovery sender authority is unavailable",
+      recoveredSessionId: "successor-id",
+      recoveredSessionKey: "agent:main:successor",
+    };
+    const entry = {
+      sessionId: "hot",
+      updatedAt: 1,
+      mainRestartRecovery: { cycleId: "old-cycle", tombstone },
+    };
+    database
+      .prepare("UPDATE session_nodes SET entry_json = ? WHERE session_key = ?")
+      .run(JSON.stringify(entry), sessionKey);
+    await migrate();
+    expectMigrated(database);
+    const retained = JSON.parse(
+      String(
+        row(database, "SELECT entry_json FROM session_nodes WHERE session_key = ?", sessionKey)
+          ?.entry_json,
+      ),
+    );
+    expect(retained.mainRestartRecovery.tombstone).toEqual(tombstone);
+    expect(resolveSessionWorkStartBlock(sessionKey, retained)?.reason).toBe("restart_tombstone");
+  });
+});
 
 afterEach(() => {
   vi.restoreAllMocks();

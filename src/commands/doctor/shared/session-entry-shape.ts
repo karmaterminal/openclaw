@@ -173,20 +173,26 @@ export function inspectLegacyRestartTombstone(
   };
 }
 
+type LegacyRunOutcomeOptions = {
+  /** Ordinary boot keeps every terminal refusal; only owner recovery or Doctor lifts one. */
+  preserveRestartTombstones?: boolean;
+  /** An explicit operator recovery settles terminal custody and never schedules a turn. */
+  operatorRecovery?: boolean;
+};
+
 /** Retire file-era activity metadata without reconstructing an execution. */
 export function migrateLegacySessionRunOutcome(
   value: Record<string, unknown>,
   updatedAt: unknown = value.updatedAt,
-  options: { preserveTerminalRestartCustody?: boolean } = {},
+  options: LegacyRunOutcomeOptions = {},
 ): Record<string, unknown> {
   const tombstone = inspectLegacyRestartTombstone(value);
-  if (
-    tombstone &&
-    (!tombstone.retire || (tombstone.doctorOnly && options.preserveTerminalRestartCustody))
-  ) {
+  if (tombstone && (!tombstone.retire || options.preserveRestartTombstones)) {
     return value;
   }
   if (tombstone?.retire) {
+    // Terminal unmatched custody waits for exactly this explicit authority.
+    const historical = tombstone.doctorOnly && !options.operatorRecovery;
     const next = { ...value };
     // Tombstones predate the current admission owner. A continuation is not required.
     delete next.mainRestartRecovery;
@@ -195,11 +201,11 @@ export function migrateLegacySessionRunOutcome(
         delete next[key];
       }
     }
-    if (!tombstone.doctorOnly) {
+    if (!historical) {
       delete next.activeWriterRunId;
       delete next.lifecycleRunId;
     }
-    if (!tombstone.doctorOnly && next.archiveReason === "restart-recovery") {
+    if (!historical && next.archiveReason === "restart-recovery") {
       delete next.archivedAt;
       delete next.archivedBy;
       delete next.archiveReason;
@@ -211,9 +217,8 @@ export function migrateLegacySessionRunOutcome(
       !pending?.deliveries?.length ||
       pending.deliveries.some(({ state }) => state !== "delivered" && state !== "suppressed");
     if ((pending || next.pendingFinalDelivery === true) && deliveryUnknown) {
-      next.lastRunError =
-        "Legacy restart recovery retired pending final delivery with an unknown outcome; the original is preserved in the pre-startup migration backup.";
-      if (!tombstone.doctorOnly && pending?.context && !next.pendingDeliveryNotice) {
+      next.lastRunError = `Legacy restart recovery retired pending final delivery with an unknown outcome; the original is preserved in the ${options.operatorRecovery ? "pre-recovery" : "pre-startup migration"} backup.`;
+      if (!historical && pending?.context && !next.pendingDeliveryNotice) {
         next.pendingDeliveryNotice = {
           createdAt: pending.createdAt,
           context: pending.context,
@@ -229,12 +234,15 @@ export function migrateLegacySessionRunOutcome(
       }
     }
     // Terminal unmatched rows are historical cleanup, never a new execution or notice.
-    if (tombstone.doctorOnly) {
+    if (historical) {
       return next;
     }
     next.status = "interrupted";
     next.abortedLastRun = true;
-    if (next.archivedAt === undefined && !next.modelSelectionLocked && !next.acp) {
+    if (options.operatorRecovery) {
+      // Startup resumes any marker as a new turn; recovery only reopens admission.
+      delete next.resumeAfterRestart;
+    } else if (next.archivedAt === undefined && !next.modelSelectionLocked && !next.acp) {
       next.resumeAfterRestart ??= { queuedInputIds: [] };
     }
     return next;
@@ -258,7 +266,7 @@ export function migrateLegacySessionRunOutcome(
 export function migrateLegacySessionEntryState(
   value: Record<string, unknown>,
   updatedAt: unknown = value.updatedAt,
-  options: { preserveTerminalRestartCustody?: boolean } = {},
+  options: LegacyRunOutcomeOptions = {},
 ): SessionEntryStateRepair {
   const next = { ...value };
   const numericChanges: SessionEntryNumericSnapshot = {};

@@ -72,16 +72,13 @@ import {
   recordRestartYieldFailure,
 } from "./session-restart-resume-failure.js";
 import { createRestartResumeSummary } from "./session-restart-resume-log.js";
+import { resolveRestartResumeMarker } from "./session-restart-resume-marker.js";
 import { prepareSessionSystemTurnAuthority } from "./session-system-turn-authority.js";
 
 const GATEWAY_RESTART_RESUME_TEXT =
   "The Gateway restarted while you were working. Resume your work: check the current state of anything that was in progress (files, processes, subagents, external actions) before repeating it, then continue. Child runs do not resume independently. Inspect their saved work; send a fresh instruction to the same retained child session when appropriate. A stopped execution is not a yielded pause, and restarting it does not transfer workspace or publication ownership.";
 const BACKGROUND_EXEC_STOPPED_TEXT =
   "Background exec processes were stopped; rerun them if still needed.";
-// Old shutdown bumped updatedAt, but abandoned cycles can survive for weeks. Limit adoption
-// to six hours before process start; longer stops lose this one-time upgrade resume.
-// Remove this bridge once stable includes the graceful-restart redesign (#185730).
-const LEGACY_RESTART_RESUME_WINDOW_MS = 6 * 60 * 60 * 1000;
 
 type SessionIdentity = {
   agentId: string;
@@ -520,6 +517,11 @@ async function resumeRestartStore(
             if (!selected) {
               return { result: undefined };
             }
+            // A terminal live-fleet refusal is not a restart marker. Preserve it
+            // across boots so ordinary turns remain closed until explicit replacement.
+            if (selected.mainRestartRecovery?.tombstone) {
+              return { result: undefined };
+            }
             const parked = resolveSessionYieldWait(sessionKey, selected, agentId);
             const skip = restartResumeSkipReason(sessionKey, selected);
             const orphanedRun =
@@ -531,23 +533,12 @@ async function resumeRestartStore(
               !hasAgentRunContextExecutionOwner(selected.lifecycleRunId) &&
               (!selected.activeWriterRunId ||
                 !hasAgentRunContextExecutionOwner(selected.activeWriterRunId));
-            const marker: InternalSessionEntry["resumeAfterRestart"] =
-              selected.resumeAfterRestart ??
-              (parked ||
-              (orphanedRun &&
-                windows?.some(
-                  (window) =>
-                    selected.startedAt !== undefined &&
-                    selected.startedAt >= window.startedAt &&
-                    selected.startedAt < window.endedAt,
-                )) ||
-              (selected.mainRestartRecovery &&
-                selected.abortedLastRun === true &&
-                selected.status === "interrupted" &&
-                selected.updatedAt <= performance.timeOrigin &&
-                selected.updatedAt >= performance.timeOrigin - LEGACY_RESTART_RESUME_WINDOW_MS)
-                ? { queuedInputIds: [] }
-                : undefined);
+            const marker = resolveRestartResumeMarker({
+              selected,
+              parked,
+              orphanedRun: Boolean(orphanedRun),
+              windows,
+            });
             if (!marker && !selected.mainRestartRecovery && !orphanedRun) {
               return { result: undefined };
             }

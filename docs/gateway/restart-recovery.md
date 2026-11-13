@@ -55,25 +55,41 @@ actions, and tool effects may already have changed, so the agent checks them
 before repeating work.
 
 On upgrade from the retired restart-recovery subsystem (through 2026.10.9),
-startup and `openclaw doctor --fix` also repair tombstoned root sessions, with or
-without a recorded continuation. The repair backs up the original database,
-clears obsolete execution claims, and warns with the session key. Pending final
-delivery is retired with an unknown outcome rather than replayed under obsolete
-sender authority; its original content remains in the backup. Existing transcript
-content is unchanged. Eligible roots receive one ordinary resume input; manual
-archives, provider review, and external harness ownership retain their normal gates.
-Every retained fence and pending final must match the tombstone's recorded run or
-generation before retirement. A different generation, missing ownership link, or
-live execution leaves custody intact and prevents automatic resume of that row.
-Doctor names the session and asks the operator to inspect its retained identities
-and delivery outcome against the transcript before repairing custody. Legacy scalar
-delivery fields can still be normalized without discarding the pending final, so
-ordinary admission no longer depends on the retired tombstone gate.
-For unmatched custody with no live execution owner, `openclaw doctor --fix` backs
-up and retires the legacy recovery fields when the session is terminal or archived,
-preserving its status, archive, current writer identities, and delivery notice
-without resuming it or replaying a pending final; startup reports an aggregate
-count per agent instead of repeating warnings for each such session.
+startup keeps every tombstoned session closed: it leaves the restart refusal, any
+retained execution claims, and any pending final delivery in place, adds no resume
+marker, and starts no turn. Only legacy scalar delivery fields are normalized, and
+the startup log names each retained session with its next step; terminal sessions
+whose custody does not match the tombstone are reported as one count per agent
+instead. Ordinary turns are refused with `restart_tombstone` until an operator acts.
+
+To reopen one session in place, an owner or `operator.admin` caller sends
+`sessions.recover` with the session key and its current `expectedSessionId`. The
+session keeps its ID and transcript, and no reset boundary is added, so its next turn
+sees the prior context. Recovery backs up the agent database first and returns the
+backup path. It clears the obsolete claims and leaves the session `interrupted`
+without resuming it. A pending final with an unknown outcome is not replayed; its
+original content remains in the backup, and the session records an unknown-outcome
+error plus a one-time notice on its next inbound turn when the final had a
+delivery route. Recovery refuses while a recorded run still has a live execution
+owner or the session has active work, and when a retained claim belongs to a
+different generation of a nonterminal session. A session that is no longer
+tombstoned returns `recovered: false` and nothing is written. `/new` and `/reset`
+still start a replacement session instead.
+
+`openclaw doctor --fix` also repairs tombstoned root sessions in bulk, with or
+without a recorded continuation. It backs up the original database, clears obsolete
+execution claims, and warns with the session key. Pending final delivery is retired
+with an unknown outcome rather than replayed under obsolete sender authority.
+Eligible roots receive one ordinary resume input; manual archives, provider review,
+and external harness ownership retain their normal gates. Every retained fence and
+pending final must match the tombstone's recorded run or generation before
+retirement. A different generation, missing ownership link, or live execution
+leaves custody intact; Doctor names the session and asks the operator to inspect its
+retained identities and delivery outcome against the transcript first. For unmatched
+custody with no live execution owner, Doctor backs up and retires the legacy
+recovery fields when the session is terminal or archived, preserving its status,
+archive, current writer identities, and delivery notice without resuming it or
+replaying a pending final.
 
 After a clean shutdown, the Gateway waits for final cleanup and flushes file logs
 and output pipes. On macOS and Linux, any remaining referenced handles get a

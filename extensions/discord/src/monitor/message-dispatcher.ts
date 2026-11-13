@@ -27,11 +27,12 @@ import {
 } from "./message-forwarded.js";
 import type { DiscordMessagePreflightParams } from "./message-handler.preflight.types.js";
 import { resolveDiscordMessageText } from "./message-text.js";
+import { createDiscordRoomHistoryWatermarks } from "./room-history-watermark.js";
 import type { DiscordMonitorStatusSink } from "./status.js";
 
 type DiscordMessageHandlerParams = Omit<
   DiscordMessagePreflightParams,
-  "ackReactionScope" | "groupPolicy" | "data" | "client"
+  "ackReactionScope" | "groupPolicy" | "data" | "client" | "roomHistoryWatermarks"
 > & {
   readPolicy?: DiscordLivePolicyReader;
   setStatus?: DiscordMonitorStatusSink;
@@ -59,6 +60,8 @@ type DiscordMessageDispatcherWithLifecycle = DiscordMessageDispatcher & {
     client: Client,
     signal: AbortSignal,
   ) => Promise<void>;
+  /** The one live policy reader for this account, shared with durable ingress. */
+  readPolicy: DiscordLivePolicyReader;
 };
 
 export function createDiscordMessageDispatcher(
@@ -133,6 +136,7 @@ export function createDiscordMessageDispatcher(
       ...options,
       isPolicyCurrent: policy.isCurrent,
       avatarResolver,
+      roomHistoryWatermarks,
       ackReactionScope:
         params.discordConfig?.ackReactionScope ??
         policy.cfg.messages?.ackReactionScope ??
@@ -141,6 +145,8 @@ export function createDiscordMessageDispatcher(
       client,
     });
   };
+  // The account's one watermark set: preflight hands it to every turn this dispatcher runs.
+  const roomHistoryWatermarks = createDiscordRoomHistoryWatermarks();
 
   type DiscordDebounceEntry = {
     data: DiscordMessageEvent;
@@ -431,6 +437,7 @@ export function createDiscordMessageDispatcher(
       }),
     );
   };
+  handler.readPolicy = readPolicy;
 
   handler.deactivate = async () => {
     dispatcherShutdown.abort(new Error("discord-message-handler-deactivated"));

@@ -130,6 +130,22 @@ it("does not mark PluralKit proxy senders as bots", async () => {
   expect(payload.SenderIsBot).toBeUndefined();
 });
 
+// Frond (karmaterminal, #1415): a webhook post authenticates no account behind it.
+it("does not mark webhook posts as bots", async () => {
+  const payload = await context({
+    author: { id: "W1", username: "relay", bot: true },
+    sender: { id: "W1", label: "relay", name: "relay", isPluralKit: false },
+    message: {
+      id: "1001",
+      channelId: "c1",
+      timestamp: new Date().toISOString(),
+      attachments: [],
+      webhookId: "W1",
+    },
+  });
+  expect(payload.SenderIsBot).toBeUndefined();
+});
+
 it("preserves forwarded text once in history without treating it as a command", async () => {
   const guildHistories = new Map();
   const forwardedText = "[Forwarded message]\n/status forwarded task content\n<media:image>";

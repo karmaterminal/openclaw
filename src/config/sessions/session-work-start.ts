@@ -20,6 +20,8 @@ type SessionWorkStartEntry = Pick<
   | "pendingWorktree"
   | "providerReview"
   | "lifecycleRevision"
+  | "mainRestartRecovery"
+  | "pluginOwnerId"
 > &
   Partial<Pick<InternalSessionEntry, "updatedAt">>;
 
@@ -31,6 +33,8 @@ type SessionWorkStartOptions = {
   allowPendingWorkspace?: true;
   providerReviewAcknowledgment?: ProviderReviewAcknowledgment;
   runId?: string;
+  /** Explicit, authorized replacement of a terminal restart refusal. */
+  allowRestartTombstoneReplacement?: boolean;
 };
 
 /** Stable Gateway error detail for stale session lifecycle requests. */
@@ -42,6 +46,7 @@ type SessionWorkStartBlockReason =
   | "expired"
   | "initialization_pending"
   | "provider_review"
+  | "restart_tombstone"
   | "archived"
   | "workspace_pending";
 
@@ -112,6 +117,17 @@ export function resolveSessionWorkStartBlock(
         `Session "${sessionKey}" provider review changed. Refresh the findings before continuing.`,
       );
     }
+  }
+  if (entry?.mainRestartRecovery?.tombstone && options?.purpose !== "accepted-result-settlement") {
+    if (options?.allowRestartTombstoneReplacement === true && !entry.providerReview) {
+      return undefined;
+    }
+    return new SessionWorkStartError(
+      "restart_tombstone",
+      entry.modelSelectionLocked === true
+        ? `Session "${sessionKey}" ended during restart recovery. Open it in WebChat and use Resume in new session.`
+        : `Session "${sessionKey}" ended during restart recovery. Use /new or /reset to start a replacement session.`,
+    );
   }
   if (entry?.archivedAt !== undefined) {
     return new SessionWorkStartError(

@@ -43,6 +43,7 @@ import {
   runMemoryPublication,
   withPublishedMemoryExecution,
 } from "./manager-publication.js";
+import type { MemoryReindexResourceFailure } from "./manager-reindex-failure.js";
 import type { MemoryDatabaseFacts } from "./manager-retrieval-read.js";
 import {
   assertMemoryShadowIdentity,
@@ -208,6 +209,7 @@ export class MemoryIndexDatabase {
     invalidatedSources: [],
     hasVectorTable: false,
     vectorState: { state: "empty" },
+    reindexFailure: null,
   };
   searchSchema: MemoryPublicationSchema = { fts: null, paths: null, vector: null };
   vectorDegradedWriteWarningShown = false;
@@ -297,6 +299,16 @@ export class MemoryIndexDatabase {
       this.executePublication({ type: "index.writeMetadata", input: meta }, () => {
         if (!this.isOpen) {
           throw new Error("Memory database owner closed before writing index metadata");
+        }
+      }),
+    );
+  }
+
+  async writeReindexFailure(failure: MemoryReindexResourceFailure): Promise<void> {
+    await this.settlePublication(() =>
+      this.executePublication({ type: "index.writeReindexFailure", input: failure }, () => {
+        if (!this.isOpen) {
+          throw new Error("Memory database owner closed before recording a reindex failure");
         }
       }),
     );

@@ -29,12 +29,17 @@ export function applySessionEntryWritePolicy(
   ) {
     delete normalizedEntry.resumeAfterRestart;
     delete normalizedEntry.mainRestartRecovery;
-  } else if (!Object.hasOwn(normalizedEntry, "resumeAfterRestart")) {
+  } else {
     // Public projections omit the shutdown marker; same-incarnation bookkeeping retains it.
     normalizedEntry = {
       ...normalizedEntry,
-      ...(canonicalPreviousEntry.resumeAfterRestart
+      ...(!Object.hasOwn(normalizedEntry, "resumeAfterRestart") &&
+      canonicalPreviousEntry.resumeAfterRestart
         ? { resumeAfterRestart: canonicalPreviousEntry.resumeAfterRestart }
+        : {}),
+      ...(!Object.hasOwn(normalizedEntry, "mainRestartRecovery") &&
+      canonicalPreviousEntry.mainRestartRecovery?.tombstone
+        ? { mainRestartRecovery: canonicalPreviousEntry.mainRestartRecovery }
         : {}),
     };
   }

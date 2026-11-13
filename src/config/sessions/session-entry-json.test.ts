@@ -141,4 +141,47 @@ describe("canonical session numeric metadata", () => {
       );
     }
   });
+
+  it("retains a legacy restart refusal without restoring executable recovery authority", () => {
+    const tombstone = {
+      reason: "automatic replay refused",
+      recoveredSessionId: "successor",
+      recoveredSessionKey: "agent:main:successor",
+    };
+    const entry = admitCanonicalSessionEntry({
+      sessionId: "interrupted",
+      updatedAt: 1,
+      mainRestartRecovery: {
+        cycleId: "cycle",
+        revision: 4,
+        reservation: { runId: "retired", attempt: 1 },
+        tombstone,
+      },
+    });
+    expect(entry).toMatchObject({ mainRestartRecovery: { cycleId: "cycle", tombstone } });
+    expect(projectPublicSessionEntry(entry)).not.toHaveProperty("mainRestartRecovery");
+    expect(preserveGenerationPrivateFields(entry, { label: "Renamed" })).toMatchObject({
+      mainRestartRecovery: { cycleId: "cycle", tombstone },
+    });
+    expect(
+      applySessionEntryWritePolicy(
+        "main",
+        "agent:main:interrupted",
+        projectPublicSessionEntry(entry),
+        projectPublicSessionEntry(entry),
+        entry,
+        {},
+      ).entry.mainRestartRecovery,
+    ).toEqual({ cycleId: "cycle", tombstone });
+    expect(
+      applySessionEntryWritePolicy(
+        "main",
+        "agent:main:interrupted",
+        { ...entry, sessionId: "replacement" },
+        { ...entry, sessionId: "replacement" },
+        entry,
+        {},
+      ).entry.mainRestartRecovery,
+    ).toBeUndefined();
+  });
 });

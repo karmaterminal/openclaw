@@ -2063,6 +2063,11 @@ export function isSessionsResetParams(
 ): value is import("typebox").Static<
   typeof import("../../schema-modules.js").SessionsResetParamsSchema
 >;
+export function isSessionsRecoverParams(
+  value: unknown,
+): value is import("typebox").Static<
+  typeof import("../../schema-modules.js").SessionsRecoverParamsSchema
+>;
 export function isSessionsDeleteParams(
   value: unknown,
 ): value is import("typebox").Static<

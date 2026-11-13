@@ -28,6 +28,7 @@ import {
   admitFollowupRunLifecycle,
   completeFollowupRunLifecycle,
   markFollowupRunEnqueued,
+  releaseBeforeTurnAdoptionRetry,
 } from "./lifecycle.js";
 import {
   followupSourceRunners,
@@ -202,22 +203,11 @@ export function enqueueFollowupRun(
       });
       const lifecycle = run.turnAdoptionLifecycle;
       if (lifecycle) {
-        const onAbandoned = lifecycle.onAbandoned;
-        lifecycle.onAbandoned = () => {
+        releaseBeforeTurnAdoptionRetry(lifecycle, () => {
           if (mailbox.recentSources.get(recentMessageIdKey)?.inputInstance === inputInstance) {
             mailbox.recentSources.delete(recentMessageIdKey);
           }
-          return onAbandoned?.();
-        };
-        const onDropped = lifecycle.onDropped;
-        if (onDropped) {
-          lifecycle.onDropped = (reason) => {
-            if (mailbox.recentSources.get(recentMessageIdKey)?.inputInstance === inputInstance) {
-              mailbox.recentSources.delete(recentMessageIdKey);
-            }
-            return onDropped(reason);
-          };
-        }
+        });
       }
     }
     if (runFollowup) {

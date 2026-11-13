@@ -106,6 +106,10 @@ Stopping already-running work is a different intent from redirecting future work
 
 Messages with separate durable ingress admission, including Discord and Telegram messages, are not compatible for batching: `collect` keeps them as separate followup turns. Compatible Gateway `chat.send` inputs can still combine. See [Queue modes](/concepts/queue#queue-modes).
 
+<!-- Frond (karmaterminal, #1415): unaddressed room events collect. -->
+
+[Ambient room events](/channels/ambient-room-events) are the exception: under `collect`, consecutive room events with the same route and reply target combine into one followup turn, and each message's admission still settles once. Room events from different senders also combine. A message with sender-scoped authority keeps its own turn, in order: an owner or operator message (unless [`ambientOwnerAggregate`](/channels/ambient-room-events#owner-messages-in-a-busy-room) lets unaddressed prose from listed owner bots join), an elevated grant, a sender-specific tool policy entry, or exec settings the other messages don't share. Messages in a spawned session never combine across senders. The combined turn, and any overflow summary of it, names each sender but runs with no sender identity or sender-scoped authority. Room events still never steer or interrupt.
+
 ## Burst example
 
 If several messages arrive while the agent is executing a tool call:

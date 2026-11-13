@@ -30,7 +30,38 @@ import type {
 
 const SOURCE_SYNC_YIELD_INTERVAL_MS = 12;
 const SOURCE_WIDE_SESSION_INDEX_FLUSH_FILES = 128;
+// Prepared session entries hold whole rendered transcripts until publication. Bound the
+// transcript bytes held at once; a single larger transcript is still indexed alone.
+const SESSION_INDEX_GROUP_MAX_BYTES = 16 * 1024 * 1024;
 const log = createSubsystemLogger("memory");
+
+/** Split files by count and transcript bytes; only a lone file may exceed the byte bound. */
+function planSessionIndexGroups(
+  files: readonly string[],
+  bytesFor: (file: string) => number,
+  maxFiles: number,
+): string[][] {
+  const groups: string[][] = [];
+  let group: string[] = [];
+  let bytes = 0;
+  for (const file of files) {
+    const size = bytesFor(file);
+    if (
+      group.length > 0 &&
+      (group.length >= maxFiles || bytes + size > SESSION_INDEX_GROUP_MAX_BYTES)
+    ) {
+      groups.push(group);
+      group = [];
+      bytes = 0;
+    }
+    group.push(file);
+    bytes += size;
+  }
+  if (group.length > 0) {
+    groups.push(group);
+  }
+  return groups;
+}
 
 function createSourceSyncYield(total: number): () => Promise<void> {
   let completed = 0;
@@ -382,9 +413,17 @@ export abstract class MemoryManagerSourceSyncOps extends MemoryManagerSessionSyn
       // Keep the prepared entry's non-enumerable reset boundary.
       return Object.assign(entry, { hash, sessionId: corpusEntryForPath(absPath).sessionId });
     };
+    const isSelected = (file: string) => indexAll || this.sessionsDirtyFiles.has(file);
+    const selectedFiles = files.filter(isSelected);
+    // One transcript is always indexed alone; only a choice between files needs sizes.
+    const selectedBytes =
+      selectedFiles.length > 1
+        ? await this.readSessionTranscriptBytes(selectedFiles.map(corpusEntryForPath))
+        : new Map<string, number>();
+    const bytesFor = (file: string) => selectedBytes.get(file) ?? 0;
     const syncFiles = async (batch: string[]) => {
       const selected = batch.filter((file) => {
-        if (indexAll || this.sessionsDirtyFiles.has(file)) {
+        if (isSelected(file)) {
           return true;
         }
         this.advanceSyncProgress(params.progress);
@@ -444,13 +483,24 @@ export abstract class MemoryManagerSourceSyncOps extends MemoryManagerSessionSyn
       // Session entries carry flattened transcript content; flush bounded groups
       // so source-wide batching cannot retain the whole dirty transcript corpus.
       const groupSize = this.syncIsBackground ? 8 : SOURCE_WIDE_SESSION_INDEX_FLUSH_FILES;
-      for (let start = 0; start < files.length; start += groupSize) {
+      let start = 0;
+      let pendingBytes = 0;
+      for (const fileBatch of planSessionIndexGroups(files, bytesFor, groupSize)) {
         if (this.shouldYieldSessionIndexing()) {
           deferItems(pendingIndexItems);
           this.deferSessionIndexFiles(files.slice(start), corpusEntries);
           return;
         }
-        const fileBatch = files.slice(start, start + groupSize);
+        const batchBytes = fileBatch.reduce((total, file) => total + bytesFor(file), 0);
+        // Publish held entries before reading more than one group's transcript budget.
+        if (pendingBytes > 0 && pendingBytes + batchBytes > SESSION_INDEX_GROUP_MAX_BYTES) {
+          pendingBytes = 0;
+          if (await flushPendingIndexItems()) {
+            this.deferSessionIndexFiles(files.slice(start), corpusEntries);
+            return;
+          }
+        }
+        start += fileBatch.length;
         const dirtyEntries = (await syncFiles(fileBatch)).filter((entry) => entry !== null);
         pendingIndexItems.push(
           ...dirtyEntries.map((entry): MemoryIndexWorkItem => ({
@@ -458,9 +508,14 @@ export abstract class MemoryManagerSourceSyncOps extends MemoryManagerSessionSyn
             source: "sessions",
           })),
         );
-        if (pendingIndexItems.length >= groupSize) {
+        pendingBytes += dirtyEntries.reduce((total, entry) => total + bytesFor(entry.absPath), 0);
+        if (
+          pendingIndexItems.length >= groupSize ||
+          pendingBytes >= SESSION_INDEX_GROUP_MAX_BYTES
+        ) {
+          pendingBytes = 0;
           if (await flushPendingIndexItems()) {
-            this.deferSessionIndexFiles(files.slice(start + groupSize), corpusEntries);
+            this.deferSessionIndexFiles(files.slice(start), corpusEntries);
             return;
           }
         }

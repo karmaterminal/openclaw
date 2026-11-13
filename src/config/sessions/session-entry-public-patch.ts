@@ -39,6 +39,9 @@ function generationValidPrivateFieldsForSameSession(
     ...(existingEntry.resumeAfterRestart
       ? { resumeAfterRestart: existingEntry.resumeAfterRestart }
       : {}),
+    ...(existingEntry.mainRestartRecovery?.tombstone
+      ? { mainRestartRecovery: existingEntry.mainRestartRecovery }
+      : {}),
   };
   return Object.keys(state).length > 0 ? state : undefined;
 }

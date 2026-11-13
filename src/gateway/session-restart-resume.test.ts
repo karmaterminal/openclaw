@@ -994,6 +994,13 @@ it("resumes recent interrupted legacy cycles once and settles crash inputs", () 
           .get(`agent:main:${name}`);
         expect(JSON.parse(String(persisted?.entry_json))).not.toHaveProperty("mainRestartRecovery");
       }
+      const retired = database.db
+        .prepare("SELECT entry_json FROM session_nodes WHERE session_key = ?")
+        .get("agent:main:retired");
+      expect(JSON.parse(String(retired?.entry_json)).mainRestartRecovery).toMatchObject({
+        cycleId: "retired",
+        tombstone: { reason: "stopped" },
+      });
       expect(dispatch).not.toHaveBeenCalled();
       expect(warn).not.toHaveBeenCalled();
     } finally {

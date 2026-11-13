@@ -276,7 +276,7 @@ export async function runSessionStartupMigration(params: {
   }
   for (const [agentId, count] of terminalUnmatched) {
     params.log.warn(
-      `session: agent ${agentId} has ${count} terminal unmatched legacy restart custody row(s); openclaw doctor --fix retires them.`,
+      `session: agent ${agentId} has ${count} terminal unmatched legacy restart custody row(s); openclaw doctor --fix retires them, or sessions.recover reopens one in place.`,
     );
   }
   throwSqliteLifecycleErrors([...errors], "Session startup migration and cleanup failed");

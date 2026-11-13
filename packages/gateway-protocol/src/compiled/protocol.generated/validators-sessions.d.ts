@@ -59,6 +59,7 @@ export {
   isSessionsPatchManyParams,
   isSessionsPluginPatchParams,
   isSessionsResetParams,
+  isSessionsRecoverParams,
   isSessionsDeleteParams,
   isSessionsAssignOwnerParams,
   isSessionsSetInvolvementParams,

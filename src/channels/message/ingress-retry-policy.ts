@@ -3,9 +3,13 @@
  *
  * Channel-specific non-retryable classification stays out of core; pass it in.
  */
-import { collectNestedErrorCandidates } from "@openclaw/normalization-core/error-coercion";
+import {
+  collectNestedErrorCandidates,
+  extractErrorCode,
+} from "@openclaw/normalization-core/error-coercion";
 import { PreparedModelRuntimeRecoveryError } from "../../agents/prepared-model-runtime-admission-errors.js";
 import { InboundDedupePendingError } from "../../auto-reply/reply/inbound-dedupe-error.js";
+import { SESSION_RESTART_RECOVERY_TOMBSTONE_ERROR_CODE } from "../../config/sessions/work-start-error.js";
 import { computeBackoff } from "../../infra/backoff.js";
 import { pruneMapToMaxSize } from "../../infra/map-size.js";
 
@@ -163,9 +167,14 @@ export function resolveIngressFailureDisposition(params: {
       retry: { recoveryFailures, nextEligibleAt: recovery.nextEligibleAt },
     };
   }
-  const reason = shouldDeadLetterRetryableIngressEvent(params.event, attempt, params.config, now)
-    ? "retry-limit-exceeded"
-    : undefined;
+  // Retrying a terminal generation blocks the authorized reset behind it.
+  const reason = errors.some(
+    (error) => extractErrorCode(error) === SESSION_RESTART_RECOVERY_TOMBSTONE_ERROR_CODE,
+  )
+    ? "restart-recovery-tombstone"
+    : shouldDeadLetterRetryableIngressEvent(params.event, attempt, params.config, now)
+      ? "retry-limit-exceeded"
+      : undefined;
   return reason
     ? { kind: "fail", reason, message, attempt }
     : {

@@ -15,9 +15,14 @@ import {
   upsertSessionEntryCore,
 } from "../config/sessions/session-accessor.js";
 import { addSessionMember, removeSessionMember } from "../config/sessions/session-sharing-store.js";
+import {
+  enqueueSessionDelivery,
+  loadPendingSessionDelivery,
+} from "../infra/session-delivery-queue-storage.js";
 import { resolveSystemEventQueueKey } from "../infra/system-event-ownership.js";
 import { openOpenClawAgentDatabase } from "../state/openclaw-agent-db.js";
 import { closeOpenClawStateDatabaseAsync } from "../state/openclaw-state-db.js";
+import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import {
   createGatewaySchedulerClock,
   createTestGatewayScheduler,
@@ -33,7 +38,12 @@ const { mocks } = await import("./server-restart-sentinel.mocks.test-harness.js"
 
 vi.resetModules();
 
-const { deliverQueuedSessionDelivery } = await import("./server-restart-sentinel.js");
+const { deliverQueuedSessionDelivery, recoverPendingProducedSessionDeliveries } =
+  await import("./server-restart-sentinel.js");
+const { buildQueuedRestartContinuation } =
+  await import("./server-restart-sentinel-continuation-intent.js");
+const { REPLY_RUN_STILL_SHUTTING_DOWN_TEXT } =
+  await import("../auto-reply/reply/get-reply-run-queue.js");
 const { resetGatewayWorkAdmission } = await import("../process/gateway-work-admission.js");
 const actualRestartUpdateRun = await vi.importActual<
   typeof import("./server-restart-update-run.js")
@@ -48,6 +58,93 @@ let scheduler: ReturnType<typeof createTestGatewayScheduler>;
 let testState: OpenClawTestState;
 
 describe("restart recovery of queued continuation deliveries", () => {
+  it("retries a pre-adoption busy refusal without charging an ambiguous attempt", async () => {
+    const queueContext = captureOpenClawStateWorkerContext();
+    mocks.enqueueSessionEvent.mockImplementationOnce(() => ({
+      id: "busy-restart",
+      accepted: Promise.resolve({ ok: false as const, error: REPLY_RUN_STILL_SHUTTING_DOWN_TEXT }),
+      cancel: () => true,
+      settled: Promise.resolve({
+        status: "failed" as const,
+        executionStarted: false,
+        delivered: false,
+        error: REPLY_RUN_STILL_SHUTTING_DOWN_TEXT,
+      }),
+    }));
+    const id = await enqueueSessionDelivery(
+      buildQueuedRestartContinuation({
+        sessionKey: "agent:main:main",
+        continuation: { kind: "agentTurn", message: "resume" },
+        expectedSessionId: "agent:main:main",
+        revision: 124,
+      }),
+      queueContext,
+    );
+    await recoverPendingProducedSessionDeliveries({ deps: {} as never, queueContext });
+    expect(await loadPendingSessionDelivery(id, queueContext)).toMatchObject({
+      retryCount: 1,
+      lastError: "restart continuation deferred because previous run is still shutting down",
+    });
+    expect(mocks.markSessionDeliveryAttemptStarted).not.toHaveBeenCalled();
+  });
+  it("does not replay a system event into a replacement session incarnation", async () => {
+    const queueContext = captureOpenClawStateWorkerContext();
+    mocks.loadSessionEntry.mockImplementation((sessionKey: string) => ({
+      cfg: {},
+      agentId: "main",
+      entry: { sessionId: "replacement", updatedAt: 1 },
+      store: {},
+      storePath: "/tmp/sessions.json",
+      canonicalKey: sessionKey,
+      storeKeys: [sessionKey],
+      legacyKey: undefined,
+    }));
+    const id = await enqueueSessionDelivery(
+      buildQueuedRestartContinuation({
+        sessionKey: "agent:main:main",
+        continuation: { kind: "systemEvent", text: "stale event" },
+        expectedSessionId: "old-session",
+        revision: 125,
+      }),
+      queueContext,
+    );
+    await recoverPendingProducedSessionDeliveries({ deps: {} as never, queueContext });
+    expect(mocks.enqueueSessionEvent).not.toHaveBeenCalled();
+    expect(await loadPendingSessionDelivery(id, queueContext)).toBeNull();
+  });
+  it.each(["agentTurn", "systemEvent"] as const)(
+    "replays a durable %s handoff after reopening state",
+    async (kind) => {
+      const initialContext = captureOpenClawStateWorkerContext();
+      const text = `${kind} resumed after restart`;
+      const id = await enqueueSessionDelivery(
+        buildQueuedRestartContinuation({
+          sessionKey: "agent:main:main",
+          continuation: kind === "agentTurn" ? { kind, message: text } : { kind, text },
+          revision: 123,
+          expectedSessionId: "agent:main:main",
+        }),
+        initialContext,
+      );
+      expect(await loadPendingSessionDelivery(id, initialContext)).toMatchObject({ kind });
+      await closeOpenClawStateDatabaseAsync();
+      const restartedContext = captureOpenClawStateWorkerContext();
+      await recoverPendingProducedSessionDeliveries({
+        deps: {} as never,
+        queueContext: restartedContext,
+      });
+      expect(mocks.enqueueSessionEvent).toHaveBeenCalledWith(
+        text,
+        expect.objectContaining({
+          agentId: "main",
+          sessionKey: "agent:main:main",
+          source: "restart",
+          contextKey: `task:restart-sentinel:${id}`,
+        }),
+      );
+      expect(await loadPendingSessionDelivery(id, restartedContext)).toBeNull();
+    },
+  );
   afterEach(async () => {
     clearRuntimeConfigSnapshot();
     await scheduler.stop();

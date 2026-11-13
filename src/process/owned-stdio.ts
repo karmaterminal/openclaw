@@ -20,6 +20,8 @@ export type OwnedStdioProcessOptions = {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   exactEnv?: true;
+  /** Heavy work: run in the host's capped child memory scope when process.childScope enables it. */
+  childMemoryScope?: true;
   /** Preserve the configured Windows wrapper's shipped Node shell launch contract. */
   windowsShell?: true;
   abortSignal?: AbortSignal;

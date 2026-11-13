@@ -9,6 +9,20 @@ describe("config schema regressions", () => {
     expect(GroupChatSchema.unwrap().safeParse({ historyLimit: 0 }).success).toBe(true);
   });
 
+  // Frond (karmaterminal, #1415): the ambient owner peers list, globally and per agent.
+  it("accepts ambient owner peer ids and refuses a wildcard or a duplicate", () => {
+    const accepts = (peers: unknown[]) =>
+      [
+        { messages: { groupChat: { ambientOwnerAggregatePeers: peers } } },
+        { agents: { entries: { main: { groupChat: { ambientOwnerAggregatePeers: peers } } } } },
+      ].map((config) => OpenClawSchema.safeParse(config).success);
+    expect(accepts([])).toEqual([true, true]);
+    expect(accepts(["123456789012345678", "discord:223456789012345678", 42])).toEqual([true, true]);
+    for (const peers of [["*"], ["discord:*"], ["42", " 42 "], ["42", 42]]) {
+      expect(accepts(peers)).toEqual([false, false]);
+    }
+  });
+
   it("accepts markdown table block mode", () => {
     expect(MarkdownConfigSchema.parse({ tables: "block" })).toEqual({ tables: "block" });
   });

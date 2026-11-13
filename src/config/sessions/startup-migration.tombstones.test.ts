@@ -18,7 +18,7 @@ import { resolveSessionWorkStartBlock } from "./session-work-start.js";
 import { runSessionStartupMigration } from "./startup-migration-runtime.js";
 
 it.each(["startup", "doctor"] as const)(
-  "%s retires only custody linked to the tombstoned generation, idempotently",
+  "%s retains unlinked custody and only Doctor retires linked custody, idempotently",
   async (mode) =>
     withOpenClawTestState({ scenario: "minimal" }, async (state) => {
       const cfg = { agents: { entries: { guarded: {} } } };
@@ -97,9 +97,14 @@ it.each(["startup", "doctor"] as const)(
       try {
         await run();
         const repaired = JSON.parse(read(rows[0]!.sessionKey));
-        expect(repaired).not.toHaveProperty("pendingFinalDelivery");
-        expect(repaired).not.toHaveProperty("lifecycleRunId");
-        expect(repaired).not.toHaveProperty("restartRecoveryRuns");
+        if (mode === "startup") {
+          // Ordinary boot keeps even fully linked custody for explicit owner recovery.
+          expect(repaired).toEqual(rows[0]!.entry);
+        } else {
+          expect(repaired).not.toHaveProperty("pendingFinalDelivery");
+          expect(repaired).not.toHaveProperty("lifecycleRunId");
+          expect(repaired).not.toHaveProperty("restartRecoveryRuns");
+        }
         for (const row of rows.slice(1)) {
           expect(JSON.parse(read(row.sessionKey))).toEqual(row.entry);
           expect(
@@ -119,7 +124,7 @@ it.each(["startup", "doctor"] as const)(
 );
 
 it.each(["startup", "doctor"] as const)(
-  "%s settles every legacy tombstone shape and admits the preserved root",
+  "%s handles every legacy tombstone shape: startup retains it, Doctor settles it",
   async (mode) =>
     withOpenClawTestState({ scenario: "minimal" }, async (state) => {
       const shapes: Record<string, Record<string, unknown>> = {
@@ -218,6 +223,47 @@ it.each(["startup", "doctor"] as const)(
           ? runSessionStartupMigration({ cfg, env: state.env, log })
           : repairLegacySessionEntryStates({ apply: true, cfg, env: state.env });
       await run();
+      if (mode === "startup") {
+        for (const { scope, database, raw, transcript } of fixtures) {
+          const stored = String(
+            database.db
+              .prepare("SELECT entry_json FROM session_nodes WHERE session_key = ?")
+              .get(scope.sessionKey)?.entry_json,
+          );
+          // Only legacy scalar delivery fields are canonicalized; the refusal and custody stay.
+          if (scope.agentId === "pending") {
+            expect(JSON.parse(stored)).toMatchObject({
+              mainRestartRecovery: JSON.parse(raw).mainRestartRecovery,
+              pendingFinalDelivery: { kind: "replayable", text: "Unsent final" },
+            });
+          } else {
+            expect(stored).toBe(raw);
+          }
+          const entry = loadExactSessionEntry(scope)?.entry;
+          expect(entry?.resumeAfterRestart).toBeUndefined();
+          expect(resolveSessionWorkStartBlock(scope.sessionKey, entry)?.reason).toBe(
+            "restart_tombstone",
+          );
+          expect(loadTranscriptEventsSync({ ...scope, sessionId: scope.agentId })).toEqual(
+            transcript,
+          );
+        }
+        expect(log.warn.mock.calls.flat().join("\n")).toContain("sessions.recover");
+        const once = fixtures.map(({ database, scope }) =>
+          database.db
+            .prepare("SELECT entry_json FROM session_nodes WHERE session_key = ?")
+            .get(scope.sessionKey),
+        );
+        await run();
+        expect(
+          fixtures.map(({ database, scope }) =>
+            database.db
+              .prepare("SELECT entry_json FROM session_nodes WHERE session_key = ?")
+              .get(scope.sessionKey),
+          ),
+        ).toEqual(once);
+        return;
+      }
       expect(
         fixtures.map(
           ({ database, scope }) =>
@@ -229,13 +275,7 @@ it.each(["startup", "doctor"] as const)(
               ),
             ).mainRestartRecovery,
         ),
-      ).toEqual(
-        fixtures.map(({ scope }) =>
-          scope.agentId === "pending" && mode === "startup"
-            ? expect.objectContaining({ tombstone: expect.any(Object) })
-            : undefined,
-        ),
-      );
+      ).toEqual(fixtures.map(() => undefined));
       for (const { scope, database, raw, transcript } of fixtures) {
         const stored = JSON.parse(
           String(
@@ -246,14 +286,7 @@ it.each(["startup", "doctor"] as const)(
         );
         expect(Object.keys(stored).filter((key) => key.startsWith("restartRecovery"))).toEqual([]);
         expect(stored).not.toHaveProperty("activeWriterRunId");
-        if (scope.agentId === "pending" && mode === "startup") {
-          expect(stored.pendingFinalDelivery).toMatchObject({
-            kind: "replayable",
-            text: "Unsent final",
-          });
-        } else {
-          expect(stored).not.toHaveProperty("pendingFinalDelivery");
-        }
+        expect(stored).not.toHaveProperty("pendingFinalDelivery");
         if (scope.agentId === "canonical") {
           expect(stored.lastRunError).toContain("unknown outcome");
         }
@@ -272,7 +305,7 @@ it.each(["startup", "doctor"] as const)(
         );
         const entry = loadExactSessionEntry(scope)?.entry;
         expect(entry?.sessionId).toBe(scope.agentId);
-        expect(resolveSessionWorkStartBlock(scope.sessionKey, entry)).toBeUndefined();
+        expect(resolveSessionWorkStartBlock(scope.sessionKey, entry)?.reason).toBeUndefined();
         expect(loadTranscriptEventsSync({ ...scope, sessionId: scope.agentId })).toEqual(
           transcript,
         );
@@ -292,10 +325,6 @@ it.each(["startup", "doctor"] as const)(
             .prepare("SELECT entry_json FROM session_nodes WHERE session_key = ?")
             .get(scope.sessionKey)?.entry_json,
         ).toBe(raw);
-      }
-      await run();
-      if (mode === "startup") {
-        expect(log.warn).toHaveBeenCalledTimes(fixtures.length + 1);
       }
     }),
 );

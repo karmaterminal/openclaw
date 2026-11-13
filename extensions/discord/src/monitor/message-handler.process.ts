@@ -143,7 +143,7 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
   if (!processContext) {
     return;
   }
-  const { ctxPayload, persistedSessionKey, record, replyPlan } = processContext;
+  const { ctxPayload, persistedSessionKey, record, replyPlan, roomHistoryScope } = processContext;
   let deliverTarget = replyPlan.deliverTarget;
   const sourceReplyReference = replyPlan.replyReference;
   let adoptedThreadId: string | undefined;
@@ -600,6 +600,8 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
       return { visibleReplySent: false };
     }
   };
+  // The watermark snapshot is taken at dispatch; a queued turn settles after dispatch returns.
+  const roomHistoryTurn = ctx.roomHistoryWatermarks.beginTurn(roomHistoryScope, message.id);
   try {
     if (abortSignal?.aborted || isPolicyCurrent?.() === false) {
       dispatchAborted = true;
@@ -675,6 +677,7 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
         ...progressReplyOptions,
         onObservedReplyDelivery: observeFinalDelivery,
         onModelSelected,
+        ...roomHistoryTurn.replyOptions,
       },
     });
     if (!preparedResult.dispatched) {
@@ -715,6 +718,7 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
     }
     throw err;
   } finally {
+    roomHistoryTurn.finishDispatch(dispatchResult);
     endActiveThreadRoute();
     endDeliveryCorrelation();
     dispatchError ||= readAgentRunTerminalOutcome(dispatchResult) === "failed";

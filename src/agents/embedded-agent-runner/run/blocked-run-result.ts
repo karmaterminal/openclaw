@@ -1,3 +1,4 @@
+import { setReplyPayloadMetadata } from "../../../auto-reply/reply-payload.js";
 import { sanitizeAgentRunTerminalReply } from "../../agent-run-terminal-reply.js";
 import { withAgentTerminalPayloadSnapshot } from "../../agent-terminal-snapshot.js";
 import type { EmbeddedAgentMeta, EmbeddedAgentRunResult } from "../types.js";
@@ -21,7 +22,10 @@ export function buildEmbeddedRunBlockedResult(input: {
       : undefined;
   return {
     payloads: [
-      withAgentTerminalPayloadSnapshot({ text: input.text, isError: true }, agentTerminal),
+      setReplyPayloadMetadata(
+        withAgentTerminalPayloadSnapshot({ text: input.text, isError: true }, agentTerminal),
+        { agentRunFailure: true },
+      ),
     ],
     meta: {
       durationMs: input.durationMs,

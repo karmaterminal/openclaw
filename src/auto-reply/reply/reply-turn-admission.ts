@@ -7,6 +7,7 @@ import { loadSessionEntryForAdmission } from "../../config/sessions/session-acce
 import { resolveSessionWorkStartBlock } from "../../config/sessions/session-work-start.js";
 import { normalizeStoreSessionKey } from "../../config/sessions/store-entry.js";
 import type { InternalSessionEntry } from "../../config/sessions/types.js";
+import { SessionRestartRecoveryTombstoneError } from "../../config/sessions/work-start-error.js";
 import { getAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
 import { observeDiagnosticsTimelinePhases } from "../../infra/diagnostics-timeline.js";
 import {
@@ -331,9 +332,17 @@ export async function admitReplyTurn(
                   {
                     allowPendingWorkspace: workspaceReadiness ? true : undefined,
                     providerReviewAcknowledgment: params.providerReviewAcknowledgment,
+                    allowRestartTombstoneReplacement:
+                      params.resetTriggered && params.allowRestartTombstoneReset === true,
                   },
                 );
                 if (archivedSessionError) {
+                  if (
+                    archivedSessionError.reason === "restart_tombstone" &&
+                    params.kind === "visible"
+                  ) {
+                    throw new SessionRestartRecoveryTombstoneError(archivedSessionError.message);
+                  }
                   rejectLifecycleInvalidatedWork({
                     kind: params.kind,
                     message: archivedSessionError.message,

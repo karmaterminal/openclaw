@@ -338,6 +338,12 @@ export type SessionHistoryWorkerInput =
   | ConversationDeliveryWorkerInput
   | SessionEntryListWorkerInput
   | SessionEntryReadWorkerInput
+  | {
+      kind: "session-raw-entry";
+      database: { agentId: string; path: string };
+      env: NodeJS.ProcessEnv;
+      sessionKey: string;
+    }
   | SessionRuntimeTargetWorkerInput
   | SessionEntryCurrentWorkerInput
   | SessionStoreSummaryWorkerInput
@@ -490,6 +496,7 @@ export type SessionTranscriptWorkerValues = SessionTranscriptInventoryWorkerValu
       >;
     };
     "session-entry-read": SessionEntryReadWorkerResult;
+    "session-raw-entry": { kind: "session-raw-entry"; entryJson?: string };
     "session-runtime-target": SessionRuntimeTargetWorkerResult;
     "session-entry-current": SessionEntryCurrentWorkerResult;
     "session-exact-entries": SessionExactEntriesWorkerResult;
@@ -641,6 +648,7 @@ export type SessionHistoryWorkerDatabase = SessionTranscriptInventoryReaders &
       Result<SessionEntryReadWorkerResult["entry"], unknown> &
         Pick<SessionEntryReadWorkerResult, "source" | "facts">
     >;
+    readRawEntry: SessionHistoryReader<"session-raw-entry", "entryJson">;
     readEntryCurrent: SessionHistoryReader<"session-entry-current", "entry">;
     readMembers: SessionHistoryReader<"session-members">;
     readSuggestions: SessionHistoryReader<"session-suggestions", "suggestions">;

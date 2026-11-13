@@ -5,6 +5,7 @@ import type {
   MemoryEmbeddingCacheEvictionPreference,
 } from "./manager-embedding-cache.js";
 import type { MemoryRebuildEmbeddingQuery } from "./manager-rebuild-embeddings.js";
+import type { MemoryReindexResourceFailure } from "./manager-reindex-failure.js";
 import type { MemoryIndexMeta, MemoryIndexProviderIdentity } from "./manager-reindex-state.js";
 import type { MemoryDatabaseFacts } from "./manager-retrieval-read.js";
 import type { MemoryShadowConnection, MemoryShadowFailure } from "./manager-shadow-task.js";
@@ -82,6 +83,10 @@ export type MemoryPublicationOperations = {
     output: MemoryPublicationResult<boolean>;
   };
   "index.writeMetadata": { input: MemoryIndexMeta; output: MemoryPublicationResult<void> };
+  "index.writeReindexFailure": {
+    input: MemoryReindexResourceFailure | null;
+    output: MemoryPublicationResult<void>;
+  };
   "schema.admit": {
     input: Pick<
       Parameters<typeof ensureMemoryIndexSchema>[0],

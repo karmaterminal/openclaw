@@ -7,6 +7,12 @@ export function normalizeQueueDebounce(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : undefined;
 }
 
+// Frond (karmaterminal, #1415): the one queue-mode rule for room-event sources.
+/** Room events never steer or interrupt; a configured collect still batches them. */
+export function resolveRoomEventQueueMode(mode: QueueSettings["mode"]): "collect" | "followup" {
+  return mode === "collect" ? "collect" : "followup";
+}
+
 export function resolveQueueSettingsCore(params: ResolveQueueSettingsParams): QueueSettings {
   const channelKey = normalizeOptionalLowercaseString(params.channel);
   const queueCfg = params.cfg.messages?.queue;

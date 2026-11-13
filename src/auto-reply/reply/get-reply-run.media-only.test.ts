@@ -296,7 +296,9 @@ vi.mock("../../utils/provider-utils.js", () => ({
   isReasoningTagProvider: vi.fn().mockReturnValue(false),
 }));
 
-vi.mock("../command-detection.js", () => ({
+// Room events classify typed text with the real hasInlineCommandTokens.
+vi.mock("../command-detection.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../command-detection.js")>()),
   hasControlCommand: vi.fn().mockReturnValue(false),
 }));
 

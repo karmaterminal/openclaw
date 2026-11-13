@@ -371,10 +371,17 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/reply/queue.personal-bootstrap-overflow.test.ts",
   "src/auto-reply/reply/queue.authority.test.ts",
   "src/auto-reply/reply/queue.collect.test.ts",
+  // Frond (karmaterminal, #1415): room-event collect over real durable ingress rows.
+  "src/auto-reply/reply/queue.room-event-collect.test.ts",
+  // Frond (karmaterminal, #1415): the ambient owner room aggregate over the same durable ingress.
+  "src/auto-reply/reply/queue.room-ambient-owner.test.ts",
+  "test/discord-room-ambient-owner-echo.integration.test.ts",
   "src/auto-reply/reply/reply-run-registry.preparation.test.ts",
   "src/auto-reply/reply/reply-run-registry.question-registration.test.ts",
   "src/auto-reply/reply/reply-tool-authority.worker.test.ts",
   "src/auto-reply/reply/session-event-automation-result.test.ts",
+  // Cael (karmaterminal, #1447): scheduled room-session failures over the real delivery owner.
+  "src/auto-reply/reply/session-event-scheduled-failure.test.ts",
   // Continuation wakes run the real session-event handoff and durable rows.
   "src/auto-reply/continuation/continuation-wake.test.ts",
   "src/auto-reply/continuation/continuation-wake.transcript-conflict.test.ts",
@@ -441,7 +448,9 @@ export const databaseWorkerCoreTestFiles = [
   "test/e2e/qa-lab/runtime/gateway-loopback-lan-access.test.ts",
   "src/channels/message/durable-receive.test.ts",
   "src/channels/message/ingress-drain-lanes.test.ts",
+  "src/channels/message/ingress-drain-pending-disposition.test.ts",
   "src/channels/message/ingress-drain-supersede.test.ts",
+  "src/channels/message/ingress-drain.abandonment.test.ts",
   "src/channels/message/ingress-drain.test.ts",
   "src/channels/message/ingress-drain.watchdog.test.ts",
   "src/channels/message/ingress-monitor.admission.test.ts",
@@ -451,9 +460,12 @@ export const databaseWorkerCoreTestFiles = [
   "src/channels/message/ingress-monitor.test.ts",
   "src/channels/message/ingress-queue-health.test.ts",
   "src/channels/message/ingress-queue.claim-ownership.test.ts",
+  "src/channels/message/ingress-queue.generation.test.ts",
+  "src/channels/message/ingress-queue.listing-access.test.ts",
   "src/channels/message/ingress-queue.pruning.test.ts",
   "src/channels/message/ingress-queue.test.ts",
   "src/auto-reply/reply/dispatch-from-config.command-refusal.test.ts",
+  "src/auto-reply/reply/dispatch-from-config.ingress-cancellation.test.ts",
   "src/auto-reply/reply/dispatch-from-config.ingress-retry.test.ts",
   "src/auto-reply/reply/dispatch-from-config.reply-dispatch-scope.test.ts",
   "src/auto-reply/reply/reply-turn-admission.database-claim.test.ts",
@@ -599,6 +611,7 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/bash-tools.exec-request-stop.test.ts",
   "src/auto-reply/reply/abort.target-owner.test.ts",
   "src/agents/bash-tools.exec-foreground-failures.test.ts",
+  "src/agents/bash-tools.exec-child-memory-scope.test.ts",
   "src/agents/bash-tools.exec-group-cleanup.real.test.ts",
   "src/agents/bash-tools.exec-host-gateway.integration.test.ts",
   "src/agents/bash-tools.exec-host-node.integration.test.ts",
@@ -1088,6 +1101,8 @@ export const databaseWorkerCoreTestFiles = [
   "src/state/openclaw-agent-db.schema26-bridge.test.ts",
   // Frond (karmaterminal): fleet-38 bridge; migrates through the agent schema owner.
   "src/state/openclaw-agent-db.fleet38-bridge.test.ts",
+  // Real fleet-38 store migration plus in-place tombstone recovery.
+  "src/gateway/session-tombstone-recovery.test.ts",
   "src/state/openclaw-agent-db.integrity-recovery.test.ts",
   "src/state/openclaw-agent-db-disposal.test.ts",
   "src/state/openclaw-agent-admission-order.diagnostic.test.ts",

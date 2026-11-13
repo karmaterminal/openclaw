@@ -121,6 +121,34 @@ export abstract class MemoryManagerSessionSyncOps extends MemoryManagerWatchOps 
     return entries.filter((entry) => !forgottenSessions.has(entry.sessionId));
   }
 
+  /** Transcript source bytes from metadata alone, so indexing can bound what it reads at once. */
+  protected async readSessionTranscriptBytes(
+    entries: readonly SessionTranscriptCorpusEntry[],
+  ): Promise<Map<string, number>> {
+    const sqliteEntries = entries.filter((entry) => entry.transcriptSource === "sqlite");
+    const stats = await readMemoryTranscriptStatsInWorker(
+      sqliteEntries.map((entry) => ({
+        agentId: entry.agentId,
+        sessionId: entry.sessionId,
+        ...(entry.sessionKey ? { sessionKey: entry.sessionKey } : {}),
+        ...(entry.storePath ? { storePath: entry.storePath } : {}),
+      })),
+    );
+    const bytes = new Map(
+      sqliteEntries.map((entry, index) => [entry.sessionFile, stats[index]?.sizeBytes ?? 0]),
+    );
+    await runWithConcurrency(
+      entries
+        .filter((entry) => entry.transcriptSource !== "sqlite")
+        .map((entry) => async () => {
+          const stat = await fs.stat(entry.sessionFile).catch(() => undefined);
+          bytes.set(entry.sessionFile, stat?.size ?? 0);
+        }),
+      this.getIndexConcurrency(),
+    );
+    return bytes;
+  }
+
   protected sessionPathForCorpusEntry(entry: SessionTranscriptCorpusEntry): string {
     return entry.transcriptSource === "sqlite"
       ? sessionPathForSessionIdentity(entry.agentId, entry.sessionId)

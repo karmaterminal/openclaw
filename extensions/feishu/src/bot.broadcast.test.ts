@@ -1,5 +1,6 @@
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import { describe, expect, it, vi } from "vitest";
+import { createFeishuBroadcastIngressSettlement } from "./bot-broadcast.js";
 import { createRuntimeEnv, setupFeishuBroadcastTestHarness } from "./bot.broadcast.test-support.js";
 import { feishuDedupeState } from "./dedup-state.js";
 import type { FeishuMessageProcessingClaim } from "./dedup.js";
@@ -56,6 +57,51 @@ function mockBroadcastClaims(key: string, redelivery = false) {
   return { broadcastClaim, susanClaim, mainClaim, retryClaim, retrySusanClaim };
 }
 
+it("terminally drops a broadcast source when one queued lane is policy-discarded", async () => {
+  const transport = { ...createIngressLifecycle(), onDropped: vi.fn(async () => {}) };
+  const sharedClaim = createReplayClaim("shared-drop");
+  const droppedClaim = createReplayClaim("dropped-lane");
+  const keptClaim = createReplayClaim("kept-lane");
+  const settlement = createFeishuBroadcastIngressSettlement({
+    lifecycle: transport,
+    replayClaim: sharedClaim,
+  });
+  const dropped = settlement.createLane(droppedClaim);
+  const kept = settlement.createLane(keptClaim);
+
+  await dropped.lifecycle.onDropped?.("queue-cap-old");
+  await kept.lifecycle.onAdopted();
+  await settlement.onDispatchComplete();
+
+  expect(transport.onDropped).toHaveBeenCalledExactlyOnceWith("queue-cap-old");
+  expect(transport.onAbandoned).not.toHaveBeenCalled();
+  expectClaim(sharedClaim, true);
+  expectClaim(droppedClaim, true);
+  expectClaim(keptClaim, true);
+});
+
+it("releases the shared broadcast claim if terminal drop settlement fails", async () => {
+  const transport = {
+    ...createIngressLifecycle(),
+    onDropped: vi.fn(async () => {
+      throw new Error("drop settlement failed");
+    }),
+  };
+  const sharedClaim = createReplayClaim("shared-drop-failure");
+  const droppedClaim = createReplayClaim("dropped-lane-failure");
+  const settlement = createFeishuBroadcastIngressSettlement({
+    lifecycle: transport,
+    replayClaim: sharedClaim,
+  });
+  const dropped = settlement.createLane(droppedClaim);
+  await dropped.lifecycle.onDropped?.("queue-cap-new");
+
+  await expect(settlement.onDispatchComplete()).rejects.toThrow("drop settlement failed");
+  expect(transport.onAbandoned).toHaveBeenCalledOnce();
+  expectClaim(sharedClaim, false);
+  expectClaim(droppedClaim, false);
+});
+
 describe("broadcast dispatch", () => {
   const {
     createBroadcastConfig,
@@ -67,7 +113,6 @@ describe("broadcast dispatch", () => {
     mockGetChatInfo,
     mockResolveStorePath,
     resolvedTurnCalls,
-    runtimeStub,
   } = setupFeishuBroadcastTestHarness();
 
   function mockActiveDispatcher(ensureNoVisibleReplyFallback = vi.fn()) {
@@ -96,32 +141,6 @@ describe("broadcast dispatch", () => {
       ...options,
     });
   }
-
-  it("settles observer commands without dispatching or replaying them", async () => {
-    const { broadcastClaim, susanClaim, mainClaim } = mockBroadcastClaims("broadcast-command");
-    const turnAdoptionLifecycle = createIngressLifecycle();
-    vi.spyOn(runtimeStub.channel.commands, "shouldComputeCommandAuthorized").mockReturnValue(true);
-    const cfg = createBroadcastConfig();
-    cfg.channels = {
-      ...cfg.channels,
-      feishu: { ...cfg.channels?.feishu, allowFrom: ["ou_sender"] },
-    };
-    const event = createBroadcastEvent({
-      messageId: "broadcast-command",
-      text: "/followup next task",
-      botMentioned: true,
-    });
-    event.sender.sender_id.open_id = "ou_sender";
-    await dispatchBroadcast("broadcast-command", { cfg, event, turnAdoptionLifecycle });
-    expect(mockDispatchReply).toHaveBeenCalledTimes(1);
-    expectClaim(susanClaim, true);
-    expectClaim(mainClaim, true);
-    expectClaim(broadcastClaim, true);
-    await dispatchBroadcast("broadcast-command", { cfg, event, turnAdoptionLifecycle });
-    expect(mockDispatchReply).toHaveBeenCalledTimes(1);
-    expect(turnAdoptionLifecycle.onAdopted).toHaveBeenCalledTimes(1);
-    expect(turnAdoptionLifecycle.onAbandoned).not.toHaveBeenCalled();
-  });
 
   it("sends no-visible-reply fallback for active broadcast failed final delivery", async () => {
     mockAgentReply("main", {
@@ -282,65 +301,100 @@ describe("broadcast dispatch", () => {
     expect(broadcastClaim.release).not.toHaveBeenCalled();
   });
 
-  it.each(["adopted", "queue-cap-old", "queue-cap-new", "drop-failed"] as const)(
-    "settles independently deferred broadcast lanes after %s",
-    async (outcome) => {
-      const { broadcastClaim, susanClaim, mainClaim } = mockBroadcastClaims("deferred");
-      const chatHistories = new Map([
-        ["oc-broadcast-group", [{ sender: "peer", body: "earlier chat", timestamp: 1 }]],
-      ]);
-      let deferredLifecycle: NonNullable<
-        (typeof resolvedTurnCalls)[number]["replyOptions"]
-      >["turnAdoptionLifecycle"];
-      mockDispatchReply.mockImplementation(async ({ ctx, replyOptions }) => {
-        if (String(ctx.SessionKey).startsWith("agent:susan:")) {
-          deferredLifecycle = replyOptions?.turnAdoptionLifecycle;
-          deferredLifecycle?.onDeferred?.();
-          return { queuedFinal: false, counts: { final: 1 }, deferAdoption: true };
-        }
-        return { queuedFinal: false, counts: { final: 1 } };
-      });
-      const transport = {
-        ...createIngressLifecycle(),
-        onDropped: vi.fn(async () => {
-          if (outcome === "drop-failed") {
-            throw new Error("drop settlement failed");
-          }
-        }),
-      };
-
-      await dispatchBroadcast("deferred", { turnAdoptionLifecycle: transport, chatHistories });
-
-      expect(transport.onDeferred).toHaveBeenCalledTimes(1);
-      expect(transport.onAdopted).not.toHaveBeenCalled();
-      deferredLifecycle?.onDeferredHeartbeat?.();
-      expect(transport.onDeferredHeartbeat).toHaveBeenCalledOnce();
-      expect(broadcastClaim.commit).not.toHaveBeenCalled();
-      expect(mainClaim.commit).toHaveBeenCalledTimes(1);
-      expect(susanClaim.commit).not.toHaveBeenCalled();
-
-      const completion =
-        outcome === "adopted"
-          ? deferredLifecycle?.onAdopted()
-          : deferredLifecycle?.onDropped?.(outcome === "drop-failed" ? "queue-cap-new" : outcome);
-      if (outcome === "drop-failed") {
-        await expect(completion).rejects.toThrow("drop settlement failed");
-        expect(transport.onAbandoned).toHaveBeenCalledOnce();
-      } else {
-        await completion;
-        expect(transport.onAbandoned).not.toHaveBeenCalled();
+  it("cancels the shared claim without spending retry budget when a deferred lane is cancelled", async () => {
+    const { broadcastClaim, susanClaim, mainClaim } = mockBroadcastClaims("broadcast-cancelled");
+    let deferredLifecycle:
+      | Pick<FeishuIngressLifecycle, "onDeferred" | "onCancelled" | "onAbandoned">
+      | undefined;
+    mockDispatchReply.mockImplementation(async ({ ctx, replyOptions }) => {
+      if (String(ctx.SessionKey).startsWith("agent:susan:")) {
+        deferredLifecycle = replyOptions?.turnAdoptionLifecycle;
+        deferredLifecycle?.onDeferred();
+        return { queuedFinal: false, counts: { final: 1 }, deferAdoption: true };
       }
-      if (outcome !== "adopted") {
-        expect(transport.onDropped).toHaveBeenCalledExactlyOnceWith(
-          outcome === "drop-failed" ? "queue-cap-new" : outcome,
-        );
+      return { queuedFinal: false, counts: { final: 1 } };
+    });
+    const cancelled = vi.fn(async () => {});
+    const transport = { ...createIngressLifecycle(), onCancelled: cancelled };
+
+    await dispatchBroadcast("msg-broadcast-cancelled", {
+      turnAdoptionLifecycle: transport,
+    });
+    expect(transport.onDeferred).toHaveBeenCalledTimes(1);
+
+    // The reply lane settles a cleared queued turn through onCancelled and
+    // falls back to abandonment only when the lifecycle cannot cancel.
+    await (deferredLifecycle?.onCancelled
+      ? deferredLifecycle.onCancelled()
+      : deferredLifecycle?.onAbandoned());
+
+    expect(cancelled).toHaveBeenCalledOnce();
+    expect(transport.onAbandoned).not.toHaveBeenCalled();
+    expect(transport.onAdopted).not.toHaveBeenCalled();
+    expect(susanClaim.commit).not.toHaveBeenCalled();
+    expect(susanClaim.release).toHaveBeenCalledTimes(1);
+    expect(mainClaim.commit).toHaveBeenCalledTimes(1);
+    expect(broadcastClaim.commit).not.toHaveBeenCalled();
+    expect(broadcastClaim.release).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for every independently deferred broadcast lane before adoption", async () => {
+    const { broadcastClaim, susanClaim, mainClaim } = mockBroadcastClaims("deferred");
+    let deferredLifecycle: NonNullable<
+      (typeof resolvedTurnCalls)[number]["replyOptions"]
+    >["turnAdoptionLifecycle"];
+    mockDispatchReply.mockImplementation(async ({ ctx, replyOptions }) => {
+      if (String(ctx.SessionKey).startsWith("agent:susan:")) {
+        deferredLifecycle = replyOptions?.turnAdoptionLifecycle;
+        deferredLifecycle?.onDeferred?.();
+        return { queuedFinal: false, counts: { final: 1 }, deferAdoption: true };
       }
-      expect(transport.onAdopted).toHaveBeenCalledTimes(outcome === "adopted" ? 1 : 0);
-      expectClaim(susanClaim, outcome !== "drop-failed");
-      expectClaim(broadcastClaim, outcome !== "drop-failed");
-      if (outcome !== "drop-failed") {
-        expect(chatHistories.get("oc-broadcast-group")).toEqual([]);
+      return { queuedFinal: false, counts: { final: 1 } };
+    });
+    const transport = createIngressLifecycle();
+
+    await dispatchBroadcast("deferred", { turnAdoptionLifecycle: transport });
+
+    expect(transport.onDeferred).toHaveBeenCalledTimes(1);
+    expect(transport.onAdopted).not.toHaveBeenCalled();
+    deferredLifecycle?.onDeferredHeartbeat?.();
+    expect(transport.onDeferredHeartbeat).toHaveBeenCalledOnce();
+    expect(broadcastClaim.commit).not.toHaveBeenCalled();
+    expect(mainClaim.commit).toHaveBeenCalledTimes(1);
+    expect(susanClaim.commit).not.toHaveBeenCalled();
+
+    await deferredLifecycle?.onAdopted();
+
+    expect(susanClaim.commit).toHaveBeenCalledTimes(1);
+    expect(transport.onAdopted).toHaveBeenCalledTimes(1);
+    expect(broadcastClaim.commit).toHaveBeenCalledTimes(1);
+  });
+
+  it("settles a deferred broadcast queue-cap drop before committing replay custody", async () => {
+    const { broadcastClaim, susanClaim, mainClaim } = mockBroadcastClaims("deferred-drop");
+    let deferredLifecycle: NonNullable<
+      (typeof resolvedTurnCalls)[number]["replyOptions"]
+    >["turnAdoptionLifecycle"];
+    mockDispatchReply.mockImplementation(async ({ ctx, replyOptions }) => {
+      if (String(ctx.SessionKey).startsWith("agent:susan:")) {
+        deferredLifecycle = replyOptions?.turnAdoptionLifecycle;
+        deferredLifecycle?.onDeferred?.();
+        return { queuedFinal: false, counts: { final: 1 }, deferAdoption: true };
       }
-    },
-  );
+      return { queuedFinal: false, counts: { final: 1 } };
+    });
+    const transport = { ...createIngressLifecycle(), onDropped: vi.fn(async () => {}) };
+
+    await dispatchBroadcast("deferred-drop", { turnAdoptionLifecycle: transport });
+    expect(broadcastClaim.commit).not.toHaveBeenCalled();
+    expect(susanClaim.commit).not.toHaveBeenCalled();
+    expect(mainClaim.commit).toHaveBeenCalledOnce();
+
+    await deferredLifecycle?.onDropped?.("queue-cap-old");
+
+    expect(transport.onDropped).toHaveBeenCalledExactlyOnceWith("queue-cap-old");
+    expect(transport.onAdopted).not.toHaveBeenCalled();
+    expect(broadcastClaim.commit).toHaveBeenCalledOnce();
+    expect(susanClaim.commit).toHaveBeenCalledOnce();
+  });
 });

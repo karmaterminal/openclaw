@@ -60,16 +60,28 @@ export function projectCanonicalSessionEntryShape(
     participantCount: _projectedParticipantCount,
     ...canonicalValue
   } = value;
-  // Keep only the cycle for startup's upgrade bridge; never restore execution snapshots.
+  // Keep only the cycle and terminal refusal for startup's upgrade bridge;
+  // never restore execution snapshots or old execution authority.
   // Remove once stable includes the graceful-restart redesign (#185730).
   const recovery = canonicalValue.mainRestartRecovery;
-  if (
-    isRecord(recovery) &&
-    typeof recovery.cycleId === "string" &&
-    recovery.cycleId.length > 0 &&
-    !recovery.tombstone
-  ) {
-    canonicalValue.mainRestartRecovery = { cycleId: recovery.cycleId };
+  if (isRecord(recovery) && typeof recovery.cycleId === "string" && recovery.cycleId.length > 0) {
+    const tombstone = recovery.tombstone;
+    canonicalValue.mainRestartRecovery = {
+      cycleId: recovery.cycleId,
+      ...(isRecord(tombstone) && typeof tombstone.reason === "string" && tombstone.reason.length > 0
+        ? {
+            tombstone: {
+              reason: tombstone.reason,
+              ...(typeof tombstone.recoveredSessionId === "string"
+                ? { recoveredSessionId: tombstone.recoveredSessionId }
+                : {}),
+              ...(typeof tombstone.recoveredSessionKey === "string"
+                ? { recoveredSessionKey: tombstone.recoveredSessionKey }
+                : {}),
+            },
+          }
+        : {}),
+    };
   } else {
     delete canonicalValue.mainRestartRecovery;
   }

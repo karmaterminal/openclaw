@@ -42,9 +42,13 @@ export function isProducedSessionDelivery(entry: QueuedSessionDelivery): boolean
 export function isContinuationSessionDelivery(entry: QueuedSessionDelivery): boolean {
   return (
     entry.kind === "postCompactionDelegate" ||
+    (entry.kind === "agentTurn" &&
+      entry.idempotencyKey?.startsWith("restart-sentinel:") === true) ||
     (entry.kind === "systemEvent" &&
       (entry.awaitPromptAdoption === true ||
-        entry.idempotencyKey?.startsWith("continuation-return:") === true))
+        entry.idempotencyKey?.startsWith("continuation-return:") === true ||
+        entry.idempotencyKey?.startsWith("restart-sentinel-wake:") === true ||
+        entry.idempotencyKey?.startsWith("restart-sentinel:") === true))
   );
 }
 

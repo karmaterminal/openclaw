@@ -392,7 +392,9 @@ export async function handleTelegramInteractiveCallback(params: {
     });
     return { ctx: buildSyntheticContext(ctx, message), message };
   };
-  const processSubmitText = async (text: string): Promise<"completed" | "skipped" | "dropped"> => {
+  const processSubmitText = async (
+    text: string,
+  ): Promise<"completed" | "skipped" | "cancelled" | "dropped"> => {
     const synthetic = buildSynthetic(text);
     const participant = isTelegramSpooledReplayUpdate(synthetic.ctx.update)
       ? (getTelegramSpooledReplayDeferredParticipant() ??
@@ -489,6 +491,7 @@ export async function handleTelegramInteractiveCallback(params: {
         return;
       }
       const submitText = normalizeOptionalString(result?.submitText);
+      // Only a completed submission consumed the buttons; skipped, cancelled, or dropped keeps them.
       if (!submitText || (await processSubmitText(submitText)) !== "completed") {
         return;
       }

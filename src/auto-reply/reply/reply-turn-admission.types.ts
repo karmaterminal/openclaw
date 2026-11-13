@@ -46,6 +46,8 @@ export type ReplyTurnAdmissionParams = {
   storePath?: string;
   kind: ReplyTurnKind;
   resetTriggered: boolean;
+  /** Authorized human reset of the source, rechecked against the latest entry. */
+  allowRestartTombstoneReset?: boolean;
   routeThreadId?: string | number;
   originatingLeafEntryId?: string | null;
   /**

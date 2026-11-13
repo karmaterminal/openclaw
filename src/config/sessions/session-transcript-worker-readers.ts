@@ -496,6 +496,10 @@ const readers: Readers & ThisType<ReaderContext> = {
       facts: value.facts && shareSummaryRowStrings(value.facts),
     }),
   ),
+  readRawEntry: reader(
+    (input) => ({ kind: "session-raw-entry", ...input }),
+    (value) => value.entryJson,
+  ),
   readEntryCurrent: reader(
     (input) => ({ kind: "session-entry-current", ...input }),
     (value) => value.entry,

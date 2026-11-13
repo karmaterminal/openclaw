@@ -53,6 +53,10 @@ import {
   type RepairDreamingArtifactsResult,
 } from "./dreaming-repair.js";
 import { formatRecallRepairDetails } from "./dreaming-shared.js";
+import {
+  describeMemoryReindexResourceFailure,
+  readMemoryReindexFailure,
+} from "./memory/manager-reindex-failure.js";
 import type { MemoryCoreRuntimeHost } from "./memory/runtime-host.js";
 import {
   auditShortTermPromotionArtifacts,
@@ -423,6 +427,14 @@ export async function runMemoryStatus(
       lines.push(`${label("Index identity")} ${warn(terminalText`${identityWarning.reason}`)}`);
       lines.push(`${label("Vector search")} ${warn(terminalText`${identityWarning.paused}`)}`);
       lines.push(`${label("Fix")} ${muted(terminalText`${identityWarning.fix}`)}`);
+    }
+    const reindexFailure = readMemoryReindexFailure(
+      asNullableRecord(status.custom)?.reindexFailure,
+    );
+    if (reindexFailure) {
+      const { state, fix } = describeMemoryReindexResourceFailure(reindexFailure, agentId);
+      lines.push(`${label("Reindex")} ${warn(state)}`);
+      lines.push(`${label("Fix")} ${muted(fix)}`);
     }
     if (status.sourceCounts?.length) {
       lines.push(label("By source"));

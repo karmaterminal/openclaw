@@ -8,6 +8,7 @@ import { loadReplySessionInitializationSnapshot } from "../../config/sessions/se
 import { resolveSessionKey } from "../../config/sessions/session-key.js";
 import { resolveSessionStorePathForScope } from "../../config/sessions/session-store-path.js";
 import { resolveSessionWorkStartBlock } from "../../config/sessions/session-work-start.js";
+import { SessionRestartRecoveryTombstoneError } from "../../config/sessions/work-start-error.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { SessionBindingRecord } from "../../infra/outbound/session-binding-service.js";
 import { isPluginOwnedSessionBindingRecord } from "../../plugins/conversation-binding-metadata.js";
@@ -54,18 +55,31 @@ export type InitSessionStateAttemptContext = {
   storePath: string;
 };
 
-export function assertReplySessionInitializationAllowed(
+export function assertSessionInitAllowed(
   sessionKey: string,
   entry: Parameters<typeof resolveSessionWorkStartBlock>[1],
-  options: {
-    providerReviewAcknowledgment: InitSessionStateParams["providerReviewAcknowledgment"];
+  providerReviewAcknowledgment: InitSessionStateParams["providerReviewAcknowledgment"],
+  reset: {
+    ctx: InitSessionStateParams["ctx"];
+    resetTriggered: boolean;
+    resetAuthorized: boolean;
+    isSystemEvent: boolean;
   },
 ) {
   const error = resolveSessionWorkStartBlock(sessionKey, entry, {
-    ...options,
+    providerReviewAcknowledgment,
+    allowRestartTombstoneReplacement:
+      reset.resetTriggered &&
+      reset.resetAuthorized &&
+      !reset.isSystemEvent &&
+      entry?.pluginOwnerId === undefined &&
+      reset.ctx.InboundAccessAuthorized === true,
     allowPendingWorkspace: captureAgentWorkspaceReadiness(sessionKey) ? true : undefined,
   });
   if (error) {
+    if (error.reason === "restart_tombstone") {
+      throw new SessionRestartRecoveryTombstoneError(error.message);
+    }
     throw error;
   }
 }

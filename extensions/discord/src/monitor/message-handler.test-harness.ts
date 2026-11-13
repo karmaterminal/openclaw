@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { DiscordMessagePreflightContext } from "./message-handler.preflight.types.js";
+import { createDiscordRoomHistoryWatermarks } from "./room-history-watermark.js";
 import { createNoopThreadBindingManager } from "./thread-bindings.js";
 
 export async function createBaseDiscordMessageContext(
@@ -19,6 +20,7 @@ export async function createBaseDiscordMessageContext(
     token: "token",
     runtime: { log: () => {}, error: () => {} },
     guildHistories: new Map(),
+    roomHistoryWatermarks: createDiscordRoomHistoryWatermarks(),
     historyLimit: 0,
     mediaMaxBytes: 1024,
     textLimit: 4000,

@@ -16,6 +16,7 @@ import type { ReplyToMode } from "../../../config/types.base.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import type { CronCreatorAuthorityRunScope as CronCreatorAuthorityCapability } from "../../../gateway/cron-creator-authority-grant.js";
 import type { GatewayLocalUserIngress } from "../../../gateway/local-user-ingress.js";
+import type { ExecMode } from "../../../infra/exec-approvals-core.js";
 import type { MediaFact } from "../../../media/media-facts.js";
 import type { PromptImageOrderEntry } from "../../../media/prompt-image-order.js";
 import type { UserTurnTranscriptRecorder } from "../../../sessions/user-turn-transcript.types.js";
@@ -77,6 +78,11 @@ export type FollowupRunPayload = {
   /** Shared lifecycle owner for the current user-turn transcript append. */
   userTurnTranscriptRecorder?: UserTurnTranscriptRecorder;
   currentInboundEventKind?: InboundEventKind;
+  /**
+   * Frond (karmaterminal, #1415): a room event whose typed text carries no command or inline
+   * directive token. Names the text only; the ambient owner room aggregate keys on it.
+   */
+  ambientRoomProse?: boolean;
   /** Native inbound event timestamp in epoch milliseconds, when the transport provides one. */
   currentInboundEventTimestampMs?: number;
   /** Whether the current inbound message contained audio for inbound-only TTS policy. */
@@ -177,6 +183,8 @@ export type FollowupRunPayload = {
     senderName?: string;
     senderUsername?: string;
     senderE164?: string;
+    /** Frond (karmaterminal, #1415): the channel's bot flag; only `true` names a bot account. */
+    senderIsBot?: boolean;
     traceAuthorized?: boolean;
     /** Inline choice stays on this run; omission follows the live session preference. */
     traceLevelOverride?: TraceLevel;
@@ -200,7 +208,9 @@ export type FollowupRunPayload = {
     /** Explicit turn choice; absent queued replies follow live session verbosity. */
     verboseLevelOverride?: VerboseLevel;
     elevatedLevel?: ElevatedLevel;
-    execOverrides?: ExecToolRoutingDefaults;
+    // Frond (karmaterminal, #1415): runners receive this object by reference and write the
+    // session permission mode into it.
+    execOverrides?: ExecToolRoutingDefaults & { mode?: ExecMode };
     bashElevated?: {
       enabled: boolean;
       allowed: boolean;
