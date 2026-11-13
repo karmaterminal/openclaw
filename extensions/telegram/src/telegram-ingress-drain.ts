@@ -1,5 +1,6 @@
 import type { Message } from "grammy/types";
 import {
+  bindIngressLifecycleToReplyOptions,
   createChannelIngressMonitor,
   DEFAULT_INGRESS_ADOPTION_STALL_MS,
   type ChannelIngressMonitorLifecycle,
@@ -286,6 +287,7 @@ type TelegramIngressDrainLifecycle = Omit<
 > & {
   onFailed: (error: unknown) => void | Promise<void>;
   onCancelled: () => void | Promise<void>;
+  onBackpressure?: () => void | Promise<void>;
 };
 
 type TelegramIngressDrainDispatch = (
@@ -378,10 +380,17 @@ export function createTelegramIngressMonitor(params: CreateTelegramIngressMonito
       // The monitor supplies both callbacks; optional public fields preserve
       // structural compatibility for channel lifecycles that do not need them.
       const ingressLifecycle = lifecycle as TelegramIngressDrainLifecycle;
+      const { onBackpressure } =
+        bindIngressLifecycleToReplyOptions(lifecycle).turnAdoptionLifecycle;
       const telegramLifecycle: TelegramIngressDrainLifecycle = {
         ...ingressLifecycle,
         onFailed: (error) => ingressLifecycle.onFailed(wrapFailure(error)),
+        // The shared binder owns the drain's paced, budget-free backpressure retry.
+        // Backpressure is no callback failure, so it bypasses the callback wrapper.
+        ...(onBackpressure ? { onBackpressure } : {}),
       };
+      const settleBackpressure = () =>
+        (telegramLifecycle.onBackpressure ?? telegramLifecycle.onAbandoned)();
       try {
         const result = await runWithTelegramSpooledReplayUpdate(
           update as object,
@@ -432,6 +441,10 @@ export function createTelegramIngressMonitor(params: CreateTelegramIngressMonito
                   await telegramLifecycle.onCancelled();
                   return;
                 }
+                if (terminal.kind === "backpressure") {
+                  await settleBackpressure();
+                  return;
+                }
                 if (terminal.kind === "failed-retryable") {
                   await telegramLifecycle.onFailed(terminal.error);
                   return;
@@ -472,6 +485,10 @@ export function createTelegramIngressMonitor(params: CreateTelegramIngressMonito
         if (outcome?.kind === "cancelled") {
           // Released budget-free; the settled claim leaves nothing to complete.
           await telegramLifecycle.onCancelled();
+          return { kind: "deferred" };
+        }
+        if (outcome?.kind === "backpressure") {
+          await settleBackpressure();
           return { kind: "deferred" };
         }
         if (outcome?.kind === "dropped") {
