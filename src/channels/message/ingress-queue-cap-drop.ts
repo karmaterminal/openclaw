@@ -14,8 +14,14 @@ export class IngressQueueCapDropError extends Error {
   }
 }
 
-/** Protected work fills the followup queue: retryable backpressure, never a failed attempt. */
+export const INGRESS_QUEUE_BACKPRESSURE_ERROR_CODE = "INGRESS_QUEUE_BACKPRESSURE";
+
+/**
+ * Protected work fills the followup queue: retryable backpressure, never a failed attempt.
+ * Plugin SDK callers construct it, so the retry policy matches its code, not its class.
+ */
 export class IngressQueueBackpressureError extends Error {
+  readonly code = INGRESS_QUEUE_BACKPRESSURE_ERROR_CODE;
   constructor() {
     super("followup queue capacity backpressure: protected work fills the cap");
   }
