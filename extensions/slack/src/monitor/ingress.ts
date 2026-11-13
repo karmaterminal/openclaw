@@ -1,5 +1,6 @@
 import type { App, Receiver, ReceiverEvent } from "@slack/bolt";
 import {
+  bindIngressLifecycleToReplyOptions,
   createChannelIngressError,
   createChannelIngressMonitor,
   type ChannelIngressQueue,
@@ -311,6 +312,9 @@ export function createSlackDurableIngress(
         });
         lifecycle.abortSignal.addEventListener("abort", settleTurn, { once: true });
       };
+      // The shared binder owns the drain's budget-free, paced backpressure retry.
+      const { onBackpressure } =
+        bindIngressLifecycleToReplyOptions(lifecycle).turnAdoptionLifecycle;
       const routedLifecycle: SlackIngressTurnLifecycle = {
         ...lifecycle,
         onDispatchWaiting: () => {
@@ -371,6 +375,7 @@ export function createSlackDurableIngress(
           settleRoutedTurn(() =>
             lifecycle.onDropped ? lifecycle.onDropped(reason) : lifecycle.onAbandoned(),
           ),
+        ...(onBackpressure ? { onBackpressure: () => settleRoutedTurn(onBackpressure) } : {}),
         // Cancellation ends the turn before adoption too, so it must release
         // the session order and migration fence before settling budget-free.
         onCancelled: async () => {

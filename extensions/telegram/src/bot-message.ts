@@ -386,6 +386,18 @@ export const createTelegramMessageProcessor = (
               ? drainLifecycle.onCancelled()
               : drainLifecycle?.onAbandoned());
           },
+          ...(drainLifecycle?.onBackpressure
+            ? {
+                onBackpressure: async () => {
+                  if (!adopted) {
+                    // Every coalesced participant retries paced and budget-free,
+                    // and its dispatch dedupe claims are released for the retry.
+                    void settle({ kind: "backpressure" }, "terminal");
+                  }
+                  await drainLifecycle.onBackpressure?.();
+                },
+              }
+            : {}),
           onAbandoned: () => {
             if (!adopted) {
               void settle({ kind: "failed-retryable", error: "turn-abandoned" }, "terminal");

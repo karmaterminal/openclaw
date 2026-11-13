@@ -326,6 +326,18 @@ export function createSlackMessageHandler(params: {
                     void turnAdoptionLifecycle?.onAbandoned();
                     void admissionLifecycle.onAbandoned();
                   },
+                  // Backpressure frees the logical claims for the paced retry, which
+                  // redelivers this message without spending its retry budget.
+                  onBackpressure: turnAdoptionLifecycle?.onBackpressure
+                    ? async () => {
+                        settlementHandedOff = true;
+                        releaseClaims();
+                        await Promise.all([
+                          turnAdoptionLifecycle.onBackpressure?.(),
+                          admissionLifecycle.onAbandoned(),
+                        ]);
+                      }
+                    : undefined,
                   onDropped: turnAdoptionLifecycle?.onDropped
                     ? async (reason) => {
                         settlementHandedOff = true;

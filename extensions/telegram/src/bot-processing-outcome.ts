@@ -8,6 +8,8 @@ export type TelegramMessageProcessingResult =
   | { kind: "skipped" }
   /** Ownership ended by intent before adoption; settles without retry budget. */
   | { kind: "cancelled" }
+  /** Protected work filled the reply queue; a paced retry that spends no retry budget. */
+  | { kind: "backpressure" }
   | {
       kind: "dropped";
       reason: Parameters<NonNullable<ChannelIngressMonitorLifecycle["onDropped"]>>[0];
@@ -24,6 +26,8 @@ type TelegramSpooledReplayLifecycle = Omit<
 > & {
   /** Clears pre-adoption stall while durable adoption finalization is held. */
   onAdoptionFinalizing?: () => void;
+  /** The drain's paced, budget-free retry for reply-queue backpressure. */
+  onBackpressure?: () => void | Promise<void>;
 };
 
 type TelegramSpooledReplayFrame = {
