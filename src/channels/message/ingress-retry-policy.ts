@@ -12,7 +12,7 @@ import { InboundDedupePendingError } from "../../auto-reply/reply/inbound-dedupe
 import { SESSION_RESTART_RECOVERY_TOMBSTONE_ERROR_CODE } from "../../config/sessions/work-start-error.js";
 import { computeBackoff } from "../../infra/backoff.js";
 import { pruneMapToMaxSize } from "../../infra/map-size.js";
-import { IngressQueueBackpressureError } from "./ingress-queue-cap-drop.js";
+import { INGRESS_QUEUE_BACKPRESSURE_ERROR_CODE } from "./ingress-queue-cap-drop.js";
 
 export const DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS = 8;
 export const DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS = 24 * 60 * 60 * 1000;
@@ -121,7 +121,9 @@ export function resolveIngressFailureDisposition(params: {
   const previousRetry = params.event.retry;
   const pendingSince = previousRetry?.pendingSince ?? now;
   // Queue backpressure lasts as long as protected work fills the cap, so it alone never dead-letters.
-  const backpressure = errors.some((error) => error instanceof IngressQueueBackpressureError);
+  const backpressure = errors.some(
+    (error) => extractErrorCode(error) === INGRESS_QUEUE_BACKPRESSURE_ERROR_CODE,
+  );
   if (
     backpressure ||
     (now - pendingSince < MAX_PENDING_CUSTODY_MS &&

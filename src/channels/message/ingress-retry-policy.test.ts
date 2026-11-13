@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 import { PreparedModelRuntimeRecoveryError } from "../../agents/prepared-model-runtime-admission-errors.js";
 import { InboundDedupePendingError } from "../../auto-reply/reply/inbound-dedupe-error.js";
 import {
+  INGRESS_QUEUE_BACKPRESSURE_ERROR_CODE,
+  IngressQueueBackpressureError,
+} from "./ingress-queue-cap-drop.js";
+import {
   createIngressRetryPolicy,
   DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS,
   DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
@@ -114,6 +118,29 @@ describe("ingress retry policy", () => {
       }
     },
   );
+
+  // Frond (karmaterminal, #1564): queue backpressure lasts as long as protected work fills the cap.
+  it("never dead-letters queue backpressure, matched by its code across module copies", () => {
+    const policy = createIngressRetryPolicy({});
+    // Past both dead-letter gates; a bundled copy of the error class keeps only its code.
+    const event = { id: "input", receivedAt: 0, attempts: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS };
+    let now = DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS;
+    for (let refusal = 0; refusal <= 10; refusal += 1) {
+      const err =
+        refusal % 2 === 0
+          ? new IngressQueueBackpressureError()
+          : codedError("copied class", INGRESS_QUEUE_BACKPRESSURE_ERROR_CODE);
+      expect(policy.failure({ event, err, now, formatError: coerceErrorMessage })).toMatchObject({
+        kind: "release",
+        attempt: DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
+        recordAttempt: false,
+      });
+      const delay = Math.min(1_000 * 2 ** refusal, 180_000);
+      expect(policy.delay(event, undefined, now)).toBe(delay);
+      // The last wait outlasts the 30 minute bound of pending dedupe custody.
+      now += refusal === 9 ? 60 * 60_000 : delay;
+    }
+  });
 
   it("counts real recovery failures independently of other dispatch attempts", () => {
     const policy = createIngressRetryPolicy({});
