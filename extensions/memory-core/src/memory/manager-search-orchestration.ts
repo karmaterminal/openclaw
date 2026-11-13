@@ -189,8 +189,12 @@ export abstract class MemorySearchOrchestration extends MemorySearchRetrieval {
     };
     const runSearch = async () => {
       opts?.onDebug?.({ backend: "builtin" });
-      if (this.purpose === "cli") {
-        // One-shot readers refresh before taking a lease; they have no resident timer.
+      if (
+        this.purpose === "cli" &&
+        this.hasIndexedContent(await this.readRetrievalIndexState(opts?.signal))
+      ) {
+        // One-shot readers refresh populated indexes before taking a lease; empty
+        // indexes use search-bootstrap's single admitted sync and OOM cooldown.
         this.dirty ||= this.sources.has("memory");
         await this.syncAdmitted(
           { reason: "cli-search" },
