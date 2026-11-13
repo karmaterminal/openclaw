@@ -13,6 +13,7 @@ export { readSessionPendingInputReceiptsInWorker as listSessionPendingInputRecei
 export { recoverSessionTranscriptProjection } from "./session-transcript-projection-recovery.js";
 export {
   bindSessionPendingInputSources,
+  isSessionPendingInputRestartRecoverable,
   listSessionPendingInputs,
   readSessionPendingInput,
   readSessionSubmittedInput,

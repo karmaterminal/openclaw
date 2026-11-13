@@ -54,6 +54,7 @@ import {
   type SessionPendingInputAuthority,
 } from "./session-pending-input-authority.js";
 import { SessionPendingInputCustodyError } from "./session-pending-input-custody-error.js";
+import { isRestartRecoverableSessionPendingInputOwner } from "./session-pending-input-history.js";
 import { finishPendingInputSources } from "./session-pending-input-live-owner.js";
 import type { PendingInputCustodyGrant } from "./session-pending-input-operations.types.js";
 import type { SessionPendingInputOwner } from "./session-pending-input-owner.types.js";
@@ -89,6 +90,11 @@ export function readSessionPendingInputRequesterOrigin(
   }
   assertSessionPendingInputLifetimeCurrent(owner);
   return owner.requesterOrigin;
+}
+
+/** Restart capture records this queued input with an operator source the next boot can restore. */
+export function isSessionPendingInputRestartRecoverable(receipt: SessionPendingInputReceipt) {
+  return isRestartRecoverableSessionPendingInputOwner(receiptOwners.get(receipt));
 }
 
 export function readWithdrawnSessionPendingInputId(

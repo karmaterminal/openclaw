@@ -61,7 +61,10 @@ export {
   captureSessionControllerSourceSettlement,
   holdSessionControllerSourceWithdrawal,
 } from "./session-controller.mailbox-source.js";
-export { clearSessionControllerMailbox } from "./session-controller.mailbox-cleanup.js";
+export {
+  bindSessionControllerSourceRestartRecovery,
+  clearSessionControllerMailbox,
+} from "./session-controller.mailbox-cleanup.js";
 
 export function getSessionControllerMailbox(
   key: string,

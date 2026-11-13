@@ -6,6 +6,7 @@ import { isCurrentSessionControllerTurnInput } from "./session-controller.contex
 import type {
   SessionControllerInput,
   SessionControllerMailbox,
+  SessionControllerSourceAdapter,
 } from "./session-controller.contracts.js";
 import {
   abortSessionControllerInput,
@@ -16,6 +17,15 @@ import { runWithSessionControllerCleanup } from "./session-controller.owner-cont
 import { sessionControllers } from "./session-controller.state.js";
 
 let followedRestartDrainSignal: AbortSignal | undefined;
+const restartRecoverableSources = new WeakMap<SessionControllerSourceAdapter, () => boolean>();
+
+/** The source owner answers synchronously whether restart capture records its queued custody. */
+export function bindSessionControllerSourceRestartRecovery(
+  adapter: SessionControllerSourceAdapter,
+  isRecoverable: () => boolean,
+): void {
+  restartRecoverableSources.set(adapter, isRecoverable);
+}
 
 /** Captured mailbox batch cleanup and summary bookkeeping. */
 /** Snapshots aggregate summary sources shared by selection and captured cleanup. */
@@ -194,7 +204,10 @@ export function clearSessionControllerMailbox(
   return cleared;
 }
 
-/** Waiting inputs retire on restart; active producers remain with the shutdown drain owner. */
+/**
+ * Waiting inputs retire on restart; active producers remain with the shutdown drain owner.
+ * Recoverable queued custody also stays, so shutdown capture can mark it for the next boot.
+ */
 export function bindSessionControllerMailboxRestartDrain(): void {
   const signal = getGatewayRestartDrainSignal();
   if (followedRestartDrainSignal === signal) {
@@ -212,7 +225,10 @@ export function bindSessionControllerMailboxRestartDrain(): void {
       runWithSessionControllerCleanup(() => {
         for (const mailbox of mailboxes) {
           const waiting = mailbox.entries.filter(
-            (input) => (!input.claim || input.claim.released) && input.phase !== "injecting",
+            (input) =>
+              (!input.claim || input.claim.released) &&
+              input.phase !== "injecting" &&
+              !(input.sourceAdapter && restartRecoverableSources.get(input.sourceAdapter)?.()),
           );
           clearSessionControllerMailbox(
             mailbox,

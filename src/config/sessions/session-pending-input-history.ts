@@ -15,6 +15,7 @@ import type {
   PendingInputHistoryQuery,
   PendingInputHistorySnapshot,
 } from "./session-pending-input-history.types.js";
+import type { SessionPendingInputOwner } from "./session-pending-input-owner.types.js";
 import { projectSessionPendingInput } from "./session-pending-input-value.js";
 import { captureSessionStoreReadTarget } from "./session-store-read-target.js";
 import { withSessionHistoryWorkerDatabase } from "./session-transcript-worker-runtime.js";
@@ -58,6 +59,26 @@ export async function captureSessionQueuedInputsForRestart(scope: Scope) {
       preserveSessionQueuedInputOwnersForRestart(queuedInputIds);
     },
   };
+}
+
+/** Restart capture would record this owner's queued custody with a source the next boot restores. */
+export function isRestartRecoverableSessionPendingInputOwner(
+  owner: SessionPendingInputOwner | undefined,
+): boolean {
+  return Boolean(
+    owner &&
+    listLiveSessionPendingInputs(
+      owner.workerDatabasePath,
+      owner.sessionKey,
+      owner.sessionId,
+      true,
+    ).some(
+      (input) =>
+        input.inputId === owner.inputId &&
+        input.recoverySource !== undefined &&
+        input.recoverySource.kind !== "unavailable",
+    ),
+  );
 }
 
 async function readPendingInputRows(

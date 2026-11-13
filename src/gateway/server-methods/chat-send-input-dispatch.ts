@@ -4,6 +4,7 @@ import { createAgentRunRestartAbortError } from "../../agents/run-termination.js
 import { withoutGatewayToolCallerIdentity } from "../../agents/tools/gateway-caller-context.js";
 import { lookupSessionGoalOperation } from "../../config/sessions/goals-operations-read.js";
 import type { SessionGoalOperationResult } from "../../config/sessions/goals-operations.js";
+import { isSessionPendingInputRestartRecoverable } from "../../config/sessions/session-accessor.js";
 import {
   composeSessionSourceAssertion,
   createDynamicSessionSourceAssertion,
@@ -17,7 +18,9 @@ import {
 } from "../../infra/diagnostics-timeline.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { isProgressCardRefreshInputProvenance } from "../../sessions/input-provenance.js";
+import { bindSessionControllerSourceRestartRecovery } from "../../sessions/session-controller.mailbox.js";
 import { recordSessionCreated } from "../../sessions/session-created.js";
+import { getUserTurnTranscriptAdmissionOwner } from "../../sessions/user-turn-transcript-admission.js";
 import type { PersistedUserTurnMessage } from "../../sessions/user-turn-transcript.js";
 import { extractTextFromChatContent } from "../../shared/chat-content.js";
 import { createDeferredCore } from "../../shared/deferred.js";
@@ -388,6 +391,12 @@ export async function handleChatSendWithStorage(
         assertAcceptedInputCurrent = pendingAdmission.assertAdmittedCurrent;
       }
       admission.bindAcceptedInputAuthority(pendingAdmission.assertAdmittedCurrent);
+      // Restart drain leaves this input to shutdown capture while its own staged owner can resume.
+      const stagedInput = getUserTurnTranscriptAdmissionOwner(userTurnRecorder);
+      bindSessionControllerSourceRestartRecovery(admission.sourceRef.adapter, () => {
+        const receipt = stagedInput?.pendingInput();
+        return receipt !== undefined && isSessionPendingInputRestartRecoverable(receipt);
+      });
       approvedInput = userTurnRecorder.getPendingInputMessage?.();
       emitSessionsChanged(
         context,
