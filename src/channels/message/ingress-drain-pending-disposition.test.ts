@@ -1,13 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db.js";
-import {
-  createChannelIngressDrain,
-  createChannelIngressDrainOwner,
-  PENDING_DISPOSITION_RECHECK_MAX_MS,
-  PENDING_DISPOSITION_RECHECK_MS,
-} from "./ingress-drain.js";
+import { createChannelIngressDrain, createChannelIngressDrainOwner } from "./ingress-drain.js";
 import { createTestIngressQueue, withTempState } from "./ingress-drain.test-helpers.js";
+
+const PENDING_DISPOSITION_RECHECK_MS = 1_000;
+const PENDING_DISPOSITION_RECHECK_MAX_MS = 60_000;
 
 describe("channel ingress pending disposition", () => {
   afterEach(() => {

@@ -11,8 +11,6 @@ import { isTerminalSessionStatus, type SessionEntry, type SessionScope } from ".
 export {
   createSessionWorkStartChangedError,
   isSessionWorkStartInvalidatedError,
-  SESSION_RESTART_RECOVERY_TOMBSTONE_ERROR_CODE,
-  SessionRestartRecoveryTombstoneError,
   SessionWorkStartChangedError,
   SessionWorkStartInvalidatedError,
 } from "./work-start-error.js";

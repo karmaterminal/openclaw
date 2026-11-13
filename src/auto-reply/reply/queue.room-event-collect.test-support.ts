@@ -27,7 +27,7 @@ import { createQueueTestRun } from "./queue.test-helpers.js";
 import { stageBundledDiscordGateway } from "./queue/room-aggregate-plugin-gate.test-support.js";
 import { clearFollowupQueue, getExistingFollowupQueue } from "./queue/state.js";
 
-export const COLLECT_TITLE = "[Queued messages while agent was busy]";
+const COLLECT_TITLE = "[Queued messages while agent was busy]";
 const ROOM_LANE = "discord:channel:room";
 
 export type Row = {
