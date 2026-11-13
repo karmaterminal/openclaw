@@ -176,8 +176,8 @@ export async function admitFollowupRunLifecycle(
 
 /**
  * Dedupe owners must free their entry before durable ingress retries the turn.
- * Cancellation and abandonment are both pre-retry releases, so hook whichever
- * terminal callbacks this lifecycle actually exposes.
+ * Cancellation, backpressure and abandonment are all pre-retry releases, so hook
+ * whichever terminal callbacks this lifecycle actually exposes.
  */
 export function releaseBeforeTurnAdoptionRetry(
   lifecycle: TurnAdoptionLifecycle,
@@ -195,6 +195,13 @@ export function releaseBeforeTurnAdoptionRetry(
       return onCancelled();
     };
   }
+  const onBackpressure = lifecycle.onBackpressure;
+  if (onBackpressure) {
+    lifecycle.onBackpressure = () => {
+      release();
+      return onBackpressure();
+    };
+  }
   const onDropped = lifecycle.onDropped;
   if (onDropped) {
     lifecycle.onDropped = (reason) => {
@@ -207,7 +214,11 @@ export function releaseBeforeTurnAdoptionRetry(
 /** Adapter registers source identity before the canonical custody owner settles it. */
 export function completeFollowupRunLifecycle(
   run: FollowupRun | FollowupLifecycleSource,
-  disposition?: "consumed" | "cancelled" | { kind: "dropped"; reason: FollowupQueueDisposition },
+  disposition?:
+    | "consumed"
+    | "cancelled"
+    | "backpressure"
+    | { kind: "dropped"; reason: FollowupQueueDisposition },
 ): void {
   const state = custody(run);
   if (!state.completed && disposition === "consumed") {

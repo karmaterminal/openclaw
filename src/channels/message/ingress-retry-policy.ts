@@ -12,6 +12,7 @@ import { InboundDedupePendingError } from "../../auto-reply/reply/inbound-dedupe
 import { SESSION_RESTART_RECOVERY_TOMBSTONE_ERROR_CODE } from "../../config/sessions/work-start-error.js";
 import { computeBackoff } from "../../infra/backoff.js";
 import { pruneMapToMaxSize } from "../../infra/map-size.js";
+import { IngressQueueBackpressureError } from "./ingress-queue-cap-drop.js";
 
 export const DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS = 8;
 export const DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS = 24 * 60 * 60 * 1000;
@@ -119,9 +120,12 @@ export function resolveIngressFailureDisposition(params: {
   const errors = collectNestedErrorCandidates(params.err);
   const previousRetry = params.event.retry;
   const pendingSince = previousRetry?.pendingSince ?? now;
+  // Queue backpressure lasts as long as protected work fills the cap, so it alone never dead-letters.
+  const backpressure = errors.some((error) => error instanceof IngressQueueBackpressureError);
   if (
-    now - pendingSince < MAX_PENDING_CUSTODY_MS &&
-    errors.some((error) => error instanceof InboundDedupePendingError)
+    backpressure ||
+    (now - pendingSince < MAX_PENDING_CUSTODY_MS &&
+      errors.some((error) => error instanceof InboundDedupePendingError))
   ) {
     const pendingDelayMs = Math.min(
       (previousRetry?.pendingDelayMs ?? DEFAULT_INGRESS_RETRY_BASE_MS / 2) * 2,
@@ -134,7 +138,7 @@ export function resolveIngressFailureDisposition(params: {
       recordAttempt: false,
       retry: {
         recoveryFailures: previousRetry?.recoveryFailures ?? 0,
-        pendingSince,
+        ...(backpressure ? {} : { pendingSince }),
         pendingDelayMs,
         nextEligibleAt: now + pendingDelayMs,
       },

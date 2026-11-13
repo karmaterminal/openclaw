@@ -257,6 +257,14 @@ function settleFollowupQueueRefusal(
   queue: ReturnType<typeof getFollowupQueue>,
   run: FollowupRun,
 ): void {
+  // Frond (karmaterminal, #1564): the human owner's room message is never lost to capacity. Under
+  // every policy, drop:new included, its refusal is retryable backpressure that spends no retry
+  // budget; the ingress owner paces the retry. Requests and other senders keep their accounting.
+  if (isHumanOwnerRoomEvent(run)) {
+    run.onQueueDisposition?.("queue-cap");
+    completeFollowupRunLifecycle(run, "backpressure");
+    return;
+  }
   let protectedPendingCount = 0;
   for (const item of queue.items) {
     if (!queue.inFlight.has(item) && item.protectFromQueueOverflow === true) {

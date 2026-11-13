@@ -13,6 +13,7 @@ import {
   createTestIngressQueue,
   withTempState,
 } from "../../channels/message/ingress-drain.test-helpers.js";
+import type { IngressRetryPolicyConfig } from "../../channels/message/ingress-retry-policy.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { createUserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
 import { createTestUserTurnTranscriptTarget } from "../../sessions/user-turn-transcript.test-support.js";
@@ -91,6 +92,8 @@ export async function openRoomIngress(
     supersedes?: (candidateId: string, pendingId: string) => boolean;
     now?: () => number;
     claimLeaseMs?: number;
+    /** Defaults to an immediate retry; pass the production policy to measure pacing. */
+    retryPolicy?: IngressRetryPolicyConfig;
     /** Give each source the transcript recorder a real admission carries. */
     transcripts?: boolean;
     enqueue?: (
@@ -144,7 +147,7 @@ export async function openRoomIngress(
   const drain = createChannelIngressDrain({
     queue,
     deferredLaneOccupancy: "release",
-    retryPolicy: { baseMs: 1, maxMs: 1 },
+    retryPolicy: options.retryPolicy ?? { baseMs: 1, maxMs: 1 },
     ...(options.now ? { now: options.now } : {}),
     ...(options.claimLeaseMs ? { claimLeaseMs: options.claimLeaseMs } : {}),
     ...(options.supersedes

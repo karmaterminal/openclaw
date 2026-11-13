@@ -14,6 +14,13 @@ export class IngressQueueCapDropError extends Error {
   }
 }
 
+/** Protected work fills the followup queue: retryable backpressure, never a failed attempt. */
+export class IngressQueueBackpressureError extends Error {
+  constructor() {
+    super("followup queue capacity backpressure: protected work fills the cap");
+  }
+}
+
 export function resolveQueueCapDropFailure(
   failure: unknown,
   fallback?: (error: unknown) => IngressNonRetryableFailure | null,

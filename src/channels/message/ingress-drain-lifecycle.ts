@@ -1,4 +1,8 @@
-import type { FollowupQueueDisposition } from "../../auto-reply/get-reply-options.types.js";
+import type {
+  FollowupQueueDisposition,
+  TurnAdoptionLifecycle,
+} from "../../auto-reply/get-reply-options.types.js";
+import { IngressQueueBackpressureError } from "./ingress-queue-cap-drop.js";
 import type { ChannelIngressQueueRecord } from "./ingress-queue.types.js";
 
 /** Full pre-adoption -> adoption ownership lifecycle for one claimed event. */
@@ -49,9 +53,10 @@ export function bindIngressLifecycleToReplyOptions(lifecycle: ChannelIngressDisp
   turnAdoptionLifecycle: Omit<
     ChannelIngressDispatchLifecycle,
     "onAdoptionFinalizing" | "onFailed" | "readLaneBacklog"
-  > & {
-    admission: "exclusive";
-  };
+  > &
+    Pick<TurnAdoptionLifecycle, "onBackpressure"> & {
+      admission: "exclusive";
+    };
 } {
   return {
     turnAdoptionLifecycle: {
@@ -65,6 +70,10 @@ export function bindIngressLifecycleToReplyOptions(lifecycle: ChannelIngressDisp
       ...(lifecycle.onCancelled ? { onCancelled: lifecycle.onCancelled } : {}),
       onAbandoned: lifecycle.onAbandoned,
       onDropped: lifecycle.onDropped,
+      // The drain's retry owner paces queue backpressure as a budget-free retry.
+      ...(lifecycle.onFailed
+        ? { onBackpressure: () => lifecycle.onFailed?.(new IngressQueueBackpressureError()) }
+        : {}),
       abortSignal: lifecycle.abortSignal,
     },
   };
