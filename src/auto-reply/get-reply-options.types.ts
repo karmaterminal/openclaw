@@ -171,6 +171,11 @@ export type TurnAdoptionLifecycle = {
   onAbandoned?: () => void | Promise<void>;
   /** Explicit queue-cap loss; unlike abandonment, this is a terminal policy decision. */
   onDropped?: (reason: FollowupQueueDisposition) => void | Promise<void>;
+  /**
+   * Protected work fills the followup queue: retryable backpressure that reopens the
+   * source without spending retry budget. Owners without it settle as abandonment.
+   */
+  onBackpressure?: () => void | Promise<void>;
   /** Always fires when the followup ownership cycle ends (admitted or not). Gateway cleanup. */
   onSettled?: () => void | Promise<void>;
   /** Retires cancellation ownership while retaining live identity. */

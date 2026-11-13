@@ -1,13 +1,19 @@
 // Frond (karmaterminal, #1564): the human owner's unaddressed room message survives queue overflow,
 // while other room chatter keeps upstream's settled, no-retry discard (#191733). Real durable ingress
 // feeds the real session mailbox; only the model turn and the Discord transport are replaced.
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChannelIngressDispatchLifecycle } from "../../channels/message/ingress-drain-lifecycle.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { testing as controllerTesting } from "../../sessions/session-controller.test-support.js";
+import { AgentDatabaseExecutionAdmissionClosedError } from "../../state/agent-database-admission-error.js";
 import { bindCommandOwnerAuthority, getCommandOwnerAuthority } from "../command-owner-authority.js";
 import { createQueueCase } from "./queue.case.test-support.js";
-import { enqueueFollowupRun, type FollowupRun, type QueueSettings } from "./queue.js";
+import {
+  enqueueFollowupRun,
+  scheduleFollowupDrain,
+  type FollowupRun,
+  type QueueSettings,
+} from "./queue.js";
 import {
   createRoomRun,
   expectSettledOnce,
@@ -16,7 +22,11 @@ import {
   type Harness,
   type Row,
 } from "./queue.room-event-collect.test-support.js";
-import { createQueueTestRun, installQueueRuntimeErrorSilencer } from "./queue.test-helpers.js";
+import {
+  createQueueTestRun,
+  installQueueRuntimeErrorSilencer,
+  rejectQueuePreparation,
+} from "./queue.test-helpers.js";
 import { getExistingFollowupQueue } from "./queue/state.js";
 
 installQueueRuntimeErrorSilencer();
@@ -135,9 +145,10 @@ describe("the human owner's room message at queue capacity (#1564)", () => {
           ]);
           const refused = harness.runs.get("o3");
           await settlementOf(harness, "o3");
-          // Retryable backpressure: released to pending, never consumed, discarded or dead-lettered.
+          // Retryable backpressure: released to pending without spending an attempt, never
+          // consumed, discarded or dead-lettered.
           expect(await harness.queue.listPending()).toMatchObject([
-            { id: "o3", attempts: 1, lastError: expect.stringContaining("turn-abandoned") },
+            { id: "o3", attempts: 0, lastError: expect.stringContaining("backpressure") },
           ]);
           expect(harness.writes.complete.size + harness.writes.fail.size).toBe(0);
           await harness.endActiveTurn();
@@ -161,7 +172,7 @@ describe("the human owner's room message at queue capacity (#1564)", () => {
     },
   );
 
-  it("charges each full-cap refusal one retry attempt, so an owner message held 24 h dead-letters", async () => {
+  it("keeps an owner message refused past 24 h and 8 refusals pending with no attempt spent, then runs each waiting owner message once in order", async () => {
     const admission = openAdmission();
     let clock = Date.now();
     const receivedAt = clock;
@@ -172,28 +183,219 @@ describe("the human owner's room message at queue capacity (#1564)", () => {
         await harness.dispatchRows();
         expect(admission.admitted.get("o3")).toBe(false);
         await settlementOf(harness, "o3");
-        // The existing ingress budget: dead-letter needs 8 attempts and a 24 h old row.
-        for (let attempt = 2; attempt <= 8; attempt += 1) {
-          clock += 1_000;
+        expect(await harness.queue.listPending()).toMatchObject([{ id: "o3", attempts: 0 }]);
+        const refused = [harness.runs.get("o3")];
+        // A later owner message waits behind the refused one in the room lane.
+        clock += 60 * 60_000;
+        await harness.addRow({ id: "o4", from: figs });
+        for (let refusal = 2; refusal <= 12; refusal += 1) {
+          clock = refusal === 12 ? receivedAt + 25 * 60 * 60_000 : clock + 1_000;
+          await harness.dispatchRows(1);
+          // Each redelivery is a new run whose protection comes from the row's verified sender.
+          const run = harness.runs.get("o3")!;
+          expect(refused).not.toContain(run);
+          expect(run.protectFromQueueOverflow).toBe(true);
+          expect(admission.admitted.get("o3")).toBe(false);
+          refused.push(run);
+          await settlementOf(harness, "o3");
+          expect(await harness.queue.listPending()).toMatchObject([
+            { id: "o3", attempts: 0 },
+            { id: "o4", attempts: 0 },
+          ]);
+        }
+        expect(harness.writes.complete.size + harness.writes.fail.size).toBe(0);
+        await harness.endActiveTurn();
+        // Capacity is free: each waiting owner message is admitted once, in arrival order.
+        clock += 1_000;
+        await harness.dispatchRows(2);
+        expect(admission.admitted.get("o3")).toBe(true);
+        expect(admission.admitted.get("o4")).toBe(true);
+        await harness.endActiveTurn();
+        expect(harness.calls.map((call) => call.messageId)).toEqual(["o1", "o2", "o3", "o4"]);
+        expect(harness.calls.filter((call) => refused.includes(call))).toEqual([]);
+        await expectSettledOnce(harness, ["o1", "o2", "o3", "o4"]);
+        expect(admission.releases).toEqual(Array.from({ length: 12 }, () => "o3"));
+      },
+      { now: () => clock, settings: { mode: "followup", cap: 2 }, enqueue: admission.enqueue },
+    );
+  });
+
+  it("paces the owner's attempt-free retries by the ingress backoff, so a held cap never spins the lane", async () => {
+    const admission = openAdmission();
+    let clock = Date.now();
+    await withRoomIngress(
+      owners,
+      async (harness) => {
+        admission.bind(harness);
+        let claims = 0;
+        const claim = harness.queue.claim.bind(harness.queue);
+        harness.queue.claim = async (...args: Parameters<typeof claim>) => {
+          claims += 1;
+          return await claim(...args);
+        };
+        await harness.dispatchRows();
+        await settlementOf(harness, "o3");
+        claims = 0;
+        // The production backoff: doubling from 1 s to the 3 min cap.
+        const delays = [1, 2, 4, 8, 16, 32, 64, 128, 180, 180].map((seconds) => seconds * 1_000);
+        for (const delay of delays) {
+          // Every settlement wakes the drain at once; the refused row waits for its time.
+          for (let wake = 0; wake < 3; wake += 1) {
+            expect(await harness.drain.drainOnce()).toEqual({ started: 0 });
+          }
+          clock += delay - 1;
+          expect(await harness.drain.drainOnce()).toEqual({ started: 0 });
+          clock += 1;
           await harness.dispatchRows(1);
           expect(admission.admitted.get("o3")).toBe(false);
           await settlementOf(harness, "o3");
+          expect(await harness.queue.listPending()).toMatchObject([{ id: "o3", attempts: 0 }]);
+        }
+        // One claim per eligible time: no claim, refuse, release spin.
+        expect(claims).toBe(delays.length);
+        await harness.endActiveTurn();
+        clock += 180_000;
+        await harness.dispatchRows(1);
+        await harness.endActiveTurn();
+        expect(harness.calls.map((call) => call.messageId)).toEqual(["o1", "o2", "o3"]);
+        await expectSettledOnce(harness, ["o1", "o2", "o3"]);
+      },
+      {
+        now: () => clock,
+        settings: { mode: "followup", cap: 2 },
+        enqueue: admission.enqueue,
+        retryPolicy: {},
+      },
+    );
+  });
+
+  it("holds the owner's room message for retry at a drop:new cap mixed with requests, while addressed arrivals keep drop:new", async () => {
+    const admission = openAdmission();
+    let clock = Date.now();
+    // Same-millisecond ingress claims order by id, so ids sort in arrival order.
+    const mixed: Row[] = [
+      { id: "o1", from: figs },
+      { id: "p2", kind: "user_request", from: sender("alice") },
+      // The owner's own mention is an addressed request: upstream's drop:new contract governs it.
+      { id: "q3", kind: "user_request", from: figs },
+      { id: "q4", kind: "user_request", from: sender("bob") },
+      { id: "r5", from: figs },
+    ];
+    await withRoomIngress(
+      mixed,
+      async (harness) => {
+        admission.bind(harness);
+        await harness.dispatchRows();
+        expect([...admission.admitted]).toEqual([
+          ["o1", true],
+          ["p2", true],
+          ["q3", false],
+          ["q4", false],
+          ["r5", false],
+        ]);
+        await Promise.all(["q3", "q4", "r5"].map((id) => settlementOf(harness, id)));
+        expect(
+          ((await harness.queue.listFailed?.()) ?? []).map(({ id, reason }) => [id, reason]),
+        ).toEqual([
+          ["q3", "queue-cap-new"],
+          ["q4", "queue-cap-new"],
+        ]);
+        expect(await harness.queue.listPending()).toMatchObject([{ id: "r5", attempts: 0 }]);
+        await harness.endActiveTurn();
+        clock += 1_000;
+        await harness.dispatchRows(1);
+        expect(admission.admitted.get("r5")).toBe(true);
+        await harness.endActiveTurn();
+        expect(harness.calls.map((call) => call.messageId)).toEqual(["o1", "p2", "r5"]);
+        await expectSettledOnce(harness, ["o1", "p2", "r5"], ["q3", "q4"]);
+        expect(admission.releases).toEqual(["r5"]);
+      },
+      {
+        now: () => clock,
+        settings: { mode: "followup", cap: 2, dropPolicy: "new" },
+        enqueue: admission.enqueue,
+      },
+    );
+  });
+
+  it.each<[string, Partial<FollowupRun["run"]>]>([
+    ["a non-owner's", sender("alice")],
+    ["a prince's", prince],
+    ["the owner's", figs],
+  ])("still spends one attempt per full-cap refusal of %s addressed message", async (_, from) => {
+    const admission = openAdmission();
+    let clock = Date.now();
+    const addressed: Row[] = [
+      { id: "o1", from: figs },
+      { id: "o2", from: figs },
+      { id: "r3", kind: "user_request", from },
+    ];
+    await withRoomIngress(
+      addressed,
+      async (harness) => {
+        admission.bind(harness);
+        await harness.dispatchRows();
+        for (const attempts of [1, 2]) {
+          if (attempts > 1) {
+            clock += 1_000;
+            await harness.dispatchRows(1);
+          }
+          expect(admission.admitted.get("r3")).toBe(false);
+          expect(harness.runs.get("r3")?.protectFromQueueOverflow).toBeUndefined();
+          await settlementOf(harness, "r3");
           expect(await harness.queue.listPending()).toMatchObject([
-            { id: "o3", attempts: attempt },
+            { id: "r3", attempts, lastError: expect.stringContaining("turn-abandoned") },
           ]);
         }
-        expect(harness.writes.fail.size).toBe(0);
-        clock = receivedAt + 24 * 60 * 60_000;
-        await harness.dispatchRows(1);
-        await settlementOf(harness, "o3");
-        expect(await harness.queue.listFailed?.()).toMatchObject([
-          { id: "o3", reason: "retry-limit-exceeded" },
-        ]);
         await harness.endActiveTurn();
-        expect(harness.calls.map((call) => call.messageId)).toEqual(["o1", "o2"]);
-        await expectSettledOnce(harness, ["o1", "o2"], ["o3"]);
+        clock += 1_000;
+        await harness.dispatchRows(1);
+        await harness.endActiveTurn();
+        expect(harness.calls.map((call) => call.messageId)).toEqual(["o1", "o2", "r3"]);
+        await expectSettledOnce(harness, ["o1", "o2", "r3"]);
       },
       { now: () => clock, settings: { mode: "followup", cap: 2 }, enqueue: admission.enqueue },
+    );
+  });
+});
+
+describe("a room message retried inside the mailbox keeps exactly its admission-time protection (#1564)", () => {
+  it.each<[string, Partial<FollowupRun["run"]>, string[]]>([
+    ["the owner's message stays protected", figs, ["h1", "x2"]],
+    ["a prince's message gains no protection", prince, ["x1", "x2"]],
+  ])("%s", async (_, from, kept) => {
+    const rows: Row[] = [
+      { id: "h1", from },
+      { id: "x1", from: sender("alice") },
+    ];
+    await withRoomIngress(
+      rows,
+      async (harness) => {
+        await harness.dispatchRows();
+        const head = harness.runs.get("h1")!;
+        const queue = getExistingFollowupQueue(harness.key)!;
+        // Preparation refuses the head before execution; the same source waits for a fresh kick.
+        let refusals = 0;
+        scheduleFollowupDrain(harness.key, async (run) => {
+          refusals += 1;
+          rejectQueuePreparation(run, new AgentDatabaseExecutionAdmissionClosedError("closing"));
+        });
+        await vi.waitFor(() => {
+          expect(refusals).toBe(1);
+          expect(queue.claim).toBeUndefined();
+        });
+        expect(queue.items).toEqual([head, harness.runs.get("x1")]);
+        // Chatter arriving at the cap displaces the oldest unprotected source.
+        await harness.addRow({ id: "x2", from: sender("carol") });
+        await harness.dispatchRows(1);
+        expect(queue.items.map((item) => item.messageId)).toEqual(kept);
+        const shed = ["h1", "x1"].find((id) => !kept.includes(id))!;
+        await settlementOf(harness, shed);
+        await harness.endActiveTurn();
+        expect(harness.calls).toEqual(kept.map((id) => harness.runs.get(id)));
+        await expectSettledOnce(harness, ["h1", "x1", "x2"]);
+      },
+      { settings: { mode: "followup", cap: 2 } },
     );
   });
 });
