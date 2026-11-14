@@ -125,9 +125,9 @@ function createHandler(params: {
     createDiscordIngressMonitor({
       ...monitorParams,
       queue: params.queue,
-      dispatch: async (event, lifecycle) => {
+      dispatch: async (event, lifecycle, provenance) => {
         await params.beforeDispatch?.();
-        const result = await monitorParams.dispatch(event, lifecycle);
+        const result = await monitorParams.dispatch(event, lifecycle, provenance);
         params.afterDispatch?.();
         return result;
       },

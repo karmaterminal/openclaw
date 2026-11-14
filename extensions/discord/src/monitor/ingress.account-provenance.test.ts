@@ -10,7 +10,7 @@ import {
 } from "./message-handler.module-test-helpers.js";
 
 installDiscordIngressTestRuntime();
-import type { APIMessage } from "discord-api-types/v10";
+import type { GatewayMessageCreateDispatchData as Frame } from "discord-api-types/v10";
 import { createChannelIngressQueueForTests } from "openclaw/plugin-sdk/channel-ingress-test-runtime";
 import {
   createMockPluginRegistry,
@@ -37,7 +37,7 @@ type Seen = { sender?: string; verified?: true };
 
 afterEach(() => resetGlobalHookRunner());
 
-function frame(author: { id: string; bot: boolean }): APIMessage {
+function frame(author: { id: string; bot: boolean }): Frame {
   const message = createDiscordMessage({ id: "1001", channelId: "room", content: "hi", author });
   return { ...message.rawData, guild_id: "guild-1" };
 }
@@ -69,17 +69,17 @@ async function seenBy(ctx: DiscordMessagePreflightContext): Promise<Seen> {
   return { sender: built?.ctxPayload.SenderId, verified: built?.ctxPayload.SenderAccountVerified };
 }
 
-const sameAuthorCopy = (message: APIMessage) => ({ ...message, content: "[redacted]" });
-const withoutBotFlag = (message: APIMessage) => ({
+const sameAuthorCopy = (message: Frame) => ({ ...message, content: "[redacted]" });
+const withoutBotFlag = (message: Frame) => ({
   ...message,
   author: { id: message.author.id, username: message.author.username },
 });
-const otherAuthor = (message: APIMessage) => ({
+const otherAuthor = (message: Frame) => ({
   ...message,
   author: { ...message.author, id: "user-2" },
 });
 
-it.each<[string, { id: string; bot: boolean }, ((m: APIMessage) => unknown) | undefined, Seen]>([
+it.each<[string, { id: string; bot: boolean }, ((m: Frame) => unknown) | undefined, Seen]>([
   [
     "a user account's frame as received",
     { id: "user-1", bot: false },
@@ -114,7 +114,7 @@ it.each<[string, { id: string; bot: boolean }, ((m: APIMessage) => unknown) | un
           {
             hookName: "before_channel_ingress",
             handler: (input: unknown) => ({
-              event: rebuild((input as { event: APIMessage }).event),
+              event: rebuild((input as { event: Frame }).event),
             }),
           },
         ]),
@@ -136,7 +136,9 @@ it.each<[string, { id: string; bot: boolean }, ((m: APIMessage) => unknown) | un
         // The first delivery is still running when the Gateway stops; the row replays after restart.
         processMessage.mockImplementationOnce(async (ctx: DiscordMessagePreflightContext) => {
           seen.push(await seenBy(ctx));
-          await new Promise((resolve) => ctx.abortSignal?.addEventListener("abort", resolve));
+          await new Promise((resolve) => {
+            ctx.abortSignal?.addEventListener("abort", resolve);
+          });
         });
         const first = openHandler(queue);
         await first(frame(author), {} as never);
