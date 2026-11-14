@@ -218,7 +218,11 @@ mutate retained values after returning them.
 Discord emits this hook inside ordered admission before serializing or writing
 its durable queue. Other channel plugins can opt in through the
 [ingress monitor preparation contract](/plugins/sdk-channel-outbound#durable-ingress-monitors).
-The channel revalidates provider identity and lane after transformation. Errors,
+The channel revalidates provider identity and lane after transformation. Facts
+the host decides from the original event stay outside the replacement: Discord
+records account provenance (whether the author account posted the message
+itself) before policies run, keeps it only while a replacement names the same
+author, and never takes it from a replacement. Errors,
 timeouts (15 seconds by default), cancellation, and retired plugin authority
 refuse intake; they never fall back to storing the original event. Error
 diagnostics omit policy exception contents because they may contain private

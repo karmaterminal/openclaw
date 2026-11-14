@@ -141,37 +141,58 @@ The queue uses a built-in 500ms debounce. `cap` defaults to `20`, and `drop` def
 
 ### Owner room messages at capacity
 
-The configured owner's own room messages are not shed as ambient events. A room
-event whose sender is listed in `commands.ownerAllowFrom` is protected at
-capacity when its channel verified, from platform account metadata, that the
-owner's own account posted it: not a bot or app account, and not a webhook,
-relay, proxy, or chat posting on the account's behalf. Absent or ambiguous
-provenance is not protected. A refusal at a cap full of protected work is
-retryable backpressure under every `drop` policy and spends no retry attempt;
-durable ingress paces the retry (1 second, doubling to 3 minutes). The owner bit
-alone (operator profiles, `operator.admin`) grants no protection, and messages
-that mention the agent keep the usual capacity rules.
+No one's room messages are protected at capacity by default. List the owner's own
+accounts in `messages.groupChat.ownerQueueProtectionAccounts` to keep their
+unaddressed room messages instead of shedding them as ambient events:
+
+```json5
+{
+  messages: {
+    groupChat: {
+      ownerQueueProtectionAccounts: ["discord:123456789012345678"],
+    },
+  },
+}
+```
+
+Each entry is a sender id with its channel prefix, in the grammar
+`commands.ownerAllowFrom` uses; wildcards and duplicates are rejected. The setting
+is separate from command authority: an account in `commands.ownerAllowFrom` gets
+no queue protection unless it is listed here, the owner bit (operator profiles,
+`operator.admin`) grants none, and listing an account here grants no command
+authority. It is global; agents cannot override it.
+
+A listed account's room event is protected only when its channel verified, from
+platform account metadata, that the account itself posted it: not a bot or app
+account, and not a webhook, relay, proxy, or chat posting on the account's
+behalf. Absent or ambiguous provenance is not protected. A refusal at a cap full
+of protected work is retryable backpressure under every `drop` policy and spends
+no retry attempt; durable ingress paces the retry (1 second, doubling to 3
+minutes). Messages that mention the agent keep the usual capacity rules.
 
 Discord, Slack, and Telegram verify account provenance:
 
 - Discord: an ordinary message or reply whose author has no `bot` or `system`
-  flag, and that is not a webhook post. PluralKit proxies post through webhooks,
-  so they are not protected.
+  flag, and that is not a webhook post. Durable ingress decides this from the
+  gateway event before any `before_channel_ingress` policy runs and stores it
+  beside the event. A policy replacement that names another author loses it, and
+  no policy can add it. Messages stored before an upgrade carry none and are not
+  protected. PluralKit proxies post through webhooks, so they are not protected.
 - Slack: a native Socket Mode or signed HTTP event delivery, without `bot_id`.
   Relay deliveries are not protected.
 - Telegram: a message whose sender has `is_bot: false`, without `sender_chat`
   (anonymous administrators, linked channels, automatic forwards) or
   `sender_business_bot`.
 
-Every other channel is unsupported, and an owner-listed sender there stays
-ambient. This includes Feishu and Mattermost, whose bot flags are not reviewed as
-account provenance, and channels with no such signal, such as iMessage, IRC,
-LINE, Microsoft Teams, Signal, SMS, and WhatsApp.
+Every other channel is unsupported, and a listed sender there stays ambient. This
+includes Feishu and Mattermost, whose bot flags are not reviewed as account
+provenance, and channels with no such signal, such as iMessage, IRC, LINE,
+Microsoft Teams, Signal, SMS, and WhatsApp.
 
 This is queue policy, not a judgment about whose messages count. Agent and
-Gateway traffic, owner-listed bot accounts included, stays bounded by ordinary
-ambient discard and the cap on purpose, because Gateway error storms can flood a
-room. A designated agent lane would need its own authenticated, storm-safe
+Gateway traffic stays bounded by ordinary ambient discard and the cap on purpose,
+because Gateway error storms can flood a room; a listed bot account never
+qualifies. A designated agent lane would need its own authenticated, storm-safe
 contract (loop and rate limits, a circuit breaker); OpenClaw does not provide one.
 
 ## Steer and streaming

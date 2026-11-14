@@ -246,8 +246,9 @@ before user requests, without generating overflow-summary turns. The default
 same conversation; `old` and `new` discard them. This sheds ambient processing,
 not channel history; the configured history window still
 bounds which recent messages are available as context. See [Queue options](/concepts/queue#queue-options).
-The configured owner's own room messages on Discord, Slack, and Telegram are
-kept instead; see [Owner room messages at capacity](/concepts/queue#owner-room-messages-at-capacity).
+Room messages from the owner's accounts listed in
+`messages.groupChat.ownerQueueProtectionAccounts` (Discord, Slack, and Telegram;
+unset by default) are kept instead; see [Owner room messages at capacity](/concepts/queue#owner-room-messages-at-capacity).
 
 ## Troubleshooting
 
