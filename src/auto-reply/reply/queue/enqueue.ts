@@ -265,10 +265,10 @@ function settleFollowupQueueRefusal(
   queue: ReturnType<typeof getFollowupQueue>,
   run: FollowupRun,
 ): void {
-  // Frond (karmaterminal, #1564): the configured owner's account's room message is never lost to
-  // capacity. Under every policy, drop:new included, its refusal is retryable backpressure that
-  // spends no retry budget; the ingress owner paces the retry. Requests and other senders keep
-  // their accounting.
+  // Frond (karmaterminal, #1564): the configured owner's room message, posted from the owner's own
+  // account, is never lost to capacity. Under every policy, drop:new included, its refusal is
+  // retryable backpressure that spends no retry budget; the ingress owner paces the retry. Requests
+  // and other senders keep their accounting.
   if (isConfiguredOwnerAccountRoomEvent(run)) {
     run.onQueueDisposition?.("queue-cap");
     completeFollowupRunLifecycle(run, "backpressure");
