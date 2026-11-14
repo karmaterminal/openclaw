@@ -41,6 +41,7 @@ import type { GatewayContextResolver } from "./types.js";
 
 installGatewayTestHooks();
 const createFixture = useBrowserFollowupFixture();
+// Drained inputs never run; the stand-in only keeps a failed case off a real model.
 const runtime = vi.hoisted(() => ({ execute: vi.fn<typeof executeAgentTurn>() }));
 vi.mock("../../auto-reply/reply/agent-runner-execution.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../auto-reply/reply/agent-runner-execution.js")>()),
