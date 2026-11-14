@@ -86,7 +86,7 @@ export function enqueueFollowupRun(
   if (isFollowupRunAborted(run)) {
     return false;
   }
-  if (options.position === "front" || isHumanOwnerRoomEvent(run)) {
+  if (options.position === "front" || isConfiguredOwnerAccountRoomEvent(run)) {
     run.protectFromQueueOverflow = true;
   }
   // Peek before getFollowupQueue: rejecting a redelivery after the original
@@ -265,10 +265,11 @@ function settleFollowupQueueRefusal(
   queue: ReturnType<typeof getFollowupQueue>,
   run: FollowupRun,
 ): void {
-  // Frond (karmaterminal, #1564): the human owner's room message is never lost to capacity. Under
-  // every policy, drop:new included, its refusal is retryable backpressure that spends no retry
-  // budget; the ingress owner paces the retry. Requests and other senders keep their accounting.
-  if (isHumanOwnerRoomEvent(run)) {
+  // Frond (karmaterminal, #1564): the configured owner's account's room message is never lost to
+  // capacity. Under every policy, drop:new included, its refusal is retryable backpressure that
+  // spends no retry budget; the ingress owner paces the retry. Requests and other senders keep
+  // their accounting.
+  if (isConfiguredOwnerAccountRoomEvent(run)) {
     run.onQueueDisposition?.("queue-cap");
     completeFollowupRunLifecycle(run, "backpressure");
     return;
@@ -290,14 +291,32 @@ function settleFollowupQueueRefusal(
   );
 }
 
-// Frond (karmaterminal, #1564): the human owner's unaddressed room message is not ambient chatter.
-// Ownership is the channel-verified sender in commands.ownerAllowFrom, never the wider owner bit
-// (operator.admin scope, operator profiles); a listed bot account, such as a prince, stays ambient.
-function isHumanOwnerRoomEvent(run: FollowupRun): boolean {
+// Frond (karmaterminal, #1564): channels whose plugins set account provenance (senderAccountVerified)
+// from verified platform account metadata. Every other channel is unsupported, so its owner's room
+// message stays ambient: Feishu and Mattermost, whose bot flags were not reviewed as provenance, and
+// the channels with no such signal, among them iMessage, IRC, LINE, Microsoft Teams, Signal, SMS and
+// WhatsApp. A plugin outside this set gains nothing by setting the fact.
+const OWNER_ACCOUNT_PROVENANCE_CHANNELS: ReadonlySet<string> = new Set([
+  "discord",
+  "slack",
+  "telegram",
+]);
+
+// Frond (karmaterminal, #1564): queue policy for this cut, not a criterion for whose words count. The
+// configured owner's unaddressed room message, posted from the owner's own account, is not ambient
+// chatter. Ownership is the sender id in commands.ownerAllowFrom, never the wider owner bit
+// (operator.admin scope, operator profiles). The channel must also have verified that the owner's
+// own account posted it, not a bot or app account, webhook, relay or proxy speaking for it; absent or
+// ambiguous provenance is not protected. Agent and Gateway traffic, owner-listed bot accounts such as
+// the princes included, stays bounded by ordinary ambient discard and the cap on purpose: Gateway
+// error storms have flooded rooms. A designated agent lane would need its own authenticated,
+// storm-safe contract (loop and rate limits, a circuit breaker); it is not part of this policy.
+function isConfiguredOwnerAccountRoomEvent(run: FollowupRun): boolean {
   const execution = run.run;
   return (
     run.currentInboundEventKind === "room_event" &&
-    execution.senderIsBot !== true &&
+    execution.senderAccountVerified === true &&
+    OWNER_ACCOUNT_PROVENANCE_CHANNELS.has(execution.messageProvider ?? "") &&
     isConfiguredCommandOwner(execution.config, {
       channel: execution.messageProvider,
       accountId: execution.agentAccountId,

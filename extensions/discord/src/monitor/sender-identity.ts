@@ -1,5 +1,5 @@
 import { normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
-import type { User } from "../internal/discord.js";
+import { MessageType, type User } from "../internal/discord.js";
 import type { PluralKitMessageInfo } from "../pluralkit.js";
 import { formatDiscordUserTag } from "./format.js";
 
@@ -18,6 +18,24 @@ type DiscordWebhookMessageLike = {
 
 export function resolveDiscordWebhookId(message: DiscordWebhookMessageLike): string | null {
   return normalizeOptionalString(message.webhookId ?? message.webhook_id) ?? null;
+}
+
+// Frond (karmaterminal, #1564): account provenance for the owner's queue protection. Discord's user
+// object carries `bot: true` on every application account and `system: true` on Official Discord
+// System accounts, and omits both on other user accounts (APIUser.bot, APIUser.system); MESSAGE_CREATE
+// always carries the full author. So an ordinary message or reply whose author has neither is that
+// account's own post. A webhook post authenticates no account, and PluralKit proxies only through
+// webhooks; other message types are Discord's notices about the account, not its post.
+export function isDiscordAccountOwnPost(
+  author: Pick<User, "bot" | "system">,
+  message: DiscordWebhookMessageLike & { type?: MessageType },
+): boolean {
+  return (
+    author.bot !== true &&
+    author.system !== true &&
+    !resolveDiscordWebhookId(message) &&
+    (message.type === MessageType.Default || message.type === MessageType.Reply)
+  );
 }
 
 export function resolveDiscordSenderIdentity(params: {

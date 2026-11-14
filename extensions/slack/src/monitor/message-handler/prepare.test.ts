@@ -1105,6 +1105,44 @@ Second paragraph should still reach the agent after Slack's preview cutoff.`;
     },
   );
 
+  // Frond (karmaterminal, #1564): account provenance for the owner's queue protection comes only
+  // from a verified native delivery of a user account's own message.
+  it.each<
+    [string, Parameters<typeof prepareSlackMessage>[0]["opts"], Partial<SlackMessageEvent>, true?]
+  >([
+    ["a verified user message", { source: "message", senderAuthentication: "verified" }, {}, true],
+    ["a relay frame, which is always mentioned", { source: "message", wasMentioned: true }, {}],
+    ["an asserted sender", { source: "message", senderAuthentication: "asserted" }, {}],
+    [
+      "a verified bot user's message",
+      { source: "message", senderAuthentication: "verified" },
+      { bot_id: "B_OTHER" },
+    ],
+    [
+      "a verified app or workflow post",
+      { source: "message", senderAuthentication: "verified" },
+      { user: undefined, bot_id: "B_OTHER", subtype: "bot_message", username: "deploys" },
+    ],
+  ])("marks account provenance for %s", async (_, opts, message, verified) => {
+    // Bot room posts need a channel users entry before they reach preparation.
+    const channels = { C123: { enabled: true, users: ["U1", "B_OTHER"] } };
+    const ctx = nameContext(
+      createInboundSlackCtx({
+        cfg: slackConfig({ groupPolicy: "open", channels }),
+        channelsConfig: channels,
+        defaultRequireMention: false,
+      }),
+    );
+    const prepared = await prepareInbound(
+      ctx,
+      { channel: "C123", channel_type: "channel", ...message },
+      defaultAccount,
+      opts,
+    );
+    assert(prepared);
+    expect(prepared.ctxPayload.SenderAccountVerified).toBe(verified);
+  });
+
   function dmHistoryFixture(
     config: ResolvedSlackAccount["config"],
     messages: Array<{ text: string; ts: string; user?: string; bot_id?: string }>,

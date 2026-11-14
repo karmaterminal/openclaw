@@ -333,6 +333,8 @@ export type MsgContext = Partial<CanonicalInboundText> & {
   SenderIsBot?: boolean;
   /** Channel-ingress fact: sender is the operator's own account (from-me). */
   SenderIsSelf?: boolean;
+  /** Frond (karmaterminal, #1564): channel-verified account provenance (SenderFacts.accountVerified). */
+  SenderAccountVerified?: true;
   Timestamp?: number;
   LocationLat?: number;
   LocationLon?: number;

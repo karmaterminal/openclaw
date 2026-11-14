@@ -140,6 +140,7 @@ export function resolveRoomAggregateExecution(execution: FollowupRun["run"]): Fo
     senderUsername: undefined,
     senderE164: undefined,
     senderIsBot: undefined,
+    senderAccountVerified: undefined,
     memberRoleIds: undefined,
     gitContributorProfileId: undefined,
     senderIsOwner: false,

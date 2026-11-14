@@ -551,6 +551,7 @@ export async function executePreparedReplyRun(
       senderUsername: normalizeOptionalString(sessionCtx.SenderUsername),
       senderE164: normalizeOptionalString(sessionCtx.SenderE164),
       senderIsBot: sessionCtx.SenderIsBot,
+      senderAccountVerified: sessionCtx.SenderAccountVerified,
       // Queued system events are prompt content in the same trusted session;
       // they do not rewrite the sender identity used by command/action auth.
       senderIsOwner: command.senderIsOwner,

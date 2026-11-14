@@ -1,3 +1,4 @@
+import { GatewayDispatchEvents, MessageType, type APIUser } from "discord-api-types/v10";
 import { withRegisteredChannelIngress } from "openclaw/plugin-sdk/channel-ingress-test-runtime";
 import { resolveCommandAuthorization } from "openclaw/plugin-sdk/command-auth-native";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
@@ -5,6 +6,7 @@ import { logVerbose } from "openclaw/plugin-sdk/runtime-env";
 import { withOpenClawTestState } from "openclaw/plugin-sdk/test-state";
 import { afterEach, expect, it, vi } from "vitest";
 import { discordPlugin } from "../../channel-plugin-api.js";
+import { mapGatewayDispatchData } from "../internal/gateway-dispatch.js";
 import * as discordRuntime from "../runtime.js";
 import { resolveDiscordTextCommandAccess } from "./dm-command-auth.js";
 import { buildDiscordMessageProcessContext as buildProcessContext } from "./message-handler.context.js";
@@ -144,6 +146,45 @@ it("does not mark webhook posts as bots", async () => {
     },
   });
   expect(payload.SenderIsBot).toBeUndefined();
+});
+
+// Frond (karmaterminal, #1564): account provenance for the owner's queue protection, read from the
+// MESSAGE_CREATE author object mapped the way live delivery and durable replay map it.
+type ProvenanceFrame = {
+  author?: Partial<APIUser>;
+  type?: MessageType;
+  webhook_id?: string;
+  pluralKit?: true;
+};
+it.each<[string, ProvenanceFrame, true?]>([
+  ["a user account's own message", {}, true],
+  ["a user account's own reply", { type: MessageType.Reply }, true],
+  ["a user account with an explicit bot: false", { author: { bot: false } }, true],
+  ["a bot account", { author: { bot: true } }],
+  ["an Official Discord System account", { author: { system: true } }],
+  ["a webhook post with no bot flag", { webhook_id: "W1" }],
+  ["a PluralKit proxy", { webhook_id: "W1", pluralKit: true }],
+  ["a Discord notice the account caused", { type: MessageType.ChannelNameChange }],
+])("marks account provenance for %s", async (_, frame, verified) => {
+  const { message, author } = mapGatewayDispatchData(
+    { rest: {} } as never,
+    GatewayDispatchEvents.MessageCreate,
+    {
+      id: "1001",
+      channel_id: "c1",
+      timestamp: new Date().toISOString(),
+      type: frame.type ?? MessageType.Default,
+      content: "hi",
+      attachments: [],
+      author: { id: "U1", username: "alice", discriminator: "0", avatar: null, ...frame.author },
+      ...(frame.webhook_id ? { webhook_id: frame.webhook_id } : {}),
+    },
+  ) as { message: unknown; author: unknown };
+  const sender = frame.pluralKit
+    ? { id: "pk-member", label: "Figs (PK)", name: "Figs", isPluralKit: true }
+    : undefined;
+  const payload = await context({ message, author, ...(sender ? { sender } : {}) });
+  expect(payload.SenderAccountVerified).toBe(verified);
 });
 
 it("preserves forwarded text once in history without treating it as a command", async () => {

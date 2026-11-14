@@ -45,6 +45,9 @@ export class User extends PartialEntity<APIUser, false> {
   get bot() {
     return this.rawDataValue?.bot;
   }
+  get system() {
+    return this.rawDataValue?.system;
+  }
   get avatar() {
     return this.rawDataValue?.avatar;
   }

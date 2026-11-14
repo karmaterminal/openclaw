@@ -248,8 +248,14 @@ describe("ambient owner room aggregate eligibility (#1415)", () => {
     expect(joins(owner(id, patch))).toBe(false);
   });
 
-  it("runs the room baseline as no bot", () => {
-    expect(resolveRoomAggregateExecution(owner("peer-a").run).senderIsBot).toBeUndefined();
+  it("runs the room baseline as no bot and with no member's account provenance", () => {
+    const baseline = resolveRoomAggregateExecution({
+      ...owner("peer-a").run,
+      senderAccountVerified: true,
+    });
+    expect(baseline.senderIsBot).toBeUndefined();
+    // Frond (karmaterminal, #1564): a rebuilt source never gains the owner's queue protection.
+    expect(baseline.senderAccountVerified).toBeUndefined();
   });
 
   it.each<[string, Patch]>([

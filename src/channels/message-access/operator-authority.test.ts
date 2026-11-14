@@ -570,6 +570,9 @@ it("carries native Slack requester authority and keeps relay replays asserted", 
         expect(contexts).toHaveLength(1);
         const check = async (index: number, linked: boolean, isOwner: boolean) => {
           const turn = contexts[index]!;
+          // Frond (karmaterminal, #1564): account provenance only for a native, signed delivery
+          // of the user's own message; the relay replay asserts its sender.
+          expect(turn.SenderAccountVerified).toBe(index === 0 ? undefined : true);
           const prompt = buildInboundUserContextPrefix(turn);
           expect
             .soft(requesterProfile(prompt))

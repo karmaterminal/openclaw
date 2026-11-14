@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { InboundEventKind } from "../../channels/inbound-event/kind.js";
 import { withTempState } from "../../channels/message/ingress-drain.test-helpers.js";
 import type { SessionEntry } from "../../config/sessions.js";
+import type { MsgContext } from "../templating.js";
 import { parseInlineSessionDirectives } from "./directive-handling.parse.js";
 import { prepareReplyRunAdmission } from "./get-reply-run-admission.js";
 import { prepareReplyRunContext } from "./get-reply-run-context.js";
@@ -31,7 +32,11 @@ vi.mock("./get-reply-run-helpers.js", async (importOriginal) => ({
 }));
 
 /** The queued source an owner prince's Discord channel message becomes. */
-async function stageOwnerMessage(body: string, kind: InboundEventKind): Promise<FollowupRun> {
+async function stageOwnerMessage(
+  body: string,
+  kind: InboundEventKind,
+  sender: Pick<MsgContext, "SenderIsBot" | "SenderAccountVerified"> = { SenderIsBot: true },
+): Promise<FollowupRun> {
   return await withTempState(async (stateDir) => {
     const sessionKey = "agent:main:discord:channel:room";
     const storePath = `${stateDir}/agents/main/sessions/sessions.json`;
@@ -45,7 +50,7 @@ async function stageOwnerMessage(body: string, kind: InboundEventKind): Promise<
       InboundEventKind: kind,
       MessageSid: "m1",
       SenderId: "peer-a",
-      SenderIsBot: true,
+      ...sender,
       Body: body,
       RawBody: body,
       CommandBody: body,
@@ -134,3 +139,16 @@ describe("ambient room prose (#1415)", () => {
     expect(run.ambientRoomProse).toBe(prose);
   });
 });
+
+// Frond (karmaterminal, #1564): the queue's owner protection reads the channel's account provenance
+// from the queued run, so it must ride there, and absence must stay absence.
+it.each([true, undefined] as const)(
+  "carries account provenance %s onto the queued run",
+  async (verified) => {
+    const run = await stageOwnerMessage("it passes here", "room_event", {
+      SenderAccountVerified: verified,
+    });
+    expect(run.run.senderAccountVerified).toBe(verified);
+    expect(run.run.senderIsBot).toBeUndefined();
+  },
+);

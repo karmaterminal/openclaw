@@ -51,7 +51,7 @@ import type { DiscordMediaInfo } from "./message-media.js";
 import { resolveDiscordMessageText } from "./message-text.js";
 import { buildDirectLabel, buildGuildLabel, resolveReplyContext } from "./reply-context.js";
 import { buildDiscordRoutePeer } from "./route-resolution.js";
-import { resolveDiscordWebhookId } from "./sender-identity.js";
+import { isDiscordAccountOwnPost, resolveDiscordWebhookId } from "./sender-identity.js";
 import { resolveDiscordAutoThreadReplyPlan, resolveDiscordThreadStarter } from "./threading.js";
 import {
   DISCORD_ATTACHMENT_IDLE_TIMEOUT_MS,
@@ -466,6 +466,7 @@ export async function buildDiscordMessageProcessContext(params: {
       // PluralKit relay humans through one, so only a bot account's own post is a bot.
       isBot:
         author.bot && !sender.isPluralKit && !resolveDiscordWebhookId(message) ? true : undefined,
+      accountVerified: isDiscordAccountOwnPost(author, message) ? true : undefined,
     },
     conversation: {
       kind: isGroupDm ? "group" : isDirectMessage ? "direct" : "channel",

@@ -67,6 +67,13 @@ export type SenderFacts = {
   roles?: string[];
   isBot?: boolean;
   isSelf?: boolean;
+  /**
+   * Frond (karmaterminal, #1564): account provenance, never personhood. `true` only when the channel
+   * verified from platform account metadata that the sender's own account posted this message: not
+   * a bot or app account, and not a webhook, relay, proxy or chat posting on its behalf. Absent
+   * means unverified.
+   */
+  accountVerified?: true;
   displayLabel?: string;
 };
 

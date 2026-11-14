@@ -512,6 +512,8 @@ it("redelivers the owner's room message refused at a full protected cap, spendin
         {
           messageProvider: "discord",
           senderId: "figs",
+          // The channel verified the post as the owner's own account's.
+          senderAccountVerified: true,
           config: { commands: { ownerAllowFrom: ["figs"] } },
         },
       );
