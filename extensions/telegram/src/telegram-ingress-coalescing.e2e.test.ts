@@ -325,6 +325,48 @@ describe("Telegram durable ingress coalescing", () => {
     }
   });
 
+  it("redelivers every backpressured album member attempt-free and dispatches the album once", async ({
+    signal,
+  }) => {
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "performance", "Date"],
+    });
+    const { monitor } = await createMonitor({ pollIntervalMs: 60_000 });
+    const queue = openTelegramIngressQueue({ stateDir });
+    downstreamTurns.mockImplementationOnce(async (_ctx, _abortSignal, lifecycle) => {
+      lifecycle?.onDeferred?.();
+      void (lifecycle?.onBackpressure ? lifecycle.onBackpressure() : lifecycle?.onAbandoned?.());
+      return { queuedFinal: false, counts: { block: 0, final: 0, tool: 0 } };
+    });
+    const settle = async () => {
+      await withinTest(monitor.waitForIdle(), signal);
+      await withinTest(monitor.waitForDeferredClaims(), signal);
+    };
+    monitor.start();
+    try {
+      await withinTest(admitAlbum(monitor, "A", 1_601), signal);
+      await settle();
+      // The coalesced turn's backpressure settles every member, not only the head.
+      await expectOnlyPending(queue, [
+        { id: telegramQueueEventId(1_601), attempts: 0 },
+        { id: telegramQueueEventId(1_602), attempts: 0 },
+      ]);
+      // Both members return after the paced retry; the album waits out its quiet window.
+      await withinTest(vi.advanceTimersByTimeAsync(1_000), signal);
+      await withinTest(monitor.waitForIdle(), signal);
+      await withinTest(vi.advanceTimersByTimeAsync(40), signal);
+      await settle();
+      expect(downstreamTurns.mock.calls.map(([turn]) => turn.RawBody)).toEqual([
+        "Album A",
+        "Album A",
+      ]);
+      await tombstones(1_601, 1_602);
+      expect(runtimeErrors).toEqual([]);
+    } finally {
+      await monitor.stop();
+    }
+  });
+
   it("keeps a later album alive and ordered behind a slowly adopting album", async ({ signal }) => {
     const { monitor } = await createMonitor({ adoptionStallTimeoutMs: 1_000 });
     const { headDispatched, releaseHead } = holdFirstDownstreamTurn();
