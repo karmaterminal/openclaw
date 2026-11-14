@@ -3,6 +3,8 @@ import { expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { isAgentRunRestartAbortReason } from "../../agents/run-termination.js";
 import type { dispatchInboundMessage as DispatchInboundMessage } from "../../auto-reply/dispatch.js";
+import type { executeAgentTurn } from "../../auto-reply/reply/agent-runner-execution.js";
+import { withFullRuntimeReplyConfig } from "../../auto-reply/reply/get-reply-fast-path.js";
 import { getRuntimeConfig } from "../../config/config.js";
 import {
   listSessionPendingInputs,
@@ -11,6 +13,7 @@ import {
   readSessionPendingInput,
 } from "../../config/sessions/session-accessor.js";
 import { readSessionQueuedInputPage } from "../../config/sessions/session-pending-input-history.js";
+import { withPluginRuntimeGatewayRequestScope } from "../../plugins/runtime/gateway-request-scope.js";
 import {
   markGatewayRestartDraining,
   resetGatewayWorkAdmission,
@@ -24,16 +27,25 @@ import {
 import type { UserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
 import { ensureGatewayOwnerProfile } from "../../state/user-profiles.js";
 import { captureGatewayAuthPolicy } from "../auth-policy.js";
+import { prepareGatewayRunShutdown } from "../server-run-shutdown.js";
 import { persistRunningSessionsForRestart } from "../session-restart-resume.js";
 import { dispatchInboundMessageMock, installGatewayTestHooks } from "../test-helpers.js";
+import { loadRealChatDispatch, successfulChatTurn } from "./chat-send-authority.test-support.js";
+import { handleChatSend } from "./chat-send-handler.js";
 import { handleChatSendWithStorage } from "./chat-send-input-dispatch.js";
 import {
   setClientProfile,
   useBrowserFollowupFixture,
 } from "./chat-send-pending-inputs.test-support.js";
+import type { GatewayContextResolver } from "./types.js";
 
 installGatewayTestHooks();
 const createFixture = useBrowserFollowupFixture();
+const runtime = vi.hoisted(() => ({ execute: vi.fn<typeof executeAgentTurn>() }));
+vi.mock("../../auto-reply/reply/agent-runner-execution.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../auto-reply/reply/agent-runner-execution.js")>()),
+  executeAgentTurn: runtime.execute,
+}));
 
 type QueuedFixture = Awaited<ReturnType<typeof createFixture>>;
 
@@ -48,8 +60,44 @@ function bindRecoverableOwner(fixture: QueuedFixture) {
   });
 }
 
+function findInput(fixture: QueuedFixture) {
+  return [...sessionControllerMailboxes()]
+    .flatMap((mailbox) => mailbox.entries)
+    .find((entry) => entry.protocolRunId === fixture.params.idempotencyKey);
+}
+
+/** Live requests bind their admitting Gateway; shutdown captures only that Gateway's work. */
+function admittingGateway(fixture: QueuedFixture) {
+  const resolveGatewayContext: GatewayContextResolver = () => fixture.context;
+  let closed: Promise<void> | undefined;
+  /** The Gateway close path: snapshot running owners, write markers, then cancel captured work. */
+  const shutdown = () =>
+    (closed ??= (async () => {
+      const { failure, released } = await prepareGatewayRunShutdown({
+        resolveGatewayContext,
+        warnings: [],
+        persistRunningSessionsForRestart: (signal) =>
+          persistRunningSessionsForRestart({ cfg: {}, signal }),
+      });
+      expect(failure).toBeUndefined();
+      await released;
+    })());
+  return {
+    send: () =>
+      fixture.send(undefined, undefined, fixture.params, (options) =>
+        withPluginRuntimeGatewayRequestScope(
+          { context: fixture.context, isWebchatConnect: () => true, resolveGatewayContext },
+          () => handleChatSend(options),
+        ),
+      ),
+    shutdown,
+    // A drain-held input never settles on its own; a failed case still shuts it down.
+    [Symbol.asyncDispose]: shutdown,
+  };
+}
+
 /** Queue a send behind the active run; its dispatch, like the real one, returns on cancellation. */
-async function sendQueuedInput(fixture: QueuedFixture) {
+async function sendQueuedInput(fixture: QueuedFixture, send = () => fixture.send()) {
   const release = createDeferred();
   const recorder = createDeferred<UserTurnTranscriptRecorder>();
   dispatchInboundMessageMock.mockImplementation(
@@ -64,11 +112,96 @@ async function sendQueuedInput(fixture: QueuedFixture) {
       return {};
     },
   );
-  const response = await fixture.send();
-  const input = [...sessionControllerMailboxes()]
-    .flatMap((mailbox) => mailbox.entries)
-    .find((entry) => entry.protocolRunId === fixture.params.idempotencyKey);
-  return { response, input, recorder: recorder.promise, release: release.resolve };
+  const response = await send();
+  return {
+    response,
+    input: findInput(fixture),
+    recorder: recorder.promise,
+    release: release.resolve,
+  };
+}
+
+/** Real dispatch admits the send to the followup queue behind the active run (the B1 probe's shape). */
+async function sendFollowupInput(
+  fixture: QueuedFixture,
+  gateway: ReturnType<typeof admittingGateway>,
+  queueDebounceMs?: number,
+) {
+  bindRecoverableOwner(fixture);
+  const cfg = withFullRuntimeReplyConfig(fixture.context.getRuntimeConfig());
+  fixture.context.getRuntimeConfig = () => cfg;
+  fixture.params.queueMode = "followup";
+  await patchSessionEntryCore(fixture.scope, () => ({
+    queueMode: "followup",
+    ...(queueDebounceMs === undefined ? {} : { queueDebounceMs }),
+  }));
+  const dispatch = await loadRealChatDispatch();
+  runtime.execute
+    .mockReset()
+    .mockImplementation(async ({ opts }) => successfulChatTurn(opts?.runId ?? "", "Answered."));
+  const enqueued = createDeferred();
+  dispatchInboundMessageMock.mockImplementation(
+    (params: Parameters<typeof DispatchInboundMessage>[0]) => {
+      const lifecycle = params.replyOptions?.turnAdoptionLifecycle;
+      const onDeferred = lifecycle?.onDeferred;
+      assert(lifecycle && onDeferred);
+      lifecycle.onDeferred = () => {
+        const result = onDeferred();
+        enqueued.resolve();
+        return result;
+      };
+      return dispatch({ ...params, cfg });
+    },
+  );
+  expect((await gateway.send()).mock.calls[0]?.[0]).toBe(true);
+  const row = await stagedRow(fixture);
+  await enqueued.promise;
+  const input = findInput(fixture);
+  assert(input);
+  expect(input).toMatchObject({ phase: "waiting", custody: { enqueued: true } });
+  return { input, row };
+}
+
+/** The running turn ends, leaving restart capture no owner to enumerate for the session. */
+function endOwner(fixture: QueuedFixture, outcome: "completed" | "aborted") {
+  const run = fixture.activeRun;
+  assert(run);
+  if (outcome === "aborted") {
+    run.abortByUser();
+  }
+  run.complete();
+  expect(
+    [...activeSessionOperations()].some((operation) => operation.key === fixture.scope.sessionKey),
+  ).toBe(false);
+}
+
+/** Terminal chat frames broadcast to the sender for this send's runId. */
+function senderTerminals(fixture: QueuedFixture) {
+  return vi.mocked(fixture.context.broadcast).mock.calls.flatMap(([event, payload]) => {
+    const frame = payload as { runId?: string; state?: string; stopReason?: string };
+    return event === "chat" &&
+      frame.runId === fixture.params.idempotencyKey &&
+      ["final", "aborted", "error"].includes(frame.state ?? "")
+      ? [{ state: frame.state, ...(frame.stopReason ? { stopReason: frame.stopReason } : {}) }]
+      : [];
+  });
+}
+
+/** Shutdown cancelled the spared input and nothing marked it: the next boot has nothing to resume. */
+async function expectCancelledWithoutMarker(
+  fixture: QueuedFixture,
+  input: { abortSignal: AbortSignal },
+  rowId: string,
+) {
+  expect(isAgentRunRestartAbortReason(input.abortSignal.reason)).toBe(true);
+  expect(loadSessionEntry(fixture.scope)?.resumeAfterRestart).toBeUndefined();
+  await vi.waitFor(async () =>
+    expect(await readSessionPendingInput(fixture.scope, rowId)).toMatchObject({
+      state: "cancelled",
+    }),
+  );
+  const { rows } = await readSessionQueuedInputPage(fixture.scope, { queuedInputIds: [rowId] });
+  expect(rows).toEqual([]);
 }
 
 async function stagedRow(fixture: QueuedFixture) {
@@ -239,9 +372,7 @@ it("cancels a reserved chat.send whose input is not yet staged when drain begins
   let reserved: { abortSignal: AbortSignal } | undefined;
   // Approval runs before the pending row commits, while only the reservation exists.
   fixture.beforeApprove.mockImplementationOnce(() => {
-    reserved = [...sessionControllerMailboxes()]
-      .flatMap((mailbox) => mailbox.entries)
-      .find((entry) => entry.protocolRunId === fixture.params.idempotencyKey);
+    reserved = findInput(fixture);
     markGatewayRestartDraining();
   });
   const queued = await sendQueuedInput(fixture);
@@ -281,6 +412,96 @@ it("cancels a queued chat.send whose pending owner is settling when drain begins
         state: "cancelled",
       }),
     );
+  } finally {
+    queued.release();
+    resetGatewayWorkAdmission();
+  }
+});
+
+it("cancels at shutdown, without a marker, a recoverable queued chat.send whose owner ended before drain", async () => {
+  await using fixture = await createFixture({ preserveContent: true });
+  await using gateway = admittingGateway(fixture);
+  // The B1 probe's 45 s session debounce keeps the input queued after its owner's turn ends.
+  const { input, row } = await sendFollowupInput(fixture, gateway, 45_000);
+  try {
+    endOwner(fixture, "completed");
+    expect(input.phase).toBe("waiting");
+    markGatewayRestartDraining();
+    // The drain hook spares the recoverable input for restart capture.
+    expect(input.abortSignal.aborted).toBe(false);
+    expect(findInput(fixture)).toBe(input);
+    await gateway.shutdown();
+    await expectCancelledWithoutMarker(fixture, input, row.id);
+    expect(senderTerminals(fixture)).toEqual([{ state: "aborted", stopReason: "restart" }]);
+  } finally {
+    resetGatewayWorkAdmission();
+  }
+});
+
+it.for(["completed", "aborted"] as const)(
+  "cancels at shutdown, without a marker, a recoverable queued chat.send whose owner %s between drain and capture",
+  async (outcome) => {
+    await using fixture = await createFixture({ preserveContent: true });
+    await using gateway = admittingGateway(fixture);
+    const { input, row } = await sendFollowupInput(fixture, gateway);
+    try {
+      markGatewayRestartDraining();
+      expect(input.abortSignal.aborted).toBe(false);
+      endOwner(fixture, outcome);
+      // Drain keeps the queued followup unclaimed once its owner is gone.
+      expect(input.phase).toBe("waiting");
+      expect(input.claim).toBeUndefined();
+      await gateway.shutdown();
+      await expectCancelledWithoutMarker(fixture, input, row.id);
+      expect(senderTerminals(fixture)).toEqual([{ state: "aborted", stopReason: "restart" }]);
+    } finally {
+      resetGatewayWorkAdmission();
+    }
+  },
+);
+
+it("marks a recoverable queued chat.send whose owner is still running at shutdown capture", async () => {
+  await using fixture = await createFixture({ preserveContent: true });
+  await using gateway = admittingGateway(fixture);
+  const { input, row } = await sendFollowupInput(fixture, gateway);
+  try {
+    markGatewayRestartDraining();
+    expect(input.abortSignal.aborted).toBe(false);
+    await gateway.shutdown();
+    expect(loadSessionEntry(fixture.scope)?.resumeAfterRestart).toMatchObject({
+      queuedInputIds: [row.id],
+      queuedInputSources: {
+        [row.id]: { runId: fixture.params.idempotencyKey, source: { kind: "gateway" } },
+      },
+    });
+    expect(isAgentRunRestartAbortReason(input.abortSignal.reason)).toBe(true);
+    const { rows } = await readSessionQueuedInputPage(fixture.scope, { queuedInputIds: [row.id] });
+    expect(rows).toMatchObject([
+      { input_id: row.id, run_id: fixture.params.idempotencyKey, state: "queued" },
+    ]);
+    // The next boot answers this runId again; that second terminal is the A1 shape (#1567).
+    expect(senderTerminals(fixture)).toEqual([{ state: "aborted", stopReason: "restart" }]);
+  } finally {
+    resetGatewayWorkAdmission();
+  }
+});
+
+it("cancels at shutdown, without a marker, a recoverable chat.send still dispatching when its owner ends", async () => {
+  await using fixture = await createFixture({ preserveContent: true });
+  bindRecoverableOwner(fixture);
+  await using gateway = admittingGateway(fixture);
+  const queued = await sendQueuedInput(fixture, gateway.send);
+  try {
+    assert(queued.input);
+    expect(queued.input.phase).toBe("preparing");
+    const row = await stagedRow(fixture);
+    markGatewayRestartDraining();
+    expect(queued.input.abortSignal.aborted).toBe(false);
+    endOwner(fixture, "completed");
+    await gateway.shutdown();
+    await expectCancelledWithoutMarker(fixture, queued.input, row.id);
+    // The cancelled dispatch reports a content-free final, the A1 frame (#1567), with no resume.
+    expect(senderTerminals(fixture)).toEqual([{ state: "final" }]);
   } finally {
     queued.release();
     resetGatewayWorkAdmission();
