@@ -466,7 +466,10 @@ export async function buildDiscordMessageProcessContext(params: {
       // PluralKit relay humans through one, so only a bot account's own post is a bot.
       isBot:
         author.bot && !sender.isPluralKit && !resolveDiscordWebhookId(message) ? true : undefined,
-      accountVerified: isDiscordAccountOwnPost(author, message) ? true : undefined,
+      // Frond (karmaterminal, #1564): provenance is the host's pre-hook fact; the delivered
+      // message must also still read as that account's own post.
+      accountVerified:
+        ctx.senderAccountVerified && isDiscordAccountOwnPost(author, message) ? true : undefined,
     },
     conversation: {
       kind: isGroupDm ? "group" : isDirectMessage ? "direct" : "channel",

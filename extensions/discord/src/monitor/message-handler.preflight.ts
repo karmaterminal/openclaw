@@ -765,6 +765,7 @@ export async function preflightDiscordMessage(
     ackReactionScope: params.ackReactionScope,
     groupPolicy: params.groupPolicy,
     turnAdoptionLifecycle: params.turnAdoptionLifecycle,
+    senderAccountVerified: params.senderAccountVerified,
     threadBindings: params.threadBindings,
     discordRestFetch: params.discordRestFetch,
     groupThread,

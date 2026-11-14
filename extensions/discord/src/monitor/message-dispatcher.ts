@@ -16,7 +16,11 @@ import { danger } from "openclaw/plugin-sdk/runtime-env";
 import { racePromiseWithAbortSignal } from "openclaw/plugin-sdk/time-runtime";
 import type { Client } from "../internal/discord.js";
 import { withDiscordRequestAuthority } from "../internal/request-authority.js";
-import type { DiscordIngressDispatchResult, DiscordIngressLifecycle } from "./ingress.js";
+import type {
+  DiscordIngressDispatchResult,
+  DiscordIngressLifecycle,
+  DiscordIngressProvenance,
+} from "./ingress.js";
 import type { DiscordMessageEvent } from "./listeners.js";
 import { createDiscordLivePolicyReader, type DiscordLivePolicyReader } from "./live-policy.js";
 import { createDiscordAvatarResolver } from "./message-avatar.js";
@@ -47,10 +51,15 @@ const loadMessageProcessRuntime = createLazyRuntimeModule(
   () => import("./message-handler.process.js"),
 );
 
+type DiscordMessageDispatchOptions = DiscordIngressProvenance & {
+  abortSignal?: AbortSignal;
+  turnAdoptionLifecycle?: DiscordIngressLifecycle;
+};
+
 type DiscordMessageDispatcher = (
   data: DiscordMessageEvent,
   client: Client,
-  options?: { abortSignal?: AbortSignal; turnAdoptionLifecycle?: DiscordIngressLifecycle },
+  options?: DiscordMessageDispatchOptions,
 ) => Promise<DiscordIngressDispatchResult | void>;
 
 type DiscordMessageDispatcherWithLifecycle = DiscordMessageDispatcher & {
@@ -125,7 +134,7 @@ export function createDiscordMessageDispatcher(
     client: Client,
     options: Pick<
       DiscordMessagePreflightParams,
-      "abortSignal" | "precedingMessages" | "turnAdoptionLifecycle"
+      "abortSignal" | "precedingMessages" | "turnAdoptionLifecycle" | "senderAccountVerified"
     >,
   ) => {
     const policy = await readPolicy();
@@ -148,11 +157,9 @@ export function createDiscordMessageDispatcher(
   // The account's one watermark set: preflight hands it to every turn this dispatcher runs.
   const roomHistoryWatermarks = createDiscordRoomHistoryWatermarks();
 
-  type DiscordDebounceEntry = {
+  type DiscordDebounceEntry = DiscordMessageDispatchOptions & {
     data: DiscordMessageEvent;
     client: Client;
-    abortSignal?: AbortSignal;
-    turnAdoptionLifecycle?: DiscordIngressLifecycle;
     debounceKey?: string;
   };
   const pendingDebounceEntries = new Set<DiscordDebounceEntry>();
@@ -221,6 +228,11 @@ export function createDiscordMessageDispatcher(
                   // or rendering the batch, so neither text nor metadata is lost.
                   precedingMessages: entries.slice(0, -1).map((entry) => entry.data.message),
                   turnAdoptionLifecycle: admissionLifecycle,
+                  // Frond (karmaterminal, #1564): a batch is the account's own post only if
+                  // every message in it is.
+                  ...(entries.every((entry) => entry.senderAccountVerified)
+                    ? { senderAccountVerified: true }
+                    : {}),
                 }),
               abortSignal,
             );
@@ -332,7 +344,7 @@ export function createDiscordMessageDispatcher(
   const dispatchMessage = async (
     data: DiscordMessageEvent,
     client: Client,
-    options?: { abortSignal?: AbortSignal; turnAdoptionLifecycle?: DiscordIngressLifecycle },
+    options?: DiscordMessageDispatchOptions,
   ): Promise<DiscordIngressDispatchResult> => {
     try {
       if (dispatcherShutdown.signal.aborted || options?.abortSignal?.aborted) {
@@ -365,6 +377,7 @@ export function createDiscordMessageDispatcher(
         client,
         abortSignal,
         turnAdoptionLifecycle: options?.turnAdoptionLifecycle,
+        senderAccountVerified: options?.senderAccountVerified,
       };
       const debounceKey = resolveDebounceKey(entry);
       if (debounceKey) {

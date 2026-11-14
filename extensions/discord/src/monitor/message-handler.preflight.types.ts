@@ -48,6 +48,11 @@ type DiscordMessagePreflightSharedFields = {
   ackReactionScope: "all" | "direct" | "group-all" | "group-mentions" | "off" | "none";
   groupPolicy: "open" | "disabled" | "allowlist";
   turnAdoptionLifecycle?: DiscordIngressLifecycle;
+  /**
+   * Frond (karmaterminal, #1564): durable ingress decided from the gateway frame, before any
+   * before_channel_ingress policy, that its author account posted it. Never read from `data`.
+   */
+  senderAccountVerified?: true;
   data: DiscordMessageEvent;
   client: Client;
   threadBindings: DiscordThreadBindingLookup;

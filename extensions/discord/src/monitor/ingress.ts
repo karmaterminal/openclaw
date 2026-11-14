@@ -25,6 +25,7 @@ import { createDiscordStaleAmbientPendingDisposition } from "./ingress-stale-pol
 import { asStoredDiscordMessage } from "./ingress-stored-message.js";
 import type { DiscordMessageEvent } from "./listeners.js";
 import type { DiscordLivePolicyReader } from "./live-policy.js";
+import { isDiscordAccountOwnPost } from "./sender-identity.js";
 
 const DISCORD_INGRESS_PAYLOAD_VERSION = 1;
 const DISCORD_INGRESS_DRAIN_INTERVAL_MS = 1_000;
@@ -33,9 +34,22 @@ type DiscordIngressPayload = {
   version: 1;
   receivedAt: number;
   rawMessage: GatewayMessageCreateDispatchData;
+  /**
+   * Frond (karmaterminal, #1564): host-owned account provenance, never part of the hook-visible
+   * frame. The gateway frame was its author account's own post, decided before any
+   * before_channel_ingress policy ran; a policy replacement keeps it only with the same author id.
+   * Absent on rows stored before this field, which therefore replay unverified.
+   */
+  senderAccountVerified?: true;
 };
 
 type DiscordIngressBody = Omit<DiscordIngressPayload, "version">;
+
+/** One gateway frame with the provenance the host decided for it. */
+type DiscordIngressFrame = Pick<DiscordIngressPayload, "rawMessage" | "senderAccountVerified">;
+
+/** Host-owned facts handed to delivery beside the mapped event. */
+export type DiscordIngressProvenance = Pick<DiscordIngressPayload, "senderAccountVerified">;
 
 export type DiscordIngressLifecycle = Omit<ChannelIngressMonitorLifecycle, "admission">;
 
@@ -44,6 +58,7 @@ export type DiscordIngressDispatchResult = ChannelIngressMonitorDeliveryResult;
 type DiscordIngressDispatch = (
   event: DiscordMessageEvent,
   lifecycle: DiscordIngressLifecycle,
+  provenance: DiscordIngressProvenance,
 ) => Promise<DiscordIngressDispatchResult | void> | DiscordIngressDispatchResult | void;
 
 type DiscordIngressMonitor = {
@@ -95,8 +110,23 @@ function decodeDiscordIngressPayload(
     body: {
       receivedAt: candidate.receivedAt as number,
       rawMessage: asStoredDiscordMessage(rawMessage),
+      ...(candidate.senderAccountVerified === true ? { senderAccountVerified: true } : {}),
     },
   };
+}
+
+function readDiscordAuthorId(rawMessage: object): string | undefined {
+  const author = (rawMessage as { author?: { id?: unknown } | null }).author;
+  return typeof author?.id === "string" ? author.id : undefined;
+}
+
+// Frond (karmaterminal, #1564): account provenance of the frame exactly as the gateway delivered
+// it, before any policy can replace it. A frame without an author proves nothing.
+function receiveDiscordFrame(rawMessage: GatewayMessageCreateDispatchData): DiscordIngressFrame {
+  return readDiscordAuthorId(rawMessage) !== undefined &&
+    isDiscordAccountOwnPost(rawMessage.author, rawMessage)
+    ? { rawMessage, senderAccountVerified: true }
+    : { rawMessage };
 }
 
 function isDiscordAuthenticationFailure(error: unknown): boolean {
@@ -135,14 +165,14 @@ export function createDiscordIngressMonitor(params: {
       accountId: params.accountId,
     });
   const monitor = createChannelIngressMonitor<
-    GatewayMessageCreateDispatchData,
+    DiscordIngressFrame,
     DiscordIngressBody,
     DiscordIngressPayload
   >({
     queue,
     abortSignal: params.abortSignal,
-    inspect: inspectDiscordMessage,
-    prepareAdmission: async (rawMessage, { receivedAt, signal }) => {
+    inspect: ({ rawMessage }) => inspectDiscordMessage(rawMessage),
+    prepareAdmission: async ({ rawMessage, senderAccountVerified }, { receivedAt, signal }) => {
       const prepared = await prepareChannelIngressEvent(rawMessage, {
         channelId: "discord",
         accountId: params.accountId,
@@ -157,12 +187,25 @@ export function createDiscordIngressMonitor(params: {
         { version: DISCORD_INGRESS_PAYLOAD_VERSION, receivedAt, rawMessage: prepared.event },
         rawMessage.id,
       );
-      return { raw: decoded.body.rawMessage, assertCurrent: prepared.assertCurrent };
+      const replacement = decoded.body.rawMessage;
+      // Frond (karmaterminal, #1564): a replacement never creates provenance, and keeps the
+      // received frame's only while it still names the same author account.
+      const sameAuthor = readDiscordAuthorId(replacement) === readDiscordAuthorId(rawMessage);
+      return {
+        raw:
+          senderAccountVerified && sameAuthor
+            ? { rawMessage: replacement, senderAccountVerified }
+            : { rawMessage: replacement },
+        assertCurrent: prepared.assertCurrent,
+      };
     },
     payload: {
       version: DISCORD_INGRESS_PAYLOAD_VERSION,
-      serialize: (rawMessage, { receivedAt }) => ({ receivedAt, rawMessage }),
-      deserialize: (body) => body.rawMessage,
+      serialize: (frame, { receivedAt }) => ({ receivedAt, ...frame }),
+      deserialize: ({ rawMessage, senderAccountVerified }) => ({
+        rawMessage,
+        senderAccountVerified,
+      }),
       encode: ({ body }) => ({ version: DISCORD_INGRESS_PAYLOAD_VERSION, ...body }),
       decode: (payload, { claim }) => decodeDiscordIngressPayload(payload, claim.id),
       createClaimError: (kind) =>
@@ -173,13 +216,13 @@ export function createDiscordIngressMonitor(params: {
         ),
     },
     // Gateway mapping is intentionally delayed until after the durable claim.
-    deliver: async (rawMessage, lifecycle) => {
+    deliver: async ({ rawMessage, senderAccountVerified }, lifecycle) => {
       const event = mapGatewayDispatchData(
         params.client,
         GatewayDispatchEvents.MessageCreate,
         rawMessage,
       ) as DiscordMessageEvent; // SAFETY: MESSAGE_CREATE mapping constructs the event used by ingress.
-      return await params.dispatch(event, lifecycle);
+      return await params.dispatch(event, lifecycle, { senderAccountVerified });
     },
     pollIntervalMs: DISCORD_INGRESS_DRAIN_INTERVAL_MS,
     retention: {
@@ -246,7 +289,7 @@ export function createDiscordIngressMonitor(params: {
 
   return {
     accept: async (rawMessage) => {
-      await monitor.admit(rawMessage);
+      await monitor.admit(receiveDiscordFrame(rawMessage));
     },
     start: monitor.start,
     stop: monitor.stop,

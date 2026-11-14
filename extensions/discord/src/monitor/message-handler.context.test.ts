@@ -148,18 +148,21 @@ it("does not mark webhook posts as bots", async () => {
   expect(payload.SenderIsBot).toBeUndefined();
 });
 
-// Frond (karmaterminal, #1564): account provenance for the owner's queue protection, read from the
-// MESSAGE_CREATE author object mapped the way live delivery and durable replay map it.
+// Frond (karmaterminal, #1564): account provenance for the owner's queue protection. Durable ingress
+// decides it from the gateway frame before any ingress policy (ingress.account-provenance.test.ts);
+// the delivered message, mapped the way live delivery and replay map it, can only narrow it.
 type ProvenanceFrame = {
   author?: Partial<APIUser>;
   type?: MessageType;
   webhook_id?: string;
   pluralKit?: true;
+  withoutIngressFact?: true;
 };
 it.each<[string, ProvenanceFrame, true?]>([
   ["a user account's own message", {}, true],
   ["a user account's own reply", { type: MessageType.Reply }, true],
   ["a user account with an explicit bot: false", { author: { bot: false } }, true],
+  ["a user account's own message without the ingress fact", { withoutIngressFact: true }],
   ["a bot account", { author: { bot: true } }],
   ["an Official Discord System account", { author: { system: true } }],
   ["a webhook post with no bot flag", { webhook_id: "W1" }],
@@ -183,7 +186,12 @@ it.each<[string, ProvenanceFrame, true?]>([
   const sender = frame.pluralKit
     ? { id: "pk-member", label: "Figs (PK)", name: "Figs", isPluralKit: true }
     : undefined;
-  const payload = await context({ message, author, ...(sender ? { sender } : {}) });
+  const payload = await context({
+    message,
+    author,
+    ...(sender ? { sender } : {}),
+    ...(frame.withoutIngressFact ? {} : { senderAccountVerified: true }),
+  });
   expect(payload.SenderAccountVerified).toBe(verified);
 });
 

@@ -25,9 +25,10 @@ export function resolveDiscordWebhookId(message: DiscordWebhookMessageLike): str
 // System accounts, and omits both on other user accounts (APIUser.bot, APIUser.system); MESSAGE_CREATE
 // always carries the full author. So an ordinary message or reply whose author has neither is that
 // account's own post. A webhook post authenticates no account, and PluralKit proxies only through
-// webhooks; other message types are Discord's notices about the account, not its post.
+// webhooks; other message types are Discord's notices about the account, not its post. Durable
+// ingress applies it to the gateway frame (APIUser) before any policy runs.
 export function isDiscordAccountOwnPost(
-  author: Pick<User, "bot" | "system">,
+  author: Partial<Pick<User, "bot" | "system">>,
   message: DiscordWebhookMessageLike & { type?: MessageType },
 ): boolean {
   return (
