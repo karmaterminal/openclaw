@@ -597,7 +597,10 @@ export const AgentEntrySchema = AgentEntryBaseSchema.extend({
   skillsLimits: AgentSkillsLimitsSchema,
   contextLimits: AgentContextLimitsSchema,
   identity: IdentitySchema,
-  groupChat: GroupChatSchema.unwrap().omit({ visibleReplies: true }).optional(),
+  // Frond (karmaterminal, #1564): queue protection names the owner's accounts once, gateway-wide.
+  groupChat: GroupChatSchema.unwrap()
+    .omit({ visibleReplies: true, ownerQueueProtectionAccounts: true })
+    .optional(),
   sandbox: AgentSandboxSchema,
   tools: AgentToolsSchema,
 }).strict();

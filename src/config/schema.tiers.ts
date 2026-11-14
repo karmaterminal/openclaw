@@ -178,6 +178,8 @@ const ADVANCED_TUNING_PATHS = new Set([
   // Frond (karmaterminal, #1415): changes which room messages run with owner authority.
   "messages.groupChat.ambientOwnerAggregate",
   "messages.groupChat.ambientOwnerAggregatePeers",
+  // Frond (karmaterminal, #1564): changes whose room messages queue capacity never discards.
+  "messages.groupChat.ownerQueueProtectionAccounts",
   "session.maintenance.preserveRecent",
   "tools.github.app",
   "tools.sessions.allowThreadTargets",

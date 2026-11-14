@@ -34,6 +34,36 @@ const AmbientOwnerAggregatePeersSchema = z
     }
   });
 
+// Frond (karmaterminal, #1564): channel-prefixed sender ids in the commands.ownerAllowFrom grammar.
+// A prefix names the account's channel, so one id never matches an account on another channel.
+const OwnerQueueProtectionAccountsSchema = z.array(z.string()).superRefine((accounts, ctx) => {
+  const seen = new Set<string>();
+  for (const [index, account] of accounts.entries()) {
+    const id = account.trim();
+    const separator = id.indexOf(":");
+    if (separator <= 0 || !id.slice(separator + 1).trim()) {
+      ctx.addIssue({
+        code: "custom",
+        message: 'Owner queue protection account needs a channel prefix, e.g. "discord:<id>"',
+        path: [index],
+      });
+    } else if (id.includes("*")) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Wildcard owner queue protection account",
+        path: [index],
+      });
+    } else if (seen.has(id)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Duplicate owner queue protection account",
+        path: [index],
+      });
+    }
+    seen.add(id);
+  }
+});
+
 export const GroupChatSchema = z
   .strictObject({
     mentionPatterns: z.array(z.string()).optional(),
@@ -42,6 +72,8 @@ export const GroupChatSchema = z
     // Frond (karmaterminal, #1415): opt-in ambient owner room aggregate for the listed peers.
     ambientOwnerAggregate: z.boolean().optional(),
     ambientOwnerAggregatePeers: AmbientOwnerAggregatePeersSchema.optional(),
+    // Frond (karmaterminal, #1564): global only; agents.entries.*.groupChat omits it.
+    ownerQueueProtectionAccounts: OwnerQueueProtectionAccountsSchema.optional(),
     visibleReplies: VisibleRepliesSchema.optional(),
   })
   .optional();

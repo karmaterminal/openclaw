@@ -17,7 +17,7 @@ import {
 } from "../../../sessions/session-controller.mailbox.js";
 import { extractTextFromChatContent } from "../../../shared/chat-content.js";
 import { applyQueueDropPolicy, countPendingQueueItems } from "../../../utils/queue-helpers.js";
-import { isConfiguredCommandOwner } from "../../command-auth.js";
+import { isSenderInOwnerAllowFromList } from "../../command-auth.js";
 import { preserveAmbientOverflowContext } from "./ambient-context.js";
 import {
   createOverflowSummaryRetrySource,
@@ -304,11 +304,12 @@ const OWNER_ACCOUNT_PROVENANCE_CHANNELS: ReadonlySet<string> = new Set([
 
 // Frond (karmaterminal, #1564): queue policy for this cut, not a criterion for whose words count. The
 // configured owner's unaddressed room message, posted from the owner's own account, is not ambient
-// chatter. Ownership is the sender id in commands.ownerAllowFrom, never the wider owner bit
-// (operator.admin scope, operator profiles). The channel must also have verified that the owner's
-// own account posted it, not a bot or app account, webhook, relay or proxy speaking for it; absent or
-// ambiguous provenance is not protected. Agent and Gateway traffic, owner-listed bot accounts such as
-// the princes included, stays bounded by ordinary ambient discard and the cap on purpose: Gateway
+// chatter. The owner's accounts are the sender ids in messages.groupChat.ownerQueueProtectionAccounts,
+// which is unset (nobody protected) by default and never derived from command authority:
+// commands.ownerAllowFrom, the owner bit, operator.admin scope and operator profiles grant nothing
+// here. The channel must also have verified that the account itself posted it, not a bot or app
+// account, webhook, relay or proxy speaking for it; absent or ambiguous provenance is not protected.
+// Agent and Gateway traffic stays bounded by ordinary ambient discard and the cap on purpose: Gateway
 // error storms have flooded rooms. A designated agent lane would need its own authenticated,
 // storm-safe contract (loop and rate limits, a circuit breaker); it is not part of this policy.
 function isConfiguredOwnerAccountRoomEvent(run: FollowupRun): boolean {
@@ -317,12 +318,17 @@ function isConfiguredOwnerAccountRoomEvent(run: FollowupRun): boolean {
     run.currentInboundEventKind === "room_event" &&
     execution.senderAccountVerified === true &&
     OWNER_ACCOUNT_PROVENANCE_CHANNELS.has(execution.messageProvider ?? "") &&
-    isConfiguredCommandOwner(execution.config, {
-      channel: execution.messageProvider,
-      accountId: execution.agentAccountId,
-      senderId: execution.senderId,
-      senderE164: execution.senderE164,
-    })
+    isSenderInOwnerAllowFromList(
+      execution.config,
+      {
+        channel: execution.messageProvider,
+        accountId: execution.agentAccountId,
+        senderId: execution.senderId,
+        senderE164: execution.senderE164,
+      },
+      // Always a list: the matcher reads commands.ownerAllowFrom when given none.
+      execution.config.messages?.groupChat?.ownerQueueProtectionAccounts ?? [],
+    )
   );
 }
 

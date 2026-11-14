@@ -23,6 +23,22 @@ describe("config schema regressions", () => {
     }
   });
 
+  // Frond (karmaterminal, #1564): queue protection accounts, global only.
+  it("accepts channel-prefixed owner queue protection accounts, globally and nowhere else", () => {
+    const accepts = (accounts: unknown[]) =>
+      OpenClawSchema.safeParse({
+        messages: { groupChat: { ownerQueueProtectionAccounts: accounts } },
+      }).success;
+    expect(accepts([])).toBe(true);
+    expect(accepts(["discord:123456789012345678", "slack:U123", "telegram:42"])).toBe(true);
+    const refused = [["123456789012345678"], [42], [":42"], ["discord: "], ["discord:*"]];
+    for (const accounts of [...refused, ["discord:42", " discord:42 "]]) {
+      expect(accepts(accounts)).toBe(false);
+    }
+    const agent = { groupChat: { ownerQueueProtectionAccounts: ["discord:42"] } };
+    expect(OpenClawSchema.safeParse({ agents: { entries: { main: agent } } }).success).toBe(false);
+  });
+
   it("accepts markdown table block mode", () => {
     expect(MarkdownConfigSchema.parse({ tables: "block" })).toEqual({ tables: "block" });
   });

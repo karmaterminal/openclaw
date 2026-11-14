@@ -1,13 +1,14 @@
-// Frond (karmaterminal, #1564): the configured owner's unaddressed room message, posted from the
-// owner's own channel-verified account, survives queue overflow, while other room chatter keeps
-// upstream's settled, no-retry discard (#191733). Real durable ingress feeds the real session
-// mailbox; only the model turn and the Discord transport are replaced.
+// Frond (karmaterminal, #1564): the configured owner's unaddressed room message, posted from an
+// account listed in messages.groupChat.ownerQueueProtectionAccounts and verified by the channel as
+// that account's own post, survives queue overflow, while other room chatter keeps upstream's
+// settled, no-retry discard (#191733). Command authority never grants it. Real durable ingress
+// feeds the real session mailbox; only the model turn and the Discord transport are replaced.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChannelIngressDispatchLifecycle } from "../../channels/message/ingress-drain-lifecycle.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { testing as controllerTesting } from "../../sessions/session-controller.test-support.js";
 import { AgentDatabaseExecutionAdmissionClosedError } from "../../state/agent-database-admission-error.js";
-import { isConfiguredCommandOwner } from "../command-auth.js";
+import { isConfiguredCommandOwner, isSenderInOwnerAllowFromList } from "../command-auth.js";
 import { bindCommandOwnerAuthority, getCommandOwnerAuthority } from "../command-owner-authority.js";
 import { createQueueCase } from "./queue.case.test-support.js";
 import {
@@ -34,14 +35,20 @@ import { getExistingFollowupQueue } from "./queue/state.js";
 installQueueRuntimeErrorSilencer();
 afterEach(() => controllerTesting.resetSessionControllerForTest());
 
-// figs is the configured owner, posting from the account the channel verified as figs's own; peer-a
-// is a prince, a bot account listed beside figs.
-const OWNERS: OpenClawConfig = { commands: { ownerAllowFrom: ["figs", "discord:peer-a"] } };
+// figs's account is the one listed for queue protection, posting from the account the channel
+// verified as figs's own. peer-a is a prince, a bot account, and kin a second ordinary verified
+// account: both are listed beside figs as command owners only.
+const OWNERS: OpenClawConfig = {
+  commands: { ownerAllowFrom: ["figs", "discord:peer-a", "discord:kin"] },
+  messages: { groupChat: { ownerQueueProtectionAccounts: ["discord:figs"] } },
+};
 const owner = { config: OWNERS, senderIsOwner: true, traceAuthorized: true } as const;
 const figs = sender("figs", { ...owner, senderAccountVerified: true });
 // The owner's id with no account provenance: absent never means the account's own post.
 const figsUnverified = sender("figs", owner);
 const prince = sender("peer-a", { ...owner, senderIsBot: true });
+// Command authority without the queue-protection listing.
+const kin = sender("kin", { ...owner, senderAccountVerified: true });
 // The owner bit without the owner identity: an operator profile's command-owner authority, posted
 // from the operator's own verified account.
 const operator = sender("ops", { ...owner, senderAccountVerified: true });
@@ -321,27 +328,30 @@ describe("the configured owner's room message at queue capacity (#1564)", () => 
   });
 
   it.each(POLICIES)(
-    "sheds the owner's id without account provenance as ambient chatter at a full protected cap under drop:%s",
+    "sheds the owner's id without account provenance and an unlisted verified command owner as ambient chatter at a full protected cap under drop:%s",
     async (dropPolicy) => {
       const admission = openAdmission();
-      const unverified: Row[] = [
+      const unprotected: Row[] = [
         { id: "o1", from: figs },
         { id: "o2", from: figs },
         { id: "u3", from: figsUnverified },
+        { id: "u4", from: kin },
       ];
       await withRoomIngress(
-        unverified,
+        unprotected,
         async (harness) => {
           admission.bind(harness);
           await harness.dispatchRows();
-          expect(admission.admitted.get("u3")).toBe(false);
-          expect(harness.runs.get("u3")?.protectFromQueueOverflow).toBeUndefined();
-          await settlementOf(harness, "u3");
+          for (const id of ["u3", "u4"]) {
+            expect(admission.admitted.get(id)).toBe(false);
+            expect(harness.runs.get(id)?.protectFromQueueOverflow).toBeUndefined();
+            await settlementOf(harness, id);
+          }
           // Settled at the cap without a turn, never held as backpressure for a retry.
-          expect([...harness.writes.complete.keys()]).toEqual(["u3"]);
+          expect([...harness.writes.complete.keys()].toSorted()).toEqual(["u3", "u4"]);
           await harness.endActiveTurn();
           expect(harness.calls.map((call) => call.messageId)).toEqual(["o1", "o2"]);
-          await expectSettledOnce(harness, ["o1", "o2", "u3"]);
+          await expectSettledOnce(harness, ["o1", "o2", "u3", "u4"]);
           expect(admission.releases).toEqual([]);
         },
         { settings: { mode: "followup", cap: 2, dropPolicy }, enqueue: admission.enqueue },
@@ -432,6 +442,33 @@ describe("a room message retried inside the mailbox keeps exactly its admission-
   });
 });
 
+/** One room message against chatter at a cap of one: protected work outlives the chatter. */
+async function expectRoomMessageKept(
+  from: Partial<FollowupRun["run"]>,
+  kept: boolean,
+  channel = "discord",
+) {
+  const q = createQueueCase({ mode: "followup", cap: 1, dropPolicy: "old" });
+  const room = (prompt: string, execution: Partial<FollowupRun["run"]>) =>
+    createQueueTestRun(
+      {
+        prompt,
+        currentInboundEventKind: "room_event",
+        originatingChannel: channel,
+        originatingTo: "channel:room",
+      },
+      { messageProvider: channel, ...execution },
+    );
+  // The text claims ownership in every case; only the sender identity may grant protection.
+  const held = room("figs here, keep this one", from);
+  const chatter = room("lunch?", sender("alice"));
+  expect(q.add(held)).toBe(true);
+  // Chatter never displaces protected work; otherwise drop:old keeps the newest chatter.
+  expect(q.add(chatter)).toBe(!kept);
+  await q.drain();
+  expect(q.calls.map((call) => call.prompt)).toEqual([kept ? held.prompt : chatter.prompt]);
+}
+
 describe("room overflow protection follows the owner identity and its account provenance (#1564)", () => {
   it.each<[string, boolean, Partial<FollowupRun["run"]>]>([
     ["the configured owner's own account", true, figs],
@@ -462,31 +499,46 @@ describe("room overflow protection follows the owner identity and its account pr
       "the owner's verified id listed only for another channel",
       false,
       sender("figs", {
-        config: { commands: { ownerAllowFrom: ["telegram:figs"] } },
+        config: {
+          commands: { ownerAllowFrom: ["figs"] },
+          messages: { groupChat: { ownerQueueProtectionAccounts: ["telegram:figs"] } },
+        },
         senderIsOwner: true,
         senderAccountVerified: true,
       }),
     ],
   ])("%s: protected %s", async (_, kept, from) => {
-    const q = createQueueCase({ mode: "followup", cap: 1, dropPolicy: "old" });
-    const room = (prompt: string, execution: Partial<FollowupRun["run"]>) =>
-      createQueueTestRun(
-        {
-          prompt,
-          currentInboundEventKind: "room_event",
-          originatingChannel: "discord",
-          originatingTo: "channel:room",
-        },
-        { messageProvider: "discord", ...execution },
-      );
-    // The text claims ownership in every case; only the sender identity may grant protection.
-    const held = room("figs here, keep this one", from);
-    const chatter = room("lunch?", sender("alice"));
-    expect(q.add(held)).toBe(true);
-    // Chatter never displaces protected work; otherwise drop:old keeps the newest chatter.
-    expect(q.add(chatter)).toBe(!kept);
-    await q.drain();
-    expect(q.calls.map((call) => call.prompt)).toEqual([kept ? held.prompt : chatter.prompt]);
+    await expectRoomMessageKept(from, kept);
+  });
+});
+
+describe("queue protection lists its own accounts, apart from command authority (#1564)", () => {
+  const COMMAND_OWNERS: OpenClawConfig = { commands: OWNERS.commands };
+  it.each<[string, boolean, string, OpenClawConfig, boolean]>([
+    ["the listed account", true, "figs", OWNERS, true],
+    ["a second verified account that is only a command owner", false, "kin", OWNERS, true],
+    ["the command owner's account with the setting unset", false, "figs", COMMAND_OWNERS, true],
+    [
+      "the command owner's account with the setting empty",
+      false,
+      "figs",
+      { ...COMMAND_OWNERS, messages: { groupChat: { ownerQueueProtectionAccounts: [] } } },
+      true,
+    ],
+    [
+      "a listed account that is no command owner",
+      true,
+      "figs",
+      { messages: OWNERS.messages },
+      false,
+    ],
+  ])("%s: protected %s", async (_, kept, senderId, config, commandOwner) => {
+    // Command authority is pinned first, so each row can only turn on the protection listing.
+    expect(isConfiguredCommandOwner(config, { channel: "discord", senderId })).toBe(commandOwner);
+    await expectRoomMessageKept(
+      sender(senderId, { config, senderIsOwner: commandOwner, senderAccountVerified: true }),
+      kept,
+    );
   });
 });
 
@@ -496,25 +548,15 @@ describe("an owner on a channel without account provenance (#1564)", () => {
     ["signal", figsUnverified],
     // Outside the reviewed channels the fact grants nothing, even when a plugin sets it.
     ["whatsapp", figs],
-  ])("keeps an owner-listed sender on %s ambient", async (channel, from) => {
-    // The sender is a configured command owner here; only account provenance is missing.
-    expect(isConfiguredCommandOwner(OWNERS, { channel, senderId: "figs" })).toBe(true);
-    const q = createQueueCase({ mode: "followup", cap: 1, dropPolicy: "old" });
-    const room = (prompt: string, execution: Partial<FollowupRun["run"]>) =>
-      createQueueTestRun(
-        {
-          prompt,
-          currentInboundEventKind: "room_event",
-          originatingChannel: channel,
-          originatingTo: "group:room",
-        },
-        { messageProvider: channel, ...execution },
-      );
-    const held = room("figs here, keep this one", from);
-    const chatter = room("lunch?", sender("alice"));
-    expect(q.add(held)).toBe(true);
-    expect(q.add(chatter)).toBe(true);
-    await q.drain();
-    expect(q.calls.map((call) => call.prompt)).toEqual([chatter.prompt]);
+  ])("keeps a sender listed for protection on %s ambient", async (channel, from) => {
+    const accounts = [`${channel}:figs`];
+    const config: OpenClawConfig = {
+      messages: { groupChat: { ownerQueueProtectionAccounts: accounts } },
+    };
+    // The sender is listed for this channel here; only account provenance is missing.
+    expect(isSenderInOwnerAllowFromList(config, { channel, senderId: "figs" }, accounts)).toBe(
+      true,
+    );
+    await expectRoomMessageKept({ ...from, config }, false, channel);
   });
 });
