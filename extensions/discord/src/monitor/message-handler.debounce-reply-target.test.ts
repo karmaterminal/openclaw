@@ -26,9 +26,7 @@ function createTextMessageData(messageId: string, channelId = "ch-1") {
   };
 }
 
-it("keeps replies to a different message out of an ordinary debounced batch", async () => {
-  const params = createDiscordHandlerParams();
-  params.cfg.messages = { inbound: { debounceMs: 20 } };
+function stageQueuedPreflight() {
   preflightDiscordMessageMock.mockImplementation(
     async (preflightParams: { data: ReturnType<typeof createTextMessageData> }) => ({
       ...createDiscordQueuePreflightContext(preflightParams.data.channel_id),
@@ -36,6 +34,12 @@ it("keeps replies to a different message out of an ordinary debounced batch", as
       messageText: preflightParams.data.message.content,
     }),
   );
+}
+
+it("keeps replies to a different message out of an ordinary debounced batch", async () => {
+  const params = createDiscordHandlerParams();
+  params.cfg.messages = { inbound: { debounceMs: 20 } };
+  stageQueuedPreflight();
   const handler = createDiscordMessageHandler(params);
   const ordinary = createTextMessageData("m-ordinary");
   const reply = createTextMessageData("m-other-bot-reply");
@@ -60,4 +64,26 @@ it("keeps replies to a different message out of an ordinary debounced batch", as
     { data: { message: { content: "hello" } } },
   ]);
   expect(processDiscordMessageMock).toHaveBeenCalledTimes(2);
+});
+
+// Frond (karmaterminal, #1564): a debounced batch is the account's own post only when every message
+// in it is, for example a row stored before ingress recorded provenance, batched with a live one.
+it.each<[string, Array<true | undefined>, true | undefined]>([
+  ["every message carries it", [true, true], true],
+  ["an earlier message lacks it", [undefined, true], undefined],
+  ["a later message lacks it", [true, undefined], undefined],
+])("marks a debounced batch's account provenance when %s", async (_, facts, expected) => {
+  const params = createDiscordHandlerParams();
+  params.cfg.messages = { inbound: { debounceMs: 20 } };
+  stageQueuedPreflight();
+  const handler = createDiscordMessageHandler(params);
+  for (const [index, senderAccountVerified] of facts.entries()) {
+    await handler(createTextMessageData(`m-${index}`) as never, {} as never, {
+      senderAccountVerified,
+    });
+  }
+  await expect.poll(() => preflightDiscordMessageMock.mock.calls.length).toBe(1);
+  const [preflight] = preflightDiscordMessageMock.mock.calls[0] ?? [];
+  expect(preflight).toMatchObject({ precedingMessages: [{ id: "m-0" }] });
+  expect(preflight.senderAccountVerified).toBe(expected);
 });
