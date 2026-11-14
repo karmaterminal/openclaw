@@ -324,13 +324,13 @@ describe("the configured owner's room message at queue capacity (#1564)", () => 
     "sheds the owner's id without account provenance as ambient chatter at a full protected cap under drop:%s",
     async (dropPolicy) => {
       const admission = openAdmission();
-      const rows: Row[] = [
+      const unverified: Row[] = [
         { id: "o1", from: figs },
         { id: "o2", from: figs },
         { id: "u3", from: figsUnverified },
       ];
       await withRoomIngress(
-        rows,
+        unverified,
         async (harness) => {
           admission.bind(harness);
           await harness.dispatchRows();

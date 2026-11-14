@@ -20,6 +20,7 @@ import type {
   TelegramMediaRef,
   TelegramMessageContextSessionRuntime,
 } from "./bot-message-context.types.js";
+import { buildTelegramSenderFacts } from "./bot/body-helpers.js";
 import {
   buildGroupLabel,
   buildSenderLabel,
@@ -513,20 +514,11 @@ export async function buildTelegramInboundContextPayload(
     messageId,
     timestamp: messageTimestamp,
     from: telegramFrom,
-    sender: {
-      ...(senderId ? { id: senderId } : {}),
+    sender: buildTelegramSenderFacts(msg, {
+      id: senderId,
       name: senderName,
-      username: senderUsername || undefined,
-      isBot: msg.from?.is_bot,
-      // Frond (karmaterminal, #1564): account provenance for the owner's queue protection. The Bot
-      // API's User.is_bot is required, so `false` names a user account. A message sent on behalf of
-      // a chat (sender_chat: anonymous administrators, linked channels and their automatic forwards)
-      // carries a stand-in `from`, and a business bot can send for the account itself.
-      accountVerified:
-        msg.from?.is_bot === false && !msg.sender_chat && !msg.sender_business_bot
-          ? true
-          : undefined,
-    },
+      username: senderUsername,
+    }),
     conversation: {
       avatar: params.conversationAvatar,
       kind: conversationKind,

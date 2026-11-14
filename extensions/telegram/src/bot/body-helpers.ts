@@ -39,6 +39,27 @@ export function buildSenderName(msg: Message) {
   return name || undefined;
 }
 
+/** The inbound context's sender facts for one message. */
+export function buildTelegramSenderFacts(
+  msg: Message,
+  sender: { id: string; name?: string; username?: string },
+) {
+  return {
+    ...(sender.id ? { id: sender.id } : {}),
+    name: sender.name,
+    username: sender.username || undefined,
+    isBot: msg.from?.is_bot,
+    // Frond (karmaterminal, #1564): account provenance for the owner's queue protection. The Bot
+    // API's User.is_bot is required, so `false` names a user account. A message sent on behalf of a
+    // chat (sender_chat: anonymous administrators, linked channels and their automatic forwards)
+    // carries a stand-in `from`, and a business bot can send for the account itself.
+    accountVerified:
+      msg.from?.is_bot === false && !msg.sender_chat && !msg.sender_business_bot
+        ? (true as const)
+        : undefined,
+  };
+}
+
 export function resolveTelegramPrimaryMedia(
   msg: TelegramMediaMessage | undefined | null,
 ): TelegramPrimaryMedia | undefined {
