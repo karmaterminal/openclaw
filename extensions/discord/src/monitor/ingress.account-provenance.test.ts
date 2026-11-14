@@ -74,10 +74,41 @@ const withoutBotFlag = (message: Frame) => ({
   ...message,
   author: { id: message.author.id, username: message.author.username },
 });
-const otherAuthor = (message: Frame) => ({
+// A privacy policy that pseudonymizes the author: the raw id must never reach storage either.
+const pseudonymized = (message: Frame) => ({
   ...message,
-  author: { ...message.author, id: "user-2" },
+  author: { id: "anon-7f3a", username: "anon", discriminator: "0", avatar: null },
 });
+
+type Payload = Parameters<DiscordQueue["enqueue"]>[1];
+
+/** Real queue and real preflight; `seen` records each delivery's inbound facts. */
+async function withProvenanceQueue(run: (queue: DiscordQueue, seen: Seen[]) => Promise<void>) {
+  preflightMock.mockImplementation((params: DiscordMessagePreflightParams) =>
+    realPreflight(params),
+  );
+  const seen: Seen[] = [];
+  await withOpenClawTestState(
+    { layout: "state-only", prefix: "openclaw-discord-provenance-", applyEnv: false },
+    async ({ stateDir }) => {
+      const queue = createChannelIngressQueueForTests<Payload>({
+        channelId: "discord",
+        accountId: "default",
+        stateDir,
+      });
+      await run(queue, seen);
+    },
+  );
+  return seen;
+}
+
+/** Records one delivery's inbound facts, then completes its turn. */
+function recordAndAdopt(seen: Seen[]) {
+  processMessage.mockImplementationOnce(async (ctx: DiscordMessagePreflightContext) => {
+    seen.push(await seenBy(ctx));
+    await ctx.turnAdoptionLifecycle?.onAdopted();
+  });
+}
 
 it.each<[string, { id: string; bot: boolean }, ((m: Frame) => unknown) | undefined, Seen]>([
   [
@@ -100,10 +131,10 @@ it.each<[string, { id: string; bot: boolean }, ((m: Frame) => unknown) | undefin
     { sender: "bot-1" },
   ],
   [
-    "a policy rebuild of a user account's frame naming another author",
+    "a privacy policy's pseudonymized author of a user account's frame",
     { id: "user-1", bot: false },
-    otherAuthor,
-    { sender: "user-2" },
+    pseudonymized,
+    { sender: "anon-7f3a" },
   ],
 ])(
   "carries the provenance of %s through storage and a restart",
@@ -120,47 +151,56 @@ it.each<[string, { id: string; bot: boolean }, ((m: Frame) => unknown) | undefin
         ]),
       );
     }
-    preflightMock.mockImplementation((params: DiscordMessagePreflightParams) =>
-      realPreflight(params),
-    );
-    const seen: Seen[] = [];
-    let stored: Parameters<DiscordQueue["enqueue"]>[1] | undefined;
-    await withOpenClawTestState(
-      { layout: "state-only", prefix: "openclaw-discord-provenance-", applyEnv: false },
-      async ({ stateDir }) => {
-        const queue = createChannelIngressQueueForTests<Parameters<DiscordQueue["enqueue"]>[1]>({
-          channelId: "discord",
-          accountId: "default",
-          stateDir,
+    let stored: Payload | undefined;
+    const seen = await withProvenanceQueue(async (queue, deliveries) => {
+      // The first delivery is still running when the Gateway stops; the row replays after restart.
+      processMessage.mockImplementationOnce(async (ctx: DiscordMessagePreflightContext) => {
+        deliveries.push(await seenBy(ctx));
+        await new Promise((resolve) => {
+          ctx.abortSignal?.addEventListener("abort", resolve);
         });
-        // The first delivery is still running when the Gateway stops; the row replays after restart.
-        processMessage.mockImplementationOnce(async (ctx: DiscordMessagePreflightContext) => {
-          seen.push(await seenBy(ctx));
-          await new Promise((resolve) => {
-            ctx.abortSignal?.addEventListener("abort", resolve);
-          });
-        });
-        const first = openHandler(queue);
-        await first(frame(author), {} as never);
-        await vi.waitFor(() => expect(seen).toHaveLength(1));
-        await first.deactivate();
-        stored = (await queue.listPending())[0]?.payload;
-        processMessage.mockImplementationOnce(async (ctx: DiscordMessagePreflightContext) => {
-          seen.push(await seenBy(ctx));
-          await ctx.turnAdoptionLifecycle?.onAdopted();
-        });
-        const second = openHandler(queue);
-        try {
-          await vi.waitFor(() => expect(seen).toHaveLength(2));
-        } finally {
-          await second.deactivate();
-        }
-      },
-    );
+      });
+      const first = openHandler(queue);
+      await first(frame(author), {} as never);
+      await vi.waitFor(() => expect(deliveries).toHaveLength(1));
+      await first.deactivate();
+      stored = (await queue.listPending())[0]?.payload;
+      recordAndAdopt(deliveries);
+      const second = openHandler(queue);
+      try {
+        await vi.waitFor(() => expect(deliveries).toHaveLength(2));
+      } finally {
+        await second.deactivate();
+      }
+    });
     expect(seen).toEqual([expected, expected]);
     // The stored row carries the host's fact beside the frame, never inside it.
     expect(stored).toMatchObject({ rawMessage: { author: { id: expected.sender } } });
     expect(stored?.senderAccountVerified).toBe(expected.verified);
     expect(stored?.rawMessage).not.toHaveProperty("senderAccountVerified");
+    expect(JSON.stringify(stored).includes(author.id)).toBe(expected.sender === author.id);
   },
 );
+
+// Rows admitted before ingress recorded provenance carry none, so an upgrade replays them unverified.
+it("replays a user account's row stored before ingress recorded provenance as unverified", async () => {
+  const seen = await withProvenanceQueue(async (queue, deliveries) => {
+    const rawMessage = frame({ id: "user-1", bot: false });
+    await queue.enqueue(
+      rawMessage.id,
+      { version: 1, receivedAt: Date.now(), rawMessage },
+      {
+        laneKey: "channel:room",
+        receivedAt: Date.now(),
+      },
+    );
+    recordAndAdopt(deliveries);
+    const handler = openHandler(queue);
+    try {
+      await vi.waitFor(() => expect(deliveries).toHaveLength(1));
+    } finally {
+      await handler.deactivate();
+    }
+  });
+  expect(seen).toEqual([{ sender: "user-1" }]);
+});
