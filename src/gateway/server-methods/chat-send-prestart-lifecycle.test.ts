@@ -69,19 +69,15 @@ function findInput(fixture: QueuedFixture) {
 /** Live requests bind their admitting Gateway; shutdown captures only that Gateway's work. */
 function admittingGateway(fixture: QueuedFixture) {
   const resolveGatewayContext: GatewayContextResolver = () => fixture.context;
-  let closed: Promise<void> | undefined;
+  let closing: ReturnType<typeof prepareGatewayRunShutdown> | undefined;
   /** The Gateway close path: snapshot running owners, write markers, then cancel captured work. */
-  const shutdown = () =>
-    (closed ??= (async () => {
-      const { failure, released } = await prepareGatewayRunShutdown({
-        resolveGatewayContext,
-        warnings: [],
-        persistRunningSessionsForRestart: (signal) =>
-          persistRunningSessionsForRestart({ cfg: {}, signal }),
-      });
-      expect(failure).toBeUndefined();
-      await released;
-    })());
+  const close = () =>
+    (closing ??= prepareGatewayRunShutdown({
+      resolveGatewayContext,
+      warnings: [],
+      persistRunningSessionsForRestart: (signal) =>
+        persistRunningSessionsForRestart({ cfg: {}, signal }),
+    }));
   return {
     send: () =>
       fixture.send(undefined, undefined, fixture.params, (options) =>
@@ -90,9 +86,16 @@ function admittingGateway(fixture: QueuedFixture) {
           () => handleChatSend(options),
         ),
       ),
-    shutdown,
-    // A drain-held input never settles on its own; a failed case still shuts it down.
-    [Symbol.asyncDispose]: shutdown,
+    shutdown: async () => {
+      const { failure, released } = await close();
+      expect(failure).toBeUndefined();
+      await released;
+    },
+    // A drain-held input never settles on its own. A case that failed before shutdown still
+    // cancels it here; its assertion, not this cleanup's outcome, is that case's failure.
+    [Symbol.asyncDispose]: async () => {
+      await (await close()).released.catch(() => {});
+    },
   };
 }
 
