@@ -139,6 +139,41 @@ Gateway followup and collect debounce windows measure elapsed time, so wall-cloc
 
 The queue uses a built-in 500ms debounce. `cap` defaults to `20`, and `drop` defaults to `summarize`.
 
+### Owner room messages at capacity
+
+The configured owner's own room messages are not shed as ambient events. A room
+event whose sender is listed in `commands.ownerAllowFrom` is protected at
+capacity when its channel verified, from platform account metadata, that the
+owner's own account posted it: not a bot or app account, and not a webhook,
+relay, proxy, or chat posting on the account's behalf. Absent or ambiguous
+provenance is not protected. A refusal at a cap full of protected work is
+retryable backpressure under every `drop` policy and spends no retry attempt;
+durable ingress paces the retry (1 second, doubling to 3 minutes). The owner bit
+alone (operator profiles, `operator.admin`) grants no protection, and messages
+that mention the agent keep the usual capacity rules.
+
+Discord, Slack, and Telegram verify account provenance:
+
+- Discord: an ordinary message or reply whose author has no `bot` or `system`
+  flag, and that is not a webhook post. PluralKit proxies post through webhooks,
+  so they are not protected.
+- Slack: a native Socket Mode or signed HTTP event delivery, without `bot_id`.
+  Relay deliveries are not protected.
+- Telegram: a message whose sender has `is_bot: false`, without `sender_chat`
+  (anonymous administrators, linked channels, automatic forwards) or
+  `sender_business_bot`.
+
+Every other channel is unsupported, and an owner-listed sender there stays
+ambient. This includes Feishu and Mattermost, whose bot flags are not reviewed as
+account provenance, and channels with no such signal, such as iMessage, IRC,
+LINE, Microsoft Teams, Signal, SMS, and WhatsApp.
+
+This is queue policy, not a judgment about whose messages count. Agent and
+Gateway traffic, owner-listed bot accounts included, stays bounded by ordinary
+ambient discard and the cap on purpose, because Gateway error storms can flood a
+room. A designated agent lane would need its own authenticated, storm-safe
+contract (loop and rate limits, a circuit breaker); OpenClaw does not provide one.
+
 ## Steer and streaming
 
 When channel streaming is `partial` or `block`, steering can look like several short visible replies while the active run reaches runtime boundaries:

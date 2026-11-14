@@ -1236,9 +1236,9 @@ export async function prepareSlackMessage(params: {
       displayLabel: senderName,
       isBot: isBotMessage || undefined,
       // Frond (karmaterminal, #1564): account provenance for the owner's queue protection: a native
-      // delivery Slack signed (senderAuthentication "verified") of a message without bot_id, whose
-      // sender is then its user. Relay frames and assistant metadata assert their sender, and bot,
-      // app and workflow posts carry bot_id.
+      // Socket Mode or signed HTTP delivery (senderAuthentication "verified") of a message without
+      // bot_id, whose sender is then its user. Relay frames and assistant metadata assert their
+      // sender, and bot, app and workflow posts carry bot_id.
       accountVerified: opts.senderAuthentication === "verified" && !isBotMessage ? true : undefined,
     },
     conversation: {
