@@ -11,7 +11,6 @@ import {
   runWithCronCreatorAuthorityCapability,
   isFreshChannelCronAuthorityTurn,
 } from "../../agents/cron-creator-authority-context.js";
-import { resolveFastModeState } from "../../agents/fast-mode.js";
 import { runAgentHarnessBeforeMessageWriteHook } from "../../agents/harness/hook-helpers.js";
 import { bindReplyInputChannel } from "../../agents/harness/host-private-capabilities.js";
 import { resolveOwnerPromptNumbers } from "../../agents/owner-display.js";
@@ -51,6 +50,7 @@ import { resolveReplyScheduledToolPolicy } from "./agent-runner-run-params.js";
 import { resolveCurrentTurnImages } from "./current-turn-images.js";
 import { resolveEffectiveReplyRoute } from "./effective-reply-route.js";
 import type { PreparedReplyRunAdmission } from "./get-reply-run-admission.js";
+import { resolveReplyRunFastMode } from "./get-reply-run-fast-mode.js";
 import {
   buildPersistedMediaImageLayout,
   suppressUnresolvedPromptMedia,
@@ -590,29 +590,15 @@ export async function executePreparedReplyRun(
       thinkingExplicit: params.thinkingExplicit,
       cyberAccessProgram: preparedSessionState.sessionEntry?.cyberAccessProgram,
       thinkLevelOverride,
-      ...(() => {
-        if (useFastReplyRuntime) {
-          return { fastMode: false, fastModeAutoOnSeconds: undefined, fastModeOverride: true };
-        }
-        const fastModeState = resolveFastModeState({
-          cfg,
-          provider,
-          model,
-          agentId,
-          sessionEntry: preparedSessionState.sessionEntry,
-        });
-        return {
-          fastMode: params.resolvedFastModeOverride
-            ? params.resolvedFastMode
-            : fastModeState.requestMode,
-          fastModeAutoOnSeconds:
-            params.resolvedFastModeAutoOnSeconds ?? fastModeState.fastAutoOnSeconds,
-          ...(params.resolvedFastModeOverride ? { fastModeOverride: true } : {}),
-          ...(params.resolvedFastModeAutoOnSecondsOverride
-            ? { fastModeAutoOnSecondsOverride: true }
-            : {}),
-        };
-      })(),
+      ...resolveReplyRunFastMode({
+        useFastReplyRuntime,
+        cfg,
+        provider,
+        model,
+        agentId,
+        sessionEntry: preparedSessionState.sessionEntry,
+        params,
+      }),
       verboseLevel: resolvedVerboseLevel,
       reasoningLevel: resolvedReasoningLevel,
       elevatedLevel: resolvedElevatedLevel,

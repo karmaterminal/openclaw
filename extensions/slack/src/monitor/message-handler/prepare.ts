@@ -38,7 +38,6 @@ import { logVerbose, shouldLogVerbose } from "openclaw/plugin-sdk/runtime-env";
 import { resolvePinnedMainDmOwnerFromAllowlist } from "openclaw/plugin-sdk/security-runtime";
 import { getSessionEntryAsync, resolveStorePath } from "openclaw/plugin-sdk/session-store-runtime";
 import {
-  asOptionalRecord as asRecord,
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalString,
 } from "openclaw/plugin-sdk/string-coerce-runtime";
@@ -53,7 +52,6 @@ import { sendMessageSlack } from "../../send.js";
 import { formatSlackTarget } from "../../target-parsing.js";
 import type { SlackFile, SlackMessageEvent } from "../../types.js";
 import { normalizeSlackAllowOwnerEntry } from "../allow-list.js";
-import { readSlackAssistantThreadContext } from "../assistant-thread-context.js";
 import {
   authorizeSlackBotRoomMessage,
   resolveSlackCommandIngress,
@@ -65,11 +63,9 @@ import {
   buildSlackAssistantThreadMetadata,
   normalizeSlackChannelType,
   resolveSlackChatType,
-  type SlackAssistantThreadContext,
   type SlackMonitorContext,
 } from "../context.js";
 import { authorizeSlackDirectMessage } from "../dm-auth.js";
-import type { SlackEventScope } from "../event-scope.js";
 import { getOrCreateWeakOwnerMap } from "../lru-map-cache.js";
 import type { SlackMediaResult } from "../media-types.js";
 import { escapeSlackMrkdwn } from "../mrkdwn.js";
@@ -83,6 +79,11 @@ import {
   resolveSlackPreflightAudioTranscript,
   sendSlackPreflightAudioTranscriptEcho,
 } from "./preflight-audio.js";
+import {
+  hasSlackAssistantThreadMetadata,
+  resolveSlackMessageAssistantThreadContext,
+  restoreSlackAssistantThreadContextFromMetadata,
+} from "./prepare-assistant-thread.js";
 import { resolveSlackMessageContent } from "./prepare-content.js";
 import { resolveSlackDmHistoryContext, resolveSlackDmHistoryLimit } from "./prepare-dm-history.js";
 import { resolveSlackRoomHistory } from "./prepare-room-history.js";
@@ -105,64 +106,6 @@ const SLACK_SUBTEAM_MENTION_RE = /<!subteam\^([^>|]+)(?:\|[^>]+)?>/g;
 const SLACK_SUBTEAM_MENTION_MARKER = "<!subteam^";
 const SLACK_CHANNEL_ACCESS_DOCS_URL =
   "https://docs.openclaw.ai/channels/slack#access-control-and-routing";
-
-function hasSlackAssistantThreadMetadata(
-  context: Omit<SlackAssistantThreadContext, "updatedAt"> | undefined,
-): boolean {
-  return Boolean(context?.channelId || context?.teamId || context?.enterpriseId !== undefined);
-}
-
-function resolveSlackMessageAssistantThreadContext(
-  message: SlackMessageEvent,
-): Omit<SlackAssistantThreadContext, "updatedAt"> | undefined {
-  const thread = asRecord(message.assistant_thread);
-  if (!thread) {
-    return undefined;
-  }
-  const context = asRecord(thread.context);
-  const assistantChannelId = normalizeOptionalString(thread.channel_id) ?? message.channel;
-  const threadTs = normalizeOptionalString(thread.thread_ts) ?? message.thread_ts ?? message.ts;
-  if (!assistantChannelId || !threadTs) {
-    return undefined;
-  }
-  return {
-    assistantChannelId,
-    threadTs,
-    channelId: normalizeOptionalString(context?.channel_id),
-    teamId: normalizeOptionalString(context?.team_id),
-    enterpriseId:
-      context?.enterprise_id === null ? null : normalizeOptionalString(context?.enterprise_id),
-  };
-}
-
-async function restoreSlackAssistantThreadContextFromMetadata(params: {
-  ctx: SlackMonitorContext;
-  message: SlackMessageEvent;
-  eventScope?: SlackEventScope;
-}): Promise<Omit<SlackAssistantThreadContext, "updatedAt"> | undefined> {
-  const threadTs = params.message.thread_ts;
-  const parentUserId = params.message.parent_user_id?.trim();
-  if (
-    !params.message.channel ||
-    !threadTs ||
-    !parentUserId ||
-    (parentUserId !== params.ctx.botUserId && parentUserId !== params.ctx.botId)
-  ) {
-    return undefined;
-  }
-  try {
-    return await readSlackAssistantThreadContext({
-      client: params.eventScope?.client ?? params.ctx.app.client,
-      channelId: params.message.channel,
-      threadTs,
-    });
-  } catch (err) {
-    logVerbose(
-      `slack assistant context restore failed channel=${params.message.channel} ts=${threadTs}: ${formatErrorMessage(err)}`,
-    );
-  }
-  return undefined;
-}
 
 function resolveCachedMentionRegexes(
   ctx: SlackMonitorContext,

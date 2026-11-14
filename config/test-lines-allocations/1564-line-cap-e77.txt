@@ -1,0 +1,2 @@
+43
+# Line-cap ratchet repair against 401a1de38b (karmaterminal/openclaw#1564): the Slack account-provenance cases move from prepare.test.ts into prepare.account-provenance.test.ts, and the stalled-parent assertions move from update-managed-service-handoff-boundary.test-support.ts into update-managed-service-handoff-parent.test-support.ts. The growth is only the new homes' imports, system-event mock, inlined fixture setup and helper signature; no test case or assertion is added or removed. Measured net test-line growth against e77bb64b0e is 43.

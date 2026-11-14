@@ -1,3 +1,4 @@
+import { resolveAgentConfig } from "openclaw/plugin-sdk/agent-runtime";
 import { logTypingFailure } from "openclaw/plugin-sdk/channel-feedback";
 import {
   createChannelMessageReplyPipeline,
@@ -40,6 +41,41 @@ export function formatDiscordReasoningQuote(quoteText: string): string | undefin
   }
   lines[0] = `🧠 ${lines[0]}`;
   return lines.map((line) => `> ${line}`).join("\n");
+}
+
+/** Reasoning delivery follows the session /reasoning level, not streaming config. */
+export async function resolveDiscordReasoningLevel({
+  cfg,
+  agentId,
+  sessionKey,
+}: {
+  cfg: DiscordMessagePreflightContext["cfg"];
+  agentId: DiscordMessagePreflightContext["route"]["agentId"];
+  sessionKey: string | undefined;
+}): Promise<"on" | "stream" | "off"> {
+  const agentEntryDefault = resolveAgentConfig(cfg, agentId ?? "main")?.reasoningDefault;
+  const cfgDefault = agentEntryDefault ?? cfg.agents?.defaults?.reasoningDefault;
+  const configDefault: "on" | "stream" | "off" =
+    cfgDefault === "on" || cfgDefault === "stream" ? cfgDefault : "off";
+  if (!sessionKey) {
+    return configDefault;
+  }
+  try {
+    const storePath = resolveStorePath(cfg.session?.store, { agentId });
+    const level = (
+      await getSessionEntryAsync({
+        agentId,
+        sessionKey,
+        storePath,
+      })
+    )?.reasoningLevel;
+    if (level === "on" || level === "stream" || level === "off") {
+      return level;
+    }
+  } catch {
+    return "off";
+  }
+  return configDefault;
 }
 
 export function createDiscordBeforePayloadDelivery(params: {

@@ -1,6 +1,9 @@
+import type { ChildProcess } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { expect } from "vitest";
 import type { ManagedServiceBoundaryOptions } from "./update-managed-service-handoff-boundary-contract.test-support.js";
+import { pathExists } from "./update-managed-service-native.test-support.js";
 
 export async function prepareManagedServiceParentPreloads(params: {
   root: string;
@@ -109,4 +112,37 @@ ${source}
     );
   }
   return helperEnv;
+}
+
+/** A parent that never exits is restored without a service command, commit, or updater run. */
+export async function expectManagedServiceStalledParentRestored(params: {
+  completion: Promise<number | null>;
+  timeoutMs: number;
+  parent: ChildProcess;
+  commandsPath: string;
+  updaterPath: string;
+  stdout: () => string;
+  stderr: () => string;
+}) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    expect(
+      await Promise.race([
+        params.completion,
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new Error("managed helper did not restore the stalled parent")),
+            params.timeoutMs,
+          );
+        }),
+      ]),
+      params.stderr(),
+    ).toBe(0);
+  } finally {
+    clearTimeout(timer);
+  }
+  expect(params.parent).toMatchObject({ exitCode: null, signalCode: null });
+  await expect(pathExists(params.commandsPath)).resolves.toBe(false);
+  expect(params.stdout()).not.toContain("committed\n");
+  await expect(pathExists(params.updaterPath)).resolves.toBe(false);
 }

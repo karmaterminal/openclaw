@@ -34,7 +34,10 @@ import {
   prepareManagedServiceNativePreloads,
   rejectManagedServiceInspectionWithStaleLease,
 } from "./update-managed-service-handoff-native-preloads.test-support.js";
-import { prepareManagedServiceParentPreloads } from "./update-managed-service-handoff-parent.test-support.js";
+import {
+  expectManagedServiceStalledParentRestored,
+  prepareManagedServiceParentPreloads,
+} from "./update-managed-service-handoff-parent.test-support.js";
 import {
   createManagedServiceBoundaryCleanup,
   createManagedServiceBoundaryParent,
@@ -565,28 +568,15 @@ export function createManagedServiceManagerBoundary({
             options.validationResult === "child-result",
         );
       } else if (options?.parentExitTimeoutMs !== undefined) {
-        const timeout = options.parentExitTimeoutMs + (options.launchdTeardown ? 8_000 : 3_000);
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        try {
-          expect(
-            await Promise.race([
-              completion,
-              new Promise<never>((_resolve, reject) => {
-                timer = setTimeout(
-                  () => reject(new Error("managed helper did not restore the stalled parent")),
-                  timeout,
-                );
-              }),
-            ]),
-            stderr,
-          ).toBe(0);
-        } finally {
-          clearTimeout(timer);
-        }
-        expect(parent).toMatchObject({ exitCode: null, signalCode: null });
-        await expect(pathExists(commandsPath)).resolves.toBe(false);
-        expect(stdout).not.toContain("committed\n");
-        await expect(pathExists(updaterPath)).resolves.toBe(false);
+        await expectManagedServiceStalledParentRestored({
+          completion,
+          timeoutMs: options.parentExitTimeoutMs + (options.launchdTeardown ? 8_000 : 3_000),
+          parent,
+          commandsPath,
+          updaterPath,
+          stdout: () => stdout,
+          stderr: () => stderr,
+        });
       } else if (options?.replaceLaunchdLeaseAfterInspection) {
         await rejectManagedServiceInspectionWithStaleLease({
           databasePath,

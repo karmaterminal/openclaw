@@ -41,7 +41,11 @@ import { waitForMemoryReindexLock } from "./manager-reindex-lock.js";
 import type { MemoryIndexIdentityState } from "./manager-reindex-state.js";
 import { runMemorySearchMaintenance } from "./manager-search-maintenance.js";
 import { MemorySearchOrchestration } from "./manager-search-orchestration.js";
-import { collectMemoryStatusSnapshot, resolveStatusProviderInfo } from "./manager-status-state.js";
+import {
+  collectMemoryStatusSnapshot,
+  resolveMemoryBatchStatus,
+  resolveStatusProviderInfo,
+} from "./manager-status-state.js";
 import type { MemoryEmbeddingBatchConfig } from "./manager-sync-base.js";
 import {
   MemoryTargetedSessionSyncQueue,
@@ -643,17 +647,7 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
         loadError: this.vector.loadError,
         dims: this.vector.dims,
       },
-      batch: {
-        enabled: this.batch.enabled,
-        failures: this.batchFailure.count,
-        limit: this.batchFailureLimit,
-        wait: this.batch.wait,
-        concurrency: this.batch.concurrency,
-        pollIntervalMs: this.batch.pollIntervalMs,
-        timeoutMs: this.batch.timeoutMs,
-        lastError: this.batchFailure.lastError,
-        lastProvider: this.batchFailure.lastProvider,
-      },
+      batch: resolveMemoryBatchStatus(this.batch, this.batchFailure, this.batchFailureLimit),
       custom: {
         watcher: this.memoryWatcherHealth,
         llamaCppRuntime: getLocalEmbeddingRuntimeFacts(this.provider),

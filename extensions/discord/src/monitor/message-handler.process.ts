@@ -23,7 +23,6 @@ import type {
   ReplyPayload,
 } from "openclaw/plugin-sdk/reply-runtime";
 import { danger, logVerbose, sleepWithAbort } from "openclaw/plugin-sdk/runtime-env";
-import { getSessionEntryAsync, resolveStorePath } from "openclaw/plugin-sdk/session-store-runtime";
 import { beginDiscordActiveTurnThreadRoute } from "../active-turn-thread-route.js";
 import { chunkDiscordTextWithMode } from "../chunk.js";
 import { discordTextHasBroadcastMention } from "../mentions.js";
@@ -35,6 +34,7 @@ import {
   createDiscordMessageReplyRuntime,
   formatDiscordReasoningQuote,
   formatDiscordGroupThreadReply,
+  resolveDiscordReasoningLevel,
 } from "./message-handler.process-reply-runtime.js";
 import { completeDiscordSessionConflict } from "./message-handler.retry.js";
 import {
@@ -223,32 +223,11 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
         deliverySession: ReturnType<typeof getGroupThreadDeliverySession>;
       }
     | undefined;
-  // Reasoning delivery follows the session /reasoning level, not streaming config.
-  const reasoningLevel = await (async (): Promise<"on" | "stream" | "off"> => {
-    const agentEntryDefault = resolveAgentConfig(cfg, route.agentId ?? "main")?.reasoningDefault;
-    const cfgDefault = agentEntryDefault ?? cfg.agents?.defaults?.reasoningDefault;
-    const configDefault: "on" | "stream" | "off" =
-      cfgDefault === "on" || cfgDefault === "stream" ? cfgDefault : "off";
-    if (!ctxPayload.SessionKey) {
-      return configDefault;
-    }
-    try {
-      const storePath = resolveStorePath(cfg.session?.store, { agentId: route.agentId });
-      const level = (
-        await getSessionEntryAsync({
-          agentId: route.agentId,
-          sessionKey: ctxPayload.SessionKey,
-          storePath,
-        })
-      )?.reasoningLevel;
-      if (level === "on" || level === "stream" || level === "off") {
-        return level;
-      }
-    } catch {
-      return "off";
-    }
-    return configDefault;
-  })();
+  const reasoningLevel = await resolveDiscordReasoningLevel({
+    cfg,
+    agentId: route.agentId,
+    sessionKey: ctxPayload.SessionKey,
+  });
   const reasoningWindowEnabled = reasoningLevel === "stream";
   // The durable verbose lane mirrors commentary, not tool lifecycle rows.
   // Yield only the draft content that has a durable counterpart.
