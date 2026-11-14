@@ -1,0 +1,2 @@
+# #1547: exact 66-line growth for description, targeting, and dispatch-timing tests.
+66

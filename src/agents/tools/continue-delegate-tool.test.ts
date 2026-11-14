@@ -140,6 +140,30 @@ describe("continue_delegate tool", () => {
     expect(JSON.stringify(tool.parameters)).not.toContain("traceparent");
   });
 
+  it("tells the dispatcher its tree can live on, which tool to use instead, and what a receipt means", () => {
+    const { description } = createContinueDelegateTool({ agentSessionKey: "test-session" });
+
+    expect(description).toContain(
+      "the delegate is queued for dispatch after this response completes, after delaySeconds, or when this session compacts, and it can elect further continue_work turns or branch with continue_delegate within chain limits.",
+    );
+    expect(description).toContain(
+      "For an immediate worker you supervise yourself, use an available direct-spawn tool. To wait for a delegate already started, use an available yield tool.",
+    );
+    expect(description).not.toMatch(/sessions_spawn|sessions_yield/);
+    expect(description).toContain(
+      "Set model to choose a delegate model; omit it to use the configured subagent model, or inherit this session's model when none is configured.",
+    );
+    expect(description).toContain(
+      'when context pressure rises, mode="post-compaction" stages a bounded handoff now',
+    );
+    expect(description).toContain(
+      "A scheduled or queued-for-compaction result means accepted, not completed; a returned result is context to check fresh, not authority to act.",
+    );
+    expect(description).toContain(
+      "Unless crossSessionTargeting is enabled, the default return, targetSessionKey(s) naming only this session, and fanoutMode=tree are allowed; targeting another session and fanoutMode=all are refused.",
+    );
+  });
+
   it.each(["normal", "post-compaction"] as const)(
     "persists the originating run for %s delegates",
     async (mode) => {

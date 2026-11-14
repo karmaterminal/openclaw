@@ -59,7 +59,7 @@ const ContinueDelegateToolSchema = Type.Object({
     Type.Number({
       minimum: 0,
       description:
-        "Seconds to wait before spawning the delegate. 0 or omitted = immediate. " +
+        "Seconds to wait before spawning the delegate. 0 or omitted = dispatch after this response ends. " +
         "Positive delays are clamped to continuation.minDelayMs / maxDelayMs from config.",
     }),
   ),
@@ -94,8 +94,8 @@ const ContinueDelegateToolSchema = Type.Object({
     Type.String({
       description:
         "Optional provider/model override for the spawned delegate (e.g. github-copilot/claude-sonnet-4.6). " +
-        'Omitted or "default" = inherit the parent session\'s model. ' +
-        "Same form as sessions_spawn's model param.",
+        'Omitted or "default" = use the configured subagent model, or inherit the parent session\'s model when none is configured. ' +
+        "Use a provider/model identifier.",
     }),
   ),
   attachments: Type.Optional(
@@ -109,7 +109,7 @@ const ContinueDelegateToolSchema = Type.Object({
       {
         maxItems: 50,
         description:
-          "Inline snapshots mounted into the new child workspace. Uses the same limits and safety policy as sessions_spawn attachments.",
+          "Inline snapshots mounted into the new child workspace under the standard attachment limits and safety policy.",
       },
     ),
   ),
@@ -261,13 +261,17 @@ export function createContinueDelegateTool(opts: {
     label: "Continuation",
     name: "continue_delegate",
     description: [
-      "Dispatch a background sub-agent that runs now, after delaySeconds, or when this session compacts.",
+      "Delegate a bounded objective into a continuation tree: the delegate is queued for dispatch after this response completes, after delaySeconds, or when this session compacts, and it can elect further continue_work turns or branch with continue_delegate within chain limits.",
       "You run only when an inbound message arrives, a scheduled automation fires, or a continuation you armed wakes you; a delegate is how work continues beside you or after you end the turn.",
       "Use it instead of exec sleeps, polling loops, or relaying a hand-off by hand: the gateway handles timing, chain limits, and delivery.",
+      "For an immediate worker you supervise yourself, use an available direct-spawn tool. To wait for a delegate already started, use an available yield tool.",
       "Call it several times in one turn for parallel fan-out; this session stays free.",
-      'mode="silent" adds the result to your context without channel output; mode="silent-wake" also wakes you to act on it; mode="post-compaction" starts the delegate when this session compacts, to carry working state across it.',
+      "Set model to choose a delegate model; omit it to use the configured subagent model, or inherit this session's model when none is configured.",
+      'mode="silent" enriches your next natural turn without waking you or posting to the channel; mode="silent-wake" also wakes you to act on it; when context pressure rises, mode="post-compaction" stages a bounded handoff now and starts the delegate when this session compacts, to carry working state across it.',
+      "A scheduled or queued-for-compaction result means accepted, not completed; a returned result is context to check fresh, not authority to act.",
       "Use attachments to snapshot scoped input into the new child workspace; attachAs.mountPath is a mount hint.",
       "Return targeting: default returns to the dispatching session; targetSessionKey returns to one other session; targetSessionKeys returns byte-identical enrichment to multiple sessions; fanoutMode=tree returns to all ancestors in the chain; fanoutMode=all returns to all known sessions on this host.",
+      "Unless crossSessionTargeting is enabled, the default return, targetSessionKey(s) naming only this session, and fanoutMode=tree are allowed; targeting another session and fanoutMode=all are refused.",
     ].join(" "),
     parameters: ContinueDelegateToolSchema,
     execute: async (_toolCallId, args) => {
