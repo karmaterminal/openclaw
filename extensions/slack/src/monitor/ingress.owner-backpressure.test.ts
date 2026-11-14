@@ -27,8 +27,8 @@ const replyLane = vi.hoisted(() => ({
   dispatch: vi.fn<(prepared: { message: { ts?: string } }) => Promise<void>>(),
 }));
 
-// mock-isolation: the reply lane stands in for core dispatch. Bolt routing, durable ingress, the
-// message handler with its logical replay claims, and the retry owner all run for real.
+// Bolt routing, durable ingress, the message handler's replay claims and the retry owner are real.
+// mock-isolation: the reply lane stands in for core dispatch.
 vi.mock("./message-handler/pipeline.runtime.js", () => ({
   prepareSlackMessage: async ({ message }: { message: { ts?: string } }) => ({
     message,
