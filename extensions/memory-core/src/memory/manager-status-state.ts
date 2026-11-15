@@ -10,7 +10,6 @@ import {
   getNodeSqliteKysely,
   tableExists,
 } from "openclaw/plugin-sdk/sqlite-worker-runtime";
-import type { MemoryEmbeddingBatchConfig } from "./manager-sync-base.js";
 import { buildMemorySourceFilter } from "./source-filter.js";
 
 export type MemoryStatusQuery = {
@@ -136,11 +135,16 @@ export function resolveStatusProviderInfo(params: {
   };
 }
 
+type MemoryBatchStatus = NonNullable<MemoryProviderStatus["batch"]>;
+
 export function resolveMemoryBatchStatus(
-  batch: MemoryEmbeddingBatchConfig,
+  batch: Pick<
+    MemoryBatchStatus,
+    "enabled" | "wait" | "concurrency" | "pollIntervalMs" | "timeoutMs"
+  >,
   failure: { count: number; lastError?: string; lastProvider?: string },
   limit: number,
-): NonNullable<MemoryProviderStatus["batch"]> {
+): MemoryBatchStatus {
   return {
     enabled: batch.enabled,
     failures: failure.count,
