@@ -12,12 +12,13 @@ import { InboundDedupePendingError } from "../../auto-reply/reply/inbound-dedupe
 import { SESSION_RESTART_RECOVERY_TOMBSTONE_ERROR_CODE } from "../../config/sessions/work-start-error.js";
 import { computeBackoff } from "../../infra/backoff.js";
 import { pruneMapToMaxSize } from "../../infra/map-size.js";
-import { INGRESS_QUEUE_BACKPRESSURE_ERROR_CODE } from "./ingress-queue-cap-drop.js";
 
 export const DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS = 8;
 export const DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS = 24 * 60 * 60 * 1000;
 export const DEFAULT_INGRESS_RETRY_BASE_MS = 1_000;
 export const DEFAULT_INGRESS_RETRY_MAX_MS = 3 * 60_000;
+/** The code IngressQueueBackpressureError carries; matched by code, not class, across the Plugin SDK. */
+export const INGRESS_QUEUE_BACKPRESSURE_ERROR_CODE = "INGRESS_QUEUE_BACKPRESSURE";
 const MAX_RECOVERY_RETRIES = 4_096;
 // Allow normal queue waits beyond the five-minute stall timeout, but never hide a stuck lane forever.
 const MAX_PENDING_CUSTODY_MS = 30 * 60_000;

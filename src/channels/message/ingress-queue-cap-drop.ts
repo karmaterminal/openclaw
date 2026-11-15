@@ -1,5 +1,8 @@
 import type { FollowupQueueDisposition } from "../../auto-reply/get-reply-options.types.js";
-import type { IngressNonRetryableFailure } from "./ingress-retry-policy.js";
+import {
+  INGRESS_QUEUE_BACKPRESSURE_ERROR_CODE,
+  type IngressNonRetryableFailure,
+} from "./ingress-retry-policy.js";
 
 export const INGRESS_QUEUE_CAP_DROP_REASONS = [
   "queue-cap",
@@ -14,7 +17,7 @@ export class IngressQueueCapDropError extends Error {
   }
 }
 
-export const INGRESS_QUEUE_BACKPRESSURE_ERROR_CODE = "INGRESS_QUEUE_BACKPRESSURE";
+export { INGRESS_QUEUE_BACKPRESSURE_ERROR_CODE };
 
 /**
  * Protected work fills the followup queue: retryable backpressure, never a failed attempt.
