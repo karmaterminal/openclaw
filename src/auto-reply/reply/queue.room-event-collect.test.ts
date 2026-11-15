@@ -553,7 +553,10 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
   });
 
   it.each<[string, Partial<FollowupRun["run"]>]>([
-    ["without account provenance", { ...owner, senderAccountVerified: false }],
+    [
+      "without account provenance",
+      sender("owner", { senderIsOwner: true, traceAuthorized: true, config: owner.config }),
+    ],
     ["on an account the setting does not list", { ...owner, config: {} }],
   ])("sheds the owner bit %s at the cap like ambient chatter", async (_, from) => {
     const rows = capped(from);

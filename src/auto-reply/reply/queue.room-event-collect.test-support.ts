@@ -253,7 +253,7 @@ export async function expectSettledOnce(
  */
 export async function expectShedAtCap(harness: Harness, kept: string[], shed: string[]) {
   expect(getExistingFollowupQueue(harness.key)?.items.map((item) => item.messageId)).toEqual(kept);
-  await Promise.all(shed.map((id) => harness.runs.get(id)?.controllerInput?.settlement.promise));
+  await Promise.all(shed.map((id) => harness.runs.get(id)!.controllerInput!.settlement.promise));
   expect([...harness.writes.complete.keys()].toSorted()).toEqual(shed.toSorted());
   expect([...harness.writes.fail.keys()]).toEqual([]);
 }
