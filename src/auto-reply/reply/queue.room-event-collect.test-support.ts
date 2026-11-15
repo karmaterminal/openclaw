@@ -247,6 +247,31 @@ export async function expectSettledOnce(
   expect(await harness.queue.listClaims()).toEqual([]);
 }
 
+/**
+ * Ambient overflow at the cap (#191733): the mailbox already holds exactly `kept`, and each `shed`
+ * row is consumed there, committed once with no turn of its own and never dead-lettered.
+ */
+export async function expectShedAtCap(harness: Harness, kept: string[], shed: string[]) {
+  expect(getExistingFollowupQueue(harness.key)?.items.map((item) => item.messageId)).toEqual(kept);
+  await Promise.all(shed.map((id) => harness.runs.get(id)?.controllerInput?.settlement.promise));
+  expect([...harness.writes.complete.keys()].toSorted()).toEqual(shed.toSorted());
+  expect([...harness.writes.fail.keys()]).toEqual([]);
+}
+
+const SHED_CONTEXT = "[Compacted ambient room context;";
+
+/** The shed rows' previews a turn carries as background context under drop:summarize (#191733). */
+export function shedContext(run: FollowupRun | undefined): unknown[] {
+  const lines = run?.currentInboundContext?.text?.split("\n") ?? [];
+  const start = lines.findIndex((line) => line.startsWith(SHED_CONTEXT));
+  if (start < 0) {
+    return [];
+  }
+  const entries = lines.slice(start + 1);
+  const end = entries.findIndex((line) => !line.startsWith("{"));
+  return entries.slice(0, end < 0 ? undefined : end).map((line) => JSON.parse(line) as unknown);
+}
+
 export const ROOM_ORIGIN = {
   sessionKey: "agent:main:discord:channel:room",
   messageProvider: "discord",
@@ -278,7 +303,14 @@ export function sender(
   };
 }
 
-export const owner = sender("owner", { senderIsOwner: true, traceAuthorized: true });
+// Frond (karmaterminal, #1564): the owner the queue protects, an account listed in
+// messages.groupChat.ownerQueueProtectionAccounts that the channel verified posted as itself.
+export const owner = sender("owner", {
+  senderIsOwner: true,
+  traceAuthorized: true,
+  senderAccountVerified: true,
+  config: { messages: { groupChat: { ownerQueueProtectionAccounts: ["discord:owner"] } } },
+});
 
 // Frond (karmaterminal, #1415): the fleet's room, where every prince is a command owner, with the
 // ambient owner room aggregate on for the listed princes, one in the typed owner-list form.
@@ -355,7 +387,7 @@ export function widenNextClaim(key: string) {
  * The turn runs as the senderless room: no principal, owner bit or sender-scoped authority.
  * `shared` names authority every member carries identically, such as the agent's exec defaults.
  */
-export function expectRoomBaseline(run: FollowupRun | undefined, shared: Shared = {}) {
+function expectRoomBaseline(run: FollowupRun | undefined, shared: Shared = {}) {
   expect(run?.currentInboundEventKind).toBe("room_event");
   expect(run?.operatorAuthority).toBeUndefined();
   expect(run?.createChannelCronAuthority).toBeUndefined();
