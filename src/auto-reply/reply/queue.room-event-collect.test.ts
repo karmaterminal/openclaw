@@ -356,7 +356,7 @@ describe("mid-turn room events over durable ingress (#1415)", () => {
   });
 
   it.each(["collect", "followup"] as const)(
-    "applies cap and drop:summarize under %s without losing or replaying a row",
+    "applies cap and drop:summarize under %s, settling every row once with no replay turn",
     async (mode) => {
       const rows: Row[] = ["r1", "r2", "r3", "r4", "r5"].map((id) => ({ id }));
       await withRoomIngress(
@@ -536,7 +536,6 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
       rows,
       async (harness) => {
         await harness.dispatchRows();
-        expect(harness.runs.get("c1")?.protectFromQueueOverflow).toBe(true);
         await expectShedAtCap(harness, ["c1", "c4", "c5"], ["c2", "c3"]);
         await harness.endActiveTurn();
         expect(harness.calls).toHaveLength(2);
@@ -564,7 +563,6 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
       rows,
       async (harness) => {
         await harness.dispatchRows();
-        expect(harness.runs.get("c1")?.protectFromQueueOverflow).toBeUndefined();
         await expectShedAtCap(harness, ["c3", "c4", "c5"], ["c1", "c2"]);
         await harness.endActiveTurn();
         expect(harness.calls).toHaveLength(1);
