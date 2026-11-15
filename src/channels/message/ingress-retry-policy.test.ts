@@ -2,14 +2,12 @@ import { coerceErrorMessage } from "@openclaw/normalization-core/error-coercion"
 import { describe, expect, it } from "vitest";
 import { PreparedModelRuntimeRecoveryError } from "../../agents/prepared-model-runtime-admission-errors.js";
 import { InboundDedupePendingError } from "../../auto-reply/reply/inbound-dedupe-error.js";
-import {
-  INGRESS_QUEUE_BACKPRESSURE_ERROR_CODE,
-  IngressQueueBackpressureError,
-} from "./ingress-queue-cap-drop.js";
+import { IngressQueueBackpressureError } from "./ingress-queue-cap-drop.js";
 import {
   createIngressRetryPolicy,
   DEFAULT_INGRESS_RETRY_DEAD_LETTER_MIN_AGE_MS,
   DEFAULT_INGRESS_RETRY_MAX_ATTEMPTS,
+  INGRESS_QUEUE_BACKPRESSURE_ERROR_CODE,
   resolveIngressRetryDelayMs,
   shouldDeadLetterRetryableIngressEvent,
 } from "./ingress-retry-policy.js";

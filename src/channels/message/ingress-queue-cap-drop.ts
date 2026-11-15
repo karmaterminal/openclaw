@@ -17,8 +17,6 @@ export class IngressQueueCapDropError extends Error {
   }
 }
 
-export { INGRESS_QUEUE_BACKPRESSURE_ERROR_CODE };
-
 /**
  * Protected work fills the followup queue: retryable backpressure, never a failed attempt.
  * Plugin SDK callers construct it, so the retry policy matches its code, not its class.
