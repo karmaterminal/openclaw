@@ -33,7 +33,7 @@ const fleetTombstone = (extra: Record<string, unknown> = {}) => ({
 });
 type Seed = { key: string; entry: Record<string, unknown>; events: number };
 
-/** Writes a fleet-38 store, then runs the real 38→42 schema migration over it. */
+/** Writes a fleet-38 store, then runs the real 38→43 schema migration over it. */
 async function seedFleet38(env: NodeJS.ProcessEnv, seeds: Seed[]) {
   const pathname = resolveOpenClawAgentSqlitePath({ agentId: "main", env });
   fs.mkdirSync(path.dirname(pathname), { recursive: true });
@@ -83,7 +83,7 @@ async function seedFleet38(env: NodeJS.ProcessEnv, seeds: Seed[]) {
   await withAgentDatabaseMaintenanceLease({ env }, async () => {
     using database = new DatabaseSync(pathname);
     ensureOpenClawAgentDatabaseSchema(database, { agentId: "main", path: pathname, env });
-    expect(database.prepare("PRAGMA user_version").get()?.user_version).toBe(42);
+    expect(database.prepare("PRAGMA user_version").get()?.user_version).toBe(43);
   });
   const db = openOpenClawAgentDatabase({ agentId: "main", env }).db;
   const read = (key: string) =>
