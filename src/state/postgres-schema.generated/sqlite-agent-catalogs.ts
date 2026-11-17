@@ -537,6 +537,17 @@ const fingerprints: Readonly<Record<string, CatalogReference>> = {
     ],
     [],
   ],
+  // agent-jump14-version-42
+  fb06244069b99b256a96d2b776cc117c473e5e535c63aec1e3edf445036acf8e: [
+    "agent-jump14-version-42",
+    "4aad954450e2ee93c02c263fa0cf71725060eeb85c401f9c452deac388831d8e",
+    [
+      0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
+      27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49,
+      50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60,
+    ],
+    [],
+  ],
   // agent-v14-core
   "067f95cffb76737d9084b726b640bc79b266b19279e6b1a3d2322d0e298c6ab6": [
     "agent-v14-core",

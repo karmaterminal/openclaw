@@ -22,6 +22,7 @@ import {
 import {
   getAgentFleet38MigrationSchema,
   getAgentJump13Schema41MigrationSchema,
+  getAgentJump14Schema42MigrationSchema,
 } from "../../src/state/openclaw-agent-fleet38-bridge.js";
 import {
   AGENT_PROGRESS_CARD_SCHEMA_SQL,
@@ -252,8 +253,10 @@ export function listSqliteSchemaInputs(): SqliteSchemaInput[] {
   add("agent-fleet-version-26", "agent", getOpenClawAgentFleetSchema26MigrationSchema());
   // Frond (karmaterminal): fleet-38 bridge. The fleet's own 38 is upstream's 38 plus authority.
   add("agent-fleet-version-38", "agent", getAgentFleet38MigrationSchema());
-  // The jump-13 candidate's 41 is upstream's 40 plus authority; it migrates to 42 by its markers.
+  // The jump-13 candidate's 41 is upstream's 40 plus authority; it migrates to 43 by its markers.
   add("agent-jump13-version-41", "agent", getAgentJump13Schema41MigrationSchema());
+  // The jump-14 candidates' 42 is upstream's 41 plus authority; it migrates to 43 by its markers.
+  add("agent-jump14-version-42", "agent", getAgentJump14Schema42MigrationSchema());
   for (const [id, sql] of [
     ["agent-v14-core", AGENT_V14_CORE_SCHEMA_SQL],
     ["agent-v14-session-sharing", AGENT_V14_SESSION_SHARING_SCHEMA_SQL],

@@ -51,7 +51,10 @@ install writes it (Git blob `0800da7d05`; fork commits from jump 9, `48a4a4b441`
 DDL from commit `b8b054c13a` (U12), upstream's cold-navigation schema 39 (Git blob `2e1c9fa973`).
 `openclaw-agent-schema-v40.sql` is the exact agent DDL from commit `480d503053` (U13), upstream's
 session-creation-receipt schema 40 (Git blob `94ea951a61`). Together they are the inputs to the
-fleet-38 bridge.
+fleet-38 bridge. Agent schema 42 also has two histories. `openclaw-agent-schema-v42.sql` is the
+exact agent DDL from commit `9122a49bd8` (#197128's tool-usage schema 42; Git blob `43b1886c29`).
+`openclaw-agent-schema-v42-jump14.sql` is the exact agent DDL of #129388 head `51ff02dc16`, the
+jump-14 candidates' recipient-authority schema 42 over upstream's 41 (Git blob `3e98615835`).
 
 `openclaw-state-v2026.7.1-2.sqlite.gz` is a deterministic fixture for the
 shared state database created by OpenClaw tag `v2026.7.1-2` at commit
