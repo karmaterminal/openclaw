@@ -396,7 +396,11 @@ describe("runReplyAgent :: post-compaction delegate survives same-turn auto-comp
 
 describe("runReplyAgent :: pressure warning to post-compaction handoff", () => {
   const WINDOW = 200_000;
+  // Upstream interns every report subtree when it shares an actor entry (eee22b41b0).
   const report = {
+    systemPrompt: { chars: 0, projectContextChars: 0, nonProjectContextChars: 0 },
+    injectedWorkspaceFiles: [],
+    skills: { promptChars: 0, entries: [] },
     tools: { entries: [{ name: "continue_delegate" }, { name: "request_compaction" }] },
   } as unknown as SessionEntry["systemPromptReport"];
 
