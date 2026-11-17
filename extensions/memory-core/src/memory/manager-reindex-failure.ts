@@ -6,6 +6,7 @@ import {
   executeSqliteQuerySync,
   getNodeSqliteKysely,
 } from "openclaw/plugin-sdk/sqlite-worker-runtime";
+import type { MemoryIndexDatabase } from "./manager-database-context.js";
 
 export const MEMORY_REINDEX_FAILURE_META_KEY = "memory_reindex_failure_v1";
 
@@ -107,6 +108,20 @@ export function writeMemoryReindexFailure(
       .insertInto("memory_index_meta")
       .values({ key: MEMORY_REINDEX_FAILURE_META_KEY, value })
       .onConflict((conflict) => conflict.column("key").doUpdateSet({ value })),
+  );
+}
+
+/** Records a failure through the published database's owner, which must still be open. */
+export async function publishMemoryReindexFailure(
+  database: MemoryIndexDatabase,
+  failure: MemoryReindexResourceFailure,
+): Promise<void> {
+  await database.settlePublication(() =>
+    database.executePublication({ type: "index.writeReindexFailure", input: failure }, () => {
+      if (!database.isOpen) {
+        throw new Error("Memory database owner closed before recording a reindex failure");
+      }
+    }),
   );
 }
 

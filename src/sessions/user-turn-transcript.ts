@@ -30,7 +30,7 @@ import {
   inheritUserTurnPromptReactionSource,
   projectUserTurnRequesterOrigin,
 } from "./user-turn-transcript-admission.js";
-import { registerUserTurnInputDispatch } from "./user-turn-transcript-input-run.js";
+import * as inputRun from "./user-turn-transcript-input-run.js";
 import { persistUserTurnInput, stageUserTurnPendingInput } from "./user-turn-transcript-media.js";
 import { createUserTurnProcessingCompletion } from "./user-turn-transcript-processing.js";
 import {
@@ -115,29 +115,23 @@ export function createUserTurnTranscriptRecorder(
   let admissionWrite: Promise<void> | undefined;
   let replacementText: string | undefined;
   let confirmedSteerTargetRunId: string | undefined;
-  let inputRunStamp: Promise<void> | undefined;
   let pendingInput: Awaited<ReturnType<typeof stageUserTurnPendingInput>>;
   const processing = createUserTurnProcessingCompletion(
     () => pendingInput,
     params.pendingInputSources,
   );
   let staging: Promise<boolean> | undefined;
-  const deliveryAcks = createSessionDeliveryAckReplacement(message);
-  const replaceSessionDeliveryAckIds = (deliveryIds: readonly string[]): boolean => {
-    if (
+  const deliveryAcks = createSessionDeliveryAckReplacement(
+    message,
+    () =>
       pendingInput ||
       staging ||
       selfPersistencePromise ||
       runtimePersistencePromise ||
       runtimePersisted ||
       committedInput ||
-      persistedResult
-    ) {
-      return false;
-    }
-    deliveryAcks.replace(deliveryIds);
-    return true;
-  };
+      persistedResult,
+  );
 
   const adoptPendingInput = (receipt: NonNullable<typeof pendingInput>) => {
     pendingInput = receipt;
@@ -316,7 +310,7 @@ export function createUserTurnTranscriptRecorder(
     }
     // A failed durable admission reaches the turn owner before provider dispatch.
     await admissionWrite;
-    await inputRunStamp;
+    await inputRun.readUserTurnInputRunStamp(recorder);
   };
 
   const prepareProjectionParams = async (text: string, assertCurrent: () => void) => {
@@ -600,7 +594,7 @@ export function createUserTurnTranscriptRecorder(
     get validateCommittedReplay() {
       return pendingInput?.validateCommittedReplay;
     },
-    replaceSessionDeliveryAckIds,
+    replaceSessionDeliveryAckIds: (deliveryIds) => deliveryAcks.replace(deliveryIds),
     replaceTextBeforePersistence: (text) => {
       if (pendingInput || persistedResult || runtimePersisted || sentToProvider) {
         return;
@@ -719,9 +713,7 @@ export function createUserTurnTranscriptRecorder(
     inputActorBinding = binding;
   });
   // Continuation (karmaterminal): a run consumed this input once its sent request was accepted.
-  registerUserTurnInputDispatch(recorder, (schedule) => {
-    inputRunStamp ??= sentToProvider ? schedule(admissionWrite, handlePersistenceError) : undefined;
-  });
+  inputRun.registerUserTurnInputDispatch(recorder, () => admissionWrite, handlePersistenceError);
   const admissionOwner = registerUserTurnTranscriptAdmissionOwner(recorder, {
     onOriginalInputCommitted: (anchor) => {
       const sourceMessage = pendingInput?.message ?? resolvedSourceMessage ?? message;

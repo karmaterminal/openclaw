@@ -43,7 +43,7 @@ import {
   runMemoryPublication,
   withPublishedMemoryExecution,
 } from "./manager-publication.js";
-import type { MemoryReindexResourceFailure } from "./manager-reindex-failure.js";
+import { publishMemoryReindexFailure } from "./manager-reindex-failure.js";
 import type { MemoryDatabaseFacts } from "./manager-retrieval-read.js";
 import {
   assertMemoryShadowIdentity,
@@ -305,14 +305,8 @@ export class MemoryIndexDatabase {
     );
   }
 
-  async writeReindexFailure(failure: MemoryReindexResourceFailure): Promise<void> {
-    await this.settlePublication(() =>
-      this.executePublication({ type: "index.writeReindexFailure", input: failure }, () => {
-        if (!this.isOpen) {
-          throw new Error("Memory database owner closed before recording a reindex failure");
-        }
-      }),
-    );
+  writeReindexFailure(failure: Parameters<typeof publishMemoryReindexFailure>[1]) {
+    return publishMemoryReindexFailure(this, failure);
   }
 
   get isShadow(): boolean {
