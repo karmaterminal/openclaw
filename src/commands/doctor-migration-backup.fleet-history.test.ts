@@ -1,8 +1,8 @@
-// Continuation (karmaterminal): agent schema 26 has two histories. Upstream's 26 → 42 run is
+// Continuation (karmaterminal): agent schema 26 has two histories. Upstream's 26 → 43 run is
 // covered by declared table scopes; the fleet's own 26 also crosses upstream's step 26, which
-// declares none, so Doctor must keep a full image for it. The fleet-shaped 39 and the jump-13 41
-// likewise sit above their physical shape (38 and 40), so their runs cross upstream steps their
-// marker's scope omits and Doctor keeps a full image for them too.
+// declares none, so Doctor must keep a full image for it. The fleet-shaped 39, the jump-13 41 and
+// the jump-14 42 likewise sit above their physical shape (38, 40 and 41), so their runs cross
+// upstream steps their marker's scope omits and Doctor keeps a full image for them too.
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -121,6 +121,8 @@ it.each([
   ["upstream's 40", "openclaw-agent-schema-v40.sql", 40, false, true],
   ["upstream's 41", "openclaw-agent-schema-v41.sql", 41, false, true],
   ["the jump-13 41", "openclaw-agent-schema-v41-jump13.sql", 41, true, false],
+  ["upstream's 42", "openclaw-agent-schema-v42.sql", 42, false, true],
+  ["the jump-14 42", "openclaw-agent-schema-v42-jump14.sql", 42, true, false],
 ] as const)(
   "backs up %s agent database scoped: %s",
   async (_history, fixture, foundVersion, authority, scoped) => {
