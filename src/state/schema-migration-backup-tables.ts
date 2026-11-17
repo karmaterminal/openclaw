@@ -46,9 +46,11 @@ export const SCHEMA_MIGRATION_BACKUP_TABLES: Record<
     40: ["session_creation_operations"],
     // Empty companion only; transcript payloads and the active projection stay untouched.
     41: ["session_transcript_active_event_facts"],
+    // Empty ranking table; migration does not scan or rewrite transcripts.
+    42: ["agent_tool_usage"],
     // Continuation (karmaterminal): the authority step only creates its table. The fleet's own
-    // schema 26, the fleet-shaped 39 and jump 13's 41 also cross upstream steps outside these
-    // scopes, so Doctor keeps their full image (isAgentFleetSchema26Migration,
+    // schema 26, the fleet-shaped 39, jump 13's 41 and jump 14's 42 also cross upstream steps
+    // outside these scopes, so Doctor keeps their full image (isAgentFleetSchema26Migration,
     // isAgentBridgedSchemaBelowMarkerMigration).
     [AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION]: ["session_recipient_authority"],
   },
@@ -108,5 +110,6 @@ export const SCHEMA_MIGRATION_BACKUP_TABLES: Record<
     37: ["worker_environments"],
     38: ["session_repository_workspaces", "worker_workspace_pending_results"],
     39: ["worker_environments"],
+    40: ["worker_environments"],
   },
 };

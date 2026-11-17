@@ -9,7 +9,6 @@ import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { AGENT_ACTIVE_EVENT_FACTS_SQL } from "./openclaw-agent-active-event-facts-schema.js";
 import { migrateAgentColdNavigationInTransaction } from "./openclaw-agent-cold-navigation-schema.js";
 import { AGENT_CREATION_OPERATIONS_SQL } from "./openclaw-agent-creation-operations-schema.js";
-import { OPENCLAW_AGENT_SCHEMA_VERSION } from "./openclaw-agent-db-contract.js";
 import { withAgentDatabaseMaintenanceLease } from "./openclaw-agent-db-maintenance-lease.js";
 import {
   ensureOpenClawAgentDatabaseSchema,
@@ -27,10 +26,7 @@ import {
 } from "./schema-migration.test-support.js";
 
 const table = "session_transcript_active_event_facts";
-// Continuation (karmaterminal): admission crosses to the current schema, whose recipient-authority
-// step (42) follows this one and creates only its own empty table.
-const target = OPENCLAW_AGENT_SCHEMA_VERSION;
-const scope = ["schema_meta", "session_recipient_authority", table];
+const scope = ["schema_meta", table];
 function seed(db: DatabaseSync) {
   seedAgentV38Schema(db);
   runSqliteImmediateTransactionSync(db, () => migrateAgentColdNavigationInTransaction(db));
@@ -48,7 +44,7 @@ function seed(db: DatabaseSync) {
     INSERT INTO cache_entries (scope,key,blob,updated_at) VALUES ('unrelated','bytes',X'00FF01',1);
     ANALYZE;`);
 }
-const fixture = migrationFixture({ seed, predecessor: 40, target, scope, admission: true });
+const fixture = migrationFixture({ seed, predecessor: 40, target: 41, scope });
 
 it.each(["commit", "rollback"])(
   "adds empty active facts atomically without changing existing data (%s)",
@@ -56,7 +52,7 @@ it.each(["commit", "rollback"])(
     await fixture("active-facts.sqlite", async ({ database, migrate }) => {
       const before = agentWitness(database);
       await migrate(outcome);
-      expectVersion(database, outcome === "commit" ? target : 40);
+      expectVersion(database, outcome === "commit" ? 41 : 40);
       expect(assertOpenClawMigrationWitnessPreserved(before, agentWitness(database))).toEqual({
         warnings: [],
       });
@@ -118,7 +114,8 @@ it("admits the empty-table upgrade without scanning existing payload or active r
         action === constants.SQLITE_PRAGMA &&
         ["quick_check", "integrity_check", "foreign_key_check"].includes(name ?? "") &&
         argument !== "schema_meta" &&
-        argument !== table
+        argument !== table &&
+        argument !== "agent_tool_usage"
       ) {
         return constants.SQLITE_DENY;
       }
@@ -126,7 +123,7 @@ it("admits the empty-table upgrade without scanning existing payload or active r
     });
     try {
       // Continuation (karmaterminal): the startup gate's crossing to the current schema also
-      // includes recipient authority (42), which reads session_nodes for legacy epochs, so this
+      // includes recipient authority (43), which reads session_nodes for legacy epochs, so this
       // checks the v41 crossing's own gate and step.
       for (const check of sqliteIntegrityCheckSteps(
         database,

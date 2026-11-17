@@ -69,6 +69,7 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
     providerKey: string | null;
     publishedIdentity: string | null;
     progress: MemoryReindexProgress;
+    startedAt: number;
   };
 
   protected override get reindexProgress(): MemoryReindexProgress | undefined {
@@ -212,6 +213,7 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
         originalRetryState,
         providerKey: this.syncProviderGeneration?.providerKey ?? this.providerKey,
         publishedIdentity: originalDatabase.facts.serialized,
+        startedAt: Date.now(),
         progress: {
           memoryComplete: false,
           cachePrunePending: false,
@@ -358,6 +360,10 @@ export abstract class MemoryManagerReindexOps extends MemoryManagerSourceSyncOps
       this.fts.available = shadow.fts.available;
       this.fts.loadError = shadow.fts.loadError;
       this.vector.dims = rebuilt.nextMeta.vectorDims;
+      // The replacement index rewrote every chunk, so any cached vector it now serves is a
+      // duplicate: first the rows this rebuild wrote, then the rows written before it began.
+      await this.retirePublishedEmbeddingCacheRows({ writtenSince: state.startedAt });
+      await this.retirePublishedEmbeddingCacheRows({ writtenBefore: state.startedAt });
       // Rebuild writes must not evict unread hits. After publication the ordinary
       // policy can prefer vectors no longer referenced by the replacement index.
       await this.pruneEmbeddingCacheIfNeeded(true);

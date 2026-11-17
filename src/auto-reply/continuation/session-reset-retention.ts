@@ -13,10 +13,7 @@ import {
 import { markContinuationRunsRetainedByReset } from "../../agents/subagents/registry/subagent-continuation-reset-retention.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import {
-  SessionResetCleanupError,
-  stopSessionResetSubagents,
-} from "../reply/session-reset-cleanup.js";
+import { SessionResetCleanupError, stopSessionResetWork } from "../reply/session-reset-cleanup.js";
 import { resolveContinuationResetRetentions } from "./session-reset-retention-resolve.js";
 
 const log = createSubsystemLogger("continuation/reset-retention");
@@ -33,8 +30,8 @@ export type ContinuationResetRetentionScope = {
   /** stopSubagents around upstream's reset kill, which carries the marks' current-incarnation fence. */
   stopResetSubagents: (
     fromRevision: string | undefined,
-    params: Parameters<typeof stopSessionResetSubagents>[0],
-  ) => ReturnType<typeof stopSessionResetSubagents>;
+    params: Parameters<typeof stopSessionResetWork>[0],
+  ) => ReturnType<typeof stopSessionResetWork>;
   /** Runs a later kill of the same reset so it honors the same marks. */
   runKill: <T>(kill: () => Promise<T>) => Promise<T>;
   /**
@@ -109,7 +106,7 @@ export function prepareContinuationResetRetention(params: {
     },
     stopResetSubagents: (fromRevision, stop) =>
       scope.stopSubagents({ fromRevision, assertCurrent: stop.assertCurrent }, () =>
-        stopSessionResetSubagents(stop),
+        stopSessionResetWork(stop),
       ),
     runKill: (kill) => runWithActiveContinuationReset(reset, kill),
     async resolve() {

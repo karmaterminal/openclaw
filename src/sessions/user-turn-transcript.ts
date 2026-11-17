@@ -7,6 +7,7 @@ import {
   type TranscriptEntryAnchor,
 } from "../config/sessions/session-accessor.js";
 import {
+  bindSessionPendingInputMentionInvitation,
   readSessionPendingInputRequesterOrigin,
   readWithdrawnSessionPendingInputId,
 } from "../config/sessions/session-accessor.pending-inputs.js";
@@ -27,6 +28,7 @@ import {
   getUserTurnTranscriptAdmissionOwner,
   registerUserTurnTranscriptAdmissionOwner,
   inheritUserTurnPromptReactionSource,
+  projectUserTurnRequesterOrigin,
 } from "./user-turn-transcript-admission.js";
 import { registerUserTurnInputDispatch } from "./user-turn-transcript-input-run.js";
 import { persistUserTurnInput, stageUserTurnPendingInput } from "./user-turn-transcript-media.js";
@@ -46,7 +48,6 @@ import {
   buildRunUserTurnIdempotencyKey,
   normalizePersistedSteerTargetRunId,
   preparePersistedUserTurnMessageForTranscriptWrite,
-  projectPersistedUserTurnRequesterOrigin,
   restorePreparedUserTurnOperationalMetaForRuntime,
   rewritePersistedSteerTargetRunId,
 } from "./user-turn-transcript.metadata.js";
@@ -66,11 +67,6 @@ import type {
   UserTurnTranscriptTarget,
   UserTurnTranscriptUpdateMode,
 } from "./user-turn-transcript.types.js";
-
-const originalInputCommitNotifiers = new WeakMap<
-  UserTurnTranscriptRecorder,
-  (anchor: TranscriptEntryAnchor) => void
->();
 
 export type {
   PersistedUserTurnMessage,
@@ -145,15 +141,18 @@ export function createUserTurnTranscriptRecorder(
 
   const adoptPendingInput = (receipt: NonNullable<typeof pendingInput>) => {
     pendingInput = receipt;
+    if (params.prepareMentionInvitation) {
+      bindSessionPendingInputMentionInvitation(receipt, params.prepareMentionInvitation);
+    }
     requesterOrigin = readSessionPendingInputRequesterOrigin(receipt);
-    message = projectPersistedUserTurnRequesterOrigin(receipt.message, requesterOrigin);
+    message = projectUserTurnRequesterOrigin(receipt.message, requesterOrigin);
     resolvedMessagePromise = Promise.resolve(message);
   };
 
   const applyMessageOverrides = (candidate: PersistedUserTurnMessage | undefined) => {
     const replaced = applyPersistedUserTurnReplacementText(candidate, replacementText);
     const next = rewritePersistedSteerTargetRunId(
-      projectPersistedUserTurnRequesterOrigin(deliveryAcks.apply(replaced), requesterOrigin),
+      projectUserTurnRequesterOrigin(deliveryAcks.apply(replaced), requesterOrigin),
       confirmedSteerTargetRunId,
     );
     // Native mirrors must reuse this admission even when no transport supplied a key.
@@ -265,7 +264,7 @@ export function createUserTurnTranscriptRecorder(
       )
     ) {
       for (const source of params.pendingInputSources) {
-        originalInputCommitNotifiers.get(source)?.(commit.anchor);
+        getUserTurnTranscriptAdmissionOwner(source)?.onOriginalInputCommitted?.(commit.anchor);
       }
     }
     try {
@@ -429,7 +428,7 @@ export function createUserTurnTranscriptRecorder(
           persistUserTurnInput(recorder, {
             ...resolvedTarget,
             logicalTurnId,
-            message: projectPersistedUserTurnRequesterOrigin(candidate, requesterOrigin),
+            message: projectUserTurnRequesterOrigin(candidate, requesterOrigin),
             sessionTurnMutation: params.sessionTurnMutation,
             expectedSessionId: options.expectedSessionId || resolvedTarget.expectedSessionId,
             sessionLifecyclePatch: options.sessionLifecyclePatch ?? params.sessionLifecyclePatch,
@@ -443,6 +442,7 @@ export function createUserTurnTranscriptRecorder(
                 ])
               : assertOriginalInput,
             onOriginalInputCommitted: notifyOriginalInputCommitted,
+            prepareMentionInvitation: params.prepareMentionInvitation,
             onCommitted: (committed, acceptCompletion) => {
               committedInput = committed;
               admittedMessage = committed.message;
@@ -575,11 +575,11 @@ export function createUserTurnTranscriptRecorder(
             trackCompletion: params.trackInputCompletion,
             retryCancelled: options.retryCancelled || params.sessionTurnMutation?.kind === "goal",
             replaySourceSessionKeys: params.pendingInputReplaySourceSessionKeys,
-            message: projectPersistedUserTurnRequesterOrigin(candidate, requesterOrigin),
+            message: projectUserTurnRequesterOrigin(candidate, requesterOrigin),
             onCommitted: adoptPendingInput,
             prepareMessageAfterIdempotencyCheck: (next) =>
               preparePersistedUserTurnMessageForTranscriptWrite(
-                projectPersistedUserTurnRequesterOrigin(next, stagedOrigin),
+                projectUserTurnRequesterOrigin(next, stagedOrigin),
                 {
                   ...target,
                   beforeMessageWrite: params.beforeMessageWrite ?? target.beforeMessageWrite,
@@ -649,7 +649,18 @@ export function createUserTurnTranscriptRecorder(
       admissionHandler = handler;
     },
     markSentToProvider: () => {
+      if (sentToProvider) {
+        return;
+      }
       sentToProvider = true;
+      if (!params.onInputSubmitted) {
+        return;
+      }
+      try {
+        void Promise.resolve(params.onInputSubmitted()).catch(handlePersistenceError);
+      } catch (error) {
+        handlePersistenceError(error);
+      }
     },
     markRuntimePersistencePending: (pending) => {
       runtimePersistencePromise = pending;
@@ -703,12 +714,7 @@ export function createUserTurnTranscriptRecorder(
         skipWhenBlocked: true,
       }),
   };
-  originalInputCommitNotifiers.set(recorder, (anchor) => {
-    const sourceMessage = pendingInput?.message ?? resolvedSourceMessage ?? message;
-    if (sourceMessage) {
-      notifyOriginalInputCommitted({ message: sourceMessage, anchor });
-    }
-  });
+
   registerUserTurnInputActor(recorder, (binding) => {
     inputActorBinding = binding;
   });
@@ -717,6 +723,13 @@ export function createUserTurnTranscriptRecorder(
     inputRunStamp ??= sentToProvider ? schedule(admissionWrite, handlePersistenceError) : undefined;
   });
   const admissionOwner = registerUserTurnTranscriptAdmissionOwner(recorder, {
+    onOriginalInputCommitted: (anchor) => {
+      const sourceMessage = pendingInput?.message ?? resolvedSourceMessage ?? message;
+      if (sourceMessage) {
+        notifyOriginalInputCommitted({ message: sourceMessage, anchor });
+      }
+    },
+    prepareMentionInvitation: params.prepareMentionInvitation,
     requesterOrigin: () =>
       pendingInput ? readSessionPendingInputRequesterOrigin(pendingInput) : requesterOrigin,
     pendingInput: () => pendingInput,

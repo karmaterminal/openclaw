@@ -14,7 +14,10 @@ import {
 import { abortEmbeddedAgentRun } from "../../agents/embedded-agent-runner/runs.js";
 import { testing as embeddedRunTesting } from "../../agents/embedded-agent-runner/runs.test-support.js";
 import { waitForSessionMaintenance } from "../../agents/session-maintenance/coordinator.js";
-import { scheduleSessionMaintenance } from "../../agents/session-maintenance/run.js";
+import {
+  prepareSessionMaintenanceRequest,
+  scheduleSessionMaintenance,
+} from "../../agents/session-maintenance/run.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
 import { SESSION_TOTAL_TOKENS_VERSION, type SessionEntry } from "../../config/sessions.js";
 import {
@@ -651,17 +654,21 @@ describe("runReplyAgent :: pressure warning to post-compaction handoff", () => {
         thinkingCatalog: undefined,
         senderIsOwner: false,
       });
+      // Upstream now captures the maintenance source cohort before the synchronous scheduler.
+      const maintenance = await prepareSessionMaintenanceRequest({
+        prepared: { cfg, sessionKey: ARMED_KEY, storePath, timeoutMs: 60_000 },
+        followupRun,
+        sessionId,
+        lifecycleRevision: crossed.lifecycleRevision,
+        lifecycleGeneration: command.lifecycleGeneration,
+        startedAt: Date.now(),
+      });
+      if (!maintenance) {
+        throw new Error("session maintenance source was not captured");
+      }
       withPluginRuntimeGatewayRequestScope(
         { pluginRegistry: createEmptyPluginRegistry(), isWebchatConnect: () => false },
-        () =>
-          scheduleSessionMaintenance({
-            prepared: { cfg, sessionKey: ARMED_KEY, storePath, timeoutMs: 60_000 },
-            followupRun,
-            sessionId,
-            lifecycleRevision: crossed.lifecycleRevision,
-            lifecycleGeneration: command.lifecycleGeneration,
-            startedAt: Date.now(),
-          }),
+        () => scheduleSessionMaintenance(maintenance),
       );
       await waitForSessionMaintenance(ARMED_KEY);
 

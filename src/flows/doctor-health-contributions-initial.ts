@@ -187,9 +187,9 @@ export function resolveInitialDoctorHealthContributions(params: {
       ],
       run: params.runLegacyStateHealth,
     }),
-    createDoctorHealthContribution("doctor:session-transcripts", "Session transcripts", {
+    createDoctorHealthContribution("doctor:session-transcripts", "Chat history", {
       healthChecks: {
-        description: "Legacy or branchy session transcript files are represented as findings.",
+        description: "Legacy or branched chat history files are represented as findings.",
         defaultEnabled: false,
         async detect() {
           const { detectSessionTranscriptHealthIssues, sessionTranscriptIssueToHealthFinding } =
@@ -545,7 +545,7 @@ export function resolveInitialDoctorHealthContributions(params: {
     ),
     createDoctorHealthContribution(
       "doctor:session-transcript-headers",
-      "Session transcript headers",
+      "Chat history headers",
       async (ctx) => {
         const { noteSessionTranscriptHeaderHealth } =
           await import("../commands/doctor-session-transcript-headers.js");
@@ -559,7 +559,7 @@ export function resolveInitialDoctorHealthContributions(params: {
     ),
     createDoctorHealthContribution(
       "doctor:session-transcript-labels",
-      "Session transcript labels",
+      "Chat history labels",
       async (ctx) => {
         const { noteSessionTranscriptLabelHealth } =
           await import("../commands/doctor-session-transcript-labels.js");
