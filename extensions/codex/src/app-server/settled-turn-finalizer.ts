@@ -1,5 +1,4 @@
 import {
-  assertSovereignPromptRoute,
   prepareAgentRunTerminalReply,
   projectAgentHarnessTranscriptMessageForDisplay,
   type AgentHarnessV2,
@@ -41,14 +40,6 @@ export async function runCodexSettledTurnFinalization(
     attempt.abortSignal?.throwIfAborted(),
   ).assertLegacyCurrent;
   assertActive();
-  // This turn writes a new answer in the agent's name from a code-owned prompt on an empty
-  // base, which never carries the agent's sovereign text, so an enforce agent refuses it
-  // before any handoff (openclaw#1321). The host's settled-tool fallback keeps the reply.
-  assertSovereignPromptRoute({
-    config: attempt.config,
-    agentId: attempt.agentId,
-    route: "codex:settled-turn-finalization",
-  });
   const finalizationContext = settledAttempt.settledTurnFinalizationContext;
   if (!(finalizationContext instanceof CodexSettledTurnContext)) {
     throw new Error("Codex settled-turn finalization context is unavailable");

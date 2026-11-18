@@ -193,6 +193,24 @@ export function assertSovereignPromptRoute(params: {
 }
 
 /**
+ * Refuses a harness's settled-turn finalizer for a sovereign agent, before preparation and
+ * dispatch (§ 7.3). The finalizer writes a new answer in the agent's name from a code-owned
+ * prompt and carries no span the attempt placed, so no route declaration admits it: support
+ * would have to carry that attempt's spans and check them.
+ */
+export function assertSovereignSettledTurnFinalization(params: {
+  config?: OpenClawConfig;
+  agentId?: string;
+  harnessId: string;
+}): void {
+  if (isSovereignPromptAgent(params.config, params.agentId)) {
+    throw new SovereignPromptRefusal("route_unconverted", {
+      route: `${params.harnessId}:settled-turn-finalization`,
+    });
+  }
+}
+
+/**
  * The run-level route for a harness attempt. Codex ring-zero threads pin an empty base
  * and `none` threads carry its own identity line, so neither carries the loaded identity.
  */

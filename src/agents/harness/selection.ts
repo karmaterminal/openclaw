@@ -36,6 +36,7 @@ import {
 } from "../provider-secret-egress.js";
 import {
   assertSovereignPromptRoute,
+  assertSovereignSettledTurnFinalization,
   resolveSovereignPromptHarnessRoute,
 } from "../sovereign-prompts/runtime.js";
 import type { SystemAgentToolOptions } from "../tools/system-agent-tool.js";
@@ -148,6 +149,14 @@ export async function runAgentHarnessSettledTurnFinalization(
   settledAttempt: EmbeddedRunAttemptResult,
   harness: AgentHarness,
 ) {
+  // Sovereign finalizer admission (openclaw#1321): every harness's finalizer generates from a
+  // code-owned prompt, so an enforce agent refuses it here, on the original attempt's agent
+  // and config, before the restricted projection or any handoff exists.
+  assertSovereignSettledTurnFinalization({
+    config: params.config,
+    agentId: params.agentId,
+    harnessId: harness.id,
+  });
   const internalParams = params as EmbeddedRunAttemptParams & {
     systemAgentTool?: SystemAgentToolOptions;
   };
