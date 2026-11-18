@@ -26,7 +26,6 @@ import type {
 } from "../../cron/scheduled-tool-policy.js";
 import type { ChannelRouteRef } from "../../plugin-sdk/channel-route.js";
 import type { PluginJsonValue as SessionPluginJsonValue } from "../../plugins/host-hook-json.js";
-import type { InlineAttachment, InlineAttachmentMount } from "../../shared/inline-attachments.js";
 import type { SessionBoardFace } from "../../shared/session-types.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
 import type { TtsAutoMode } from "../types.tts.js";
@@ -34,6 +33,7 @@ import type {
   PendingDeliveryNoticeState,
   PendingFinalDeliveryState,
 } from "./pending-final-delivery-types.js";
+import type { SessionEntryContinuationFields } from "./session-entry-continuation.types.js";
 import type {
   SessionCreatedActor,
   SessionActor,
@@ -44,11 +44,11 @@ import type {
 } from "./session-entry-provenance.js";
 import type { AgentPatchedSessionModelFallback } from "./session-model-fallback.js";
 import type { SessionSkillSnapshot } from "./session-prompt-types.js";
-import type { ContinuationRecipientAuthorityBinding } from "./session-recipient-authority-types.js";
 import type { SessionSystemPromptReport } from "./session-system-prompt-report.js";
 import type { SessionToolOverrides } from "./session-tool-overrides.js";
 import type { PendingSessionWorktree } from "./session-worktree-intent.js";
 
+export type { SessionPostCompactionDelegate } from "./session-entry-continuation.types.js";
 export type { SessionToolOverrides } from "./session-tool-overrides.js";
 export type { SessionSystemPromptReport } from "./session-system-prompt-report.js";
 
@@ -263,36 +263,8 @@ export type {
   SessionGoalStatus,
 } from "../../../packages/gateway-protocol/src/schema/sessions-goal.js";
 
-export type SessionPostCompactionDelegate = {
-  task: string;
-  createdAt: number;
-  /** Stable original arm time, preserved across re-stage/restart cycles. */
-  firstArmedAt?: number;
-  /** Post-compaction delegates are silent by contract; persist the intent across store round trips. */
-  silent?: boolean;
-  silentWake?: boolean;
-  attachments?: InlineAttachment[];
-  attachAs?: InlineAttachmentMount;
-  targetSessionKey?: string;
-  targetSessionKeys?: string[];
-  fanoutMode?: "tree" | "all";
-  /** Durable logical-mailbox authority captured before this delegate was accepted. */
-  recipientAuthorityBinding?: ContinuationRecipientAuthorityBinding;
-  traceparent?: string;
-  /** Persisted proof that traceparent came from a runtime-owned capture boundary. */
-  traceparentProvenance?: "internal";
-  /** Optional provider/model override forwarded to the released delegate; omitted => inherit parent. */
-  model?: string;
-  /**
-   * Runtime-only custody claim handle for a delegate just released by
-   * consumeStagedPostCompactionDelegates. Used to finalize or fail exactly the
-   * claimed row after a durable handoff; never persisted in session entries.
-   */
-  flowId?: string;
-  expectedRevision?: number;
-};
-
 type SessionEntryCore = SessionEntryProvenance &
+  SessionEntryContinuationFields &
   Pick<SessionRow, "permissionMode" | "sandboxMode" | "nativeRuntimeConsent" | "sessionRoot"> & {
     /** Collaboration mode. Missing legacy values are equivalent to "shared". */
     visibility?: NonNullable<SessionRow["visibility"]>;
@@ -315,12 +287,34 @@ type SessionEntryCore = SessionEntryProvenance &
     pluginExtensions?: Record<string, Record<string, SessionPluginJsonValue>>;
     /** Trusted session initialization is incomplete; all work admission stays blocked. */
     initializationPending?: true;
+    /** Ordinary Template admission owns this exact pending incarnation until verified setup. */
+    templateInitialization?: {
+      source: { packageName: string; version?: string };
+      agentConfig: import("../types.agents.js").AgentEntryConfig;
+      workspaceIdentity: string;
+      /** Verified intent recorded before instructions or config can change. */
+      preparing?: {
+        agentConfig: import("../types.agents.js").AgentEntryConfig;
+        planDigest: string;
+        sourceIntegrity: string;
+        /** Only previously absent files (digest) and directories (null). */
+        workspaceAdditions: Record<string, string | null>;
+      };
+      configured?: { planDigest: string; sourceIntegrity: string };
+    };
+    /** Creation is finished; Retry continues only this hidden Template setup turn. */
+    templateSetup?: {
+      source: { packageName: string; version?: string };
+      report: import("../../templates/conversation.js").TemplateSetupReport;
+      /** Workspace is ready; dependency installation can overlap the first conversation turn. */
+      dependenciesPending?: true;
+      /** Avoid replaying the greeting when Retry only needs to report dependency results. */
+      openingComplete?: true;
+    };
     /** Top-level SessionEntry mirror slots owned by plugin session extensions. */
     pluginExtensionSlotKeys?: Record<string, Record<string, string>>;
     /** Durable one-shot prompt additions drained before the next agent turn. */
     pluginNextTurnInjections?: Record<string, SessionPluginNextTurnInjection[]>;
-    /** Internal one-shot traceparent for a freshly spawned child agent run. */
-    continuationTraceparent?: string;
     sessionId: string;
     /** Latest operator client declaration; retained across internal turns and restart. */
     clientCapabilities?: string[];
@@ -623,12 +617,6 @@ type SessionEntryCore = SessionEntryProvenance &
     /** Origin of the persisted context window; `resolved` is legacy/unverified. */
     contextTokensSource?: "runtime" | "runtime-configured" | "resolved" | "resolved-v1";
     contextBudgetStatus?: SessionContextBudgetStatus;
-    /**
-     * Last context-pressure band that fired: a window percentage for runtimes that own
-     * compaction (e.g. 80, 90, 95), an ordinal warning (1, 2) on the built-in runtime.
-     * Used to deduplicate pressure events until the session crosses into another band.
-     */
-    lastContextPressureBand?: number;
     compactionCount?: number;
     /** A committed lossy compaction affected this history; cleared with a new session. */
     compactionQualityDegraded?: true;
@@ -663,19 +651,11 @@ type SessionEntryCore = SessionEntryProvenance &
     /** Last ambient room message durably appended to this transcript, keyed by channel scope. */
     ambientTranscriptWatermarks?: Record<string, AmbientTranscriptWatermark>;
     skillsSnapshot?: SessionSkillSnapshot;
+    /** Parent prompt preference persisted by spawn before the child can launch. */
+    toolUsageRankingSeed?: import("../../agents/tool-usage-ranking.js").ToolUsageRankingSnapshot;
     /** Explicit authorized immutable library pins; current speakers never replace this selection. */
     skillLibrarySelections?: import("../../../packages/gateway-protocol/src/schema/skill-library.js").SkillLibrarySelection[];
     systemPromptReport?: SessionSystemPromptReport;
-    /** Number of continuation turns completed in the current chain. Reset on external message. */
-    continuationChainCount?: number;
-    /** Timestamp (ms) when the current continuation chain started. */
-    continuationChainStartedAt?: number;
-    /** Accumulated token usage across the current continuation chain. Reset on external message. */
-    continuationChainTokens?: number;
-    /** Stable identifier for the current continuation chain, persisted across compaction. */
-    continuationChainId?: string;
-    /** Post-compaction delegates staged for execution after context compaction. */
-    pendingPostCompactionDelegates?: SessionPostCompactionDelegate[];
     /**
      * Generic plugin-owned runtime debug entries shown in verbose status surfaces.
      * Each plugin owns and may overwrite only its own entry between turns.
@@ -694,7 +674,24 @@ export type SessionProfileInvolvement = {
   lastMention?: { generation: string; sequence: number; timestamp: number };
 };
 
+/**
+ * The scheduled parent a cron `:run:` row's occurrence was admitted against: the
+ * parent's exact incarnation and the occurrence's owner bit.
+ */
+export type SessionScheduledMemoryParent = {
+  sessionKey: string;
+  sessionId: string;
+  /** Absent when the job's link recorded only the parent session id. */
+  lifecycleRevision?: string;
+  senderIsOwner: boolean;
+};
+
 export type InternalSessionEntryCore = SessionEntryCore & {
+  /**
+   * Written only by cron run preparation on a child-placement `:run:` row, so a
+   * session the run spawns can resolve its memory audience through that parent.
+   */
+  scheduledMemoryParent?: SessionScheduledMemoryParent;
   /** Atomic history-cut receipt for the exact settled local projection, cleared after adoption. */
   localWorkspaceHandoff?: {
     worktreeId: string;
@@ -738,6 +735,8 @@ export type InternalSessionEntryCore = SessionEntryCore & {
   /** Written only by committed graceful shutdown, consumed by the next startup. */
   resumeAfterRestart?: {
     queuedInputIds: string[];
+    /** Interrupted turn requester; revalidated before the replacement turn is admitted. */
+    operatorSource?: import("../../gateway/operator-run-recovery-source.codec.js").QueuedOperatorRecoverySource;
     /** Original per-input limits, restored only after current source revalidation. */
     queuedInputSources?: Record<
       string,
@@ -746,7 +745,6 @@ export type InternalSessionEntryCore = SessionEntryCore & {
         source: import("../../gateway/operator-run-recovery-source.codec.js").QueuedOperatorRecoverySource;
       }
     >;
-    hadBackgroundExec?: true;
   };
   /**
    * Latest authenticated source per person who sent input here, keyed by profile ID. Restored only

@@ -15,6 +15,7 @@ const predecessor = 30;
 // creates its table, so a migration from 30 reaches it too.
 const target = OPENCLAW_AGENT_SCHEMA_VERSION;
 const scope = [
+  "agent_tool_usage",
   "memory_index_chunks",
   "memory_index_sources",
   "schema_meta",

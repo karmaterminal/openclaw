@@ -110,6 +110,21 @@ export function writeMemoryReindexFailure(
   );
 }
 
+/** Records a failure through the published database's owner, which must still be open. */
+export async function publishMemoryReindexFailure(
+  // Inline type import: a declaration would close an import cycle with manager-database-context.
+  database: import("./manager-database-context.js").MemoryIndexDatabase,
+  failure: MemoryReindexResourceFailure,
+): Promise<void> {
+  await database.settlePublication(() =>
+    database.executePublication({ type: "index.writeReindexFailure", input: failure }, () => {
+      if (!database.isOpen) {
+        throw new Error("Memory database owner closed before recording a reindex failure");
+      }
+    }),
+  );
+}
+
 export function describeMemoryReindexResourceFailure(
   failure: MemoryReindexResourceFailure,
   agentId: string,

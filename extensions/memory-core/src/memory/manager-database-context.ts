@@ -43,7 +43,7 @@ import {
   runMemoryPublication,
   withPublishedMemoryExecution,
 } from "./manager-publication.js";
-import type { MemoryReindexResourceFailure } from "./manager-reindex-failure.js";
+import { publishMemoryReindexFailure } from "./manager-reindex-failure.js";
 import type { MemoryDatabaseFacts } from "./manager-retrieval-read.js";
 import {
   assertMemoryShadowIdentity,
@@ -55,6 +55,7 @@ import type { loadMemorySourceFileState } from "./manager-source-state.js";
 
 type PublicationScope = Pick<SqliteWorkerStore<MemoryPublicationOperations>, "execute">;
 type CachePruneInput = MemoryPublicationOperations["cache.prune"]["input"];
+type CacheRetireInput = MemoryPublicationOperations["cache.retire"]["input"];
 const log = createSubsystemLogger("memory");
 type PublicationWorker = {
   store: Pick<
@@ -304,14 +305,8 @@ export class MemoryIndexDatabase {
     );
   }
 
-  async writeReindexFailure(failure: MemoryReindexResourceFailure): Promise<void> {
-    await this.settlePublication(() =>
-      this.executePublication({ type: "index.writeReindexFailure", input: failure }, () => {
-        if (!this.isOpen) {
-          throw new Error("Memory database owner closed before recording a reindex failure");
-        }
-      }),
-    );
+  writeReindexFailure(failure: Parameters<typeof publishMemoryReindexFailure>[1]) {
+    return publishMemoryReindexFailure(this, failure);
   }
 
   get isShadow(): boolean {
@@ -593,6 +588,14 @@ export class MemoryIndexDatabase {
       this.executePublication({ type: "cache.prune", input }, assertCurrent),
     );
     return pruned ?? false;
+  }
+
+  async retireEmbeddingCache(input: CacheRetireInput, assertCurrent: () => void) {
+    assertCurrent();
+    const next = await this.settlePublication(() =>
+      this.executePublication({ type: "cache.retire", input }, assertCurrent),
+    );
+    return next ?? null;
   }
 
   async mutateEmbeddingCache(

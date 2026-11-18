@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { buildMemoryStorageSchema } from "../../packages/memory-host-sdk/src/host/memory-schema-base.js";
@@ -13,7 +14,12 @@ import { extractSqliteTableSchema } from "../../src/infra/sqlite-schema-sql.js";
 import { OPENCLAW_AGENT_SCHEMA_VERSION } from "../../src/state/openclaw-agent-db-contract.js";
 import { getOpenClawAgentMigrationSchema } from "../../src/state/openclaw-agent-schema-history.js";
 import { OPENCLAW_AGENT_SCHEMA_SQL } from "../../src/state/openclaw-agent-schema.js";
-import { getOpenClawStateRuntimeSchema } from "../../src/state/openclaw-state-schema-runtime.js";
+import { withLegacyWorkspaceBootstrapDeferred } from "../../src/state/openclaw-state-db-schema-v40-lazy-additions.js";
+import { withLegacyWorkerProvisionSource } from "../../src/state/openclaw-state-db-schema-v40-worker-provision-source.js";
+import {
+  getOpenClawStateRuntimeSchema,
+  getOpenClawStatePredecessorSchema,
+} from "../../src/state/openclaw-state-schema-runtime.js";
 import { OPENCLAW_STATE_SCHEMA_SQL } from "../../src/state/openclaw-state-schema.js";
 import {
   readGeneratedSqliteCatalog,
@@ -78,6 +84,81 @@ describe("generated SQLite schema catalogs", () => {
       expect(registeredSql.has(sql)).toBe(true);
       expect(readGeneratedSqliteFingerprint(sql)).toBeDefined();
     }
+  });
+
+  it("keeps predecessor schemas free of objects introduced after their version", () => {
+    // A state schema edit without a matching predecessor transform retires every
+    // derived hash, stranding real databases on the previous layout.
+    const predecessor39 = getOpenClawStatePredecessorSchema(39);
+    expect(predecessor39).not.toContain(
+      "CREATE TABLE IF NOT EXISTS device_pairing_browser_requests",
+    );
+    expect(predecessor39).not.toContain("bootstrap_deferred");
+    expect(readGeneratedSqliteFingerprint(predecessor39)).toBeDefined();
+    expect(readGeneratedSqliteCatalog(predecessor39)).toBeDefined();
+  });
+
+  // Continuation (karmaterminal): the fork's state schema also carries the continuation tables, so
+  // each historical projection hashes differently from upstream's. The browser-to-deferred runtime
+  // below is byte-identical to #129388 51ff02dc16's own runtime, the fork's preceding build.
+  it.each([
+    [false, false, "687760588dc693e66cb48d950a4ae8b51417eb03e2452885cea613f4f51988d1"],
+    [false, true, "a3bcac79284646968953a403e67220f39e42de8820b8d567050a07cc3675719c"],
+    [true, false, "764748c089a87d796b6e56f2004a2db9b36327efa5b6acd6e5ca617878f7a96d"],
+    [true, true, "576c513fad56bbc76b30c02526f93ba2ca987c86d3ba68f179e5a8764ceb7a3d"],
+  ] as const)("retains the pre-browser-request runtime projection %s/%s", (lazy, journal, hash) => {
+    const options = {
+      includeVersionLazyAdditiveTables: lazy,
+      includeAgentDeletionJournal: journal,
+    };
+    const current = getOpenClawStateRuntimeSchema(options);
+    const historical = getOpenClawStateRuntimeSchema(
+      options,
+      getOpenClawStatePredecessorSchema(39),
+    );
+    expect(createHash("sha256").update(historical).digest("hex")).toBe(hash);
+    expect(readGeneratedSqliteCatalog(historical)).toBeDefined();
+    expect(getOpenClawStateRuntimeSchema(options)).toBe(current);
+  });
+
+  it.each([
+    [undefined, "366afdc558c9d87ea9673c7d73b91272aa98725439858610dace8ea6ece15deb"],
+    [[false, false], "c176dae2ea8e1ba6422d6b5611736afeb9b16be8a3489e39a1d961027524d34e"],
+    [[false, true], "f1162d0c39e8451d2460b7ff6ed8ec7435e05def696b909a0882be4a43dd6f27"],
+    [[true, false], "fae5baec48054d5067c84636cfa282848043ff315f885529b4e277fb6cc6f785"],
+    [[true, true], "3e6714720e0ddf6518ca2b8caa7a95723be61b8ce1e1ce63f727c2a3d29080dc"],
+  ] as const)(
+    "keeps the pre-provision-source catalog readable after a build swap (%s)",
+    (flags, hash) => {
+      const predecessor = withLegacyWorkerProvisionSource(OPENCLAW_STATE_SCHEMA_SQL);
+      const historical = flags
+        ? getOpenClawStateRuntimeSchema(
+            { includeVersionLazyAdditiveTables: flags[0], includeAgentDeletionJournal: flags[1] },
+            predecessor,
+          )
+        : predecessor;
+      // These are the actual source hashes embedded in the immediately preceding build.
+      expect(createHash("sha256").update(historical).digest("hex")).toBe(hash);
+      expect(readGeneratedSqliteCatalog(historical)).toBeDefined();
+      expect(readGeneratedSqliteFingerprint(historical)).toBeDefined();
+    },
+  );
+
+  it("retains the runtime between browser pairing and deferred bootstrap", () => {
+    const options = { includeVersionLazyAdditiveTables: true, includeAgentDeletionJournal: true };
+    const current = getOpenClawStateRuntimeSchema(options);
+    const historical = getOpenClawStateRuntimeSchema(
+      options,
+      withLegacyWorkspaceBootstrapDeferred(
+        withLegacyWorkerProvisionSource(OPENCLAW_STATE_SCHEMA_SQL),
+      ),
+    );
+    expect(createHash("sha256").update(historical).digest("hex")).toBe(
+      "dcde1d20a7336914b9d4362632eb6da03a83cccf7aa67ade676dd9d83e7a1fa3",
+    );
+    expect(historical).toContain("CREATE TABLE IF NOT EXISTS device_pairing_browser_requests");
+    expect(readGeneratedSqliteCatalog(historical)).toBeDefined();
+    expect(getOpenClawStateRuntimeSchema(options)).toBe(current);
   });
 
   it.each([

@@ -17,7 +17,11 @@ import {
   enqueuePendingWorkReplacing,
   rollbackPendingWorkReplacement,
 } from "./work-replacement-store.js";
-import { consumePendingWork, requeuePendingWork } from "./work-store.js";
+import {
+  consumePendingWork,
+  hasContinuationWorkFromRun,
+  requeuePendingWork,
+} from "./work-store.js";
 import { enqueuePendingWork } from "./work-store.test-support.js";
 
 // A concurrent writer lands between an election's snapshot read and its
@@ -475,6 +479,66 @@ describe("continuation work replacement store", () => {
       }),
     ).toEqual({ applied: true, unresolvedCreatedFlowIds: [], unrestoredPriorFlowIds: [] });
     expect(await readCustodyRecordForTest(parked.flowId)).toEqual(restored);
+  });
+
+  it("restores nothing for a created record another run elected", async () => {
+    const sessionKey = "agent:main:rollback-foreign";
+    const parked = await enqueuePendingWork(
+      createWork({ sessionKey, reason: "parked prior", electedAt: Date.now(), parked: true }),
+    );
+    const elected = await enqueuePendingWorkReplacing({
+      work: createWork({
+        sessionKey,
+        reason: "election by the owning run",
+        electedAt: Date.now() + 1,
+        parked: true,
+        originRunId: "run-electing",
+        originTurnId: "turn-electing",
+      }),
+      summary: "superseded by the owning election",
+      maxPendingWork: 8,
+      replaceParkedWork: true,
+      expectedRunningFlowIds: [],
+    });
+    if (!parked?.flowId || !elected.applied || !elected.work.flowId) {
+      throw new Error("expected a parked prior and an applied election");
+    }
+
+    // The run id names which attempt elected the record; another attempt may not undo it.
+    const rollback = await rollbackPendingWorkReplacement({
+      sessionKey,
+      createdFlowIds: [elected.work.flowId],
+      priorFlows: elected.supersededFlows,
+      originRunId: "run-other",
+      originTurnId: "turn-electing",
+      summary: "another attempt failed to finalize",
+    });
+
+    expect(rollback).toMatchObject({ applied: false, unrestoredPriorFlowIds: [parked.flowId] });
+    expect(await readCustodyRecordForTest(parked.flowId)).toMatchObject({ status: "succeeded" });
+    expect(await readCustodyRecordForTest(elected.work.flowId)).not.toMatchObject({
+      phase: "spawn-init continuation finalization failed",
+    });
+  });
+});
+
+describe("continuation work origin run", () => {
+  it("reports work elected by a run only for that run", async () => {
+    const sessionKey = "agent:main:work-origin";
+    await enqueuePendingWork(
+      createWork({
+        sessionKey,
+        reason: "elected by the earlier attempt",
+        electedAt: Date.now(),
+        parked: false,
+        originRunId: "earlier-run",
+        originTurnId: "turn-earlier",
+      }),
+    );
+
+    await expect(hasContinuationWorkFromRun(sessionKey, "earlier-run")).resolves.toBe(true);
+    // A replayed terminal token of a run that elected nothing may still elect once.
+    await expect(hasContinuationWorkFromRun(sessionKey, "fresh-run")).resolves.toBe(false);
   });
 });
 

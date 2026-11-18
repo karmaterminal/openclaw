@@ -1,9 +1,9 @@
 // Frond (karmaterminal): fleet-38 bridge. Fork-only: Doctor's version phase takes the deployed
-// fleet's 38 (upstream's 38 plus recipient authority) and upstream's 39 to 42 inside their declared
-// backup scopes, keeps authority rows, restores the exact predecessor, and leaves a bridged store
-// to the same cold-navigation backfill as any other. The fleet's 38 DDL stamped 39 (jump 9-F″) and
-// the jump-13 41 sit above their physical shape, so Doctor keeps an exact full image for them.
-// Every other 38-41 shape is refused before any write.
+// fleet's 38 (upstream's 38 plus recipient authority) and upstream's 39 and 42 to 43 inside their
+// declared backup scopes, keeps authority rows, restores the exact predecessor, and leaves a
+// bridged store to the same cold-navigation backfill as any other. The fleet's 38 DDL stamped 39
+// (jump 9-F″), the jump-13 41 and the jump-14 42 sit above their physical shape, so Doctor keeps an
+// exact full image for them. Every other 38-42 shape is refused before any write.
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -33,10 +33,13 @@ const FLEET = readCapturedAgentSchema("openclaw-agent-schema-v38-fleet.sql");
 const UPSTREAM = readCapturedAgentSchema("openclaw-agent-schema-v39.sql");
 const AUTHORITY_DDL = sessionRecipientAuthoritySchemaSql(OPENCLAW_AGENT_SCHEMA_SQL);
 const WITH_AUTHORITY = `${UPSTREAM}\n${AUTHORITY_DDL}`;
-// Upstream's 40 and 41 as U13 and U14 wrote them, and the jump-13 candidate's 41 (d15065f6a6).
+// Upstream's 40, 41 and 42 as U13, U14 and 9122a49bd8 wrote them, the jump-13 candidate's 41
+// (d15065f6a6) and the jump-14 candidates' 42 (#129388 51ff02dc16).
 const UPSTREAM40 = readCapturedAgentSchema("openclaw-agent-schema-v40.sql");
 const UPSTREAM41 = readCapturedAgentSchema("openclaw-agent-schema-v41.sql");
+const UPSTREAM42 = readCapturedAgentSchema("openclaw-agent-schema-v42.sql");
 const JUMP13 = readCapturedAgentSchema("openclaw-agent-schema-v41-jump13.sql");
+const JUMP14 = readCapturedAgentSchema("openclaw-agent-schema-v42-jump14.sql");
 const AUTHORITY_ROW = {
   session_key: "agent:main:fleet-authority",
   epoch: "88888888-8888-4888-8888-888888888888",
@@ -154,6 +157,7 @@ const SHAPES = [
     version: 38,
     authority: true,
     scope: [
+      "agent_tool_usage",
       "schema_meta",
       "session_creation_operations",
       "session_recipient_authority",
@@ -167,11 +171,19 @@ const SHAPES = [
     version: 39,
     authority: false,
     scope: [
+      "agent_tool_usage",
       "schema_meta",
       "session_creation_operations",
       "session_recipient_authority",
       "session_transcript_active_event_facts",
     ],
+  },
+  {
+    shape: "upstream 42",
+    ddl: UPSTREAM42,
+    version: 42,
+    authority: false,
+    scope: ["schema_meta", "session_recipient_authority"],
   },
 ] as const;
 
@@ -199,7 +211,7 @@ async function runDoctor(env: NodeJS.ProcessEnv, pathname: string, foundVersion:
 }
 
 it.each(SHAPES)(
-  "takes the $shape store to 42 through Doctor and restores it from its declared backup",
+  "takes the $shape store to 43 through Doctor and restores it from its declared backup",
   async ({ ddl, version, authority, scope }) => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
       openOpenClawStateDatabase({ env: state.env });
@@ -251,7 +263,7 @@ it.each(SHAPES)(
       }
       expect(database.prepare("PRAGMA integrity_check").all()).toEqual([{ integrity_check: "ok" }]);
 
-      // A bridged store reaches the same Doctor backfill as any other 42.
+      // A bridged store reaches the same Doctor backfill as any other 43.
       const backfill = await migrateSessionColdNavigation({ env: state.env });
       expect(backfill.warnings).toEqual([]);
       expect(database.prepare("SELECT session_id, seq FROM transcript_events").all()).toEqual([
@@ -272,14 +284,16 @@ it.each(SHAPES)(
   },
 );
 
-// Ronan's j14 ruling: the fleet's 38 DDL stamped 39 and the jump-13 41 migrate by their markers.
+// Ronan's j14 ruling: the fleet's 38 DDL stamped 39, the jump-13 41 and the jump-14 42 migrate by
+// their markers.
 // Their crossing runs upstream steps below the marker's declared scope, so Doctor's version phase
 // saves an exact full image and writes nothing; the schema owner then migrates on open.
 it.each([
   { shape: "fleet-shaped 39", ddl: FLEET, version: 39 },
   { shape: "jump-13 41", ddl: JUMP13, version: 41 },
+  { shape: "jump-14 42", ddl: JUMP14, version: 42 },
 ] as const)(
-  "keeps an exact full image of the $shape store through Doctor, then migrates it to 42",
+  "keeps an exact full image of the $shape store through Doctor, then migrates it to 43",
   async ({ ddl, version }) => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
       openOpenClawStateDatabase({ env: state.env });
@@ -330,6 +344,9 @@ it.each([
   // Ronan's j14 ruling: an unknown same-version 41 is refused, never relabelled.
   ["a 41 with authority and active event facts", `${UPSTREAM41}\n${AUTHORITY_DDL}`, 41],
   ["a 41 without authority or active event facts", UPSTREAM40, 41],
+  // The same rule for 42.
+  ["a 42 with authority and tool usage", `${UPSTREAM42}\n${AUTHORITY_DDL}`, 42],
+  ["a 42 without authority or tool usage", UPSTREAM41, 42],
 ] as const)("refuses %s before any write", async (_shape, ddl, version) => {
   await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
     openOpenClawStateDatabase({ env: state.env });

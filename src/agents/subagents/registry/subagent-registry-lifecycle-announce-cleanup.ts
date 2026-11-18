@@ -17,9 +17,13 @@ import {
 import {
   ensureDeliveryState,
   getDeliveryLastError,
+  hasConsumedPrivateRequesterInput,
   isDeliverySuspended,
   clearSubagentPendingDelivery,
   loadPendingFinalDeliveryPayload,
+  resolveRequesterDeliveryOutcome,
+  recordRequesterDelivery,
+  recordRequesterHandoff,
 } from "./subagent-delivery-state.js";
 import {
   resolveAnnounceDeliveryDeadline,
@@ -57,6 +61,7 @@ import {
 } from "./subagent-registry-persistence.js";
 import { isSubagentSpawnArmed } from "./subagent-registry-spawn-acceptance.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
+import { observeSubagentRequesterDelivery } from "./subagent-requester-delivery.js";
 import { hasRequesterCompletionCohort } from "./subagent-requester-settle-identity.js";
 import { isClaimedByLiveRequesterTurn } from "./subagent-requester-turn-liveness.js";
 import { getSubagentRunRuntimeKey } from "./subagent-run-generation.js";
@@ -215,7 +220,9 @@ export const startSubagentAnnounceCleanupFlow = (
     });
   };
   const alreadyDelivered = () =>
-    typeof entry.delivery?.announcedAt === "number" || entry.delivery?.status === "delivered";
+    typeof entry.delivery?.announcedAt === "number" ||
+    entry.delivery?.status === "delivered" ||
+    hasConsumedPrivateRequesterInput(entry);
   const finalizeDelivered = (options?: { skipRequesterDelivery: boolean }) =>
     finalizeSubagentCleanup(context, entry, cleanup, "delivered", cleanupGeneration, stateContext, {
       skipAnnounce: true,
@@ -361,6 +368,8 @@ export const startSubagentAnnounceCleanupFlow = (
     current.requesterSettleWake?.rearmGeneration !== requesterSettleGeneration;
   let latestDeliveryError = getDeliveryLastError(entry);
   let committedDeliveryOwner: SubagentRunRecord | undefined;
+  let storeReplaced = false;
+  let waitForRequesterDelivery: (() => Promise<void> | undefined) | undefined;
   const finalizeAnnounceCleanup = async (announceOutcome: SubagentAnnounceFlowOutcome) => {
     assertPersistenceCurrent();
     if (!context.isCleanupAttemptCurrent(entry, cleanupGeneration)) {
@@ -434,7 +443,6 @@ export const startSubagentAnnounceCleanupFlow = (
     roundOneReply: entry.completion?.resultText ?? undefined,
     fallbackReply: entry.completion?.fallbackResultText ?? undefined,
     endedReason: entry.endedReason,
-    completionRequesterLifecycleRevision: entry.completionRequesterLifecycleRevision,
     wakeOnDescendantSettle: pendingPayload.wakeOnDescendantSettle === true,
     suppressChildSessionEffects: suppressSessionEffects,
     isChildSessionEffectsAllowed: childSessionEffectsAllowed,
@@ -447,6 +455,9 @@ export const startSubagentAnnounceCleanupFlow = (
           entry,
           cleanupGeneration,
           committedDeliveryOwner,
+          () => {
+            storeReplaced = true;
+          },
         ) && subagentRuns.runWithCompletionAuthority(entry, () => true)
       );
     },
@@ -474,7 +485,8 @@ export const startSubagentAnnounceCleanupFlow = (
             return childSessionEffectsAllowed();
           }
         : undefined,
-    onDeliveryResult: async (delivery) => {
+    onDeliveryResult: async (observedDelivery) => {
+      await waitForRequesterDelivery?.();
       assertPersistenceCurrent();
       if (!context.isCleanupAttemptCurrent(entry, cleanupGeneration)) {
         const retiredEntry = entry;
@@ -490,6 +502,7 @@ export const startSubagentAnnounceCleanupFlow = (
         return;
       }
       assertCurrent();
+      const delivery = resolveRequesterDeliveryOutcome([entry], observedDelivery)!;
       // A stale announce cannot replace a delivery already committed by requester-settle.
       if (entry.delivery?.status === "delivered") {
         return;
@@ -527,9 +540,10 @@ export const startSubagentAnnounceCleanupFlow = (
           }
           recordAnnounceDeliveryResult(draft, delivery, params.runs);
           const deliveryState = ensureDeliveryState(draft);
-          latestDeliveryError = delivery.delivered
-            ? undefined
-            : formatAnnounceDeliveryError(delivery);
+          latestDeliveryError =
+            delivery.delivered || delivery.reason === "completion_handoff_pending"
+              ? undefined
+              : formatAnnounceDeliveryError(delivery);
           if (delivery.delivered) {
             deliveryState.status = "delivered";
             deliveryState.announcedAt = deliveryState.deliveredAt ?? Date.now();
@@ -537,6 +551,9 @@ export const startSubagentAnnounceCleanupFlow = (
           } else {
             if (delivery.reason === "delivery_suppressed") {
               deliveryState.status = "failed";
+              if (deliveryState.requesterDelivery?.state === "waiting") {
+                deliveryState.requesterDelivery = undefined;
+              }
             }
             deliveryState.lastError = latestDeliveryError;
           }
@@ -595,6 +612,13 @@ export const startSubagentAnnounceCleanupFlow = (
         if (!controllerInput) {
           throw new Error("Subagent completion requester is unavailable");
         }
+        waitForRequesterDelivery = observeSubagentRequesterDelivery(controllerInput, (fact) =>
+          commit((draft) => recordRequesterDelivery(draft, fact)),
+        );
+        const blockingRunId = controllerInput.mailbox.claim?.inputs.find(
+          (source) => source !== controllerInput,
+        )?.protocolRunId;
+        await commit((draft) => recordRequesterHandoff(draft, blockingRunId));
       }
       announceOutcome = await subagentRuns.runWithCompletionAuthority(entry, () =>
         params.runSubagentAnnounceFlow({
@@ -628,7 +652,7 @@ export const startSubagentAnnounceCleanupFlow = (
     if (
       context.isCleanupAttemptCurrent(entry, cleanupGeneration) &&
       getCurrentSubagentRunOwner(params.runs, entry)?.delivery?.status !== "delivered" &&
-      (subagentRuns.isCompletionAuthorityRetired(entry) ||
+      (storeReplaced ||
         (shouldSuspendPendingFinalDelivery(entry) &&
           !isSystemEventStoreCurrent(
             entry.requesterSessionKey,

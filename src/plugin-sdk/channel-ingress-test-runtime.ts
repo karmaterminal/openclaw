@@ -16,3 +16,7 @@ export {
   observeChannelIngressQueueWrites,
 } from "../channels/message/ingress-drain.test-helpers.js";
 export { withRegisteredChannelIngress } from "./test-helpers/registered-channel-ingress.js";
+
+// Load the Gateway inspector only for receiver tests that exercise suspension.
+export const loadGatewaySuspendCoordinatorForTest = () =>
+  import("../infra/gateway-suspend-coordinator.js");

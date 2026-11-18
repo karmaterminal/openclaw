@@ -4,7 +4,10 @@ import { DatabaseSync } from "node:sqlite";
 import { expect, it, vi } from "vitest";
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { loadExactSessionEntry } from "../config/sessions/session-accessor.js";
-import { resolveSessionWorkStartBlock } from "../config/sessions/session-work-start.js";
+import {
+  resolveSessionWorkStartBlock,
+  SESSION_LIFECYCLE_CHANGED_ERROR_REASON,
+} from "../config/sessions/session-work-start.js";
 import { runSessionStartupMigration } from "../config/sessions/startup-migration-runtime.js";
 import { claimAgentRunContext, releaseAgentRunContext } from "../infra/agent-run-registry.js";
 import { withAgentDatabaseMaintenanceLease } from "../state/openclaw-agent-db-maintenance-lease.js";
@@ -33,7 +36,7 @@ const fleetTombstone = (extra: Record<string, unknown> = {}) => ({
 });
 type Seed = { key: string; entry: Record<string, unknown>; events: number };
 
-/** Writes a fleet-38 store, then runs the real 38→42 schema migration over it. */
+/** Writes a fleet-38 store, then runs the real 38→43 schema migration over it. */
 async function seedFleet38(env: NodeJS.ProcessEnv, seeds: Seed[]) {
   const pathname = resolveOpenClawAgentSqlitePath({ agentId: "main", env });
   fs.mkdirSync(path.dirname(pathname), { recursive: true });
@@ -83,7 +86,7 @@ async function seedFleet38(env: NodeJS.ProcessEnv, seeds: Seed[]) {
   await withAgentDatabaseMaintenanceLease({ env }, async () => {
     using database = new DatabaseSync(pathname);
     ensureOpenClawAgentDatabaseSchema(database, { agentId: "main", path: pathname, env });
-    expect(database.prepare("PRAGMA user_version").get()?.user_version).toBe(42);
+    expect(database.prepare("PRAGMA user_version").get()?.user_version).toBe(43);
   });
   const db = openOpenClawAgentDatabase({ agentId: "main", env }).db;
   const read = (key: string) =>
@@ -289,6 +292,41 @@ it("refuses while a recorded run is live and retires an unknown-outcome final wi
       state: "owed",
     });
     expect(retired).not.toHaveProperty("resumeAfterRestart");
+  }));
+
+it("refuses an operator-named incarnation the key no longer holds and leaves the row unchanged", () =>
+  withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    setRuntimeConfigSnapshot(cfg);
+    await state.writeConfig(cfg);
+    const target = {
+      key: "agent:main:silas",
+      entry: {
+        sessionId: "silas",
+        updatedAt: 42,
+        status: "failed",
+        mainRestartRecovery: fleetTombstone(),
+      },
+      events: 2,
+    };
+    const store = await seedFleet38(state.env, [target]);
+    await boot(state.env, store);
+    const raw = store.read(target.key);
+
+    // The operator read an earlier incarnation; lifting this one would act on a chat they never named.
+    const refused = await recover(state.env, target.key, "retired-silas");
+
+    expect(refused).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_REQUEST",
+        details: { reason: SESSION_LIFECYCLE_CHANGED_ERROR_REASON },
+      },
+    });
+    expect(store.read(target.key)).toBe(raw);
+    expect(store.backups()).toEqual([]);
+    expect(resolveSessionWorkStartBlock(target.key, store.entry(target.key))?.reason).toBe(
+      "restart_tombstone",
+    );
   }));
 
 it("requires owner or operator.admin authority and leaves the row unchanged otherwise", () =>

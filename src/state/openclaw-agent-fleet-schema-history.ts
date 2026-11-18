@@ -46,7 +46,7 @@ type AgentFleetSchemaHistoryPlan = {
   migrateInTransaction: (db: DatabaseSync) => void;
 };
 
-/** Reads which history a database at schema 25, 26 or 38-41 follows; mixed shapes are refused. */
+/** Reads which history a database at schema 25, 26 or 38-42 follows; mixed shapes are refused. */
 export function planAgentFleetSchemaHistory(
   db: DatabaseSync,
   pathname: string,
@@ -64,7 +64,8 @@ export function planAgentFleetSchemaHistory(
     readOpenClawAgentSchema26Shape(db, pathname) === "recipient-authority";
   // Frond (karmaterminal): fleet-38 bridge.
   const fleet38 = planAgentFleet38Bridge(db, pathname, previousVersion, targetVersion);
-  // The fleet's 38 DDL (at 38 or 39) physically holds upstream's 38, jump 13's 41 upstream's 40.
+  // The fleet's 38 DDL (at 38 or 39) physically holds upstream's 38, jump 13's 41 upstream's 40,
+  // jump 14's 42 upstream's 41.
   const shapeVersion =
     fleetSchema25 || fleetSchema26
       ? previousVersion - 1
@@ -118,10 +119,11 @@ export function isAgentFleetSchema26Migration(migration: {
 
 /**
  * Whether a pending agent migration starts from a bridged shape that sits below its marker: the
- * fleet-shaped 39 (upstream's 38 plus authority) and jump 13's 41 (upstream's 40 plus authority).
- * Each run also crosses an upstream step its marker says it already holds, outside every declared
- * backup scope, so Doctor must keep a full image for it. An unrecognized shape at 38-41 is
- * refused here, before any backup or write, with the schema owner's own refusal.
+ * fleet-shaped 39 (upstream's 38 plus authority), jump 13's 41 (upstream's 40 plus authority) and
+ * jump 14's 42 (upstream's 41 plus authority). Each run also crosses an upstream step its marker
+ * says it already holds, outside every declared backup scope, so Doctor must keep a full image
+ * for it. An unrecognized shape at 38-42 is refused here, before any backup or write, with the
+ * schema owner's own refusal.
  */
 export function isAgentBridgedSchemaBelowMarkerMigration(migration: {
   kind: "agent" | "state";

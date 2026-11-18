@@ -5,14 +5,13 @@ import type { InternalSessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { pruneMapToMaxSize } from "../../infra/map-size.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { chatRef, type ChatRef } from "../../sessions/chat-ref.js";
 import { resolveSendPolicy } from "../../sessions/send-policy.js";
 import { onSessionIdentityMutation } from "../../sessions/session-lifecycle-events.js";
 import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
 
 type RecoveryNotice = {
-  agentId: string;
-  sessionKey: string;
-  sessionId: string;
+  chat: ChatRef;
   cycleId: string;
 };
 
@@ -75,31 +74,29 @@ export async function sendReplyRestartRecoveryNotice(params: {
     ) {
       return;
     }
+    // The session store publishes every committed reset, replacement, move or delete of the
+    // chat's key; that recorded change drops the claim, so a replacement transcript gets its
+    // own notice and the claim never compares transcript ids.
     notices.unsubscribe ??= onSessionIdentityMutation((mutation) => {
       const keys = new Set([
         ...mutation.previous.sessionKeys,
         ...(mutation.kind === "delete" ? [] : mutation.current.sessionKeys),
       ]);
       for (const [key, notice] of notices.entries) {
-        if (notice.agentId === mutation.agentId && keys.has(notice.sessionKey)) {
+        if (notice.chat.agentId === mutation.agentId && keys.has(notice.chat.sessionKey)) {
           notices.entries.delete(key);
         }
       }
     });
-    const key = JSON.stringify([params.agentId, params.storePath, params.sessionKey]);
-    const previous = notices.entries.get(key);
-    if (previous?.sessionId === entry.sessionId && previous.cycleId === recovery.cycleId) {
+    const chat = chatRef(params);
+    const key = JSON.stringify([chat.agentId, chat.storePath, chat.sessionKey]);
+    if (notices.entries.get(key)?.cycleId === recovery.cycleId) {
       return;
     }
     notices.entries.delete(key);
     pruneMapToMaxSize(notices.entries, MAX_RECOVERY_NOTICES - 1);
     // Claim before awaiting delivery; ambiguous failures must not produce a notice storm.
-    notices.entries.set(key, {
-      agentId: params.agentId,
-      sessionKey: params.sessionKey,
-      sessionId: entry.sessionId,
-      cycleId: recovery.cycleId,
-    });
+    notices.entries.set(key, { chat, cycleId: recovery.cycleId });
     const hint =
       entry.modelSelectionLocked === true
         ? "Open it in WebChat and use Resume in new session."

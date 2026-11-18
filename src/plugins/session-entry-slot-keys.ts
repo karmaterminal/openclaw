@@ -11,6 +11,8 @@ const SESSION_ENTRY_RESERVED_SLOT_KEY_LIST = [
   "heartbeatTaskState",
   "pluginExtensions",
   "initializationPending",
+  "templateInitialization",
+  "templateSetup",
   "pluginExtensionSlotKeys",
   "pluginNextTurnInjections",
   "sessionId",
@@ -185,6 +187,7 @@ const SESSION_ENTRY_RESERVED_SLOT_KEY_LIST = [
   "groupChannel",
   "space",
   "skillsSnapshot",
+  "toolUsageRankingSeed",
   "skillLibrarySelections",
   "systemPromptReport",
   "pluginDebugEntries",
@@ -203,6 +206,7 @@ const SESSION_ENTRY_RESERVED_SLOT_KEY_LIST = [
   "publicShare",
   "profileInvolvement",
   "priorWorkspace",
+  "scheduledMemoryParent",
 ] as const satisfies ReadonlyArray<
   keyof SessionEntry | "__proto__" | "constructor" | "prototype" | "sessionFile" | "transcriptPath"
 >;

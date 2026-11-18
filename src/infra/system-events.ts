@@ -77,6 +77,12 @@ const receiptSettlements = resolveGlobalSingleton(
   () => new WeakMap<SystemEvent, (adopted: boolean) => void>(),
 );
 
+/** Occurrences admitted to start their own turn, bounded apart from passive notices. */
+const wakeEvents = resolveGlobalSingleton(
+  Symbol.for("openclaw.systemEvents.wakeEvents"),
+  () => new WeakSet<SystemEvent>(),
+);
+
 function settleSystemEventReceipt(event: SystemEvent, adopted: boolean): void {
   const settle = receiptSettlements.get(event);
   receiptSettlements.delete(event);
@@ -196,11 +202,12 @@ function getSessionQueue(sessionKey: string): SessionQueue | undefined {
 }
 
 function cloneSystemEvent(event: SystemEvent): SystemEvent {
-  return {
+  // Continuation: a consumed copy keeps its pool, so restoring it cannot move it to the other pool.
+  return managedDelivery.keepPool(wakeEvents, event, {
     ...event,
     ...(event.deliveryContext ? { deliveryContext: { ...event.deliveryContext } } : {}),
     ...(event.recipientAuthority ? { recipientAuthority: { ...event.recipientAuthority } } : {}),
-  };
+  });
 }
 
 export function isSystemEventContextChanged(
@@ -229,6 +236,7 @@ export function enqueueRequiredSystemEventEntry(
   const event = enqueueOwnedSystemEventEntry(text, options, {
     ...receiptOptions,
     throwOnFull: true,
+    wake: true,
   });
   return event ? cloneSystemEvent(event) : null;
 }
@@ -236,7 +244,7 @@ export function enqueueRequiredSystemEventEntry(
 function enqueueOwnedSystemEventEntry(
   text: string,
   options: SystemEventOptions,
-  receiptOptions?: ReceiptOptions & { throwOnFull?: boolean },
+  receiptOptions?: ReceiptOptions & { throwOnFull?: boolean; wake?: boolean },
 ): SystemEvent | null {
   const key = requireSessionKey(options.sessionKey);
   if (readExecRequestOwners(options)?.some((owner) => owner.signal.aborted)) {
@@ -285,7 +293,14 @@ function enqueueOwnedSystemEventEntry(
       return null;
     }
   }
-  const atCapacity = !slot && entry.queue.length >= MAX_EVENTS;
+  // Passive notices wait for the next turn to drain them; waking occurrences start their own
+  // turn. Notices that arrive during one long turn (for example hidden-subagent exec
+  // completions) can still fill the queue before its handoff wake, so bound each pool
+  // separately: a refused wake would leave the session waiting with nothing to resume it.
+  // Accepted edge: a session may hold up to 2 * MAX_EVENTS entries.
+  const wake = receiptOptions?.wake === true;
+  const pooled = entry.queue.filter((event) => wakeEvents.has(event) === wake).length;
+  const atCapacity = !slot && pooled >= MAX_EVENTS;
   if (atCapacity && !(options.replace && entry.queue.some(matches))) {
     const error = new SystemEventQueueFullError();
     log.warn(error.message, { sessionKey: key });
@@ -313,6 +328,9 @@ function enqueueOwnedSystemEventEntry(
     },
     readExecRequestOwners(options),
   );
+  if (wake) {
+    wakeEvents.add(event);
+  }
   // A durable row's re-enqueue takes its queued copy's slot; anything else appends.
   entry.queue.splice(slot?.index ?? entry.queue.length, slot ? 1 : 0, event);
   // Install the replacement before cancellation callbacks can enqueue more work.
@@ -456,6 +474,7 @@ export function enqueueAutomationSystemEvent(
   const event = enqueueOwnedSystemEventEntry(text, options, {
     allowDuplicate: true,
     throwOnFull: true,
+    wake: true,
   });
   if (!event) {
     throw new Error("Deferred automation event was not accepted");
@@ -705,7 +724,9 @@ export function restoreConsumedSystemEventEntries(
 ): void {
   const key = requireSessionKey(sessionKey);
   const entry = getSessionQueue(key) ?? { queue: [], lastContextKey: null };
-  retireSystemEvents(managedDelivery.restore(key, entry, events, cloneSystemEvent, MAX_EVENTS));
+  retireSystemEvents(
+    managedDelivery.restore(key, entry, events, cloneSystemEvent, MAX_EVENTS, wakeEvents),
+  );
   queues.set(key, entry);
   resetQueueState(key, entry);
 }
