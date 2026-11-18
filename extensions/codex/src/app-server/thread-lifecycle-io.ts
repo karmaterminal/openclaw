@@ -39,7 +39,6 @@ import {
   checkCodexPolicyRefresh,
   checkCodexThreadHandoff,
   recordCodexThreadLoad,
-  refuseSharedCodexServerResume,
 } from "./sovereign-handoff.js";
 import { buildContextEngineBinding } from "./thread-context-engine.js";
 import {
@@ -114,8 +113,6 @@ export async function resumeExistingCodexThread(
     throwIfAborted,
     stageBindingReplacement,
   } = context;
-  // A resume on a shared app-server cannot prove what it loads (openclaw#1321).
-  refuseSharedCodexServerResume(params.params, params.appServer.start);
   let acceptedConfiguration: CodexThreadResumePreparation | undefined;
   let disposeConfiguration: (() => void) | undefined;
   let resumeReservation: { release: () => void } | undefined;

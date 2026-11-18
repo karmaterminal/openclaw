@@ -13,7 +13,7 @@ import {
   type SovereignPromptSpans,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { isOwnedCodexAppServerProcess } from "./auth-start-options.js";
-import type { CodexAppServerStartOptions } from "./config-contracts.js";
+import type { CodexAppServerRuntimeOptions } from "./config-contracts.js";
 
 type CodexSovereignAttempt = Pick<
   Parameters<typeof checkSovereignPromptHandoff>[0],
@@ -114,20 +114,28 @@ export function isCodexThreadLoadedBy(
 }
 
 /**
- * Refuses an enforce agent's resume on an app-server other clients can reach, before the
- * thread is read. One can load the thread between OpenClaw's read and its resume; Codex
- * then ignores the resume's instructions, and its answer names none in effect.
+ * Placement admission for every instruction-bearing handoff (loader design § 5.4, phase A):
+ * an enforce agent's thread is started, resumed, reused or refreshed only on an app-server
+ * OpenClaw spawned as its own stdio child. Span checks prove what a handoff carries, not
+ * where it goes. A remote connection (including the sandbox route marked remote) refuses
+ * as `codex:remote-app-server`; a loopback WebSocket or Unix socket, whose listener may
+ * forward anywhere, and an `app-server proxy` launch refuse as `codex:unowned-app-server`.
+ * Such a server is also one other clients can reach, so a resume there could not prove which
+ * instructions its loaded thread runs on. Passing this never waives a handoff's span or
+ * loaded-thread checks.
  */
-export function refuseSharedCodexServerResume(
+export function assertCodexAppServerPlacement(
   attempt: CodexSovereignAttempt,
-  start: CodexAppServerStartOptions,
+  appServer: Pick<CodexAppServerRuntimeOptions, "start" | "connectionClass">,
 ): void {
-  if (!isOwnedCodexAppServerProcess(start)) {
-    assertSovereignPromptRoute({
-      config: attempt.config,
-      agentId: attempt.agentId,
-      route: "codex:external-resume",
-    });
+  const route =
+    appServer.connectionClass === "remote"
+      ? "codex:remote-app-server"
+      : isOwnedCodexAppServerProcess(appServer.start)
+        ? undefined
+        : "codex:unowned-app-server";
+  if (route) {
+    assertSovereignPromptRoute({ config: attempt.config, agentId: attempt.agentId, route });
   }
 }
 

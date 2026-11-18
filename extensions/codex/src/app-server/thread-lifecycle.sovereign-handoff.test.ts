@@ -668,48 +668,149 @@ describe.skipIf(process.platform === "win32")("Codex route: sovereign handoff ch
     });
   });
 
-  describe("a resume on an app-server other clients can reach", () => {
-    // Another client can load the thread between OpenClaw's thread/read and its thread/resume;
-    // Codex then ignores the resume's instructions, and its answer names none in effect
-    // (codex-rs ThreadResumeResponse; thread_processor.rs, resume_running_thread). Only an
-    // app-server OpenClaw spawned over stdio has no other client.
-    const shared = {
-      websocket: { transport: "websocket" as const, url: "ws://127.0.0.1:4500" },
-      unix: { transport: "unix" as const, homeScope: "user" as const },
-      "stdio proxy": { args: ["app-server", "proxy"] },
+  describe("an app-server whose local placement OpenClaw cannot establish", () => {
+    // Phase A hands sovereign text only to an app-server OpenClaw spawned as its own stdio
+    // child (loader design § 5.4). A loopback port or a Unix socket can forward to another
+    // host, an `app-server proxy` launch forwards to a server it does not own, and the
+    // sandbox route stays marked remote until its receiving side is approved.
+    type Placement = {
+      route: string;
+      connectionClass: CodexAttemptThreadInput["appServer"]["connectionClass"];
+      start: Partial<CodexAttemptThreadInput["appServer"]["start"]>;
+      remoteWorkspaceRoot?: string;
     };
-    const on = (transport: (typeof shared)[keyof typeof shared]) => {
+    const placements: Record<string, Placement> = {
+      "remote WebSocket": {
+        route: "codex:remote-app-server",
+        connectionClass: "remote",
+        start: {
+          transport: "websocket",
+          url: "wss://codex.example.test/app-server",
+          authToken: "synthetic-token",
+        },
+      },
+      "loopback WebSocket": {
+        route: "codex:unowned-app-server",
+        connectionClass: "local-loopback",
+        start: { transport: "websocket", url: "ws://127.0.0.1:4500" },
+      },
+      "Unix socket": {
+        route: "codex:unowned-app-server",
+        connectionClass: "local-loopback",
+        start: { transport: "unix", url: "unix://", homeScope: "user" },
+      },
+      "stdio proxy": {
+        route: "codex:unowned-app-server",
+        connectionClass: "local-loopback",
+        start: { args: ["app-server", "proxy"] },
+      },
+      "sandbox route marked remote": {
+        route: "codex:remote-app-server",
+        connectionClass: "remote",
+        start: {},
+        remoteWorkspaceRoot: "/workspace",
+      },
+    };
+    const on = (placement: Placement) => {
       const appServer = appServerOptions();
-      return { appServer: { ...appServer, start: { ...appServer.start, ...transport } } };
+      return {
+        appServer: {
+          ...appServer,
+          connectionClass: placement.connectionClass,
+          ...(placement.remoteWorkspaceRoot
+            ? { remoteWorkspaceRoot: placement.remoteWorkspaceRoot }
+            : {}),
+          start: { ...appServer.start, ...placement.start },
+        },
+      };
     };
-    async function boundSession(agentId: string, session: string) {
-      const harness = await createAgentLifecycleHarness({
-        respond: respond("thread-shared"),
-        persistedThreads: ["thread-shared"],
+    let sessions = 0;
+    /** Each instruction-bearing handoff, staged on an owned app-server, and what a refusal keeps. */
+    const handoffs = {
+      "thread/start": async () => {
+        const harness = await createAgentLifecycleHarness({ respond: respond("thread-placed") });
+        const input = attempt("main", `placed-${++sessions}`);
+        const kept = () =>
+          expect(readCodexAppServerBinding(input.sessionFile)).resolves.toBe(undefined);
+        return { ...harness, input, kept };
+      },
+      "thread/resume": async () => {
+        const harness = await createAgentLifecycleHarness({
+          respond: respond("thread-placed"),
+          persistedThreads: ["thread-placed"],
+        });
+        const input = attempt("main", `placed-${++sessions}`);
+        await writeBinding(input, "thread-placed");
+        const kept = () =>
+          expect(readCodexAppServerBinding(input.sessionFile)).resolves.toMatchObject({
+            threadId: "thread-placed",
+          });
+        return { ...harness, input, kept };
+      },
+      live_thread_reuse: async () => {
+        const harness = await createAgentLifecycleHarness({ respond: respond("thread-placed") });
+        const input = attempt("main", `placed-${++sessions}`);
+        const started = await start(harness.client, input);
+        await retainCodexAppServerLiveThread(
+          harness.client,
+          started.threadId,
+          undefined,
+          started.liveThreadConfigFingerprint,
+        );
+        const kept = () =>
+          expect(readCodexAppServerBinding(input.sessionFile)).resolves.toMatchObject({
+            threadId: started.threadId,
+          });
+        return { ...harness, input, kept };
+      },
+      "supervised thread/start": async () => {
+        const { input, identity, request, client } = await supervisedSession(
+          `placed-${++sessions}`,
+        );
+        const kept = async () =>
+          expect(testCodexAppServerBindingStore.read(identity)).toMatchObject({
+            pendingSupervisionBranch: { sourceThreadId: "thread-source" },
+          });
+        return { client, request, input, kept };
+      },
+    };
+
+    it.each(
+      Object.entries(placements).flatMap(([name, placement]) =>
+        Object.keys(handoffs).map((handoff) => ({ name, placement, handoff })),
+      ),
+    )("$name: refuses an enforce agent's $handoff before any request", async (row) => {
+      const staged = await handoffs[row.handoff as keyof typeof handoffs]();
+      staged.request.mockClear();
+
+      const outcome = await start(staged.client, staged.input, on(row.placement)).catch(
+        (cause: unknown) => cause,
+      );
+
+      expect(outcome).toMatchObject({
+        name: "SovereignPromptRefusal",
+        code: "route_unconverted",
+        details: { route: row.placement.route },
       });
-      const input = attempt(agentId, session);
-      await writeBinding(input, "thread-shared");
-      return { ...harness, input };
-    }
+      expect(inspect(outcome, { depth: 8, showHidden: true })).not.toContain(SENTINEL);
+      expect(methods(staged.request)).toEqual([]);
+      await staged.kept();
+    });
 
-    it.each(Object.entries(shared))(
-      "refuses an enforce agent's resume on a %s server before the thread is read",
-      async (name, transport) => {
-        const { client, request, input } = await boundSession("main", `shared-${name}`);
-
-        const outcome = await start(client, input, on(transport)).catch((cause: unknown) => cause);
-
-        // A preflight read never earns handoff-verified: the thread is not read or resumed.
-        expect(outcome).not.toHaveProperty("sovereignReceipt");
-        expect(outcome).toMatchObject({
-          name: "SovereignPromptRefusal",
-          code: "route_unconverted",
-          details: { route: "codex:external-resume" },
+    it.each(Object.entries(placements))(
+      "%s: leaves an off agent's thread/start as it was",
+      async (_name, placement) => {
+        const { client, request } = await createAgentLifecycleHarness({
+          respond: respond("thread-off-placed"),
         });
-        expect(methods(request)).toEqual(PREFLIGHT);
-        await expect(readCodexAppServerBinding(input.sessionFile)).resolves.toMatchObject({
-          threadId: "thread-shared",
-        });
+        const explicit = await start(client, attempt("off", `placed-${++sessions}`), on(placement));
+        const absent = await start(client, attempt("plain", `placed-${++sessions}`), on(placement));
+
+        const [explicitStart, absentStart] = sent(request, "thread/start");
+        expect(explicitStart).toEqual(absentStart);
+        expect(explicitStart?.baseInstructions).toContain(STOCK_IDENTITY);
+        expect(explicit.sovereignReceipt).toBeUndefined();
+        expect(absent.sovereignReceipt).toBeUndefined();
       },
     );
 
@@ -718,12 +819,13 @@ describe.skipIf(process.platform === "win32")("Codex route: sovereign handoff ch
         respond: respond("thread-off-shared"),
       });
       const input = attempt("off", "shared-off");
-      await start(client, input, on(shared.websocket));
+      const remote = on(placements["remote WebSocket"]!);
+      await start(client, input, remote);
       // The server unloaded the thread after the turn; the next turn resumes it cold.
       seed(threadStartResult("thread-off-shared"));
       request.mockClear();
 
-      const resumed = await start(client, input, on(shared.websocket));
+      const resumed = await start(client, input, remote);
 
       expect(methods(request)).toEqual([
         ...PREFLIGHT,

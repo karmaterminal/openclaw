@@ -1,10 +1,7 @@
 /** A caller-owned app-server client over the placement's authorized node duplex. */
 import { EventEmitter, once } from "node:events";
 import { PassThrough, Writable } from "node:stream";
-import {
-  assertSovereignPromptRoute,
-  type EmbeddedRunAttemptParamsV2,
-} from "openclaw/plugin-sdk/agent-harness-runtime";
+import type { EmbeddedRunAttemptParamsV2 } from "openclaw/plugin-sdk/agent-harness-runtime";
 import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
 import { createBoundedLineFramer } from "openclaw/plugin-sdk/process-runtime";
 import type { SandboxContext } from "openclaw/plugin-sdk/sandbox";
@@ -21,7 +18,6 @@ import type { CodexAppServerTransport } from "./transport.js";
 const MAX_FRAME_BYTES = 64 * 1024 * 1024;
 
 export function createCodexWorkerClientFactory(params: {
-  attempt: Pick<EmbeddedRunAttemptParamsV2, "config" | "agentId">;
   runtime?: Pick<PluginRuntime, "nodes">;
   permissionMode?: EmbeddedRunAttemptParamsV2["permissionMode"];
   sandbox: SandboxContext;
@@ -29,9 +25,6 @@ export function createCodexWorkerClientFactory(params: {
   assertCurrent: () => void;
   workspaceReadiness?: EmbeddedRunAttemptParamsV2["hostCapabilities"]["workspaceReadiness"];
 }): CodexAppServerClientFactory {
-  // The app-server, and every thread's base, would run on the worker: sovereign text never
-  // leaves the Gateway host (openclaw#1321), so an enforce agent refuses this placement.
-  assertSovereignPromptRoute({ ...params.attempt, route: "codex:worker-hosted" });
   const { runtime, sandbox } = params;
   const nodeId = "placementNodeId" in sandbox ? sandbox.placementNodeId : undefined;
   if (
