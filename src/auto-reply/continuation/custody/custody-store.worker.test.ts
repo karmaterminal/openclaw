@@ -618,6 +618,37 @@ describe("spawn attempts", () => {
     ]);
   });
 
+  it("refuses a claim whose next child run ID is already recorded as evidence", () => {
+    const options = stateOptions();
+    write(options, (db) => createContinuationRecordInDatabase(db, delegate("delegate-a")));
+    // Opaque evidence is never re-derived, so it can already hold the formatter's next run ID.
+    const taken = formatContinuationChildRunId("delegate-a", 2);
+    openOpenClawStateDatabase(options)
+      .db.prepare("UPDATE continuation_records SET spawn_attempts_json = ? WHERE record_id = ?")
+      .run(JSON.stringify([{ attemptId: 1, childRunId: taken, claimedAt: 900 }]), "delegate-a");
+
+    expect(
+      write(options, (db) =>
+        claimContinuationSpawnAttemptInDatabase(db, {
+          recordId: "delegate-a",
+          expectedRevision: 0,
+          now: 1_100,
+        }),
+      ),
+    ).toMatchObject({ outcome: "not_claimable", reason: "child run id already recorded" });
+    expect(list(options)[0]!.spawnAttempts.map((attempt) => attempt.childRunId)).toEqual([taken]);
+  });
+
+  it("fails a stored attempt without a child run ID closed", () => {
+    const options = stateOptions();
+    write(options, (db) => createContinuationRecordInDatabase(db, delegate("delegate-a")));
+    openOpenClawStateDatabase(options)
+      .db.prepare("UPDATE continuation_records SET spawn_attempts_json = ? WHERE record_id = ?")
+      .run(JSON.stringify([{ attemptId: 1, childRunId: "", claimedAt: 900 }]), "delegate-a");
+
+    expect(() => list(options)).toThrow(/spawn_attempts_json/u);
+  });
+
   it("keeps attempt evidence through terminalization and refuses claims on non-delegates", () => {
     const options = stateOptions();
     write(options, (db) => createContinuationRecordInDatabase(db, delegate("delegate-a")));
