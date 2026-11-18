@@ -66,10 +66,12 @@ export const SOVEREIGN_CONVERTED_ROUTES: ReadonlySet<string> = new Set(
 
 /** The declarations as `openclaw sovereign slots` publishes them: no result, no load. */
 export function describeSovereignRouteVerification() {
-  return SOVEREIGN_ROUTE_VERIFICATION.map((entry) => ({
-    ...entry,
-    sites: [...entry.sites],
-    unverified: [...entry.unverified],
+  return SOVEREIGN_ROUTE_VERIFICATION.map(({ route, check, boundary, sites, unverified }) => ({
+    route,
+    check,
+    boundary,
+    sites: [...sites],
+    unverified: [...unverified],
   }));
 }
 

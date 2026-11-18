@@ -1,8 +1,5 @@
 import crypto from "node:crypto";
-import {
-  isHostScopedAgentToolActive,
-  type SovereignPromptSpans,
-} from "openclaw/plugin-sdk/agent-harness-runtime";
+import { isHostScopedAgentToolActive } from "openclaw/plugin-sdk/agent-harness-runtime";
 import type { AgentHarnessSessionRuntimeParamsV1 } from "openclaw/plugin-sdk/codex-mcp-projection";
 import { expectDefined } from "openclaw/plugin-sdk/expect-runtime";
 import { isIncognitoSessionKey } from "openclaw/plugin-sdk/session-key-runtime";
@@ -35,7 +32,7 @@ import {
   type JsonValue,
 } from "./protocol.js";
 import { isCodexResponsesOAuthRun } from "./responses-oauth.js";
-import { bindCodexSovereignSpans } from "./sovereign-handoff.js";
+import { withCodexSovereignSpans } from "./sovereign-handoff.js";
 import type { CodexThreadConfigurationOptions } from "./thread-configuration-options.js";
 import { fingerprintJsonObject } from "./thread-fingerprints.js";
 import {
@@ -210,39 +207,32 @@ export async function buildThreadStartParams(
     modelProvider: options.modelProvider ?? resolvedModelProvider,
   });
   const configuration = buildCodexThreadConfiguration(params, options);
-  let sovereignSpans: SovereignPromptSpans | undefined;
-  const placement = placeCodexBaseInstructions(
-    params,
-    options,
-    configuration.developerInstructions,
-    { baseInstructions: CODEX_RING_ZERO_BASE_INSTRUCTIONS },
-    (spans) => {
-      sovereignSpans = spans;
-    },
-  );
-  return bindCodexSovereignSpans<CodexThreadStartParams>(
-    {
-      ...modelSelection,
-      ...configuration,
-      ...placement,
-      personality: CODEX_NATIVE_PERSONALITY_NONE,
-      serviceName: "OpenClaw",
-      threadSource: "openclaw",
-      ...(params.requireWorkspaceOnly === true || options.nativeCodeModeEnabled === false
-        ? { environments: [] }
-        : options.environmentSelection
-          ? { environments: options.environmentSelection }
-          : {}),
-      // Codex 0.146 accepts canonical typed function and namespace specs natively.
-      dynamicTools: [...options.dynamicTools],
-      experimentalRawEvents: true,
-      // Codex `ephemeral` skips rollout/state DB writes while loaded threads remain reusable
-      // (`codex-rs/app-server-protocol/src/protocol/v2/thread.rs:108`;
-      // `codex-rs/core/src/session/session.rs:599-683`, `thread_manager.rs:1157-1163`).
-      ...(isIncognitoSessionKey(params.sessionKey) ? { ephemeral: true } : {}),
-    },
-    sovereignSpans,
-  );
+  return withCodexSovereignSpans<CodexThreadStartParams>((onSpans) => ({
+    ...modelSelection,
+    ...configuration,
+    ...placeCodexBaseInstructions(
+      params,
+      options,
+      configuration.developerInstructions,
+      { baseInstructions: CODEX_RING_ZERO_BASE_INSTRUCTIONS },
+      onSpans,
+    ),
+    personality: CODEX_NATIVE_PERSONALITY_NONE,
+    serviceName: "OpenClaw",
+    threadSource: "openclaw",
+    ...(params.requireWorkspaceOnly === true || options.nativeCodeModeEnabled === false
+      ? { environments: [] }
+      : options.environmentSelection
+        ? { environments: options.environmentSelection }
+        : {}),
+    // Codex 0.146 accepts canonical typed function and namespace specs natively.
+    dynamicTools: [...options.dynamicTools],
+    experimentalRawEvents: true,
+    // Codex `ephemeral` skips rollout/state DB writes while loaded threads remain reusable
+    // (`codex-rs/app-server-protocol/src/protocol/v2/thread.rs:108`;
+    // `codex-rs/core/src/session/session.rs:599-683`, `thread_manager.rs:1157-1163`).
+    ...(isIncognitoSessionKey(params.sessionKey) ? { ephemeral: true } : {}),
+  }));
 }
 
 export async function buildThreadResumeParams(
@@ -269,35 +259,28 @@ export async function buildThreadResumeParams(
         authProfileId: options.authProfileId ?? params.authProfileId,
       });
   const configuration = buildCodexThreadConfiguration(params, options);
-  let sovereignSpans: SovereignPromptSpans | undefined;
-  // Ring-zero resumes omit the empty base pinned at creation.
-  const placement = placeCodexBaseInstructions(
-    params,
-    options,
-    configuration.developerInstructions,
-    {},
-    (spans) => {
-      sovereignSpans = spans;
+  return withCodexSovereignSpans((onSpans) => ({
+    threadId: options.threadId,
+    // Only the latest turn id/status is needed to preserve active-turn conflict
+    // handling; avoid rebuilding and validating the full persisted history.
+    excludeTurns: true,
+    initialTurnsPage: {
+      limit: 1,
+      sortDirection: "desc",
+      itemsView: "notLoaded",
     },
-  );
-  return bindCodexSovereignSpans(
-    {
-      threadId: options.threadId,
-      // Only the latest turn id/status is needed to preserve active-turn conflict
-      // handling; avoid rebuilding and validating the full persisted history.
-      excludeTurns: true,
-      initialTurnsPage: {
-        limit: 1,
-        sortDirection: "desc",
-        itemsView: "notLoaded",
-      },
-      ...modelSelection,
-      ...configuration,
-      ...placement,
-      personality: CODEX_NATIVE_PERSONALITY_NONE,
-    },
-    sovereignSpans,
-  );
+    ...modelSelection,
+    ...configuration,
+    // Ring-zero resumes omit the empty base pinned at creation.
+    ...placeCodexBaseInstructions(
+      params,
+      options,
+      configuration.developerInstructions,
+      {},
+      onSpans,
+    ),
+    personality: CODEX_NATIVE_PERSONALITY_NONE,
+  }));
 }
 
 export function buildCodexRuntimeThreadConfig(

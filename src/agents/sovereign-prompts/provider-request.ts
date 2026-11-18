@@ -153,7 +153,7 @@ function isResponsesContinuationDelta(api: string, payload: unknown): boolean {
 }
 
 /** What the check reads of its run. */
-export type SovereignRequestCheckRun = {
+type SovereignRequestCheckRun = {
   sessionAgentId: string;
   /** The applied render's spans; a tool refresh can re-render mid-run. */
   sovereignSpans?: () => SovereignPromptSpans | undefined;

@@ -21,7 +21,7 @@ default) or `"enforce"`. See [What `enforce` does](#what-enforce-does).
 | ------- | ----------------------------------------------------------------------------------------------------- |
 | `paths` | Resolves the agent's sovereign root and switch from config; reads no file                             |
 | `check` | Loads a generation (the one `CURRENT` names, or `--generation <dir>`) and runs every mechanical check |
-| `slots` | Lists the slots, file names and reserved tokens this build declares and which it renders; no file     |
+| `slots` | Lists the slots, file names, reserved tokens and route checks this build declares; no file            |
 
 `paths` and `check` take `--agent <id>` (required); every command takes `--json`.
 They run read-only beside a live Gateway, so a deploy can call them before its
@@ -144,7 +144,11 @@ native error text, or names outside the registry.
   Codex base). CLI backends, worker and node placements, other harnesses, Codex
   ring-zero and `none` threads, harness side questions (`/btw` on Codex), and
   `openclaw infer model run --local` on the ChatGPT Responses API (it sends the
-  built-in identity line there) refuse with `route_unconverted`.
+  built-in identity line there) refuse with `route_unconverted`. So do a
+  conversation bound to a Codex thread (`/codex bind`: `codex:conversation-binding`;
+  a Codex CLI node session: `codex:cli-node-session`), which runs on Codex's own
+  base, and a worker-hosted Codex app-server (`appServer.workerHostedCloud`:
+  `codex:worker-hosted`), which would take the base off the Gateway host.
 - **Which agent.** An agent's files render only for a call that names that agent.
   A render or check that names no agent, or an invalid one, is refused while any
   agent is `enforce`, counting one that was `enforce` when the process read its
@@ -177,6 +181,26 @@ native error text, or names outside the registry.
   summaries send OpenClaw's summarizer prompt, not the agent's, and are not
   checked. A plugin that sends a request itself instead of through the stream it
   wraps, or edits a payload after handing it back, is outside this check.
+- **Checked at the Codex handoff.** Codex builds its provider request inside its
+  binary, where OpenClaw cannot read it, so the Codex route is checked at the last
+  request OpenClaw writes: every app-server handoff that carries a thread's
+  instructions must carry each sovereign span of the render that built it, in
+  `baseInstructions` or the developer text. That covers `thread/start` (an ordinary
+  thread and a supervised branch), a cold `thread/resume`, whose base Codex prefers
+  over the one the thread saved, and the developer policy refresh after it, which
+  carries the files behind an authored Codex base. A loaded thread is reused only
+  when the handoff that loaded it passed for the same generation; otherwise it
+  resumes cold and is checked again, or, for an ephemeral (incognito) thread,
+  refuses. A missing, altered or foreign span fails the run with
+  `transform_altered` (`route=codex`, `site=app_server_handoff:<site>`) before the
+  handoff is written. What Codex does with the handed instructions stays
+  unverified: the request it builds, a resume it serves from a thread another
+  client still holds loaded (Codex ignores resume overrides there), and the
+  parent-local inference relay, the only carrier of the personal `USER.md` line.
+  Codex threads that carry no OpenClaw base are not checked: the settled-turn
+  finalizer and web-search or media workers run code-owned prompts, as compaction
+  summaries do, and forks or attached threads keep their source's base until the
+  next resume hands the agent's.
 - **Never echoed.** Plugin hook payloads (`llm_input`, `before_agent_run`), session
   extension `before_agent_start` payloads and `getSystemPrompt()`, trajectory
   records, diagnostics, model-call content capture, debug proxy capture and
@@ -186,12 +210,18 @@ native error text, or names outside the registry.
 - **Receipts.** The Gateway logs `[SOVEREIGN_PROMPTS_LOADED]` or
   `[SOVEREIGN_PROMPTS_REFUSED]` per agent at start, the `status` method reports each
   agent's generation and digest or refusal code, and each session's prompt report
-  carries the generation, set digest and per-file digests. None holds content.
+  carries the generation, set digest and per-file digests. The report also records
+  the run's latest passed check as `sovereign.verification`: `final-payload-verified`
+  with the API builder read (route `openclaw`, boundary `provider_request`), or
+  `handoff-verified` with the handoff checked (route `codex`, boundary
+  `app_server_handoff`); a refused request removes it. `slots --json` lists each
+  route's declared check under `routes`, with what stays `unverified`; listing runs
+  no check and never reports a result. None holds content.
 
-| Run-time code               | Raised when                                                                        |
-| --------------------------- | ---------------------------------------------------------------------------------- |
-| `not_loaded`                | An `enforce` agent this process did not load at start (added by hot reload)        |
-| `agent_unknown`             | A render names no agent, or an invalid one, while an agent is `enforce`            |
-| `route_unconverted`         | A run is routed where the files cannot reach the model; the output names the route |
-| `transform_altered`         | A provider transform changed a sovereign span, or a provider request lost one      |
-| `sovereign_override_denied` | A plugin hook returned a whole-prompt replacement; the output names the hook site  |
+| Run-time code               | Raised when                                                                           |
+| --------------------------- | ------------------------------------------------------------------------------------- |
+| `not_loaded`                | An `enforce` agent this process did not load at start (added by hot reload)           |
+| `agent_unknown`             | A render names no agent, or an invalid one, while an agent is `enforce`               |
+| `route_unconverted`         | A run is routed where the files cannot reach the model; the output names the route    |
+| `transform_altered`         | A transform changed a sovereign span, or a provider request or Codex handoff lost one |
+| `sovereign_override_denied` | A plugin hook returned a whole-prompt replacement; the output names the hook site     |

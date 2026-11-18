@@ -23,12 +23,16 @@ type CodexInstructionRequest = {
 
 const requestSpans = new WeakMap<object, SovereignPromptSpans>();
 
-export function bindCodexSovereignSpans<T extends object>(
-  request: T,
-  spans: SovereignPromptSpans | undefined,
+/** Builds a request whose base render reports its spans, and binds them to that request. */
+export function withCodexSovereignSpans<T extends object>(
+  build: (onRenderedSovereignSpans: (spans: SovereignPromptSpans) => void) => T,
 ): T {
-  if (spans) {
-    requestSpans.set(request, spans);
+  let rendered: SovereignPromptSpans | undefined;
+  const request = build((spans) => {
+    rendered = spans;
+  });
+  if (rendered) {
+    requestSpans.set(request, rendered);
   }
   return request;
 }
