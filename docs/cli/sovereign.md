@@ -146,12 +146,12 @@ native error text, or names outside the registry.
   `openclaw infer model run --local` on the ChatGPT Responses API (it sends the
   built-in identity line there) refuse with `route_unconverted`.
 - **Which agent.** An agent's files render only for a call that names that agent.
-  A render or check that names no agent uses built-in text when the agent OpenClaw
-  resolves for it without a selection is `off` (an explicit fleet's
-  `agents.defaults.systemAgent.agentId`, the legacy default agent, or the sole
-  agent). Otherwise, while any agent is `enforce`, that call alone is refused, as is
-  a call with an invalid agent id: a render with `agent_unknown`, a route or
-  replacement check with `route_unconverted` or `sovereign_override_denied`.
+  A render or check that names no agent, or an invalid one, is refused while any
+  agent is `enforce`, counting one loaded as `enforce` that config has since turned
+  off, until restart: a render with `agent_unknown`, a route or replacement check
+  with `route_unconverted` or `sovereign_override_denied`. No default agent stands in
+  for the missing id, so neither built-in text nor another agent's files reach that
+  call. A call that names an `off` agent is unaffected.
 - **No replacement.** A plugin hook that replaces the whole prompt fails the run
   with `sovereign_override_denied`; prepend and append still apply. A provider
   transform that alters a sovereign span fails with `transform_altered`.
@@ -166,10 +166,10 @@ native error text, or names outside the registry.
   agent's generation and digest or refusal code, and each session's prompt report
   carries the generation, set digest and per-file digests. None holds content.
 
-| Run-time code               | Raised when                                                                                                |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `not_loaded`                | An `enforce` agent this process did not load at start (added by hot reload)                                |
-| `agent_unknown`             | A render names no agent, or an invalid one, and no `off` agent resolves for it while an agent is `enforce` |
-| `route_unconverted`         | A run is routed where the files cannot reach the model; the output names the route                         |
-| `transform_altered`         | A provider transform changed a sovereign span                                                              |
-| `sovereign_override_denied` | A plugin hook returned a whole-prompt replacement; the output names the hook site                          |
+| Run-time code               | Raised when                                                                        |
+| --------------------------- | ---------------------------------------------------------------------------------- |
+| `not_loaded`                | An `enforce` agent this process did not load at start (added by hot reload)        |
+| `agent_unknown`             | A render names no agent, or an invalid one, while an agent is `enforce`            |
+| `route_unconverted`         | A run is routed where the files cannot reach the model; the output names the route |
+| `transform_altered`         | A provider transform changed a sovereign span                                      |
+| `sovereign_override_denied` | A plugin hook returned a whole-prompt replacement; the output names the hook site  |
