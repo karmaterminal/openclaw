@@ -476,6 +476,46 @@ describe("continuation work replacement store", () => {
     ).toEqual({ applied: true, unresolvedCreatedFlowIds: [], unrestoredPriorFlowIds: [] });
     expect(await readCustodyRecordForTest(parked.flowId)).toEqual(restored);
   });
+
+  it("restores nothing for a created record another run elected", async () => {
+    const sessionKey = "agent:main:rollback-foreign";
+    const parked = await enqueuePendingWork(
+      createWork({ sessionKey, reason: "parked prior", electedAt: Date.now(), parked: true }),
+    );
+    const elected = await enqueuePendingWorkReplacing({
+      work: createWork({
+        sessionKey,
+        reason: "election by the owning run",
+        electedAt: Date.now() + 1,
+        parked: true,
+        originRunId: "run-electing",
+        originTurnId: "turn-electing",
+      }),
+      summary: "superseded by the owning election",
+      maxPendingWork: 8,
+      replaceParkedWork: true,
+      expectedRunningFlowIds: [],
+    });
+    if (!parked?.flowId || !elected.applied || !elected.work.flowId) {
+      throw new Error("expected a parked prior and an applied election");
+    }
+
+    // The run id names which attempt elected the record; another attempt may not undo it.
+    const rollback = await rollbackPendingWorkReplacement({
+      sessionKey,
+      createdFlowIds: [elected.work.flowId],
+      priorFlows: elected.supersededFlows,
+      originRunId: "run-other",
+      originTurnId: "turn-electing",
+      summary: "another attempt failed to finalize",
+    });
+
+    expect(rollback).toMatchObject({ applied: false, unrestoredPriorFlowIds: [parked.flowId] });
+    expect(await readCustodyRecordForTest(parked.flowId)).toMatchObject({ status: "succeeded" });
+    expect(await readCustodyRecordForTest(elected.work.flowId)).not.toMatchObject({
+      phase: "spawn-init continuation finalization failed",
+    });
+  });
 });
 
 // karmaterminal/openclaw#1271: the optional `recipientAuthority` work-state field.
