@@ -83,9 +83,10 @@ export async function handleCodexConversationInboundClaim(
     return { handled: true, reply: { text: CODEX_NATIVE_EXECUTION_AUTH_ERROR } };
   }
   const sessionKey = event.sessionKey ?? ctx.sessionKey;
-  try {
-    // A bound conversation runs on Codex's own base, never the agent's sovereign files, so
-    // an enforce agent's message refuses before any handoff (openclaw#1321).
+  // A bound conversation runs on Codex's own base, never the agent's sovereign files, so an
+  // enforce agent's message refuses before any handoff (openclaw#1321). It runs inside each
+  // turn's reservation: nothing may yield before a message reserves its place.
+  const assertRouteCarriesSovereignText = async () =>
     (await loadHarnessRuntime()).assertSovereignPromptRoute({
       config: options.config,
       agentId:
@@ -97,10 +98,12 @@ export async function handleCodexConversationInboundClaim(
           ? "codex:cli-node-session"
           : "codex:conversation-binding",
     });
+  try {
     if (data.kind === "codex-cli-node-session") {
       const text = await getNodeConversationState().queue.enqueue(
         `${data.nodeId}:${data.sessionId}`,
         async () => {
+          await assertRouteCarriesSovereignText();
           const { prepareCodexNativeSandboxBlock } = await loadSandboxGuard();
           const sandbox = await prepareCodexNativeSandboxBlock({
             config: options.config,
@@ -141,6 +144,7 @@ export async function handleCodexConversationInboundClaim(
     // The queue may wait behind retirement; observe early rejection until its callback joins it.
     void pendingExpected.catch(() => {});
     const result = await withCodexConversationThreadActivity(data.bindingId, async () => {
+      await assertRouteCarriesSovereignText();
       const expected = await pendingExpected;
       const { runBoundTurnWithMissingThreadRecovery } = await loadConversationBinding();
       const { inspectConversationBinding } = await loadBindingInspection();
