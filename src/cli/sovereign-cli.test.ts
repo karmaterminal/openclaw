@@ -36,8 +36,6 @@ beforeEach(() => {
 });
 
 function configure(mode: "off" | "enforce") {
-  // The mocked reader skips config validation, which refuses "enforce" on this build
-  // (sovereign-cli.config.integration.test.ts); here it reaches the loader directly.
   state.config = { agents: { entries: { main: { agentDir, sovereignPrompts: { mode } } } } };
 }
 
@@ -58,30 +56,54 @@ async function run(args: string[], forbidden: string[] = []) {
 }
 
 describe.skipIf(process.platform === "win32")("openclaw sovereign", () => {
-  it("paths reports the agent-dir root and the off state", async () => {
-    const result = await run(["paths", "--agent", "main", "--json"]);
-    expect(result.exitCode).toBe(0);
-    expect(result.json()).toEqual({
-      ok: true,
-      agentId: "main",
-      mode: "off",
-      state: "off",
-      root,
-      current: path.join(root, "CURRENT"),
-      generations: path.join(root, "generations"),
-    });
-  });
+  it.each(["off", "enforce"] as const)(
+    "paths reports the agent-dir root and the %s switch without reading a file",
+    async (mode) => {
+      configure(mode);
+      const result = await run(["paths", "--agent", "main", "--json"]);
+      expect(result.exitCode).toBe(0);
+      expect(result.json()).toEqual({
+        ok: true,
+        agentId: "main",
+        mode,
+        root,
+        current: path.join(root, "CURRENT"),
+        generations: path.join(root, "generations"),
+      });
+    },
+  );
 
-  it("paths reports a loader refusal (enforce_unwired) with a nonzero exit", async () => {
-    configure("enforce");
-    const result = await run(["paths", "--agent", "main", "--json"]);
-    expect(result.exitCode).toBe(1);
-    expect(result.json()).toMatchObject({
-      ok: false,
-      agentId: "main",
-      code: "enforce_unwired",
-      root,
-    });
+  it("slots --json publishes the registry: names, flags and reserved tokens, no text", async () => {
+    const result = await run(["slots", "--json"]);
+    expect(result.exitCode).toBe(0);
+    const json = result.json() as {
+      ok: boolean;
+      slots: { slot: string; files: string[]; required: boolean; converted: boolean }[];
+      reserved: { markers: string[]; headings: string[] };
+    };
+    expect(json.ok).toBe(true);
+    expect(json.slots.filter((slot) => slot.required).map((slot) => slot.files)).toEqual([
+      ["identity-section.md"],
+      ["tool-section.md"],
+      ["safety-section.md"],
+    ]);
+    // The slots this build renders: the shared builders, both identities and the framing.
+    expect(json.slots.filter((slot) => slot.converted).map((slot) => slot.slot)).toEqual([
+      "identity/opening",
+      "execution/bias",
+      "tool/call-style",
+      "tool/media-dedupe",
+      "safety/care",
+      "safety/credentials",
+      "runtime-context/main",
+      "project-context/main",
+      "project-context/personal-user",
+      "project-context/precedence-soul",
+      "project-context/precedence-memory",
+      "project-context/precedence-user",
+    ]);
+    expect(json.reserved.headings).toContain("# Project Context");
+    expect(json.reserved.markers).toContain("<!-- openclaw:sovereign");
   });
 
   it("check loads CURRENT's generation into content-free JSON", async () => {

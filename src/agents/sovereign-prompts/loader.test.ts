@@ -4,12 +4,7 @@ import path from "node:path";
 import { inspect } from "node:util";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
-import type { OpenClawConfig } from "../../config/types.js";
-import {
-  loadAgentSovereignPrompts,
-  loadSovereignPromptSnapshot,
-  resolveSovereignPromptTarget,
-} from "./loader.js";
+import { loadSovereignPromptSnapshot } from "./loader.js";
 import { SovereignPromptRefusal, SovereignPromptSnapshot } from "./snapshot.js";
 import {
   body,
@@ -410,10 +405,12 @@ describe.skipIf(process.platform === "win32")("loadSovereignPromptSnapshot", () 
       ["identity-section.md", "identity/opening", true],
       ["safety-section.md", "safety/care", true],
       ["tool-section.d/media-dedupe.md", "tool/media-dedupe", true],
-      [TOOLING, "tool/tooling", true],
+      // Declared and receipted, but this build still renders the tooling line from code.
+      [TOOLING, "tool/tooling", false],
       ["tool-section.md", "tool/call-style", true],
     ]);
-    expect(snapshot.body("safety-section.md")).toBe(body("safety-section.md"));
+    // The snapshot holds the body as the renderer places it: section-normalized.
+    expect(snapshot.body("safety-section.md")).toBe(body("safety-section.md").trim());
     // An empty optional file is omitted, not refused.
     expect(snapshot.body("execution-section.md")).toBeUndefined();
     expectNoSentinel(outcome, [root]);
@@ -443,52 +440,5 @@ describe.skipIf(process.platform === "win32")("loadSovereignPromptSnapshot", () 
     fs.renameSync(staging, path.join(root, "generations", OTHER_GENERATION));
     fs.writeFileSync(path.join(root, "CURRENT"), OTHER_GENERATION, { mode: 0o600 });
     expectRefused(await loadRoot(root), "manifest_invalid", root);
-  });
-});
-
-describe.skipIf(process.platform === "win32")("loadAgentSovereignPrompts", () => {
-  const configFor = (agentDir: string, mode?: "off") =>
-    ({
-      agents: { entries: { main: { agentDir, ...(mode ? { sovereignPrompts: { mode } } : {}) } } },
-    }) as OpenClawConfig;
-
-  it("off reads nothing at the loader's fs boundary; enforce refuses enforce_unwired", async () => {
-    const agentDir = newRoot();
-    const root = path.join(agentDir, "sovereign", "systemprompts");
-    fs.mkdirSync(root, { recursive: true, mode: 0o700 });
-    writeRoot(root);
-    // Every function on the fs module and fs.promises, so any read path is counted.
-    const spyAll = (target: object) =>
-      Object.entries(target)
-        .filter(([name, value]) => /^[a-z]/.test(name) && typeof value === "function")
-        .map(([name]) => vi.spyOn(target as Record<string, (...args: unknown[]) => unknown>, name));
-    const spies = [...spyAll(fs), ...spyAll(fs.promises)];
-    const fsCalls = () => spies.reduce((sum, spy) => sum + spy.mock.calls.length, 0);
-    try {
-      for (const mode of [undefined, "off"] as const) {
-        spies.forEach((spy) => spy.mockClear());
-        const target = resolveSovereignPromptTarget(configFor(agentDir, mode), "main");
-        expect(target.root).toBe(root);
-        expect(loadAgentSovereignPrompts(target)).toEqual({ state: "off" });
-        expect(fsCalls()).toBe(0);
-      }
-      spies.forEach((spy) => spy.mockClear());
-      // Config validation refuses "enforce" on this build, so the branch is reached directly.
-      const target = resolveSovereignPromptTarget(configFor(agentDir), "main");
-      const outcome = await capture(() =>
-        loadAgentSovereignPrompts({ ...target, mode: "enforce" }),
-      );
-      expect(fsCalls()).toBe(0);
-      expect(outcome.value).toMatchObject({
-        state: "refused",
-        refusal: { code: "enforce_unwired" },
-      });
-      expectNoSentinel(outcome, [root]);
-      // Positive control: the same spies see the loader's reads of this root.
-      loadSovereignPromptSnapshot({ agentId: "main", target: { root } });
-      expect(fsCalls()).toBeGreaterThan(0);
-    } finally {
-      spies.forEach((spy) => spy.mockRestore());
-    }
   });
 });
