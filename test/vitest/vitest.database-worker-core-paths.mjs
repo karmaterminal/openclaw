@@ -277,6 +277,8 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/auth-profiles.permissions.test.ts",
   "src/agents/prepared-model-catalog-worker.authority.test.ts",
   "src/agents/embedded-agent-runner/run/auth-plan.auth-pin.test.ts",
+  // Continuation (karmaterminal): the attempt harness opens the agent store through its host owner.
+  "src/agents/embedded-agent-runner/run/attempt.continuation-tools.test.ts",
   "src/auto-reply/reply/agent-runner-execution-cli-auth.test.ts",
   "src/commands/models/shared.auth-store.test.ts",
   "src/commands/doctor/shared/xai-auto-retirement.test.ts",
