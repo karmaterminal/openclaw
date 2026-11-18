@@ -168,22 +168,40 @@ describe.skipIf(process.platform === "win32")("sovereign slots in the main rende
     expect(plain).toContain("OVERRIDE-TOOL");
   });
 
-  it("never serves one agent's stable prefix to another with equal inputs", async () => {
-    const config = configFor({
-      a: { agentDir: writeAgent("a"), mode: "enforce" },
-      b: {
-        agentDir: writeAgent("b", { "identity-section.md": `${SENTINEL} other ${SENTINEL}` }),
-        mode: "enforce",
+  it("never serves one agent's text to another, or to a call naming no agent", async () => {
+    const other = `${SENTINEL} other ${SENTINEL}`;
+    const config = {
+      agents: {
+        ownership: "explicit",
+        // `a` is the recorded owner, the agent OpenClaw resolves when a call names none.
+        defaults: { systemAgent: { agentId: "a" } },
+        entries: configFor({
+          a: { agentDir: writeAgent("a"), mode: "enforce" },
+          b: { agentDir: writeAgent("b", { "identity-section.md": other }), mode: "enforce" },
+          plain: { agentDir: writeAgent("plain") },
+        }).agents?.entries,
       },
-      plain: { agentDir: writeAgent("plain") },
-    });
+    } as OpenClawConfig;
     // The stock render warms the shared LRU first; neither sovereign agent may hit it.
     const plain = await render(config, "plain");
-    const a = await render(config, "a");
-    const b = await render(config, "b");
+    const harness = (agentId?: string) =>
+      buildAgentHarnessBasePrompt({ config, agentId, toolNames: ["exec"] });
     expect(plain.split("\n")[0]).toBe("You are a personal assistant running inside OpenClaw.");
-    expect(a.split("\n")[0]).toBe(text("identity-section.md"));
-    expect(b.split("\n")[0]).toBe(`${SENTINEL} other ${SENTINEL}`);
+    for (const [agentId, own, foreign] of [
+      ["a", text("identity-section.md"), other],
+      ["b", other, text("identity-section.md")],
+    ] as const) {
+      for (const prompt of [await render(config, agentId), harness(agentId)]) {
+        expect(prompt.split("\n")[0]).toBe(own);
+        expect(prompt).not.toContain(foreign);
+      }
+    }
+    // A call naming no agent has lost its run identity: the owner's text is not its to take.
+    for (const build of [() => render(config, undefined), () => harness()]) {
+      const outcome = await capture(build);
+      expect((outcome.error as SovereignPromptRefusal).code).toBe("agent_unknown");
+      expectNoSentinel(outcome);
+    }
   });
 
   it("renders minimal and none modes with exactly their slots", async () => {

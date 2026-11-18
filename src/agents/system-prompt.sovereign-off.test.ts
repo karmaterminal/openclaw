@@ -1,7 +1,8 @@
 // Off is stock (#1321): with `sovereignPrompts` absent, `{}` or `mode: "off"`, both prompt
-// builders render exactly the stock bytes, alone or beside a loaded enforce agent whose own
-// render ran first. Inputs span the prompt modes, with and without an agent id, provider
-// overrides and workspace files.
+// builders render exactly the stock bytes, alone or, for a call naming the agent, beside a
+// loaded enforce agent whose own render ran first; beside it, a call naming no agent is
+// refused. Inputs span the prompt modes, with and without an agent id, provider overrides
+// and workspace files.
 import { afterEach, describe, expect, it } from "vitest";
 import type { OpenClawConfig } from "../config/types.js";
 import { resetSovereignRedactionForTests } from "../logging/sovereign-redaction.js";
@@ -9,6 +10,7 @@ import {
   loadSovereignPromptsForProcess,
   resetSovereignPromptRuntimeForTests,
 } from "./sovereign-prompts/runtime.js";
+import { SovereignPromptRefusal } from "./sovereign-prompts/snapshot.js";
 import {
   SENTINEL,
   useSovereignTempDirs,
@@ -50,26 +52,42 @@ const inputs = (["full", "minimal", "none"] as PromptMode[]).flatMap((promptMode
   ),
 );
 
+/** A render's bytes, or the code it was refused with. */
+async function outcome(agentId: string | undefined, render: () => string | Promise<string>) {
+  try {
+    return { agentId, text: await render() };
+  } catch (error) {
+    if (error instanceof SovereignPromptRefusal) {
+      return { agentId, refused: error.code };
+    }
+    throw error;
+  }
+}
+
 /** Every input through the main builder, and those without workspace files through the harness base. */
-async function renderAll(config: OpenClawConfig): Promise<string[]> {
-  const rendered: string[] = [];
+async function renderAll(config: OpenClawConfig) {
+  const rendered: Awaited<ReturnType<typeof outcome>>[] = [];
   for (const { promptMode, agentId, overrides, files } of inputs) {
     const contribution = overrides ? { promptContribution } : {};
     rendered.push(
-      await buildConfiguredAgentSystemPrompt({
-        config,
-        agentId,
-        workspaceDir,
-        toolNames,
-        promptMode,
-        runtimeInfo: { model: "openai/gpt-fixture" },
-        ...contribution,
-        ...(files ? { contextFiles } : {}),
-      }),
+      await outcome(agentId, () =>
+        buildConfiguredAgentSystemPrompt({
+          config,
+          agentId,
+          workspaceDir,
+          toolNames,
+          promptMode,
+          runtimeInfo: { model: "openai/gpt-fixture" },
+          ...contribution,
+          ...(files ? { contextFiles } : {}),
+        }),
+      ),
     );
     if (!files) {
       rendered.push(
-        buildAgentHarnessBasePrompt({ config, agentId, toolNames, promptMode, ...contribution }),
+        await outcome(agentId, () =>
+          buildAgentHarnessBasePrompt({ config, agentId, toolNames, promptMode, ...contribution }),
+        ),
       );
     }
   }
@@ -83,7 +101,7 @@ const SHAPES = {
 } as const;
 type Shape = keyof typeof SHAPES;
 
-/** `main` alone; agentless calls are its own as the sole agent. */
+/** `main` alone; with no agent enforce, a call naming none renders stock too. */
 const sole = (agentDir: string, shape: Shape) =>
   ({ agents: { entries: { main: { agentDir, ...SHAPES[shape] } } } }) as OpenClawConfig;
 
@@ -108,20 +126,26 @@ describe.skipIf(process.platform === "win32")("sovereign prompts off", () => {
     const agentDir = tempDirs.make("openclaw-sovereign-off-");
     const stock = await renderAll(sole(agentDir, "absent"));
     expect(stock).toHaveLength(36);
-    expect(stock[0]?.split("\n")[0]).toBe(STOCK_IDENTITY);
-    expect(stock[1]?.split("\n")[0]).toBe(STOCK_IDENTITY);
+    expect(stock[0]?.text?.split("\n")[0]).toBe(STOCK_IDENTITY);
+    expect(stock[1]?.text?.split("\n")[0]).toBe(STOCK_IDENTITY);
     for (const shape of Object.keys(SHAPES) as Shape[]) {
       expect(await renderAll(sole(agentDir, shape)), shape).toEqual(stock);
     }
   });
 
-  it("an off agent's prompt is unchanged beside a loaded enforce agent", async () => {
+  it("an off agent's prompt is unchanged beside a loaded enforce agent; a call naming no agent refuses", async () => {
     const dirs = {
       main: tempDirs.make("openclaw-sovereign-off-"),
       prince: tempDirs.make("openclaw-sovereign-off-prince-"),
     };
     writeAgentGeneration(dirs.prince, "prince");
     const stock = await renderAll(fleet(dirs, "absent", false));
+    // The recorded owner is off, but a call naming no agent may be the enforce agent's, so it
+    // is refused in each builder before any text exists (§ 4.6).
+    const expected = stock.map(({ agentId, text }) =>
+      agentId ? { agentId, text } : { agentId, refused: "agent_unknown" },
+    );
+    expect(stock.every(({ text }) => text?.startsWith(STOCK_IDENTITY))).toBe(true);
     for (const shape of Object.keys(SHAPES) as Shape[]) {
       resetSovereignPromptRuntimeForTests();
       resetSovereignRedactionForTests();
@@ -135,7 +159,7 @@ describe.skipIf(process.platform === "win32")("sovereign prompts off", () => {
         toolNames,
       });
       expect(prince.split("\n")[0]).toContain(SENTINEL);
-      expect(await renderAll(config), shape).toEqual(stock);
+      expect(await renderAll(config), shape).toEqual(expected);
     }
   });
 });

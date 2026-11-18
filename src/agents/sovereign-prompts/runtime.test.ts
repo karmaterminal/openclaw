@@ -41,7 +41,7 @@ function writeAgent(agentId: string, spec: GenerationSpec = {}) {
 const configFor = (entries: Parameters<typeof sovereignAgentsConfig>[0]) =>
   sovereignAgentsConfig(entries) as OpenClawConfig;
 
-/** An explicit fleet; `owner` is its recorded system agent, the owner of agentless calls. */
+/** An explicit fleet; `owner` is its recorded system agent, the default owner OpenClaw resolves. */
 const fleet = (owner: string | undefined, entries: Parameters<typeof sovereignAgentsConfig>[0]) =>
   ({
     agents: {
@@ -72,6 +72,49 @@ function expectRefusal(run: () => unknown, code: SovereignPromptRefusal["code"])
   expect(thrown).toBeInstanceOf(SovereignPromptRefusal);
   expect((thrown as SovereignPromptRefusal).code).toBe(code);
   return thrown as SovereignPromptRefusal;
+}
+
+/** An identity body naming its agent, so one agent's text is never taken for another's. */
+const ownIdentity = (agentId: string): GenerationSpec => ({
+  files: { "identity-section.md": `${SENTINEL} identity of ${agentId}. ${SENTINEL}\n` },
+});
+
+/** A call naming no agent, or an invalid one, refuses its render and both checks. */
+function expectNamelessRefused(config: OpenClawConfig) {
+  for (const agentId of [undefined, "", "%%%"]) {
+    expectRefusal(() => resolveSovereignPromptSnapshot({ config, agentId }), "agent_unknown");
+    expect(isSovereignPromptAgent(config, agentId)).toBe(true);
+    expectRefusal(
+      () => assertSovereignPromptRoute({ config, agentId, route: "cli" }),
+      "route_unconverted",
+    );
+    expectRefusal(
+      () => assertSovereignPromptNotReplaced(config, agentId, "before_prompt_build"),
+      "sovereign_override_denied",
+    );
+  }
+}
+
+/** A named agent that renders code text: no snapshot, and both checks pass. */
+function expectStock(config: OpenClawConfig, agentId: string) {
+  expect(resolveSovereignPromptSnapshot({ config, agentId })).toBeUndefined();
+  expect(isSovereignPromptAgent(config, agentId)).toBe(false);
+  assertSovereignPromptRoute({ config, agentId, route: "cli" });
+  assertSovereignPromptNotReplaced(config, agentId, "before_prompt_build");
+}
+
+/** A named enforce agent: its own snapshot and no other agent's; unconverted routes refuse. */
+function expectOwnSnapshot(config: OpenClawConfig, agentId: string, others: readonly string[]) {
+  const snapshot = resolveSovereignPromptSnapshot({ config, agentId });
+  expect(snapshot?.agentId).toBe(agentId);
+  expect(snapshot?.body("identity-section.md")).toContain(`identity of ${agentId}.`);
+  for (const other of others) {
+    expect(snapshot?.body("identity-section.md")).not.toContain(`identity of ${other}.`);
+  }
+  expectRefusal(
+    () => assertSovereignPromptRoute({ config, agentId, route: "cli" }),
+    "route_unconverted",
+  );
 }
 
 /** Counts every call into the fs module and fs.promises, so any read path is seen. */
@@ -231,80 +274,78 @@ describe.skipIf(process.platform === "win32")("sovereign prompt process registry
     );
   });
 
-  it("renders stock for an agentless call an off owner resolves for, and never an enforce owner's text", () => {
-    const main = writeAgent("main");
-    const prince = writeAgent("prince");
+  // A call that names no agent has lost its run identity (§ 4.6). No default owner stands in
+  // for it: stock text, or the owner's own sovereign text, could reach the agent it lost.
+  it("refuses an agentless call beside an enforce agent whoever owns the fleet; named agents keep their own answer", () => {
     const entries = {
-      main: { agentDir: main.agentDir },
-      prince: { agentDir: prince.agentDir, mode: "enforce" as const },
-    };
-    const offOwner = fleet("main", entries);
-    loadSovereignPromptsForProcess(offOwner, { log: recordingLog() });
-    // The off owner's agentless renders and checks are untouched by the enforce agent beside it.
-    expect(resolveSovereignPromptSnapshot({ config: offOwner })).toBeUndefined();
-    expect(isSovereignPromptAgent(offOwner, undefined)).toBe(false);
-    assertSovereignPromptRoute({ config: offOwner, route: "cli" });
-    assertSovereignPromptNotReplaced(offOwner, undefined, "before_prompt_build");
-    // The enforce agent is still checked under its own id.
-    expectRefusal(
-      () => assertSovereignPromptRoute({ config: offOwner, agentId: "prince", route: "cli" }),
-      "route_unconverted",
-    );
-    // An enforce owner's text is never handed to a call that does not name it: that call alone
-    // is refused, while a call naming the owner gets its snapshot.
-    const enforceOwner = fleet("prince", entries);
-    expectRefusal(() => resolveSovereignPromptSnapshot({ config: enforceOwner }), "agent_unknown");
-    expect(
-      resolveSovereignPromptSnapshot({ config: enforceOwner, agentId: "prince" })?.agentId,
-    ).toBe("prince");
-    expect(isSovereignPromptAgent(enforceOwner, undefined)).toBe(true);
-    expectRefusal(
-      () => assertSovereignPromptRoute({ config: enforceOwner, route: "cli" }),
-      "route_unconverted",
-    );
-    expectRefusal(
-      () => assertSovereignPromptNotReplaced(enforceOwner, undefined, "before_prompt_build"),
-      "sovereign_override_denied",
-    );
-  });
-
-  it("refuses only the call when no agent resolves, and only while a sovereign agent exists", () => {
-    const main = writeAgent("main");
-    const prince = writeAgent("prince");
-    // An explicit fleet with no recorded owner: an agentless call could be the enforce agent's.
-    const ownerless = fleet(undefined, {
-      main: { agentDir: main.agentDir },
-      prince: { agentDir: prince.agentDir, mode: "enforce" },
-    });
-    for (const agentId of [undefined, "%%%"]) {
-      expect(isSovereignPromptAgent(ownerless, agentId)).toBe(true);
-      expectRefusal(
-        () => resolveSovereignPromptSnapshot({ config: ownerless, agentId }),
-        "agent_unknown",
-      );
-      expectRefusal(
-        () => assertSovereignPromptRoute({ config: ownerless, agentId, route: "cli" }),
-        "route_unconverted",
-      );
-      expectRefusal(
-        () => assertSovereignPromptNotReplaced(ownerless, agentId, "before_prompt_build"),
-        "sovereign_override_denied",
-      );
+      main: { agentDir: writeAgent("main").agentDir },
+      prince: { agentDir: writeAgent("prince", ownIdentity("prince")).agentDir, mode: "enforce" },
+    } as const;
+    loadSovereignPromptsForProcess(fleet("main", entries), { log: recordingLog() });
+    for (const owner of ["main", "prince", undefined]) {
+      const config = fleet(owner, entries);
+      expectNamelessRefused(config);
+      expectStock(config, "main");
+      expectOwnSnapshot(config, "prince", []);
     }
-    // Every named agent keeps its own answer in the same fleet.
-    expect(resolveSovereignPromptSnapshot({ config: ownerless, agentId: "main" })).toBeUndefined();
-    expect(resolveSovereignPromptSnapshot({ config: ownerless, agentId: "prince" })?.agentId).toBe(
-      "prince",
-    );
     // With no sovereign agent anywhere, nothing refuses.
     resetSovereignPromptRuntimeForTests();
-    const off = fleet(undefined, {
-      main: { agentDir: main.agentDir },
-      prince: { agentDir: prince.agentDir },
+    const off = fleet("main", {
+      main: entries.main,
+      prince: { agentDir: entries.prince.agentDir },
     });
     expect(resolveSovereignPromptSnapshot({ config: off })).toBeUndefined();
+    expect(isSovereignPromptAgent(off, undefined)).toBe(false);
     assertSovereignPromptRoute({ config: off, route: "cli" });
     assertSovereignPromptNotReplaced(off, undefined, "before_prompt_build");
+  });
+
+  it("gives each of two enforce agents only its own snapshot, and refuses an agentless call", () => {
+    const entries = {
+      alpha: { agentDir: writeAgent("alpha", ownIdentity("alpha")).agentDir, mode: "enforce" },
+      beta: { agentDir: writeAgent("beta", ownIdentity("beta")).agentDir, mode: "enforce" },
+    } as const;
+    loadSovereignPromptsForProcess(fleet("alpha", entries), { log: recordingLog() });
+    for (const owner of ["alpha", "beta", undefined]) {
+      const config = fleet(owner, entries);
+      expectNamelessRefused(config);
+      expectOwnSnapshot(config, "alpha", ["beta"]);
+      expectOwnSnapshot(config, "beta", ["alpha"]);
+    }
+  });
+
+  it("counts an agent that was enforce at load, loaded or refused, until restart", () => {
+    const main = writeAgent("main");
+    const prince = writeAgent("prince", ownIdentity("prince"));
+    const broken = writeAgent("broken", { files: { "tool-section.md": null } });
+    for (const [agentId, agentDir] of [
+      ["prince", prince.agentDir],
+      ["broken", broken.agentDir],
+    ] as const) {
+      const latched = (mode?: "enforce") => ({
+        main: { agentDir: main.agentDir },
+        [agentId]: { agentDir, mode },
+      });
+      loadSovereignPromptsForProcess(fleet("main", latched("enforce")), { log: recordingLog() });
+      // Hot reload turns the agent off, so no agent is enforce in config any more (§ 6.3).
+      const reloaded = fleet("main", latched());
+      expectNamelessRefused(reloaded);
+      expectStock(reloaded, "main");
+      if (agentId === "prince") {
+        expectOwnSnapshot(reloaded, "prince", []);
+      } else {
+        expectRefusal(
+          () => resolveSovereignPromptSnapshot({ config: reloaded, agentId }),
+          "required_missing",
+        );
+      }
+      // The restart loads the new config: the agentless call and the agent render stock.
+      resetSovereignPromptRuntimeForTests();
+      loadSovereignPromptsForProcess(reloaded, { log: recordingLog() });
+      expect(resolveSovereignPromptSnapshot({ config: reloaded })).toBeUndefined();
+      expectStock(reloaded, agentId);
+      resetSovereignPromptRuntimeForTests();
+    }
   });
 
   it("an off agent reads nothing; the first render elsewhere loads once and never rereads", () => {

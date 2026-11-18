@@ -13,7 +13,7 @@ import { createSubsystemLogger, type SubsystemLogger } from "../../logging/subsy
 import { normalizeAgentIdStrict } from "../../routing/session-key.js";
 import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
 import { listAgentEntries } from "../agent-roster.js";
-import { resolveAgentConfig, tryResolveAgentOperationAgentId } from "../agent-scope-config.js";
+import { resolveAgentConfig } from "../agent-scope-config.js";
 import {
   loadSovereignPromptSnapshot,
   resolveSovereignPromptTarget,
@@ -53,21 +53,6 @@ function strictAgentId(agentId: string | undefined): string | undefined {
   return normalized?.ok ? normalized.value : undefined;
 }
 
-/**
- * The agent a render or check is for: the named one, or for a call that names none, the
- * owner OpenClaw resolves without a selection (an explicit fleet's recorded system agent,
- * the legacy default, or the sole agent) when that owner is `off`. `undefined` when none
- * resolves (§ 4.6): an invalid id, a fleet with no owner, or a sovereign owner, since an
- * agent's sovereign text is only ever rendered for a call that names it.
- */
-function resolveCheckedAgentId(config: OpenClawConfig | undefined, agentId: string | undefined) {
-  if (agentId?.trim()) {
-    return strictAgentId(agentId);
-  }
-  const owner = config ? strictAgentId(tryResolveAgentOperationAgentId(config)) : undefined;
-  return owner && !isSovereignAgentId(config, owner) ? owner : undefined;
-}
-
 function configuredMode(config: OpenClawConfig | undefined, agentId: string) {
   return (
     (config ? resolveAgentConfig(config, agentId)?.sovereignPrompts?.mode : undefined) ?? "off"
@@ -78,7 +63,10 @@ function isSovereignAgentId(config: OpenClawConfig | undefined, agentId: string)
   return runtime.agents?.has(agentId) || configuredMode(config, agentId) === "enforce";
 }
 
-/** Whether this process has any sovereign agent, loaded or configured. */
+/**
+ * Whether this process has any sovereign agent: `enforce` in current config, or `enforce`
+ * when the registry loaded, which holds until restart even if config later turns it off.
+ */
 function hasSovereignAgent(config: OpenClawConfig | undefined): boolean {
   return Boolean(
     runtime.agents?.size ||
@@ -146,28 +134,31 @@ export function loadSovereignPromptsForProcess(
 
 /**
  * True when a render for this call comes from a snapshot or is refused, never from code
- * text: the agent is sovereign, or no agent resolves for the call while this process has
- * a sovereign agent, as the renderer chokepoint decides it. Reads no file.
+ * text: the named agent is sovereign, or the call names no valid agent while this process
+ * has a sovereign agent, as the renderer chokepoint decides it. Reads no file.
  */
 export function isSovereignPromptAgent(
   config: OpenClawConfig | undefined,
   agentId: string | undefined,
 ): boolean {
-  const id = resolveCheckedAgentId(config, agentId);
+  const id = strictAgentId(agentId);
   return id ? isSovereignAgentId(config, id) : hasSovereignAgent(config);
 }
 
 /**
  * The renderer chokepoint's lookup (§ 4.6): `undefined` for an agent that renders code
  * text, the frozen snapshot for a loaded `enforce` agent, and a thrown content-free
- * refusal for a refused or unloaded `enforce` agent, or for a render no agent resolves
- * for while this process has any sovereign agent, since it may be one's.
+ * refusal for a refused or unloaded `enforce` agent, or for a call that names no valid
+ * agent while this process has any sovereign agent. A missing id is a run-identity
+ * failure, so it is never filled in from a default owner: that owner's text, or stock,
+ * could stand in for the agent whose id was lost. Owner-scoped operations resolve their
+ * owner before calling and pass it.
  */
 export function resolveSovereignPromptSnapshot(params: {
   config?: OpenClawConfig;
   agentId?: string;
 }): SovereignPromptSnapshot | undefined {
-  const agentId = resolveCheckedAgentId(params.config, params.agentId);
+  const agentId = strictAgentId(params.agentId);
   if (!agentId) {
     if (hasSovereignAgent(params.config)) {
       throw new SovereignPromptRefusal("agent_unknown");
