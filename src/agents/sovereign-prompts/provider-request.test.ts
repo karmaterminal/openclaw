@@ -20,6 +20,7 @@ import {
   expectNoSentinel,
   SENTINEL,
   sovereignAgentsConfig,
+  useDeniedNetworkEgress,
   useSovereignTempDirs,
   writeAgentGeneration,
 } from "./sovereign-fixture.test-support.js";
@@ -37,6 +38,8 @@ vi.mock("../../logging/subsystem.js", async (importOriginal) => {
 });
 
 const tempDirs = useSovereignTempDirs(afterEach);
+// Every request must reach the capture below; a missed one fails instead of leaving.
+useDeniedNetworkEgress(beforeEach, afterEach);
 const REFUSED = { stopReason: "error", errorCode: "transform_altered" };
 
 type Reply = { status: number; body: unknown };

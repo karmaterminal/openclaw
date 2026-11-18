@@ -1,7 +1,9 @@
 // Synthetic sovereign prompt generations and the sentinel check every case runs.
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
+import tls from "node:tls";
 import { inspect } from "node:util";
 import { expect, vi } from "vitest";
 import { createTempDirTracker } from "../../../test/helpers/temp-dir.js";
@@ -239,4 +241,34 @@ export function useSovereignTempDirs(registerCleanup: (cleanup: () => void) => u
     }
   });
   return tracker;
+}
+
+/**
+ * Denies every TCP and TLS connection while each case runs, then asserts none was attempted.
+ * Provider fixtures use real provider hosts (Google admits native video only on AI Studio), so
+ * a request a fetch capture missed must fail here instead of reaching the provider.
+ */
+export function useDeniedNetworkEgress(
+  registerSetup: (setup: () => void) => unknown,
+  registerCleanup: (cleanup: () => void) => unknown,
+): void {
+  let attempts: string[] = [];
+  let spies: { mockRestore(): void }[] = [];
+  registerSetup(() => {
+    attempts = [];
+    const deny = (kind: string) => () => {
+      attempts.push(kind);
+      throw new Error(`sovereign fixture: ${kind} egress denied`);
+    };
+    spies = [
+      vi.spyOn(net.Socket.prototype, "connect").mockImplementation(deny("tcp")),
+      vi.spyOn(tls, "connect").mockImplementation(deny("tls")),
+    ];
+  });
+  registerCleanup(() => {
+    for (const spy of spies) {
+      spy.mockRestore();
+    }
+    expect(attempts).toEqual([]);
+  });
 }

@@ -27,6 +27,7 @@ import {
   expectNoSentinel,
   SENTINEL,
   sovereignAgentsConfig,
+  useDeniedNetworkEgress,
   useSovereignTempDirs,
   writeAgentGeneration,
 } from "../../sovereign-prompts/sovereign-fixture.test-support.js";
@@ -37,6 +38,8 @@ import { prepareEmbeddedAttemptTransport } from "./attempt-stream-settle.js";
 import type { EmbeddedRunAttemptParams } from "./types.js";
 
 const tempDirs = useSovereignTempDirs(afterEach);
+// Every request must reach the capture below; a missed one fails instead of leaving.
+useDeniedNetworkEgress(beforeEach, afterEach);
 const WORKSPACE = "/openclaw-sovereign-fixture/workspace";
 /** The refusal as the run ends: the code survives, the transport redacts `key=value` text. */
 const REFUSED = {
