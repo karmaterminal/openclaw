@@ -51,15 +51,15 @@ function isOwnerlessExecution(entry: SubagentRunRecord): boolean {
  * A kill the earlier lifecycle left provisional after its owner decided the requester is not told:
  * the graceful shutdown kill, or an abort the requester already made. Its live settlement ended
  * with that lifecycle and the sweeper never confirms a kill on a retired row, so the requester
- * would wait on a result that cannot arrive. A requester delivery the earlier lifecycle committed
- * (a transcript handoff, or a settle cohort that holds the row) keeps its own owner.
+ * would wait on a result that cannot arrive. A yielded requester's settle cohort that holds the
+ * row stays its delivery owner. No transcript handoff can precede the kill: termination skips a
+ * run that already ended, and cleanup never runs for a paused or provisionally killed one.
  */
 function isUnconfirmedSuppressedKill(entry: SubagentRunRecord): boolean {
   return (
     entry.killReconciliation?.suppressTaskDelivery === true &&
     subagentRuns.isCompletionAuthorityRetired(entry) &&
     entry.delivery?.status === "pending" &&
-    !entry.delivery.requesterDelivery &&
     !entry.requesterSettleWake
   );
 }

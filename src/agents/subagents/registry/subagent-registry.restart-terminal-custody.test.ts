@@ -22,6 +22,7 @@ import { expect, it, vi } from "vitest";
 import * as sessionEventHandoff from "../../../auto-reply/reply/session-event-handoff.js";
 import { getRuntimeConfig } from "../../../config/config.js";
 import { loadExactSessionEntry } from "../../../config/sessions/session-accessor.js";
+import { resolveContextEngine } from "../../../context-engine/registry.js";
 import type { GatewayRequestContext } from "../../../gateway/server-methods/types.js";
 import { createContext } from "../../../gateway/server-plugin-in-process-dispatch.test-support.js";
 import {
@@ -47,6 +48,7 @@ import {
   addSubagentRunForTests,
   isSubagentRunLive,
   listUnsettledRequesterChildren,
+  markSubagentRunTerminated,
   registerSubagentRun,
   resetSubagentRegistryForTests,
   terminateLiveSubagentsForShutdown,
@@ -153,7 +155,6 @@ it("1: a graceful kill of an accepted delegate is terminal with its interruption
   const plain = await addRunningChild("graceful-plain", {
     drainsContinuationDelegateQueue: undefined,
   });
-
   await shutDownGracefully([child, plain]);
   const killed = loadSubagentRegistryFromSqlite().get("graceful-delegate");
   expectGracefullyKilled(killed);
@@ -186,6 +187,82 @@ it("1: a graceful kill of an accepted delegate is terminal with its interruption
   // The requester does not wait for it, and nothing announces, wakes, or relaunches it.
   const unsettled = await listUnsettledRequesterChildren({ requesterSessionKey: parent });
   expect(unsettled.map((entry) => entry.runId)).not.toContain("graceful-delegate");
+  expect(fixture.announce).not.toHaveBeenCalled();
+  expect(fixture.gateway).not.toHaveBeenCalled();
+  expect(fixture.wake).not.toHaveBeenCalled();
+});
+
+it("1: a killed delegate that a yielded requester's cohort holds keeps the cohort as its owner", async () => {
+  const child = await addRunningChild("cohort-delegate", {
+    requesterSettleWake: {
+      status: "pending",
+      attemptCount: 0,
+      batchRunIds: ["cohort-delegate"],
+      requesterYieldBatch: true,
+      requesterRunId: "yielded-requester-turn",
+      yieldedFinalDeliverable: true,
+      rearmGeneration: 1,
+    },
+  });
+
+  await shutDownGracefully([child]);
+  await restartGateway();
+  await testing.sweepOnceForTests();
+  await fixture.settle();
+
+  // The cohort, not the restart, settles what the requester hears about this child.
+  const held = loadSubagentRegistryFromSqlite().get("cohort-delegate");
+  expectGracefullyKilled(held);
+  expect(held?.requesterSettleWake).toMatchObject({ requesterYieldBatch: true });
+  expect(held?.delivery?.status).toBe("pending");
+  expect(held?.delivery?.disposition).toBeUndefined();
+});
+
+it("1: an abort the restart caught before its kill was confirmed settles the same, without child-session effects", async () => {
+  const child = await addRunningChild("aborted-delegate");
+  const claim = claimAgentRunContext(
+    child.runId,
+    { sessionKey: child.childSessionKey },
+    { trackOwner: true, ownsContext: true },
+  );
+  try {
+    // The requester's abort cascade: no notice to the requester, but the child's session
+    // effects stay with the kill.
+    await markSubagentRunTerminated({
+      runId: child.runId,
+      reason: "killed by requester",
+      suppressTaskDelivery: true,
+    });
+  } finally {
+    releaseAgentRunContext(child.runId, claim);
+  }
+  expect(loadSubagentRegistryFromSqlite().get("aborted-delegate")).toMatchObject({
+    endedReason: "subagent-killed",
+    killReconciliation: { suppressTaskDelivery: true },
+    delivery: { status: "pending" },
+  });
+  await fixture.settle();
+  fixture.cleanup.mockClear();
+  vi.mocked(resolveContextEngine).mockClear();
+
+  await restartGateway();
+
+  const settled = loadSubagentRegistryFromSqlite().get("aborted-delegate");
+  expect(settled?.execution).toMatchObject({
+    status: "terminal",
+    suppressSessionEffects: true,
+    outcome: { status: "error", error: "killed by requester" },
+  });
+  expect(settled?.completion?.resultText ?? undefined).toBeUndefined();
+  expect(settled?.killReconciliation).toBeUndefined();
+  expect(settled?.delivery).toMatchObject({
+    status: "not_required",
+    disposition: "intentional_non_delivery",
+  });
+  // The restarted Gateway does not own the earlier lifecycle's child-session effects: retired
+  // completion authority suppresses them, though the abort's kill left them on.
+  expect(fixture.cleanup).not.toHaveBeenCalled();
+  expect(resolveContextEngine).not.toHaveBeenCalled();
   expect(fixture.announce).not.toHaveBeenCalled();
   expect(fixture.gateway).not.toHaveBeenCalled();
   expect(fixture.wake).not.toHaveBeenCalled();
