@@ -199,6 +199,7 @@ describe.skipIf(process.platform === "win32")("sovereign slots in the main rende
     // A call naming no agent has lost its run identity: the owner's text is not its to take.
     for (const build of [() => render(config, undefined), () => harness()]) {
       const outcome = await capture(build);
+      expect(outcome.error).toBeInstanceOf(SovereignPromptRefusal);
       expect((outcome.error as SovereignPromptRefusal).code).toBe("agent_unknown");
       expectNoSentinel(outcome);
     }
