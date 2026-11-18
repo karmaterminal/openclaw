@@ -71,7 +71,9 @@ const envSnapshot = captureEnv(["OPENCLAW_STATE_DIR"]);
 let stateDir: string | undefined;
 const abortCalls: string[] = [];
 const successfulAborts: string[] = [];
+const sessionDeletes: Record<string, unknown>[] = [];
 let abortSucceeds = true;
+let abortMisses = false;
 let childWait = createDeferred<Record<string, unknown>>();
 
 const custodyWrite: WriteRule["match"] = (rows) =>
@@ -93,7 +95,9 @@ beforeEach(async () => {
   setTestEnvValue("OPENCLAW_STATE_DIR", stateDir);
   abortCalls.length = 0;
   successfulAborts.length = 0;
+  sessionDeletes.length = 0;
   abortSucceeds = true;
+  abortMisses = false;
   childWait = createDeferred<Record<string, unknown>>();
   announceMocks.runSubagentAnnounceFlow.mockClear();
   announceMocks.maybeWakeRequesterAfterAllChildrenSettled.mockClear();
@@ -105,12 +109,20 @@ beforeEach(async () => {
     if (request.method === "agent.wait") {
       return await childWait.promise;
     }
+    if (request.method === "sessions.delete") {
+      sessionDeletes.push({ ...request.params });
+      return { status: "ok" };
+    }
     if (request.method !== "chat.abort") {
       return { status: "ok" };
     }
     abortCalls.push(String(request.params?.runId));
     if (!abortSucceeds) {
       throw new Error("gateway unavailable");
+    }
+    if (abortMisses) {
+      // A definitive miss: the Gateway no longer runs this child.
+      return { aborted: false, runIds: [] };
     }
     successfulAborts.push(String(request.params?.runId));
     return { aborted: true, runIds: [request.params?.runId] };
@@ -146,6 +158,7 @@ function spawnNative(options: {
   afterRegistration?: () => Promise<void>;
   terminate?: () => Promise<void>;
   assertActive?: () => void;
+  custodyIdentity?: { expectedSessionId: string; expectedLifecycleRevision: string };
 }) {
   const terminate = options.terminate ?? (async () => {});
   return runSpawnPipeline({
@@ -172,7 +185,7 @@ function spawnNative(options: {
         cleanup: "keep",
         expectsCompletionMessage: options.expectsCompletionMessage ?? true,
         ...(options.requesterTurnRunId ? { requesterTurnRunId: options.requesterTurnRunId } : {}),
-        acceptanceCustody: { gatewayRunId },
+        acceptanceCustody: { gatewayRunId, ...options.custodyIdentity },
       }) as RegisterSubagentRunParams,
     ...(options.afterRegistration ? { afterRegistration: options.afterRegistration } : {}),
     recordAcceptedRollback: (registration: OwnedRegistration, error: unknown) =>
@@ -350,6 +363,34 @@ describe("armed registration: accepted-spawn custody (H1)", () => {
     expect(liveRow()).toBeUndefined();
     expect(durableRow()).toBeUndefined();
     expect(dispatchAgent).not.toHaveBeenCalled();
+    expectNoDelivery();
+  });
+
+  it("T3b: after an abort miss, restart cleanup deletes only the frozen child incarnation", async () => {
+    // Deleting by key alone could remove a newer chat at the same key, so the armed row keeps
+    // the accepted child's transcript id and lifecycle revision through restart and adoption.
+    const custodyIdentity = {
+      expectedSessionId: "sess-acceptance",
+      expectedLifecycleRevision: "revision-acceptance",
+    };
+    const result = await spawnNative({ deferred: true, custodyIdentity });
+    expect(result.ok).toBe(true);
+    const crashImage = loadSubagentRegistryFromSqlite();
+    expect(crashImage.get(runId)?.spawnAcceptance).toMatchObject({
+      gatewayRunId,
+      ...custodyIdentity,
+    });
+
+    abortMisses = true;
+    await restartFrom(crashImage);
+    await testing.sweepOnceForTests();
+    await testing.sweepOnceForTests();
+    expect(abortCalls).toContain(gatewayRunId);
+    expect(sessionDeletes).toEqual([
+      expect.objectContaining({ key: childSessionKey, ...custodyIdentity }),
+    ]);
+    expect(liveRow()).toBeUndefined();
+    expect(durableRow()).toBeUndefined();
     expectNoDelivery();
   });
 
