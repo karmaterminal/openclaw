@@ -246,6 +246,8 @@ describe("buildAgentSystemPrompt — continuation section branching", () => {
     const work = "- continue_work: Arm your next turn for unfinished work, now or after a delay.";
     const delegate =
       "- continue_delegate: Queue a bounded branch after this turn or later; `silent-wake` wakes you on return.";
+    const compaction =
+      "- request_compaction: Stage a `post-compaction` state packet first; compact this session after this turn.";
     const toolLines = (toolNames: string[], promptMode?: "minimal") =>
       buildAgentSystemPrompt({ ...baseParams, continuationEnabled: true, toolNames, promptMode })
         .split("Tools policy-filtered. Names case-sensitive; call exact.\n")[1]
@@ -253,14 +255,16 @@ describe("buildAgentSystemPrompt — continuation section branching", () => {
         ?.split("\n");
 
     it.each([undefined, "minimal"] as const)(
-      "gives both core slots beside sessions_yield (promptMode %s)",
+      "gives the continuation core slots beside sessions_yield (promptMode %s)",
       (promptMode) => {
         // Shuffled input: the renderer owns core order and alphabetical extras.
-        const names = "zeta_x continue_delegate subagents continue_work sessions_yield alpha_x";
+        const names =
+          "zeta_x request_compaction continue_delegate subagents continue_work sessions_yield alpha_x";
         expect(toolLines(names.split(" "), promptMode)).toEqual([
           "- sessions_yield: End turn; await subagent events",
           work,
           delegate,
+          compaction,
           "- subagents: Subagent status; never wait-loop",
           "- alpha_x",
           "- zeta_x",
@@ -274,6 +278,7 @@ describe("buildAgentSystemPrompt — continuation section branching", () => {
         work,
       ]);
       expect(toolLines(["continue_delegate"])).toEqual([delegate]);
+      expect(toolLines(["request_compaction"])).toEqual([compaction]);
     });
   });
 });

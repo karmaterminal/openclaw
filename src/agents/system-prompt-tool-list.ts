@@ -68,6 +68,8 @@ export function buildSystemPromptToolLines(params: SystemPromptToolListParams): 
     continue_work: "Arm your next turn for unfinished work, now or after a delay.",
     continue_delegate:
       "Queue a bounded branch after this turn or later; `silent-wake` wakes you on return.",
+    request_compaction:
+      "Stage a `post-compaction` state packet first; compact this session after this turn.",
     subagents: "Subagent status; never wait-loop",
     session_status: "Session/model/usage/time/status; model override",
     skill_workshop: "Author reusable skills",

@@ -1,0 +1,2 @@
+# request_compaction direct-only with a core ## Tooling slot: tool-surface tests (direct, never deferred, dispatch refusal, unavailable, Tool Search off) and the slot order and omission tests.
+31
