@@ -1,0 +1,347 @@
+// Final-payload enforcement on each supported API builder (#1321): the real built-in
+// builder shapes the request, the check reads that API's system field, and a refused
+// request never reaches the network.
+import { zstdDecompressSync } from "node:zlib";
+import { configureAiTransportHost, getAiTransportHost } from "@openclaw/ai";
+import { prepareModelRequestBody } from "@openclaw/ai/internal/model-request-body";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SUMMARIZATION_SYSTEM_PROMPT } from "../../../packages/agent-core/src/harness/compaction/summarization-prompts.js";
+import type { OpenClawConfig } from "../../config/types.js";
+import { streamSimple } from "../../llm/stream.js";
+import type { Context, Model } from "../../llm/types.js";
+import { resetSovereignRedactionForTests } from "../../logging/sovereign-redaction.js";
+import type { StreamFn } from "../runtime/index.js";
+import { buildConfiguredAgentSystemPrompt } from "../system-prompt-config.js";
+import { makeProviderModelFixture } from "../test-helpers/provider-model-fixture.js";
+import { wrapStreamFnWithSovereignRequestCheck } from "./provider-request.js";
+import { resetSovereignPromptRuntimeForTests, type SovereignPromptSpans } from "./runtime.js";
+import {
+  capture,
+  expectNoSentinel,
+  SENTINEL,
+  sovereignAgentsConfig,
+  useSovereignTempDirs,
+  writeAgentGeneration,
+} from "./sovereign-fixture.test-support.js";
+
+const sovereignWarn = vi.hoisted(() => vi.fn());
+vi.mock("../../logging/subsystem.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../logging/subsystem.js")>();
+  return {
+    ...actual,
+    createSubsystemLogger: (subsystem: string) => {
+      const logger = actual.createSubsystemLogger(subsystem);
+      return subsystem === "agents/sovereign-prompts" ? { ...logger, warn: sovereignWarn } : logger;
+    },
+  };
+});
+
+const tempDirs = useSovereignTempDirs(afterEach);
+const REFUSED = { stopReason: "error", errorCode: "transform_altered" };
+
+type Reply = { status: number; body: unknown };
+/** Each request that reached the network edge, parsed as the provider receives it. */
+let sent: Record<string, unknown>[] = [];
+let replies: Reply[] = [];
+let afterSend: (() => void) | undefined;
+let originalHost: ReturnType<typeof getAiTransportHost>;
+
+beforeEach(() => {
+  sovereignWarn.mockClear();
+  sent = [];
+  replies = [];
+  afterSend = undefined;
+  originalHost = getAiTransportHost();
+  const record: typeof fetch = async (input, init) => {
+    const request = new Request(input, init);
+    const bytes = Buffer.from(await request.arrayBuffer());
+    // The Codex SSE route compresses its body; read it as the provider would.
+    const text = (
+      request.headers.get("content-encoding") === "zstd" ? zstdDecompressSync(bytes) : bytes
+    ).toString("utf8");
+    sent.push(JSON.parse(text) as Record<string, unknown>);
+    afterSend?.();
+    const reply = replies.shift() ?? {
+      status: 400,
+      body: { error: { type: "invalid_request_error", message: "fixture rejection" } },
+    };
+    return new Response(JSON.stringify(reply.body), {
+      status: reply.status,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  configureAiTransportHost({ ...originalHost, buildModelFetch: () => record });
+  vi.stubGlobal("fetch", record);
+});
+
+afterEach(() => {
+  configureAiTransportHost(originalHost);
+  vi.unstubAllGlobals();
+  resetSovereignPromptRuntimeForTests();
+  resetSovereignRedactionForTests();
+});
+
+async function renderMain() {
+  const agentDir = tempDirs.make("openclaw-sovereign-builders-");
+  writeAgentGeneration(agentDir, "main");
+  const config = sovereignAgentsConfig({ main: { agentDir, mode: "enforce" } }) as OpenClawConfig;
+  let spans: SovereignPromptSpans | undefined;
+  const prompt = await buildConfiguredAgentSystemPrompt({
+    config,
+    agentId: "main",
+    workspaceDir: "/openclaw-sovereign-fixture/workspace",
+    toolNames: ["exec"],
+    onRenderedSovereignSpans: (rendered) => {
+      spans = rendered;
+    },
+  });
+  return { prompt, spans: spans! };
+}
+
+/** The real built-in builder for `model.api`, behind the check. */
+function checkedBuilder(spans: SovereignPromptSpans) {
+  return wrapStreamFnWithSovereignRequestCheck(streamSimple as StreamFn, {
+    sessionAgentId: "main",
+    sovereignSpans: () => spans,
+  });
+}
+
+async function send(
+  streamFn: StreamFn,
+  model: Model,
+  systemPrompt: string | undefined,
+  onPayload?: (payload: Record<string, unknown>) => unknown,
+  options: Record<string, unknown> = {},
+) {
+  const context: Context = {
+    ...(systemPrompt === undefined ? {} : { systemPrompt }),
+    messages: [{ role: "user", content: "Reply OK", timestamp: 1 }],
+  };
+  return await capture(async () => {
+    const stream = await streamFn(model, context, {
+      apiKey: model.api === "openai-chatgpt-responses" ? CHATGPT_TOKEN : "synthetic-key",
+      ...options,
+      ...(onPayload
+        ? { onPayload: (payload: unknown) => onPayload(payload as Record<string, unknown>) }
+        : {}),
+    });
+    return await stream.result();
+  });
+}
+
+/** The Codex route reads its account from the token; this one is unsigned and synthetic. */
+const CHATGPT_TOKEN = [
+  { alg: "none", typ: "JWT" },
+  { "https://api.openai.com/auth": { chatgpt_account_id: "acct-fixture" } },
+]
+  .map((part) => Buffer.from(JSON.stringify(part)).toString("base64url"))
+  .concat("signature")
+  .join(".");
+
+/** Rewrites the fixture prose wherever the builder placed it. */
+const alterSpans = (payload: Record<string, unknown>) =>
+  JSON.parse(
+    JSON.stringify(payload).replaceAll("Synthetic fixture prose", "Altered prose"),
+  ) as Record<string, unknown>;
+
+const BUILDERS: { api: string; model: Model }[] = [
+  ["anthropic-messages", "anthropic", "claude-sonnet-4-6", "https://api.anthropic.com"],
+  ["openai-completions", "openai", "gpt-5.6-luna", "https://api.openai.com/v1"],
+  ["mistral-conversations", "mistral", "mistral-large-latest", "https://api.mistral.ai"],
+  ["openai-responses", "openai", "gpt-5.6-luna", "https://api.openai.com/v1"],
+  [
+    "azure-openai-responses",
+    "azure-openai-responses",
+    "gpt-5.6-luna",
+    "https://fixture.openai.azure.com/openai/v1",
+  ],
+  ["openai-chatgpt-responses", "openai", "gpt-5.6-luna", "https://chatgpt.com/backend-api"],
+  [
+    "google-generative-ai",
+    "google",
+    "gemini-3-pro-preview",
+    "https://generativelanguage.googleapis.com/v1beta",
+  ],
+  [
+    "google-vertex",
+    "google-vertex",
+    "gemini-3-pro-preview",
+    "https://us-central1-aiplatform.googleapis.com",
+  ],
+  [
+    "google-interactions",
+    "google",
+    "gemini-3-pro-preview",
+    "https://generativelanguage.googleapis.com/v1beta",
+  ],
+].map(([api, provider, id, baseUrl]) => ({
+  api: api!,
+  model: makeProviderModelFixture({ id: id!, provider: provider!, api: api!, baseUrl: baseUrl! }),
+}));
+
+describe.skipIf(process.platform === "win32")("provider request check on each API builder", () => {
+  it.each(BUILDERS)("$api: sends an unchanged request carrying every span", async ({ model }) => {
+    const { prompt, spans } = await renderMain();
+    const outcome = await send(checkedBuilder(spans), model, prompt);
+    expect(outcome.error).toBeUndefined();
+    expect(sent).toHaveLength(1);
+    const wire = JSON.stringify(sent[0]);
+    for (const instance of spans.instances) {
+      expect(wire).toContain(JSON.stringify(instance).slice(1, -1));
+    }
+  });
+
+  it.each(BUILDERS)(
+    "$api: refuses an altered span, and a request without system text, before the network",
+    async ({ model }) => {
+      const { prompt, spans } = await renderMain();
+      const altered = await send(checkedBuilder(spans), model, prompt, alterSpans);
+      expect(altered.value).toMatchObject(REFUSED);
+      expectNoSentinel(altered);
+      const missing = await send(checkedBuilder(spans), model, undefined);
+      expect(missing.value).toMatchObject(REFUSED);
+      expectNoSentinel(missing);
+      expect(sent).toHaveLength(0);
+      // The log keeps the site the run's redacted error text loses, and no content.
+      expect(sovereignWarn).toHaveBeenCalledTimes(2);
+      expect(sovereignWarn).toHaveBeenCalledWith(
+        "[SOVEREIGN_PROMPTS_REFUSED] agent:main code=transform_altered site=provider_request",
+        {
+          event: "sovereign_prompts.refused",
+          agentId: "main",
+          code: "transform_altered",
+          site: "provider_request",
+        },
+      );
+    },
+  );
+
+  it("refuses an API with no system-field reader before calling its transport", async () => {
+    const { prompt, spans } = await renderMain();
+    const transport = vi.fn<StreamFn>();
+    const checked = wrapStreamFnWithSovereignRequestCheck(transport, {
+      sessionAgentId: "main",
+      sovereignSpans: () => spans,
+    });
+    const model = makeProviderModelFixture({
+      id: "llama3",
+      provider: "ollama",
+      api: "ollama",
+      baseUrl: "http://127.0.0.1:11434",
+    });
+    expect(() =>
+      checked(model, { systemPrompt: prompt, messages: [] }, { apiKey: "synthetic-key" }),
+    ).toThrow(
+      expect.objectContaining({ code: "route_unconverted", details: { route: "api:ollama" } }),
+    );
+    expect(transport).not.toHaveBeenCalled();
+  });
+
+  it("checks the API a provider transport builds for, not the one it was routed by", async () => {
+    const { prompt, spans } = await renderMain();
+    // LM Studio is routed as openai-completions and builds an Anthropic request.
+    const lmstudio: StreamFn = (model, context, options) =>
+      streamSimple({ ...model, api: "anthropic-messages" }, context, options);
+    const checked = wrapStreamFnWithSovereignRequestCheck(lmstudio, {
+      sessionAgentId: "main",
+      sovereignSpans: () => spans,
+    });
+    const model = makeProviderModelFixture({
+      id: "qwen3",
+      provider: "lmstudio",
+      api: "openai-completions",
+      baseUrl: "http://127.0.0.1:1234",
+    });
+    await send(checked, model, prompt);
+    expect(sent).toHaveLength(1);
+    expect(Array.isArray(sent[0]!.system)).toBe(true);
+    const altered = await send(checked, model, prompt, alterSpans);
+    expect(altered.value).toMatchObject(REFUSED);
+    expect(sent).toHaveLength(1);
+  });
+
+  it("does not check a compaction summary, whose code-owned prompt carries no span", async () => {
+    const { spans } = await renderMain();
+    const model = BUILDERS.find(({ api }) => api === "openai-completions")!.model;
+    // A provider wrapper may append to it, as Ollama's tool wire names do.
+    const summaryPrompt = `${SUMMARIZATION_SYSTEM_PROMPT}\n\n## Tool wire names\n- exec`;
+    const outcome = await send(checkedBuilder(spans), model, summaryPrompt);
+    expect(outcome.value).toMatchObject({ errorCode: "400" });
+    expect(sent).toHaveLength(1);
+    expect(JSON.stringify(sent[0])).not.toContain(SENTINEL);
+  });
+
+  it("passes a Responses continuation delta and still checks a resend that carries system text", async () => {
+    const { prompt, spans } = await renderMain();
+    const model = BUILDERS.find(({ api }) => api === "openai-responses")!.model;
+    const user = { role: "user", content: [{ type: "input_text", text: "Reply OK" }] };
+    const encoded: unknown[] = [];
+    // A route without `instructions` sends the prompt first in input, then continues with
+    // only new input after `previous_response_id`, encoding through the host each time.
+    const transport: StreamFn = async (routed, _context, options) => {
+      const encodeBody = prepareModelRequestBody(options);
+      const developer = { role: "developer", content: [{ type: "input_text", text: prompt }] };
+      await options?.onPayload?.({ model: routed.id, input: [developer, user] }, routed);
+      encoded.push(
+        await encodeBody({ model: routed.id, previous_response_id: "resp_1", input: [user] }),
+      );
+      await encodeBody({
+        model: routed.id,
+        previous_response_id: "resp_1",
+        instructions: "Altered instructions.",
+        input: [user],
+      });
+      throw new Error("unreachable");
+    };
+    const checked = wrapStreamFnWithSovereignRequestCheck(transport, {
+      sessionAgentId: "main",
+      sovereignSpans: () => spans,
+    });
+    await expect(
+      checked(model, { systemPrompt: prompt, messages: [] }, { apiKey: "synthetic-key" }),
+    ).rejects.toMatchObject({ code: "transform_altered", details: { site: "provider_request" } });
+    expect(encoded).toHaveLength(1);
+  });
+
+  it("re-checks a resend the builder makes without the hook, after an earlier check passed", async () => {
+    const { prompt, spans } = await renderMain();
+    const model = BUILDERS.find(({ api }) => api === "openai-responses")!.model;
+    const tierRejection = {
+      status: 400,
+      body: {
+        error: {
+          type: "invalid_request_error",
+          param: "service_tier",
+          message: "Unsupported service tier",
+        },
+      },
+    };
+    // The builder resends at a slower tier, from the request the hook already passed.
+    replies = [tierRejection];
+    await send(checkedBuilder(spans), model, prompt, undefined, { serviceTier: "priority" });
+    expect(sent.map((request) => request.service_tier)).toEqual(["priority", "default"]);
+
+    // A hook that keeps its payload and edits it after the first send is caught on the resend.
+    sent = [];
+    replies = [tierRejection];
+    let retained: Record<string, unknown> | undefined;
+    afterSend = () => {
+      if (retained) {
+        Object.assign(retained, alterSpans(retained));
+      }
+    };
+    const outcome = await send(
+      checkedBuilder(spans),
+      model,
+      prompt,
+      (payload) => {
+        retained = payload;
+        return undefined;
+      },
+      { serviceTier: "priority" },
+    );
+    expect(outcome.value).toMatchObject(REFUSED);
+    expect(sent).toHaveLength(1);
+    expect(JSON.stringify(sent[0])).toContain(SENTINEL);
+  });
+});

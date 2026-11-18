@@ -4,15 +4,16 @@
 // never reaches the network.
 import { configureAiTransportHost, getAiTransportHost } from "@openclaw/ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SUMMARIZATION_SYSTEM_PROMPT } from "../../../../packages/agent-core/src/harness/compaction/summarization-prompts.js";
 import type { OpenClawConfig } from "../../../config/types.js";
 import type { Model } from "../../../llm/types.js";
 import { resetSovereignRedactionForTests } from "../../../logging/sovereign-redaction.js";
 import { attachModelProviderRuntimePluginHandle } from "../../../plugins/provider-hook-runtime.js";
 import type { ProviderPlugin } from "../../../plugins/types.js";
-import type { StreamFn } from "../../runtime/index.js";
 import { createResourceLoader } from "../../sessions/agent-session-loop-resource-loader.test-support.js";
 import { AuthStorage } from "../../sessions/auth-storage.js";
 import type { ExtensionFactory } from "../../sessions/extensions/types.js";
+import { getModelRegistryRuntime } from "../../sessions/model-registry-runtime.js";
 import { ModelRegistry } from "../../sessions/model-registry.js";
 import { createAgentSession } from "../../sessions/sdk.js";
 import { SessionManager } from "../../sessions/session-manager.js";
@@ -22,7 +23,6 @@ import {
   type SovereignPromptSpans,
 } from "../../sovereign-prompts/runtime.js";
 import {
-  body,
   capture,
   expectNoSentinel,
   SENTINEL,
@@ -32,6 +32,7 @@ import {
 } from "../../sovereign-prompts/sovereign-fixture.test-support.js";
 import { buildConfiguredAgentSystemPrompt } from "../../system-prompt-config.js";
 import { makeProviderModelFixture } from "../../test-helpers/provider-model-fixture.js";
+import { prepareCompactionSessionAgent } from "../compaction-session-agent.js";
 import { prepareEmbeddedAttemptTransport } from "./attempt-stream-settle.js";
 import type { EmbeddedRunAttemptParams } from "./types.js";
 
@@ -126,28 +127,46 @@ const hookExtension: ExtensionFactory = (api) =>
     edits.hook?.(event.payload as Record<string, unknown>),
   );
 
+async function createSession(model: Model, systemPrompt: string) {
+  const authStorage = AuthStorage.inMemory();
+  authStorage.setRuntimeApiKey(model.provider, "synthetic-key");
+  const settingsManager = SettingsManager.inMemory({
+    compaction: { enabled: false },
+    retry: { enabled: false },
+  });
+  const modelRegistry = ModelRegistry.inMemory(authStorage);
+  const { session } = await createAgentSession({
+    systemPrompt,
+    model,
+    thinkingLevel: "off",
+    tools: [],
+    resourceLoader: await createResourceLoader(hookExtension),
+    sessionManager: SessionManager.inMemory(),
+    settingsManager,
+    modelRegistry,
+  });
+  // The agent loop hands its `onPayload` (the `before_provider_request` emitter) to each call.
+  const send = async (requestSystemPrompt = systemPrompt) => {
+    const stream = await session.agent.streamFn!(
+      model,
+      {
+        systemPrompt: requestSystemPrompt,
+        messages: [{ role: "user", content: "Reply OK", timestamp: 1 }],
+      },
+      { onPayload: session.agent.onPayload, apiKey: "synthetic-key" },
+    );
+    return await stream.result();
+  };
+  return { session, settingsManager, modelRegistry, send };
+}
+
 async function composeAttemptStream(params: {
   config: OpenClawConfig;
   model: Model;
   systemPrompt: string;
   spans: (() => SovereignPromptSpans | undefined) | undefined;
 }) {
-  const authStorage = AuthStorage.inMemory();
-  authStorage.setRuntimeApiKey(params.model.provider, "synthetic-key");
-  const settingsManager = SettingsManager.inMemory({
-    compaction: { enabled: false },
-    retry: { enabled: false },
-  });
-  const { session } = await createAgentSession({
-    systemPrompt: params.systemPrompt,
-    model: params.model,
-    thinkingLevel: "off",
-    tools: [],
-    resourceLoader: await createResourceLoader(hookExtension),
-    sessionManager: SessionManager.inMemory(),
-    settingsManager,
-    modelRegistry: ModelRegistry.inMemory(authStorage),
-  });
+  const { session, settingsManager, send } = await createSession(params.model, params.systemPrompt);
   const abort = new AbortController();
   await prepareEmbeddedAttemptTransport({
     attempt: {
@@ -176,19 +195,35 @@ async function composeAttemptStream(params: {
     sovereignSpans: params.spans,
     providerPromptState: { state: {}, effectiveContextTokenBudget: 200_000 },
   });
-  // The agent loop hands its `onPayload` (the `before_provider_request` emitter) to each call.
-  const send = async () => {
-    const stream = await session.agent.streamFn!(
-      params.model,
-      {
-        systemPrompt: params.systemPrompt,
-        messages: [{ role: "user", content: "Reply OK", timestamp: 1 }],
-      },
-      { onPayload: session.agent.onPayload, apiKey: "synthetic-key" },
-    );
-    return await stream.result();
-  };
-  return { send, streamFn: session.agent.streamFn as StreamFn };
+  return { send };
+}
+
+/** The compaction session's stream, prepared the way a compaction run prepares it. */
+async function composeCompactionStream(params: {
+  config: OpenClawConfig;
+  model: Model;
+  systemPrompt: string;
+  spans: SovereignPromptSpans | undefined;
+}) {
+  const { session, modelRegistry, send } = await createSession(params.model, params.systemPrompt);
+  await prepareCompactionSessionAgent({
+    session,
+    llmRuntime: getModelRegistryRuntime(modelRegistry).llmRuntime,
+    providerStreamFn: undefined,
+    sessionId: "sovereign-request-session",
+    effectiveModel: params.model,
+    resolvedApiKey: "synthetic-key",
+    authStorage: undefined,
+    config: params.config,
+    provider: params.model.provider,
+    modelId: params.model.id,
+    thinkLevel: "off",
+    sessionAgentId: "main",
+    effectiveWorkspace: WORKSPACE,
+    agentDir: WORKSPACE,
+    sovereignSpans: params.spans,
+  });
+  return { send };
 }
 
 const anthropicModel = attachModelProviderRuntimePluginHandle(
@@ -240,13 +275,13 @@ describe.skipIf(process.platform === "win32")("embedded route: provider request 
     },
     {
       name: "a provider wrapStreamFn edit",
-      provider: (payload: Record<string, unknown>) => ({
-        ...payload,
-        system: (payload.system as { type: string; text: string }[]).map((block) => ({
-          ...block,
-          text: block.text.replaceAll("Synthetic fixture prose", "Edited prose"),
-        })),
-      }),
+      provider: (payload: Record<string, unknown>) => {
+        // Edits the hook's editable copy in place, as compat patches do.
+        for (const block of payload.system as { text: string }[]) {
+          block.text = block.text.replaceAll("Synthetic fixture prose", "Edited prose");
+        }
+        return payload;
+      },
     },
     {
       name: "a request with its system text removed",
@@ -298,6 +333,26 @@ describe.skipIf(process.platform === "win32")("embedded route: provider request 
     expect(sent).toHaveLength(0);
   });
 
+  it("checks compaction's own sovereign requests and passes its summaries", async () => {
+    const config = writeAgents();
+    const { prompt, spans } = await render(config, "main");
+    const { send } = await composeCompactionStream({
+      config,
+      model: anthropicModel,
+      systemPrompt: prompt,
+      spans,
+    });
+
+    // A summary request carries the code-owned summarizer prompt, not the agent's.
+    await send(SUMMARIZATION_SYSTEM_PROMPT);
+    expect(sent).toHaveLength(1);
+
+    // A request carrying the agent's prompt (the server compaction endpoint's) is checked.
+    edits.provider = (payload) => ({ ...payload, system: "Provider-chosen system text." });
+    expect(await send()).toMatchObject(REFUSED);
+    expect(sent).toHaveLength(1);
+  });
+
   it("leaves an off agent's request exactly as its hooks shaped it", async () => {
     const config = writeAgents("off");
     const { prompt, spans } = await render(config, "main");
@@ -315,6 +370,3 @@ describe.skipIf(process.platform === "win32")("embedded route: provider request 
     expect(sent[0]!.system).toBe("Hook-chosen system text.");
   });
 });
-
-// Keep the fixture body helper referenced for readers comparing spans with file bodies.
-void body;

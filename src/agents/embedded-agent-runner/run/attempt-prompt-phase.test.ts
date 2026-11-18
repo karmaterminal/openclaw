@@ -769,6 +769,24 @@ describe("runEmbeddedAttemptPromptPhase", () => {
     ]);
   });
 
+  it("never prepares the Google prompt cache for a run that carries sovereign spans", async () => {
+    // The cache would send the stable prompt in its own request, outside the request check.
+    const fixture = createFixture();
+    Object.assign(fixture.input.prepared.systemPrompt, {
+      sovereignSpans: () => ({
+        agentId: "main",
+        setDigest: "0".repeat(64),
+        instances: ["Sovereign identity."],
+      }),
+    });
+
+    await runEmbeddedAttemptPromptPhase(fixture.input, fixture.promptState);
+
+    expect(fixture.readState().promptError).toBeNull();
+    expect(mocks.prepareGooglePromptCache).not.toHaveBeenCalled();
+    expect(mocks.submitPrompt).toHaveBeenCalledTimes(1);
+  });
+
   it("honors a tool-policy failure published during prompt assembly", async () => {
     const fixture = createFixture();
     const failure = new Error("explicit tool allowlist is empty");

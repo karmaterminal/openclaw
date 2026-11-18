@@ -161,18 +161,25 @@ const checkedEncoders = new WeakMap<EncodeModelRequestBody, EncodeModelRequestBo
  * again on each encoded attempt, which covers resends that skip the hook (a slower
  * service tier, stripped reasoning). A refusal throws before any byte is sent.
  *
+ * A run whose render placed no span (an off agent, a raw run) keeps its stream as is.
  * Compaction summaries share the run's stream with their own code-owned system prompt,
  * which carries no sovereign span; a request whose prompt starts with it is not checked.
  */
-export function wrapStreamFnWithSovereignRequestCheck(params: {
-  streamFn: StreamFn;
-  agentId: string;
-  /** The applied render's spans; a tool refresh can re-render mid-run. */
-  spans: () => SovereignPromptSpans | undefined;
-}): StreamFn {
+export function wrapStreamFnWithSovereignRequestCheck(
+  streamFn: StreamFn,
+  run: {
+    sessionAgentId: string;
+    /** The applied render's spans; a tool refresh can re-render mid-run. */
+    sovereignSpans?: () => SovereignPromptSpans | undefined;
+  },
+): StreamFn {
+  const { sessionAgentId: agentId, sovereignSpans: readSpans } = run;
+  if (!readSpans?.()) {
+    return streamFn;
+  }
   return (model, context, options) => {
     if (context.systemPrompt?.startsWith(SUMMARIZATION_SYSTEM_PROMPT)) {
-      return params.streamFn(model, context, options);
+      return streamFn(model, context, options);
     }
     if (!isSovereignProviderRequestCheckable(model.api)) {
       throw new SovereignPromptRefusal("route_unconverted", { route: `api:${model.api}` });
@@ -181,16 +188,11 @@ export function wrapStreamFnWithSovereignRequestCheck(params: {
     let api = model.api;
     const assertPayload = (payload: unknown) => {
       try {
-        assertSovereignProviderRequest({
-          agentId: params.agentId,
-          spans: params.spans(),
-          api,
-          payload,
-        });
+        assertSovereignProviderRequest({ agentId, spans: readSpans(), api, payload });
       } catch (error) {
         // The transport's error projection redacts `key=value` text; the log keeps the site.
         if (error instanceof SovereignPromptRefusal) {
-          const { line, fields } = describeSovereignPromptsRefused(params.agentId, error);
+          const { line, fields } = describeSovereignPromptsRefused(agentId, error);
           log.warn(line, fields);
         }
         throw error;
@@ -221,6 +223,6 @@ export function wrapStreamFnWithSovereignRequestCheck(params: {
     };
     checkedEncoders.set(checkedEncode, encode);
     bodyState.encode = checkedEncode;
-    return params.streamFn(model, context, checkedOptions);
+    return streamFn(model, context, checkedOptions);
   };
 }

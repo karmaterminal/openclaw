@@ -147,11 +147,20 @@ describe.skipIf(process.platform === "win32")("embedded route: sovereign prompt 
     // A tool refresh re-renders from the frozen snapshot, even with the generation deleted.
     fs.rmSync(root, { recursive: true, force: true });
     const refresh = await prepared.prepareToolPrompt!(undefined, { permissionChanged: true });
+    const rendered = prepared.sovereignSpans?.();
     const refreshed = refresh(prompt);
     expect(refreshed).toContain("## Permission change");
     expect(refreshed.slice(0, refreshed.indexOf("<!-- openclaw:attempt:PERMISSION -->"))).toBe(
       `${prompt}\n\n`,
     );
+    // The provider request check reads the applied render's spans, which the refresh updates.
+    const applied = prepared.sovereignSpans?.();
+    expect(applied).not.toBe(rendered);
+    expect(applied).toMatchObject({ agentId: "main", setDigest: rendered?.setDigest });
+    expect(applied?.instances.length).toBeGreaterThan(0);
+    for (const instance of applied!.instances) {
+      expect(refreshed).toContain(instance);
+    }
   });
 
   it("refuses a provider transform that alters a sovereign span; additions pass", async () => {
@@ -174,5 +183,22 @@ describe.skipIf(process.platform === "win32")("embedded route: sovereign prompt 
     expect(altered.error).toBeInstanceOf(SovereignPromptRefusal);
     expect((altered.error as SovereignPromptRefusal).code).toBe("transform_altered");
     expectNoSentinel(altered);
+    // A transform that empties the prompt drops every span.
+    const emptied = await capture(() =>
+      buildAttemptSystemPrompt({
+        isRawModelRun: false,
+        embeddedSystemPrompt,
+        transformSystemPrompt: () => "",
+      }),
+    );
+    expect(emptied.error).toMatchObject({ code: "transform_altered" });
+    // A raw run sends no system prompt, so it hands the request check no spans.
+    const raw = await buildAttemptSystemPrompt({
+      isRawModelRun: true,
+      embeddedSystemPrompt,
+      transformSystemPrompt: () => "",
+    });
+    expect(raw).toMatchObject({ systemPrompt: "", sovereignSpans: undefined });
+    expect(appended.sovereignSpans?.instances).toContain(text("identity-section.md"));
   });
 });

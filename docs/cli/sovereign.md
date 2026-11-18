@@ -156,6 +156,27 @@ native error text, or names outside the registry.
 - **No replacement.** A plugin hook that replaces the whole prompt fails the run
   with `sovereign_override_denied`; prepend and append still apply. A provider
   transform that alters a sovereign span fails with `transform_altered`.
+- **Checked in the provider request.** After every payload hook and wrapper
+  (`before_provider_request`, a provider plugin's `wrapStreamFn`, OpenClaw's own),
+  each request must still carry every sovereign span whole in its system field:
+  `system`, `instructions`, the leading system or developer message, or
+  `systemInstruction`, by API. An altered, missing or unrecognised system field
+  fails the run with `transform_altered` (`site=provider_request`) before anything
+  is sent, and the Gateway logs a content-free `[SOVEREIGN_PROMPTS_REFUSED]` line
+  naming the site. Formatting a provider adds around a span (cache blocks, an
+  identity block, a developer role) passes. Each send is checked, including the
+  resends OpenAI Responses makes on its own (a slower service tier, stripped
+  reasoning). Only the built-in API builders can be checked
+  (`anthropic-messages`, `azure-openai-responses`, `google-generative-ai`,
+  `google-interactions`, `google-vertex`, `mistral-conversations`,
+  `openai-chatgpt-responses`, `openai-completions`, `openai-responses`); a run on
+  any other API, such as Ollama's native API or Bedrock Converse, refuses with
+  `route_unconverted` (`api:<id>`). A configured Gemini `cachedContent` carries
+  no system field and refuses; the automatic Gemini prompt cache, which sends the
+  stable prompt in a separate request, is not used for the agent. Compaction
+  summaries send OpenClaw's summarizer prompt, not the agent's, and are not
+  checked. A plugin that sends a request itself instead of through the stream it
+  wraps, or edits a payload after handing it back, is outside this check.
 - **Never echoed.** Plugin hook payloads (`llm_input`, `before_agent_run`), session
   extension `before_agent_start` payloads and `getSystemPrompt()`, trajectory
   records, diagnostics, model-call content capture, debug proxy capture and
@@ -172,5 +193,5 @@ native error text, or names outside the registry.
 | `not_loaded`                | An `enforce` agent this process did not load at start (added by hot reload)        |
 | `agent_unknown`             | A render names no agent, or an invalid one, while an agent is `enforce`            |
 | `route_unconverted`         | A run is routed where the files cannot reach the model; the output names the route |
-| `transform_altered`         | A provider transform changed a sovereign span                                      |
+| `transform_altered`         | A provider transform changed a sovereign span, or a provider request lost one      |
 | `sovereign_override_denied` | A plugin hook returned a whole-prompt replacement; the output names the hook site  |

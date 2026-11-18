@@ -52,14 +52,11 @@ export async function prepareCompactionSessionAgent(params: {
     authProfileId: params.runtimePlan?.auth.forwardedAuthProfileId,
   }).streamFn;
   const { sovereignSpans } = params;
-  if (sovereignSpans) {
-    // Innermost, as on turns: hooks, provider and config wrappers all edit first.
-    params.session.agent.streamFn = wrapStreamFnWithSovereignRequestCheck({
-      streamFn: params.session.agent.streamFn,
-      agentId: params.sessionAgentId,
-      spans: () => sovereignSpans,
-    });
-  }
+  // Innermost, as on turns: hooks, provider and config wrappers all edit first.
+  params.session.agent.streamFn = wrapStreamFnWithSovereignRequestCheck(
+    params.session.agent.streamFn,
+    { sessionAgentId: params.sessionAgentId, sovereignSpans: () => sovereignSpans },
+  );
   const providerTextTransforms = resolveProviderTextTransforms({
     provider: params.provider,
     config: params.config,
