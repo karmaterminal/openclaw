@@ -2,12 +2,13 @@
 // recipient authority 38, so fleet agent databases at 38 hold upstream's 38 plus the authority
 // table; fork builds jump 9-F″ wrote the same DDL stamped 39, the jump-13 candidate numbered it 41
 // over upstream's 40, and the jump-14 candidates numbered it 42 over upstream's 41. Authority is
-// now 43, above upstream's 39, 40, 41 (active event facts) and 42 (tool usage). Only upstream's
-// own 38-42, the fleet's 38 DDL (at 38 or 39), the jump-13 41 and the jump-14 42 migrate: each
-// upstream step above the physical shape runs once beside the authority step, authority rows
-// survive, every other 38-42 shape is refused unchanged (the version number alone admits nothing),
-// an interrupted run leaves the predecessor at every step, older targets refuse 43, and Doctor's
-// declared backup restores the fleet's 38.
+// now 44, above upstream's 39, 40, 41 (active event facts), 42 (tool usage) and 43 (pending-input
+// endings). Only upstream's own 38-43, the fleet's 38 DDL (at 38 or 39), the jump-13 41 and the
+// jump-14 42 migrate: each upstream step above the physical shape runs once beside the authority
+// step, authority rows survive, every other 38-43 shape is refused unchanged (the version number
+// alone admits nothing, including the never-deployed absorb chain's 43), an interrupted run leaves
+// the predecessor at every step, older targets refuse 44, and Doctor's declared backup restores
+// the fleet's 38.
 import { constants, type DatabaseSync } from "node:sqlite";
 import { afterEach, expect, it, vi } from "vitest";
 import { resolveSessionWorkStartBlock } from "../config/sessions/session-work-start.js";
@@ -27,6 +28,7 @@ import {
   readAgentBridgedShapeVersion,
   readAgentFleet38HistoricalSchema,
 } from "./openclaw-agent-fleet38-bridge.js";
+import * as pendingInputEndings from "./openclaw-agent-pending-input-endings-schema.js";
 import {
   sessionRecipientAuthoritySchemaSql,
   withoutSessionRecipientAuthoritySchema,
@@ -62,6 +64,8 @@ const SCHEMA = {
   // The jump-14 candidates' authority 42 as #129388 51ff02dc16 writes it fresh: upstream's 41 plus
   // authority.
   jump14: readCapturedAgentSchema("openclaw-agent-schema-v42-jump14.sql"),
+  // Upstream's pending-input-endings 43 as b894fe5e37 writes it fresh.
+  upstream43: readCapturedAgentSchema("openclaw-agent-schema-v43.sql"),
 };
 const AUTHORITY_DDL = sessionRecipientAuthoritySchemaSql(OPENCLAW_AGENT_SCHEMA_SQL);
 const AGENT_ACTIVE_FACTS_DDL = AGENT_ACTIVE_EVENT_FACTS_SQL;
@@ -84,19 +88,28 @@ const NAVIGATION = JSON.stringify({
 // The real steps, captured before any spy replaces them.
 const runNavigation = coldNavigation.migrateAgentColdNavigationInTransaction;
 const runAuthority = sessionMigrations.migrateSessionRecipientAuthorityInTransaction;
+const runEndings = pendingInputEndings.migrateAgentPendingInputEndingsInTransaction;
 const WIDENED_CLAUSE = /event_json IS NULL AND event_zstd IS NULL\s+AND event_utf8_bytes/gu;
 const ACTIVE_FACTS = "session_transcript_active_event_facts";
 const TOOL_USAGE = "agent_tool_usage";
+const PENDING_INPUTS = "session_pending_inputs";
 const FLEET_SCOPE = [
   TOOL_USAGE,
   "schema_meta",
   "session_creation_operations",
+  PENDING_INPUTS,
   "session_recipient_authority",
   ACTIVE_FACTS,
   "transcript_events",
 ];
-const JUMP13_SCOPE = [TOOL_USAGE, "schema_meta", "session_recipient_authority", ACTIVE_FACTS];
-const JUMP14_SCOPE = [TOOL_USAGE, "schema_meta", "session_recipient_authority"];
+const JUMP13_SCOPE = [
+  TOOL_USAGE,
+  "schema_meta",
+  PENDING_INPUTS,
+  "session_recipient_authority",
+  ACTIVE_FACTS,
+];
+const JUMP14_SCOPE = [TOOL_USAGE, "schema_meta", PENDING_INPUTS, "session_recipient_authority"];
 
 function seedRows(database: DatabaseSync, authority: boolean): void {
   database.exec(`
@@ -155,7 +168,7 @@ const snapshot = (database: DatabaseSync) => ({
   transcript: hotTranscript(database),
 });
 
-/** Asserts a migrated 43: upstream's 39-42 shapes and the authority table. */
+/** Asserts a migrated 44: upstream's 39-43 shapes and the authority table. */
 function expectMigrated(database: DatabaseSync) {
   expectVersion(database, target);
   expect(String(tableSql(database, "transcript_events")).match(WIDENED_CLAUSE)).toHaveLength(1);
@@ -165,6 +178,7 @@ function expectMigrated(database: DatabaseSync) {
   expect(rows(database, `SELECT * FROM ${ACTIVE_FACTS}`)).toEqual([]);
   expect(tableSql(database, TOOL_USAGE)).toBeDefined();
   expect(rows(database, `SELECT * FROM ${TOOL_USAGE}`)).toEqual([]);
+  expect(String(tableSql(database, PENDING_INPUTS))).toMatch(/end_cause[\s\S]*origin_source_json/u);
   expect(tableSql(database, "session_recipient_authority")).toBeDefined();
   expect(() =>
     assertOpenClawAgentSchemaContains(database, "migrated", OPENCLAW_AGENT_SCHEMA_SQL),
@@ -185,7 +199,7 @@ const fleet38 = (ddl = SCHEMA.fleet38, predecessor = 38) =>
     scope: FLEET_SCOPE,
   });
 
-it("keeps a fleet-38 restart tombstone and its recorded successor through the 43 cut", async () => {
+it("keeps a fleet-38 restart tombstone and its recorded successor through the 44 cut", async () => {
   await fleet38()("fleet38-tombstone.sqlite", async ({ database, migrate }) => {
     const sessionKey = "agent:main:retained";
     const tombstone = {
@@ -236,6 +250,9 @@ it("recognizes the captured fleet 38 as the bridge's historical schema, not upst
   expect(getOpenClawAgentMigrationSchema(41)).not.toContain(TOOL_USAGE);
   expect(getOpenClawAgentMigrationSchema(42)).not.toContain("session_recipient_authority");
   expect(getOpenClawAgentMigrationSchema(42)).toContain(TOOL_USAGE);
+  expect(getOpenClawAgentMigrationSchema(42)).not.toContain("end_cause");
+  expect(getOpenClawAgentMigrationSchema(43)).not.toContain("session_recipient_authority");
+  expect(getOpenClawAgentMigrationSchema(43)).toContain("end_cause");
   expect(getOpenClawAgentMigrationSchema(target)).toContain("session_recipient_authority");
 });
 
@@ -271,6 +288,7 @@ it("classifies each bridged history by its markers, never by its number", () => 
     history: getAgentJump14Schema42MigrationSchema(),
   });
   expect(shapeOf(SCHEMA.upstream42, 42)).toEqual({ shape: undefined, history: undefined });
+  expect(shapeOf(SCHEMA.upstream43, 43)).toEqual({ shape: undefined, history: undefined });
   using jump14 = openNodeSqliteDatabase(":memory:");
   jump14.exec(SCHEMA.jump14);
   expect(() =>
@@ -291,7 +309,7 @@ it.each([
   ["captured fleet build stamped 39", SCHEMA.fleet38, 39],
   ["bridge fleet-shape SQL stamped 39", getAgentFleet38MigrationSchema(), 39],
 ] as const)(
-  "takes the fleet's 38 DDL (%s) through upstream's 39-42 once each to 43, keeping authority",
+  "takes the fleet's 38 DDL (%s) through upstream's 39-43 once each to 44, keeping authority",
   async (_source, ddl, predecessor) => {
     const navigation = vi.spyOn(coldNavigation, "migrateAgentColdNavigationInTransaction");
     const authority = vi.spyOn(sessionMigrations, "migrateSessionRecipientAuthorityInTransaction");
@@ -317,7 +335,7 @@ it.each([
         warnings: [],
       });
       expectWritableColdRow(database);
-      // The stamped 43 is current: no step runs again. Its admission only adds upstream's
+      // The stamped 44 is current: no step runs again. Its admission only adds upstream's
       // same-version 39 indexes, which version crossings leave to admission.
       ensureOpenClawAgentSchema(database, "main", database.location()!, target);
       expectVersion(database, target);
@@ -328,7 +346,7 @@ it.each([
   },
 );
 
-// (b) and (c): upstream's own 38, 40, 41 and 42 gain an empty authority table.
+// (b) and (c): upstream's own 38, 40, 41, 42 and 43 gain an empty authority table.
 it.each([
   {
     shape: "upstream's 38",
@@ -358,10 +376,17 @@ it.each([
     shape: "upstream's 42",
     seed: seed(SCHEMA.upstream42, 42),
     predecessor: 42,
+    scope: ["schema_meta", PENDING_INPUTS, "session_recipient_authority"],
+    navigationRuns: 0,
+  },
+  {
+    shape: "upstream's 43",
+    seed: seed(SCHEMA.upstream43, 43),
+    predecessor: 43,
     scope: ["schema_meta", "session_recipient_authority"],
     navigationRuns: 0,
   },
-])("takes $shape to 43 by creating the authority table", async (shape) => {
+])("takes $shape to 44 by creating the authority table", async (shape) => {
   const navigation = vi.spyOn(coldNavigation, "migrateAgentColdNavigationInTransaction");
   await migrationFixture({ ...shape, target })(
     "fleet38-upstream.sqlite",
@@ -383,11 +408,11 @@ it.each([
   );
 });
 
-// (d) A fresh database: openclaw-agent-db.recipient-authority-migration.test.ts creates one at 43.
+// (d) A fresh database: openclaw-agent-db.recipient-authority-migration.test.ts creates one at 44.
 
 // (d′) Ronan's j14 ruling: a store the jump-13 candidate already stamped 41 (upstream's 40 plus
-// authority) runs upstream's 41 and 42 once and keeps its authority table and rows at 43.
-it("takes the jump-13 41 through upstream's 41 and 42 to 43 without losing recipient authority", async () => {
+// authority) runs upstream's 41-43 once and keeps its authority table and rows at 44.
+it("takes the jump-13 41 through upstream's 41-43 to 44 without losing recipient authority", async () => {
   const navigation = vi.spyOn(coldNavigation, "migrateAgentColdNavigationInTransaction");
   const authority = vi.spyOn(sessionMigrations, "migrateSessionRecipientAuthorityInTransaction");
   await migrationFixture({
@@ -422,11 +447,12 @@ it("takes the jump-13 41 through upstream's 41 and 42 to 43 without losing recip
 });
 
 // (d″) The same rule one step later: a store a jump-14 candidate (j14 prep e4a55624fc through
-// #129388 51ff02dc16) already stamped 42 (upstream's 41 plus authority) runs upstream's 42 once and
-// keeps its authority table and rows at 43.
-it("takes the jump-14 42 through upstream's 42 to 43 without losing recipient authority", async () => {
+// #129388 51ff02dc16; the deployed fleet) already stamped 42 (upstream's 41 plus authority) runs
+// upstream's 42 and 43 once each and keeps its authority table and rows at 44.
+it("takes the jump-14 42 through upstream's 42 and 43 to 44 without losing recipient authority", async () => {
   const navigation = vi.spyOn(coldNavigation, "migrateAgentColdNavigationInTransaction");
   const authority = vi.spyOn(sessionMigrations, "migrateSessionRecipientAuthorityInTransaction");
+  const endings = vi.spyOn(pendingInputEndings, "migrateAgentPendingInputEndingsInTransaction");
   await migrationFixture({
     seed: seed(SCHEMA.jump14, 42, true),
     predecessor: 42,
@@ -441,6 +467,7 @@ it("takes the jump-14 42 through upstream's 42 to 43 without losing recipient au
     await migrate();
     expectMigrated(database);
     expect(navigation).not.toHaveBeenCalled();
+    expect(endings).toHaveBeenCalledTimes(1);
     expect(authority).toHaveBeenCalledTimes(1);
     expect(tableSql(database, "session_recipient_authority")).toBe(authorityDefinition);
     expect(tableSql(database, ACTIVE_FACTS)).toBe(activeFacts);
@@ -458,7 +485,7 @@ it("takes the jump-14 42 through upstream's 42 to 43 without losing recipient au
   });
 });
 
-// (e) Every other shape at 38-42 is refused before any write, and so is its witness.
+// (e) Every other shape at 38-43 is refused before any write, and so is its witness.
 it.each([
   ["38 with upstream's widened CHECK", SCHEMA.upstream39, 38],
   ["38 with the widened CHECK and authority", `${SCHEMA.upstream39}\n${AUTHORITY_DDL}`, 38],
@@ -498,6 +525,12 @@ it.each([
     `${SCHEMA.upstream40}\n${AGENT_TOOL_USAGE_SQL}`,
     42,
   ],
+  // The never-deployed absorb chain (b980ef8168..fa212dbe20) numbered authority 43 over upstream's
+  // 42; upstream's 43 is pending-input endings, so only upstream's own 43 is admitted.
+  ["43 with authority (the absorb chain's 43)", `${SCHEMA.upstream42}\n${AUTHORITY_DDL}`, 43],
+  ["43 with authority and pending-input endings", `${SCHEMA.upstream43}\n${AUTHORITY_DDL}`, 43],
+  ["43 without tool usage", SCHEMA.upstream41, 43],
+  ["43 holding the jump-14 42", SCHEMA.jump14, 43],
 ] as const)("refuses %s, unchanged", async (_shape, ddl, version) => {
   await migrationFixture({ seed: seed(ddl, version), predecessor: version, target, scope: [] })(
     "fleet38-refused.sqlite",
@@ -511,7 +544,7 @@ it.each([
   );
 });
 
-it("refuses a database above 43, unchanged", async () => {
+it("refuses a database above 44, unchanged", async () => {
   await migrationFixture({
     seed: seed(OPENCLAW_AGENT_SCHEMA_SQL, target + 1),
     predecessor: target + 1,
@@ -530,6 +563,7 @@ it.each([
   ["upstream's 40", "creation"],
   ["upstream's 41", "activeFacts"],
   ["upstream's 42", "toolUsage"],
+  ["upstream's 43", "endings"],
   ["the authority step", "authority"],
   ["the version stamp", "stamp"],
 ] as const)("rolls back an interruption at %s, then migrates once on retry", async (_s, step) => {
@@ -540,6 +574,14 @@ it.each([
     navigation.mockImplementationOnce((database) => {
       runNavigation(database);
       throw new Error("interrupted after upstream's 39");
+    });
+  } else if (step === "endings") {
+    vi.spyOn(
+      pendingInputEndings,
+      "migrateAgentPendingInputEndingsInTransaction",
+    ).mockImplementationOnce((database) => {
+      runEndings(database);
+      throw new Error("interrupted after upstream's 43");
     });
   } else if (step === "authority") {
     authority.mockImplementationOnce((database) => {
@@ -579,14 +621,14 @@ it.each([
   });
 });
 
-// (g) Older targets refuse 43, and Doctor's declared backup restores the fleet's exact 38.
-it("refuses 43 at the jump-14 (42), jump-13 (41), j12′ (40) and fleet (38) targets", async () => {
+// (g) Older targets refuse 44, and Doctor's declared backup restores the fleet's exact 38.
+it("refuses 44 at the chain (43), jump-14 (42), jump-13 (41), j12′ (40) and fleet (38) targets", async () => {
   await fleet38()("fleet38-older.sqlite", async ({ database, migrate }) => {
     await migrate();
     const migrated = snapshot(database);
     // Older runtimes refuse with the same `userVersion > OPENCLAW_AGENT_SCHEMA_VERSION` check
     // (a22bd9c05c and 3d3364ddc5, openclaw-agent-db-schema-read.ts).
-    for (const older of [42, 41, 40, 38]) {
+    for (const older of [43, 42, 41, 40, 38]) {
       expect(() =>
         ensureOpenClawAgentSchema(database, "main", database.location()!, older),
       ).toThrow(new RegExp(`uses schema version ${target}; expected at most ${older}`, "u"));
@@ -595,8 +637,18 @@ it("refuses 43 at the jump-14 (42), jump-13 (41), j12′ (40) and fleet (38) tar
   });
 });
 
+// Scoped restoration covers a store before optional pending-input first use; a present
+// AUTOINCREMENT table correctly requires a full database backup (upstream #200533).
 it("restores the fleet's 38 from Doctor's declared backup", async () => {
-  await fleet38()(
+  await migrationFixture({
+    seed: (database) => {
+      seed(SCHEMA.fleet38, 38, true)(database);
+      database.exec(`DROP TABLE ${PENDING_INPUTS}`);
+    },
+    predecessor: 38,
+    target,
+    scope: FLEET_SCOPE,
+  })(
     "fleet38-restore.sqlite",
     async ({ database, restore }) => {
       await restore(() => ({

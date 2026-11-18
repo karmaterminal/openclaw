@@ -55,6 +55,8 @@ fleet-38 bridge. Agent schema 42 also has two histories. `openclaw-agent-schema-
 exact agent DDL from commit `9122a49bd8` (#197128's tool-usage schema 42; Git blob `43b1886c29`).
 `openclaw-agent-schema-v42-jump14.sql` is the exact agent DDL of #129388 head `51ff02dc16`, the
 jump-14 candidates' recipient-authority schema 42 over upstream's 41 (Git blob `3e98615835`).
+`openclaw-agent-schema-v43.sql` is the exact agent DDL from commit `b894fe5e37` (#200533's
+pending-input-endings schema 43; Git blob `2a6bb4587c`), the upstream shape the bridge admits at 43.
 
 `openclaw-state-v2026.7.1-2.sqlite.gz` is a deterministic fixture for the
 shared state database created by OpenClaw tag `v2026.7.1-2` at commit

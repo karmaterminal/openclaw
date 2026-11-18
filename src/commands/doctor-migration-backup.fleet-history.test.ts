@@ -1,8 +1,10 @@
-// Continuation (karmaterminal): agent schema 26 has two histories. Upstream's 26 → 43 run is
+// Continuation (karmaterminal): agent schema 26 has two histories. Upstream's 26 → 44 run is
 // covered by declared table scopes; the fleet's own 26 also crosses upstream's step 26, which
 // declares none, so Doctor must keep a full image for it. The fleet-shaped 39, the jump-13 41 and
 // the jump-14 42 likewise sit above their physical shape (38, 40 and 41), so their runs cross
-// upstream steps their marker's scope omits and Doctor keeps a full image for them too.
+// upstream steps their marker's scope omits and Doctor keeps a full image for them too. Scoped
+// rows are seeded before optional pending-input first use: upstream's 43 scope names that
+// AUTOINCREMENT table, so a present one correctly takes a full image (#200533).
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -93,10 +95,19 @@ it.each([
   expect(backups[0]!.endsWith(".scoped.bak")).toBe(scoped);
 });
 
-function seedCaptured(databasePath: string, fixture: string, version: number, authority: boolean) {
+function seedCaptured(
+  databasePath: string,
+  fixture: string,
+  version: number,
+  authority: boolean,
+  pendingInputs: boolean,
+) {
   fs.mkdirSync(path.dirname(databasePath), { recursive: true });
   using database = new DatabaseSync(databasePath);
   database.exec(readCapturedAgentSchema(fixture));
+  if (!pendingInputs) {
+    database.exec("DROP TABLE session_pending_inputs");
+  }
   database.exec(`PRAGMA user_version = ${version};`);
   database
     .prepare(
@@ -115,24 +126,34 @@ function seedCaptured(databasePath: string, fixture: string, version: number, au
 // Ronan's j14 ruling: shapes are told apart by their markers, so each history keeps the backup its
 // physical crossing needs.
 it.each([
-  ["the fleet's 38", "openclaw-agent-schema-v38-fleet.sql", 38, true, true],
-  ["the fleet-shaped 39", "openclaw-agent-schema-v38-fleet.sql", 39, true, false],
-  ["upstream's 39", "openclaw-agent-schema-v39.sql", 39, false, true],
-  ["upstream's 40", "openclaw-agent-schema-v40.sql", 40, false, true],
-  ["upstream's 41", "openclaw-agent-schema-v41.sql", 41, false, true],
-  ["the jump-13 41", "openclaw-agent-schema-v41-jump13.sql", 41, true, false],
-  ["upstream's 42", "openclaw-agent-schema-v42.sql", 42, false, true],
-  ["the jump-14 42", "openclaw-agent-schema-v42-jump14.sql", 42, true, false],
+  ["the fleet's 38", "openclaw-agent-schema-v38-fleet.sql", 38, true, false, true],
+  ["the fleet-shaped 39", "openclaw-agent-schema-v38-fleet.sql", 39, true, false, false],
+  ["upstream's 39", "openclaw-agent-schema-v39.sql", 39, false, false, true],
+  ["upstream's 40", "openclaw-agent-schema-v40.sql", 40, false, false, true],
+  ["upstream's 41", "openclaw-agent-schema-v41.sql", 41, false, false, true],
+  ["the jump-13 41", "openclaw-agent-schema-v41-jump13.sql", 41, true, false, false],
+  ["upstream's 42", "openclaw-agent-schema-v42.sql", 42, false, false, true],
+  ["upstream's 42 with pending inputs", "openclaw-agent-schema-v42.sql", 42, false, true, false],
+  ["the jump-14 42", "openclaw-agent-schema-v42-jump14.sql", 42, true, false, false],
+  [
+    "the jump-14 42 with pending inputs",
+    "openclaw-agent-schema-v42-jump14.sql",
+    42,
+    true,
+    true,
+    false,
+  ],
+  ["upstream's 43 with pending inputs", "openclaw-agent-schema-v43.sql", 43, false, true, true],
 ] as const)(
   "backs up %s agent database scoped: %s",
-  async (_history, fixture, foundVersion, authority, scoped) => {
+  async (_history, fixture, foundVersion, authority, pendingInputs, scoped) => {
     const stateDir = tempDirs.make("openclaw-doctor-bridge-backup-");
     const shared = path.join(stateDir, "state", "openclaw.sqlite");
     const agent = path.join(stateDir, "agents", "main", "openclaw-agent.sqlite");
     const configPath = path.join(stateDir, "openclaw.json");
     fs.mkdirSync(path.dirname(shared), { recursive: true });
     new DatabaseSync(shared).close();
-    seedCaptured(agent, fixture, foundVersion, authority);
+    seedCaptured(agent, fixture, foundVersion, authority, pendingInputs);
     fs.writeFileSync(configPath, "{}\n");
     const maintenance = createOpenClawDatabaseMaintenanceScope({
       schemaMaintenance: true,

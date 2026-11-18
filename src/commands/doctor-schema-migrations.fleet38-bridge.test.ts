@@ -1,9 +1,11 @@
 // Frond (karmaterminal): fleet-38 bridge. Fork-only: Doctor's version phase takes the deployed
-// fleet's 38 (upstream's 38 plus recipient authority) and upstream's 39 and 42 to 43 inside their
+// fleet's 38 (upstream's 38 plus recipient authority) and upstream's 39, 42 and 43 to 44 inside their
 // declared backup scopes, keeps authority rows, restores the exact predecessor, and leaves a
 // bridged store to the same cold-navigation backfill as any other. The fleet's 38 DDL stamped 39
 // (jump 9-F″), the jump-13 41 and the jump-14 42 sit above their physical shape, so Doctor keeps an
-// exact full image for them. Every other 38-42 shape is refused before any write.
+// exact full image for them. Every other 38-43 shape is refused before any write. Scoped stores
+// below 43 are staged before optional pending-input first use: upstream's 43 scope names that
+// AUTOINCREMENT table, so a present one takes a full image instead (#200533).
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -40,6 +42,8 @@ const UPSTREAM41 = readCapturedAgentSchema("openclaw-agent-schema-v41.sql");
 const UPSTREAM42 = readCapturedAgentSchema("openclaw-agent-schema-v42.sql");
 const JUMP13 = readCapturedAgentSchema("openclaw-agent-schema-v41-jump13.sql");
 const JUMP14 = readCapturedAgentSchema("openclaw-agent-schema-v42-jump14.sql");
+// Upstream's 43 as b894fe5e37 wrote it.
+const UPSTREAM43 = readCapturedAgentSchema("openclaw-agent-schema-v43.sql");
 const AUTHORITY_ROW = {
   session_key: "agent:main:fleet-authority",
   epoch: "88888888-8888-4888-8888-888888888888",
@@ -95,7 +99,13 @@ function seedArchive(database: DatabaseSync, sessionId: string): void {
     );
 }
 
-function stage(pathname: string, ddl: string, version: number, authority: boolean): DatabaseSync {
+function stage(
+  pathname: string,
+  ddl: string,
+  version: number,
+  authority: boolean,
+  pendingInputs = true,
+): DatabaseSync {
   fs.mkdirSync(path.dirname(pathname), { recursive: true });
   const database = new DatabaseSync(pathname);
   database.exec(`${ddl}
@@ -107,6 +117,9 @@ function stage(pathname: string, ddl: string, version: number, authority: boolea
       VALUES ('agent:main:main', 'kept', '{"sessionId":"kept","updatedAt":1}', 1);
     UPDATE session_nodes SET entry_valid = 1;`);
   seedArchive(database, "archived");
+  if (!pendingInputs) {
+    database.exec("DROP TABLE session_pending_inputs");
+  }
   if (authority) {
     database
       .prepare(
@@ -156,10 +169,12 @@ const SHAPES = [
     ddl: FLEET,
     version: 38,
     authority: true,
+    pendingInputs: false,
     scope: [
       "agent_tool_usage",
       "schema_meta",
       "session_creation_operations",
+      "session_pending_inputs",
       "session_recipient_authority",
       "session_transcript_active_event_facts",
       "transcript_events",
@@ -170,10 +185,12 @@ const SHAPES = [
     ddl: UPSTREAM,
     version: 39,
     authority: false,
+    pendingInputs: false,
     scope: [
       "agent_tool_usage",
       "schema_meta",
       "session_creation_operations",
+      "session_pending_inputs",
       "session_recipient_authority",
       "session_transcript_active_event_facts",
     ],
@@ -183,6 +200,15 @@ const SHAPES = [
     ddl: UPSTREAM42,
     version: 42,
     authority: false,
+    pendingInputs: false,
+    scope: ["schema_meta", "session_pending_inputs", "session_recipient_authority"],
+  },
+  {
+    shape: "upstream 43",
+    ddl: UPSTREAM43,
+    version: 43,
+    authority: false,
+    pendingInputs: true,
     scope: ["schema_meta", "session_recipient_authority"],
   },
 ] as const;
@@ -211,12 +237,12 @@ async function runDoctor(env: NodeJS.ProcessEnv, pathname: string, foundVersion:
 }
 
 it.each(SHAPES)(
-  "takes the $shape store to 43 through Doctor and restores it from its declared backup",
-  async ({ ddl, version, authority, scope }) => {
+  "takes the $shape store to 44 through Doctor and restores it from its declared backup",
+  async ({ ddl, version, authority, pendingInputs, scope }) => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
       openOpenClawStateDatabase({ env: state.env });
       const pathname = state.statePath("agents", "main", "agent", "openclaw-agent.sqlite");
-      using database = stage(pathname, ddl, version, authority);
+      using database = stage(pathname, ddl, version, authority, pendingInputs);
       if (authority) {
         database
           .prepare("UPDATE session_nodes SET entry_json = ? WHERE session_key = 'agent:main:main'")
@@ -263,7 +289,7 @@ it.each(SHAPES)(
       }
       expect(database.prepare("PRAGMA integrity_check").all()).toEqual([{ integrity_check: "ok" }]);
 
-      // A bridged store reaches the same Doctor backfill as any other 43.
+      // A bridged store reaches the same Doctor backfill as any other 44.
       const backfill = await migrateSessionColdNavigation({ env: state.env });
       expect(backfill.warnings).toEqual([]);
       expect(database.prepare("SELECT session_id, seq FROM transcript_events").all()).toEqual([
@@ -293,7 +319,7 @@ it.each([
   { shape: "jump-13 41", ddl: JUMP13, version: 41 },
   { shape: "jump-14 42", ddl: JUMP14, version: 42 },
 ] as const)(
-  "keeps an exact full image of the $shape store through Doctor, then migrates it to 43",
+  "keeps an exact full image of the $shape store through Doctor, then migrates it to 44",
   async ({ ddl, version }) => {
     await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
       openOpenClawStateDatabase({ env: state.env });
@@ -347,6 +373,9 @@ it.each([
   // The same rule for 42.
   ["a 42 with authority and tool usage", `${UPSTREAM42}\n${AUTHORITY_DDL}`, 42],
   ["a 42 without authority or tool usage", UPSTREAM41, 42],
+  // The never-deployed absorb chain numbered authority 43 over upstream's 42.
+  ["the absorb chain's 43", `${UPSTREAM42}\n${AUTHORITY_DDL}`, 43],
+  ["a 43 with authority and pending-input endings", `${UPSTREAM43}\n${AUTHORITY_DDL}`, 43],
 ] as const)("refuses %s before any write", async (_shape, ddl, version) => {
   await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
     openOpenClawStateDatabase({ env: state.env });
