@@ -206,7 +206,11 @@ native error text, or names outside the registry.
   agent's video reaches the model as the text
   `(video omitted: native video slot unavailable)` in its place, and nothing in
   the request says it was received. An `off` agent's video is sent as before.
-  Vertex sends no native video in either mode. An altered, missing
+  Vertex sends no native video in either mode. After the check, the Google
+  plugin's Gemini API, Vertex and Interactions transports also replace each part
+  a hook marked as video with omission text, so they hand the JSON they send back
+  to the check: a video mark that would take instruction text with it refuses,
+  and a video added anywhere else is sent as omission text. An altered, missing
   or unrecognized system field fails the run with `transform_altered`
   (`site=provider_request`) before anything
   is sent, and the Gateway logs a content-free `[SOVEREIGN_PROMPTS_REFUSED]` line
