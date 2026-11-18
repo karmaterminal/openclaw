@@ -1,5 +1,5 @@
 // Continuation (karmaterminal): Doctor's exact pre-migration PostgreSQL export of upstream's agent
-// schemas 39 and 40, the migration to recipient authority (42), its exact restore, and the earlier
+// schemas 39 and 40, the migration to recipient authority (44), its exact restore, and the earlier
 // candidates' 39, 40 and 41 (upstream's 38, 39 or 40 plus the authority table) refused at the
 // export before any write.
 import "./backup-worker.test-support.js";
@@ -28,10 +28,12 @@ import { withoutAgentPostgresColdNavigation } from "../../state/openclaw-agent-c
 import { withoutAgentPostgresCreationOperations } from "../../state/openclaw-agent-creation-operations-schema.js";
 import { OPENCLAW_AGENT_SCHEMA_VERSION } from "../../state/openclaw-agent-db-contract.js";
 import { agentEngineSchema } from "../../state/openclaw-agent-db-engine.js";
+import { withoutAgentPostgresPendingInputEndings } from "../../state/openclaw-agent-pending-input-endings-schema.js";
 import {
   AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
   sessionRecipientAuthorityPostgresSql,
 } from "../../state/openclaw-agent-recipient-authority-schema.js";
+import { withoutAgentPostgresToolUsage } from "../../state/openclaw-agent-tool-usage-schema.js";
 import { withOpenClawStateReadOnlyLocation } from "../../state/openclaw-state-db-read-connection.js";
 import {
   closeOpenClawStateDatabaseForTest,
@@ -132,10 +134,14 @@ const historical = (from: Predecessor, version: number): StoreSchema => ({
   postgresMigrations: [],
 });
 const authorityTable = sessionRecipientAuthorityPostgresSql(agentEngineSchema.postgres!);
-// Upstream's 40 is the predecessor of its own step 41; authority (42) follows that step.
+// Upstream's 40 is the predecessor of its own step 41; authority (44) follows upstream's 41-43.
 const upstream40 = step(AGENT_ACTIVE_EVENT_FACTS_SCHEMA_VERSION).fromSchema;
 // The jump-13 candidate's 41: upstream's 40 plus the authority table, without active event facts.
-const jump13Postgres = withoutAgentPostgresActiveEventFacts(agentEngineSchema.postgres!);
+const jump13Postgres = withoutAgentPostgresActiveEventFacts(
+  withoutAgentPostgresToolUsage(
+    withoutAgentPostgresPendingInputEndings(agentEngineSchema.postgres!),
+  ),
+);
 // The earlier candidates' 40: upstream's 39 (no creation receipts) plus the authority table.
 const earlier40: Predecessor = {
   ...upstream40,
@@ -496,7 +502,7 @@ describe.skipIf(!connection)("Doctor PostgreSQL export of agent schemas 39 and 4
     await admin.end();
   });
 
-  it("exports upstream's 40 losslessly, restores it exactly, and migrates it to 42", async () => {
+  it("exports upstream's 40 losslessly, restores it exactly, and migrates it to 44", async () => {
     const { agentPath, namespace } = await agentStore("upstream40", upstream40, 40, "none");
     const before = await snapshot(namespace);
     expect(before.tables.session_recipient_authority).toBeUndefined();

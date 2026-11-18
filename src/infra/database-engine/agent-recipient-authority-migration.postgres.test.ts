@@ -1,7 +1,8 @@
-// Continuation (karmaterminal): recipient authority is agent schema 42, above upstream's
+// Continuation (karmaterminal): recipient authority is agent schema 44, above upstream's
 // PostgreSQL-only steps 34-36 and 38, the cold-archive chunk step 37, the cold-navigation step 39,
-// the creation-receipt step 40 and the active-event-facts step 41. These cases run that ladder in
-// place through the agent owner and refuse earlier candidates, including the jump-13 41.
+// the creation-receipt step 40, the active-event-facts step 41, the tool-usage step 42 and the
+// pending-input-endings step 43. These cases run that ladder in place through the agent owner and
+// refuse earlier candidates, including the jump-13 41, the jump-14 42 and the absorb chain's 43.
 import { channel } from "node:diagnostics_channel";
 import path from "node:path";
 import { getEnvironmentData } from "node:worker_threads";
@@ -16,11 +17,13 @@ import { withoutAgentPostgresCreationOperations } from "../../state/openclaw-age
 import { agentEngineSchema, openAgentEngineStore } from "../../state/openclaw-agent-db-engine.js";
 import { runWithAgentDatabaseMaintenanceAuthority } from "../../state/openclaw-agent-db-lease.js";
 import { withLegacyAgentPostgresMemoryPaths } from "../../state/openclaw-agent-memory-path-migration.js";
+import { withoutAgentPostgresPendingInputEndings } from "../../state/openclaw-agent-pending-input-endings-schema.js";
 import {
   AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
   sessionRecipientAuthorityPostgresSql,
   withoutSessionRecipientAuthorityPostgresSchema,
 } from "../../state/openclaw-agent-recipient-authority-schema.js";
+import { withoutAgentPostgresToolUsage } from "../../state/openclaw-agent-tool-usage-schema.js";
 import { openNodeSqliteDatabase } from "../node-sqlite.js";
 import { PostgresSyncConnection } from "../postgres-sync/connection.js";
 import { isPostgresSqlConnection } from "../sql-connection.js";
@@ -41,9 +44,14 @@ const step = (version: number) =>
   agentEngineSchema.postgresMigrations!.find((migration) => migration.version === version)!;
 type Predecessor = ReturnType<typeof step>["fromSchema"];
 /** A historical layout; search versions it omits stay historical instead of inheriting current. */
-// The current schema without upstream's 41 active event facts: the jump-13 candidate's layout.
+// The current schema without upstream's 43 pending-input endings: the absorb chain's 43 layout.
+const upstream42WithAuthority = () =>
+  withoutAgentPostgresPendingInputEndings(agentEngineSchema.postgres!);
+// Without upstream's 42 tool usage too: the jump-14 candidates' layout.
+const upstream41WithAuthority = () => withoutAgentPostgresToolUsage(upstream42WithAuthority());
+// Without upstream's 41 active event facts too: the jump-13 candidate's layout.
 const upstream40WithAuthority = () =>
-  withoutAgentPostgresActiveEventFacts(agentEngineSchema.postgres!);
+  withoutAgentPostgresActiveEventFacts(upstream41WithAuthority());
 // Without upstream's 40 creation receipts too: an earlier candidate's layout.
 const upstream39WithAuthority = () =>
   withoutAgentPostgresCreationOperations(upstream40WithAuthority());
@@ -219,7 +227,7 @@ describe.skipIf(!connection)("PostgreSQL agent recipient-authority migration", (
     };
   }
 
-  it("migrates a populated schema-34 store through 35-42 in place and re-admits it without DDL", async () => {
+  it("migrates a populated schema-34 store through 35-44 in place and re-admits it without DDL", async () => {
     const root = dirs.make("pg-authority-chain-");
     const anchorPath = path.join(root, "openclaw-agent.sqlite");
     const namespace = install(historical(34, step(35).fromSchema), anchorPath);
@@ -256,12 +264,13 @@ describe.skipIf(!connection)("PostgreSQL agent recipient-authority migration", (
       ...retained,
       schema_meta: after.tables.schema_meta,
       openclaw_schema_meta: after.tables.openclaw_schema_meta,
+      agent_tool_usage: "[]",
       session_creation_operations: "[]",
       session_recipient_authority: "[]",
       session_transcript_active_event_facts: "[]",
       session_transcript_cold_archive_chunks: "[]",
     });
-    // The in-place result is the catalog a fresh schema-42 store bootstraps.
+    // The in-place result is the catalog a fresh schema-44 store bootstraps.
     expect(after.catalog).toEqual(await catalog(reference));
     // Step 35 rebuilds only its own indexes; every other relation keeps its storage.
     const rebuilt = before.relations
@@ -294,12 +303,13 @@ describe.skipIf(!connection)("PostgreSQL agent recipient-authority migration", (
     expect(await snapshot(namespace)).toEqual(after);
   });
 
-  // Upstream's own 35-41 stores reach 42 in place and gain only the empty authority table (and,
-  // below 37, 40 and 41, the empty cold-archive chunk, creation-receipt and active-event-facts
-  // tables). 38 is upstream's text-search split, 39 its widened transcript payload constraint, 40
-  // its creation receipts and 41 its active event facts.
-  it.each([35, 36, 37, 38, 39, 40, 41])(
-    "migrates upstream's populated schema-%i store to 42 in place and re-admits it without DDL",
+  // Upstream's own 35-43 stores reach 44 in place and gain only the empty authority table (and,
+  // below 37, 40, 41 and 42, the empty cold-archive chunk, creation-receipt, active-event-facts and
+  // tool-usage tables). 38 is upstream's text-search split, 39 its widened transcript payload
+  // constraint, 40 its creation receipts, 41 its active event facts, 42 its tool usage and 43 its
+  // pending-input ending columns.
+  it.each([35, 36, 37, 38, 39, 40, 41, 42, 43])(
+    "migrates upstream's populated schema-%i store to 44 in place and re-admits it without DDL",
     async (version) => {
       const root = dirs.make(`pg-authority-upstream-${version}-`);
       const anchorPath = path.join(root, "openclaw-agent.sqlite");
@@ -320,6 +330,7 @@ describe.skipIf(!connection)("PostgreSQL agent recipient-authority migration", (
         ...retained,
         schema_meta: after.tables.schema_meta,
         openclaw_schema_meta: after.tables.openclaw_schema_meta,
+        agent_tool_usage: "[]",
         session_creation_operations: "[]",
         session_recipient_authority: "[]",
         session_transcript_active_event_facts: "[]",
@@ -393,8 +404,10 @@ describe.skipIf(!connection)("PostgreSQL agent recipient-authority migration", (
   // without upstream's 35 index ordering), 36 (jump 6: upstream's 35 plus the table, without
   // upstream's 36 exact-path indexes), 39 (jumps 9-12: upstream's 38 plus the table, without its
   // 39 payload constraint), 40 (j12: upstream's 39 plus the table, without its 40 receipts) and
-  // 41 (jump 13: upstream's 40 plus the table, without its 41 active event facts). None is an
-  // upstream schema, so the PostgreSQL owner refuses it; the fleet's jump-13 41 runs SQLite.
+  // 41 (jump 13: upstream's 40 plus the table, without its 41 active event facts), 42 (jump 14:
+  // upstream's 41 plus the table, without its 42 tool usage) and 43 (the never-deployed absorb
+  // chain: upstream's 42 plus the table, without its 43 pending-input endings). None is an upstream
+  // schema, so the PostgreSQL owner refuses it; the fleet's jump-13 41 and jump-14 42 run SQLite.
   const earlier36 = withLegacyAgentPostgresMemoryPaths(
     withoutAgentPostgresColdArchiveChunks(
       withoutAgentPostgresColdNavigation(upstream39WithAuthority()),
@@ -424,6 +437,16 @@ describe.skipIf(!connection)("PostgreSQL agent recipient-authority migration", (
     {
       version: 41,
       ddl: upstream40WithAuthority(),
+      next: /"agent_tool_usage"|"session_recipient_authority"|\bUPDATE (?:openclaw_)?schema_meta\b/u,
+    },
+    {
+      version: 42,
+      ddl: upstream41WithAuthority(),
+      next: /\bend_cause\b|"session_recipient_authority"|\bUPDATE (?:openclaw_)?schema_meta\b/u,
+    },
+    {
+      version: 43,
+      ddl: upstream42WithAuthority(),
       next: /"session_recipient_authority"|\bUPDATE (?:openclaw_)?schema_meta\b/u,
     },
   ])(
