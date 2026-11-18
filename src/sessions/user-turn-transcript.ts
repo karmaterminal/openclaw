@@ -53,6 +53,7 @@ import {
 } from "./user-turn-transcript.metadata.js";
 import {
   admittedUserTurnResult,
+  reportUserTurnPersistenceError,
   resolveCommittedUserTurnTranscript,
   resolveUserTurnTranscriptTarget,
   type CommittedUserTurnTranscript,
@@ -130,17 +131,15 @@ export function createUserTurnTranscriptRecorder(
       }
     },
   );
-  const deliveryAcks = createSessionDeliveryAckReplacement(
-    message,
-    () =>
-      pendingInput ||
-      staging ||
-      selfPersistencePromise ||
-      runtimePersistencePromise ||
-      runtimePersisted ||
-      committedInput ||
-      persistedResult,
-  );
+  const persistenceStarted = () =>
+    pendingInput ||
+    staging ||
+    selfPersistencePromise ||
+    runtimePersistencePromise ||
+    runtimePersisted ||
+    committedInput ||
+    persistedResult;
+  const deliveryAcks = createSessionDeliveryAckReplacement(message, persistenceStarted);
 
   const adoptPendingInput = (receipt: NonNullable<typeof pendingInput>) => {
     pendingInput = receipt;
@@ -164,23 +163,7 @@ export function createUserTurnTranscriptRecorder(
       : next;
   };
 
-  const handlePersistenceError = (error: unknown) => {
-    if (params.onPersistenceError) {
-      try {
-        params.onPersistenceError(error);
-      } catch {
-        // Diagnostics cannot change an already committed transcript outcome.
-      }
-      return;
-    }
-    void import("../globals.js")
-      .then(({ logVerbose }) => {
-        logVerbose(
-          `failed to persist ${params.errorContext ?? "user turn transcript"}: ${String(error)}`,
-        );
-      })
-      .catch(() => undefined);
-  };
+  const handlePersistenceError = (error: unknown) => reportUserTurnPersistenceError(params, error);
 
   const resolveMessageForPersistence = async (): Promise<PersistedUserTurnMessage | undefined> => {
     if (!params.message && params.resolveInput && !resolvedMessagePromise) {
