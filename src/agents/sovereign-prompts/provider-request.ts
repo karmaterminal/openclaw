@@ -235,7 +235,8 @@ function parseSentRequest(body: Uint8Array): unknown {
   try {
     return JSON.parse(new TextDecoder().decode(body));
   } catch {
-    // Not JSON: no system field the check can read, so it refuses.
+    // Not JSON: nothing the check can read, so it refuses. The parse error quotes the body,
+    // so it never reaches the run's error.
     return undefined;
   }
 }
