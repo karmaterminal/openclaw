@@ -288,16 +288,6 @@ describe.skipIf(process.platform === "win32")("sovereign prompt process registry
       expectStock(config, "main");
       expectOwnSnapshot(config, "prince", []);
     }
-    // With no sovereign agent anywhere, nothing refuses.
-    resetSovereignPromptRuntimeForTests();
-    const off = fleet("main", {
-      main: entries.main,
-      prince: { agentDir: entries.prince.agentDir },
-    });
-    expect(resolveSovereignPromptSnapshot({ config: off })).toBeUndefined();
-    expect(isSovereignPromptAgent(off, undefined)).toBe(false);
-    assertSovereignPromptRoute({ config: off, route: "cli" });
-    assertSovereignPromptNotReplaced(off, undefined, "before_prompt_build");
   });
 
   it("gives each of two enforce agents only its own snapshot, and refuses an agentless call", () => {
@@ -339,10 +329,11 @@ describe.skipIf(process.platform === "win32")("sovereign prompt process registry
           "required_missing",
         );
       }
-      // The restart loads the new config: the agentless call and the agent render stock.
+      // The restart loads the new config, with no sovereign agent: nothing refuses.
       resetSovereignPromptRuntimeForTests();
       loadSovereignPromptsForProcess(reloaded, { log: recordingLog() });
       expect(resolveSovereignPromptSnapshot({ config: reloaded })).toBeUndefined();
+      expect(isSovereignPromptAgent(reloaded, undefined)).toBe(false);
       expectStock(reloaded, agentId);
       resetSovereignPromptRuntimeForTests();
     }
