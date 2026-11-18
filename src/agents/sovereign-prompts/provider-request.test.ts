@@ -235,6 +235,10 @@ describe.skipIf(process.platform === "win32")("provider request check on each AP
       expect.objectContaining({ code: "route_unconverted", details: { route: "api:ollama" } }),
     );
     expect(transport).not.toHaveBeenCalled();
+    expect(sovereignWarn).toHaveBeenCalledWith(
+      "[SOVEREIGN_PROMPTS_REFUSED] agent:main code=route_unconverted route=api:ollama",
+      expect.objectContaining({ code: "route_unconverted", route: "api:ollama" }),
+    );
   });
 
   it("checks the API a provider transport builds for, not the one it was routed by", async () => {

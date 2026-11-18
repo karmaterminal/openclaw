@@ -50,16 +50,23 @@ type Edit = (payload: Record<string, unknown>) => Record<string, unknown> | unde
 const edits: { hook?: Edit; provider?: Edit } = {};
 /** Every request that reached the network edge, as the provider would receive it. */
 let sent: Record<string, unknown>[] = [];
+/** Scripted provider replies; the default rejects without asking for a resend. */
+let replies: unknown[] = [];
+let afterSend: (() => void) | undefined;
 let originalHost: ReturnType<typeof getAiTransportHost>;
 
 beforeEach(() => {
   sent = [];
+  replies = [];
+  afterSend = undefined;
   edits.hook = undefined;
   edits.provider = undefined;
   originalHost = getAiTransportHost();
   const record: typeof fetch = async (input, init) => {
     sent.push(JSON.parse(await new Request(input, init).text()) as Record<string, unknown>);
-    return new Response(JSON.stringify({ error: { type: "invalid_request_error" } }), {
+    afterSend?.();
+    const reply = replies.shift() ?? { error: { type: "invalid_request_error" } };
+    return new Response(JSON.stringify(reply), {
       status: 400,
       headers: { "content-type": "application/json" },
     });
@@ -146,14 +153,17 @@ async function createSession(model: Model, systemPrompt: string) {
     modelRegistry,
   });
   // The agent loop hands its `onPayload` (the `before_provider_request` emitter) to each call.
-  const send = async (requestSystemPrompt = systemPrompt) => {
+  const send = async (
+    requestSystemPrompt = systemPrompt,
+    options: { serviceTier?: "default" | "priority" } = {},
+  ) => {
     const stream = await session.agent.streamFn!(
       model,
       {
         systemPrompt: requestSystemPrompt,
         messages: [{ role: "user", content: "Reply OK", timestamp: 1 }],
       },
-      { onPayload: session.agent.onPayload, apiKey: "synthetic-key" },
+      { ...options, onPayload: session.agent.onPayload, apiKey: "synthetic-key" },
     );
     return await stream.result();
   };
@@ -235,6 +245,22 @@ const anthropicModel = attachModelProviderRuntimePluginHandle(
   }),
   { provider: "fixture-provider", plugin: providerPlugin },
 );
+
+const responsesModel = attachModelProviderRuntimePluginHandle(
+  makeProviderModelFixture({
+    id: "gpt-5.6-luna",
+    provider: "openai",
+    api: "openai-responses",
+    baseUrl: "https://api.openai.com/v1",
+  }),
+  { provider: "openai", plugin: providerPlugin },
+);
+
+/** Rewrites the fixture prose wherever the builder placed it. */
+const alterSpans = (payload: Record<string, unknown>) =>
+  JSON.parse(
+    JSON.stringify(payload).replaceAll("Synthetic fixture prose", "Altered prose"),
+  ) as Record<string, unknown>;
 
 const systemText = (payload: Record<string, unknown>) => JSON.stringify(payload.system ?? null);
 
@@ -330,6 +356,54 @@ describe.skipIf(process.platform === "win32")("embedded route: provider request 
       spans: () => other.spans,
     });
     expect(await misbound.send()).toMatchObject(REFUSED);
+    expect(sent).toHaveLength(0);
+  });
+
+  it("checks OpenAI Responses through the whole chain, including its own resends", async () => {
+    const config = writeAgents();
+    const { prompt, spans } = await render(config, "main");
+    const { send } = await composeAttemptStream({
+      config,
+      model: responsesModel,
+      systemPrompt: prompt,
+      spans: () => spans,
+    });
+    const tierRejection = {
+      error: { type: "invalid_request_error", param: "service_tier", message: "Unsupported tier" },
+    };
+
+    // The transport resends at a slower tier without calling the hooks again.
+    replies = [tierRejection];
+    await send(undefined, { serviceTier: "priority" });
+    expect(sent.map((request) => request.service_tier)).toEqual(["priority", "default"]);
+    expect(JSON.stringify(sent[1])).toContain(SENTINEL);
+
+    // This route resends its own copy, taken after the hooks: a hook that keeps the payload
+    // and edits it after the first send cannot reach the resend, which is checked and sent
+    // intact. (The built-in provider shares that payload; provider-request.test.ts covers it.)
+    sent = [];
+    replies = [tierRejection];
+    let kept: Record<string, unknown> | undefined;
+    edits.hook = (payload) => {
+      kept = payload;
+      return undefined;
+    };
+    afterSend = () => {
+      if (kept) {
+        Object.assign(kept, alterSpans(kept));
+      }
+    };
+    await send(undefined, { serviceTier: "priority" });
+    expect(sent).toHaveLength(2);
+    expect(JSON.stringify(sent[1])).toContain(SENTINEL);
+    expect(JSON.stringify(sent[1])).not.toContain("Altered prose");
+
+    // A provider wrapper edit is refused before the first send.
+    sent = [];
+    edits.hook = undefined;
+    afterSend = undefined;
+    edits.provider = alterSpans;
+    expect(await send()).toMatchObject(REFUSED);
     expect(sent).toHaveLength(0);
   });
 

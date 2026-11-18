@@ -111,32 +111,25 @@ const SYSTEM_TEXT_EXTRACTORS: Readonly<Record<string, SystemTextExtractor>> = {
     typeof payload.system_instruction === "string" ? [payload.system_instruction] : undefined,
 };
 
-/** Whether a provider request for this API can be checked; others refuse under `enforce`. */
-export function isSovereignProviderRequestCheckable(api: string): boolean {
-  return Object.hasOwn(SYSTEM_TEXT_EXTRACTORS, api);
-}
-
 /**
- * Fails the request unless every span appears whole in one system text segment of the
+ * Whether every span of this run's agent appears whole in one system text segment of the
  * payload. Formatting a provider adds around a span (cache blocks, an identity block,
  * a developer role) passes; a missing or unrecognised system field fails like an edit.
  */
-export function assertSovereignProviderRequest(params: {
+function carriesSovereignSpans(params: {
   agentId: string;
   spans: SovereignPromptSpans | undefined;
   api: string;
   payload: unknown;
-}): void {
+}): boolean {
   const { spans } = params;
   const extract = SYSTEM_TEXT_EXTRACTORS[params.api];
   const segments = extract && isRecord(params.payload) ? extract(params.payload) : undefined;
-  if (
-    spans?.agentId !== params.agentId ||
-    !segments ||
-    spans.instances.some((instance) => !segments.some((text) => text.includes(instance)))
-  ) {
-    throw new SovereignPromptRefusal("transform_altered", { site: "provider_request" });
-  }
+  return (
+    spans?.agentId === params.agentId &&
+    segments !== undefined &&
+    spans.instances.every((instance) => segments.some((text) => text.includes(instance)))
+  );
 }
 
 type EncodeModelRequestBody = NonNullable<ReturnType<typeof modelRequestBodyState>["encode"]>;
@@ -177,25 +170,24 @@ export function wrapStreamFnWithSovereignRequestCheck(
   if (!readSpans?.()) {
     return streamFn;
   }
+  const refuse = (refusal: SovereignPromptRefusal): never => {
+    // The transport's error projection redacts `key=value` text; the log keeps the site.
+    const { line, fields } = describeSovereignPromptsRefused(agentId, refusal);
+    log.warn(line, fields);
+    throw refusal;
+  };
   return (model, context, options) => {
     if (context.systemPrompt?.startsWith(SUMMARIZATION_SYSTEM_PROMPT)) {
       return streamFn(model, context, options);
     }
-    if (!isSovereignProviderRequestCheckable(model.api)) {
-      throw new SovereignPromptRefusal("route_unconverted", { route: `api:${model.api}` });
+    if (!Object.hasOwn(SYSTEM_TEXT_EXTRACTORS, model.api)) {
+      refuse(new SovereignPromptRefusal("route_unconverted", { route: `api:${model.api}` }));
     }
     // A provider transport can build for another API than it was routed by (LM Studio).
     let api = model.api;
     const assertPayload = (payload: unknown) => {
-      try {
-        assertSovereignProviderRequest({ agentId, spans: readSpans(), api, payload });
-      } catch (error) {
-        // The transport's error projection redacts `key=value` text; the log keeps the site.
-        if (error instanceof SovereignPromptRefusal) {
-          const { line, fields } = describeSovereignPromptsRefused(agentId, error);
-          log.warn(line, fields);
-        }
-        throw error;
+      if (!carriesSovereignSpans({ agentId, spans: readSpans(), api, payload })) {
+        refuse(new SovereignPromptRefusal("transform_altered", { site: "provider_request" }));
       }
     };
     const originalOnPayload = options?.onPayload;
