@@ -161,16 +161,23 @@ export function resolveSovereignPromptSnapshot(params: {
   return state.snapshot;
 }
 
+/**
+ * For a refusal check: the agent's own state, or for an id that cannot be resolved, whether
+ * this process has any sovereign agent, as the renderer chokepoint decides it.
+ */
+function checksAsSovereign(config: OpenClawConfig | undefined, agentId: string | undefined) {
+  return strictAgentId(agentId)
+    ? isSovereignPromptAgent(config, agentId)
+    : Boolean(runtime.agents?.size || hasConfiguredEnforceAgent(config));
+}
+
 /** Fails a run routed where no test proves the loaded text reaches the model (§ 7.3). */
 export function assertSovereignPromptRoute(params: {
   config?: OpenClawConfig;
   agentId?: string;
   route: string;
 }): void {
-  if (
-    !CONVERTED_ROUTES.has(params.route) &&
-    isSovereignPromptAgent(params.config, params.agentId)
-  ) {
+  if (!CONVERTED_ROUTES.has(params.route) && checksAsSovereign(params.config, params.agentId)) {
     throw new SovereignPromptRefusal("route_unconverted", { route: params.route });
   }
 }
@@ -199,7 +206,7 @@ export function assertSovereignPromptNotReplaced(
   agentId: string | undefined,
   site: string,
 ): void {
-  if (isSovereignPromptAgent(config, agentId)) {
+  if (checksAsSovereign(config, agentId)) {
     throw new SovereignPromptRefusal("sovereign_override_denied", { site });
   }
 }

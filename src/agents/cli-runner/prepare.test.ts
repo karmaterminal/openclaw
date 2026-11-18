@@ -129,6 +129,8 @@ import {
   waitForSessionMaintenance,
 } from "../session-maintenance/coordinator.js";
 import { SessionManager } from "../sessions/session-manager.js";
+import { resetSovereignPromptRuntimeForTests } from "../sovereign-prompts/runtime.js";
+import { writeAgentGeneration } from "../sovereign-prompts/sovereign-fixture.test-support.js";
 import {
   captureRoutingDecisionWork,
   createModelRoutingTestAdmission,
@@ -438,6 +440,26 @@ describe("prepareCliRunContext", () => {
       captureNativeToolAuthority,
     };
   }
+
+  it("refuses the sovereign prompt agent the session key names, whatever agentId says (#1321)", async () => {
+    // A loaded generation, so the route check alone stands between it and the CLI transport.
+    const agentDir = sessionDirs.make();
+    writeAgentGeneration(agentDir, "sov");
+    const config = {
+      agents: {
+        ownership: "explicit",
+        entries: { main: {}, sov: { agentDir, sovereignPrompts: { mode: "enforce" } } },
+      },
+    } as OpenClawConfig;
+    await expect(
+      fixture.prepare({ config, agentId: "main", sessionKey: "agent:sov:main" }),
+    ).rejects.toMatchObject({
+      name: "SovereignPromptRefusal",
+      code: "route_unconverted",
+      details: { route: "cli" },
+    });
+    resetSovereignPromptRuntimeForTests();
+  });
 
   it("preserves outer fallback route provenance through CLI admission", async () => {
     const runId = "run-cli-model-fallback-receipt";

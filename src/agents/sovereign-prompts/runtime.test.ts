@@ -7,6 +7,8 @@ import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js"
 import type { OpenClawConfig } from "../../config/types.js";
 import { resetSovereignRedactionForTests } from "../../logging/sovereign-redaction.js";
 import {
+  assertSovereignPromptNotReplaced,
+  assertSovereignPromptRoute,
   describeSovereignPromptStatus,
   isSovereignPromptAgent,
   loadSovereignPromptsForProcess,
@@ -175,7 +177,7 @@ describe.skipIf(process.platform === "win32")("sovereign prompt process registry
     );
   });
 
-  it("refuses a render with no resolvable agent while any sovereign agent exists", () => {
+  it("refuses a render or check with no resolvable agent while any sovereign agent exists", () => {
     const good = writeAgent("good");
     const enforced = configFor({ good: { agentDir: good.agentDir, mode: "enforce" } });
     expectRefusal(() => resolveSovereignPromptSnapshot({ config: enforced }), "agent_unknown");
@@ -183,8 +185,19 @@ describe.skipIf(process.platform === "win32")("sovereign prompt process registry
       () => resolveSovereignPromptSnapshot({ config: enforced, agentId: "%%%" }),
       "agent_unknown",
     );
+    // Refusal checks decide the same way: an unidentified run is refused, never admitted.
+    expectRefusal(
+      () => assertSovereignPromptRoute({ config: enforced, route: "cli" }),
+      "route_unconverted",
+    );
+    expectRefusal(
+      () => assertSovereignPromptNotReplaced(enforced, undefined, "before_prompt_build"),
+      "sovereign_override_denied",
+    );
     const off = configFor({ good: { agentDir: good.agentDir } });
     expect(resolveSovereignPromptSnapshot({ config: off })).toBeUndefined();
+    assertSovereignPromptRoute({ config: off, route: "cli" });
+    assertSovereignPromptNotReplaced(off, undefined, "before_prompt_build");
   });
 
   it("an off agent reads nothing; the first render elsewhere loads once and never rereads", () => {
