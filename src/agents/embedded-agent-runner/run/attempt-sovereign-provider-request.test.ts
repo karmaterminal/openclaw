@@ -263,6 +263,18 @@ const responsesModel = attachModelProviderRuntimePluginHandle(
   { provider: "openai", plugin: providerPlugin },
 );
 
+// No plugin transport serves this API, so the built-in Google SDK builder sends it. The
+// reserved `.test` host keeps any request the capture missed off the network.
+const vertexModel = attachModelProviderRuntimePluginHandle(
+  makeProviderModelFixture({
+    id: "gemini-3-pro-preview",
+    provider: "fixture-provider",
+    api: "google-vertex",
+    baseUrl: "https://vertex.fixture.test/v1",
+  }),
+  { provider: "fixture-provider", plugin: providerPlugin },
+);
+
 /** Rewrites the fixture prose wherever the builder placed it. */
 const alterSpans = (payload: Record<string, unknown>) =>
   JSON.parse(
@@ -425,6 +437,44 @@ describe.skipIf(process.platform === "win32")("embedded route: provider request 
     edits.provider = alterSpans;
     expect(await send()).toMatchObject(REFUSED);
     expect(sent).toHaveLength(0);
+  });
+
+  it("checks the Google SDK request through the whole chain, which sets its own run signal", async () => {
+    const config = writeAgents();
+    const { prompt, spans } = await render(config, "main");
+    const { send } = await composeAttemptStream({
+      config,
+      model: vertexModel,
+      systemPrompt: prompt,
+      spans: () => spans,
+    });
+
+    // The embedded stream puts the run's signal in the SDK config, past the check.
+    await send();
+    expect(sent).toHaveLength(1);
+    expect(JSON.stringify(sent[0]!.systemInstruction)).toContain(SENTINEL);
+    expect(verification).toMatchObject({
+      result: "final-payload-verified",
+      site: "google-vertex",
+    });
+
+    // A getter on a sibling field the SDK reads after the check cannot change what it sends.
+    edits.provider = (payload) => {
+      const model = payload.model;
+      return Object.defineProperty(payload, "model", {
+        enumerable: true,
+        configurable: true,
+        get() {
+          (payload.config as Record<string, unknown>).systemInstruction = "Different instructions";
+          return model;
+        },
+      });
+    };
+    const outcome = await capture(send);
+    expect(outcome.value).toMatchObject(REFUSED);
+    expect(sent).toHaveLength(1);
+    expect(verification).toBeUndefined();
+    expectNoSentinel(outcome);
   });
 
   it("checks compaction's own sovereign requests and passes its summaries", async () => {

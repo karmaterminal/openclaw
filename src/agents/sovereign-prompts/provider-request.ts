@@ -271,24 +271,41 @@ function parseSentRequest(body: Uint8Array): unknown {
 const NOT_DATA = Symbol("not data");
 
 /**
+ * The abort signal the Google SDK builder places in its config. Wrappers inside this check
+ * combine the run's signal with the caller's, so it is a platform `AbortSignal` other than the
+ * one this call received. The platform keeps its state; it has no string-keyed or accessor
+ * member of its own, so a transport reading it runs no payload code.
+ */
+function isPlatformAbortSignal(value: object): boolean {
+  return (
+    !types.isProxy(value) &&
+    Object.getPrototypeOf(value) === AbortSignal.prototype &&
+    Reflect.ownKeys(value).every(
+      (key) => typeof key === "symbol" && "value" in Object.getOwnPropertyDescriptor(value, key)!,
+    )
+  );
+}
+
+/**
  * A copy of the settled request that its transport alone holds: the own data members of plain
  * objects and arrays, with symbol keys and enumerability kept for transport bookkeeping, read
  * without running payload code. A transport that serializes the request itself, or hands it
  * to an SDK, reads every member after this check. An accessor, a proxy, a function (a `toJSON`,
  * an SDK `fetch` or callable tool) or a class instance would run payload code there, so the
  * request is `NOT_DATA`; and a hook that kept the request it returned could edit it there. No
- * hook holds the copy. Deeply frozen plain data cannot change and is shared, as is the run's own
- * abort signal, which the Google SDK builder places in its config.
+ * hook holds the copy. Deeply frozen plain data cannot change and is shared, as is a platform
+ * abort signal.
  */
-function detachRequest(
-  value: unknown,
-  signal: AbortSignal | undefined,
-  copies = new Map<object, unknown>(),
-): unknown {
+function detachRequest(value: unknown, copies = new Map<object, unknown>()): unknown {
   if (typeof value === "function") {
     return NOT_DATA;
   }
-  if (!value || typeof value !== "object" || value === signal || isDeeplyFrozenPlainData(value)) {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    isDeeplyFrozenPlainData(value) ||
+    isPlatformAbortSignal(value)
+  ) {
     return value;
   }
   if (copies.has(value)) {
@@ -305,8 +322,7 @@ function detachRequest(
       continue;
     }
     const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
-    const member =
-      "value" in descriptor ? detachRequest(descriptor.value, signal, copies) : NOT_DATA;
+    const member = "value" in descriptor ? detachRequest(descriptor.value, copies) : NOT_DATA;
     if (member === NOT_DATA) {
       return NOT_DATA;
     }
@@ -414,7 +430,7 @@ export function wrapStreamFnWithSovereignRequestCheck(
           assertPayload(settled);
           return replacement;
         }
-        const detached = detachRequest(settled, options?.signal);
+        const detached = detachRequest(settled);
         assertPayload(detached);
         return detached;
       },

@@ -356,6 +356,12 @@ describe.skipIf(process.platform === "win32")("provider request check on each AP
 // accessor can present differently from what goes on the wire.
 describe.skipIf(process.platform === "win32")("provider request check on the sent request", () => {
   const modelFor = (api: string) => BUILDERS.find((builder) => builder.api === api)!.model;
+  /** The builders that encode their body through the host; the rest serialize it themselves. */
+  const HOST_ENCODED = new Set([
+    "openai-completions",
+    "openai-responses",
+    "azure-openai-responses",
+  ]);
   const DIFFERENT = "Different system instructions";
 
   it.each(BUILDERS)(
@@ -510,7 +516,7 @@ describe.skipIf(process.platform === "win32")("provider request check on the sen
   // the transport serializes it. The receipt callback marks that moment deterministically.
   it.each(BUILDERS)(
     "$api: never sends an edit a hook makes to its kept request after the check",
-    async ({ model }) => {
+    async ({ api, model }) => {
       const { prompt, spans } = await renderMain();
       let kept: Record<string, unknown> | undefined;
       const receipts: unknown[] = [];
@@ -531,14 +537,16 @@ describe.skipIf(process.platform === "win32")("provider request check on the sen
       });
       expectNoSentinel(outcome);
       expect(JSON.stringify(sent)).not.toContain("Altered prose");
-      if (sent.length > 0) {
+      if (HOST_ENCODED.has(api)) {
+        // The route encodes the kept request through the host and reads the edit in its bytes.
+        expect(outcome.value).toMatchObject(REFUSED);
+        expect(sent).toHaveLength(0);
+        expect(receipts.at(-1)).toBeUndefined();
+      } else {
+        // The route sends the checked copy, which the hook never held.
         expect(sent).toHaveLength(1);
         expect(JSON.stringify(sent[0])).toContain(SENTINEL);
         expect(receipts.at(-1)).toMatchObject({ result: "final-payload-verified" });
-      } else {
-        // A route that encodes through the host reads the edit in the bytes it would send.
-        expect(outcome.value).toMatchObject(REFUSED);
-        expect(receipts.at(-1)).toBeUndefined();
       }
     },
   );
@@ -565,20 +573,49 @@ describe.skipIf(process.platform === "win32")("provider request check on the sen
     },
   );
 
-  it("google-generative-ai: carries the run's own abort signal, which the SDK builder places in config", async () => {
+  it("google-generative-ai: carries the platform abort signal in config, and refuses a look-alike", async () => {
     const { prompt, spans } = await renderMain();
     const receipts: unknown[] = [];
-    const outcome = await send(
-      checkedBuilder(spans, receipts),
-      modelFor("google-generative-ai"),
-      prompt,
-      undefined,
-      { signal: new AbortController().signal },
-    );
+    // As on the embedded route, a wrapper inside the check combines the run's signal.
+    const combining: StreamFn = (routed, context, options) =>
+      streamSimple(routed, context, {
+        ...options,
+        signal: AbortSignal.any([options!.signal!, new AbortController().signal]),
+      });
+    const checked = wrapStreamFnWithSovereignRequestCheck(combining, {
+      sessionAgentId: "main",
+      sovereignSpans: () => spans,
+      onSovereignVerification: (verification) => receipts.push(verification),
+    });
+    const model = modelFor("google-generative-ai");
+    const signal = new AbortController().signal;
+    const outcome = await send(checked, model, prompt, undefined, { signal });
     expect(outcome.value).toMatchObject({ errorCode: "400" });
     expect(sent).toHaveLength(1);
     expect(JSON.stringify(sent[0]!.systemInstruction)).toContain(SENTINEL);
     expect(receipts.at(-1)).toMatchObject({ result: "final-payload-verified" });
+
+    // A signal's prototype with an accessor of its own runs payload code when it is read.
+    const lookAlike = await send(
+      checked,
+      model,
+      prompt,
+      (payload) => {
+        const config = payload.config as Record<string, unknown>;
+        config.abortSignal = Object.defineProperty(
+          Object.create(AbortSignal.prototype),
+          "aborted",
+          {
+            get: () => false,
+          },
+        );
+        return undefined;
+      },
+      { signal },
+    );
+    expect(lookAlike.value).toMatchObject(REFUSED);
+    expect(sent).toHaveLength(1);
+    expect(receipts.at(-1)).toBeUndefined();
   });
 
   // Plain data the SDK merges into the body after the checked carrier (finding 2).
