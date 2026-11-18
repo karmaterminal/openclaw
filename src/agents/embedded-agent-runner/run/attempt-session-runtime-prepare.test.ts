@@ -289,6 +289,20 @@ afterEach(async () => {
 });
 
 describe("prepareEmbeddedAttemptSessionRuntime", () => {
+  it("never pins a sovereign prompt agent's prompt (#1321): no checkpoint or delta carries it", async () => {
+    const sovereign = createHistoryFixture();
+    Object.assign(sovereign.input.attempt, {
+      config: { agents: { entries: { main: { sovereignPrompts: { mode: "enforce" } } } } },
+    });
+    const runtime = await prepareEmbeddedAttemptSessionRuntime(sovereign.input);
+    expect(runtime.prepareSystemPromptUpdate).toBeUndefined();
+    await sovereign.persist(runtime);
+    expect(sovereign.entries).toEqual([]);
+    // The same route pins for an off agent.
+    const plain = await prepareEmbeddedAttemptSessionRuntime(createHistoryFixture().input);
+    expect(plain.prepareSystemPromptUpdate).toBeDefined();
+  });
+
   it("clears an unsent prompt without reading history when prompt updates remain enabled", async () => {
     const fixture = createHistoryFixture();
     const first = await prepareEmbeddedAttemptSessionRuntime(fixture.input);

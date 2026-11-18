@@ -1008,6 +1008,8 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/sessions/session-manager-deep-values.test.ts",
   "src/agents/sessions/session-manager-retained-data.test.ts",
   "src/agents/sessions/session-manager-cache-ttl.test.ts",
+  // Sovereign fork rebuild reads and writes a real SQLite session transcript (#1321).
+  "src/agents/embedded-agent-runner/session-fork-context.sovereign.test.ts",
   "src/agents/sessions/session-manager-failure-context.test.ts",
   "src/agents/sessions/session-manager-mutation-boundaries.test.ts",
   "src/agents/sessions/session-manager-transaction-rollback.test.ts",
