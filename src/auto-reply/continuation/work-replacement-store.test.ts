@@ -17,7 +17,11 @@ import {
   enqueuePendingWorkReplacing,
   rollbackPendingWorkReplacement,
 } from "./work-replacement-store.js";
-import { consumePendingWork, requeuePendingWork } from "./work-store.js";
+import {
+  consumePendingWork,
+  hasContinuationWorkFromRun,
+  requeuePendingWork,
+} from "./work-store.js";
 import { enqueuePendingWork } from "./work-store.test-support.js";
 
 // A concurrent writer lands between an election's snapshot read and its
@@ -515,6 +519,26 @@ describe("continuation work replacement store", () => {
     expect(await readCustodyRecordForTest(elected.work.flowId)).not.toMatchObject({
       phase: "spawn-init continuation finalization failed",
     });
+  });
+});
+
+describe("continuation work origin run", () => {
+  it("reports work elected by a run only for that run", async () => {
+    const sessionKey = "agent:main:work-origin";
+    await enqueuePendingWork(
+      createWork({
+        sessionKey,
+        reason: "elected by the earlier attempt",
+        electedAt: Date.now(),
+        parked: false,
+        originRunId: "earlier-run",
+        originTurnId: "turn-earlier",
+      }),
+    );
+
+    await expect(hasContinuationWorkFromRun(sessionKey, "earlier-run")).resolves.toBe(true);
+    // A replayed terminal token of a run that elected nothing may still elect once.
+    await expect(hasContinuationWorkFromRun(sessionKey, "fresh-run")).resolves.toBe(false);
   });
 });
 

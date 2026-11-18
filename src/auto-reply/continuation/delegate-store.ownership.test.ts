@@ -7,7 +7,11 @@ import {
   useContinuationCustodyTestState,
 } from "./custody/custody.test-support.js";
 import { decodeDelegateState } from "./delegate-flow-store.js";
-import { enqueuePendingDelegate, failQueuedDelegatesOwnedByRun } from "./delegate-store.js";
+import {
+  enqueuePendingDelegate,
+  failQueuedDelegatesOwnedByRun,
+  findContinuationDelegateFlowByOriginRun,
+} from "./delegate-store.js";
 
 useContinuationCustodyTestState();
 
@@ -62,5 +66,24 @@ describe("delegate cancellation ownership", () => {
     await closeOpenClawStateDatabaseAsync();
     await hydrateContinuationCustody();
     await assertOwnership();
+  });
+
+  it("finds a replayed run's elected delegate by its origin run only", async () => {
+    const sessionKey = "agent:main:delegate-replay";
+    await enqueuePendingDelegate(sessionKey, {
+      task: "earlier attempt delegate",
+      originRunId: "earlier-run",
+    });
+    await enqueuePendingDelegate(sessionKey, {
+      task: "replayed run delegate",
+      originRunId: "replayed-run",
+    });
+
+    const found = await findContinuationDelegateFlowByOriginRun(sessionKey, "replayed-run");
+    expect(found && decodeDelegateState(found)?.task).toBe("replayed run delegate");
+    // A run that elected nothing must not adopt another attempt's delegate as its own.
+    await expect(
+      findContinuationDelegateFlowByOriginRun(sessionKey, "fresh-run"),
+    ).resolves.toBeUndefined();
   });
 });
