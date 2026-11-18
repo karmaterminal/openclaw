@@ -3,7 +3,9 @@
 // delegate hands custody to its `subagent_runs` row at admission (RFC
 // docs/design/continue-work-signal-v2.md §5.4.4), so that row is the per-child custody receipt.
 // 1. A graceful kill of an accepted delegate is terminal with a recorded interruption, and is
-//    never a successful return.
+//    never a successful return. After restart its delivery is a terminal intentional
+//    non-delivery, not a pending result the requester waits for; a child that already handed
+//    its result to the requester keeps that handoff.
 // 2. A delegate row the previous Gateway lifecycle left running has no execution owner; the
 //    next activation settles it to an explicit interrupted outcome. It is never relaunched and
 //    carries no completion text.
@@ -27,6 +29,7 @@ import {
   resumeMarkedSessions,
 } from "../../../gateway/session-restart-resume.js";
 import {
+  emitAgentEvent,
   getAgentEventLifecycleGeneration,
   rotateAgentEventLifecycleGeneration,
 } from "../../../infra/agent-events.js";
@@ -44,6 +47,7 @@ import {
   addSubagentRunForTests,
   isSubagentRunLive,
   listUnsettledRequesterChildren,
+  registerSubagentRun,
   resetSubagentRegistryForTests,
   terminateLiveSubagentsForShutdown,
   testing,
@@ -145,8 +149,12 @@ function expectGracefullyKilled(row: SubagentRunRecord | undefined) {
 
 it("1: a graceful kill of an accepted delegate is terminal with its interruption, never a success return", async () => {
   const child = await addRunningChild("graceful-delegate");
+  // A plain (non-continuation) child the same shutdown kills keeps upstream's restart semantics.
+  const plain = await addRunningChild("graceful-plain", {
+    drainsContinuationDelegateQueue: undefined,
+  });
 
-  await shutDownGracefully([child]);
+  await shutDownGracefully([child, plain]);
   const killed = loadSubagentRegistryFromSqlite().get("graceful-delegate");
   expectGracefullyKilled(killed);
 
@@ -157,15 +165,106 @@ it("1: a graceful kill of an accepted delegate is terminal with its interruption
   );
   await testing.sweepOnceForTests();
   await fixture.settle();
+  // A second restart restores that receipt as written: nothing reopens or relaunches it.
+  await restartGateway();
+  await testing.sweepOnceForTests();
+  await fixture.settle();
 
-  // Still the same interruption, inspectable by the parent, and its delivery is a recorded
-  // intentional non-delivery rather than a returned result.
+  // Still the same interruption, inspectable by the parent, and its delivery is a terminal,
+  // recorded intentional non-delivery rather than a returned or a pending result.
   const reconciled = loadSubagentRegistryFromSqlite().get("graceful-delegate");
   expectGracefullyKilled(reconciled);
-  expect(reconciled?.delivery).toMatchObject({ disposition: "intentional_non_delivery" });
+  expect(reconciled?.killReconciliation).toBeUndefined();
+  expect(reconciled?.delivery).toMatchObject({
+    status: "not_required",
+    disposition: "intentional_non_delivery",
+  });
+  const plainRow = loadSubagentRegistryFromSqlite().get("graceful-plain");
+  expectGracefullyKilled(plainRow);
+  expect(plainRow?.delivery?.status).toBe("pending");
+  expect(plainRow?.delivery?.disposition).toBeUndefined();
+  // The requester does not wait for it, and nothing announces, wakes, or relaunches it.
+  const unsettled = await listUnsettledRequesterChildren({ requesterSessionKey: parent });
+  expect(unsettled.map((entry) => entry.runId)).not.toContain("graceful-delegate");
   expect(fixture.announce).not.toHaveBeenCalled();
   expect(fixture.gateway).not.toHaveBeenCalled();
+  expect(fixture.wake).not.toHaveBeenCalled();
 });
+
+it.each([
+  ["an ordinary child", undefined],
+  ["an accepted delegate", true],
+] as const)(
+  "1: %s that handed its result to the requester keeps that pending handoff across a restart",
+  async (_name, drainsContinuationDelegateQueue) => {
+    const childSessionKey = "agent:main:subagent:handoff-child";
+    const sessionEntry = { sessionId: "sess-handoff-child", lifecycleRevision: "handoff-child" };
+    await writeSubagentSessionEntry({
+      stateDir: fixture.stateDir,
+      agentId: "main",
+      sessionKey: parent,
+      defaultSessionId: "sess-parent",
+    });
+    await writeSubagentSessionEntry({
+      stateDir: fixture.stateDir,
+      agentId: "main",
+      sessionKey: childSessionKey,
+      defaultSessionId: sessionEntry.sessionId,
+      lifecycleRevision: sessionEntry.lifecycleRevision,
+    });
+    await registerSubagentRun({
+      runId: "handoff-child",
+      childSessionKey,
+      sessionEntry,
+      childAgentId: "main",
+      requesterSessionKey: parent,
+      requesterAgentId: "main",
+      requesterDisplayKey: "main",
+      task: "[continuation:chain-hop:1] Delegated task (turn 1/5): handoff-child",
+      cleanup: "keep",
+      expectsCompletionMessage: true,
+      drainsContinuationDelegateQueue,
+      gatewayContextResolver: resolveGateway,
+    });
+    // The requester accepted the result and will consume it on its own turn.
+    fixture.announce.mockImplementation(async (params) => {
+      await params.onDeliveryResult?.({
+        delivered: false,
+        path: "none",
+        reason: "completion_handoff_pending",
+        terminal: true,
+      });
+      return "requester_waiting";
+    });
+    emitAgentEvent({
+      runId: "handoff-child",
+      sessionKey: childSessionKey,
+      stream: "lifecycle",
+      data: {
+        phase: "end",
+        endedAt: Date.now(),
+        terminalReply: { disposition: "visible", text: "Synthetic child result." },
+      },
+    });
+    await fixture.settle();
+    const expectRequesterHandoff = (row: SubagentRunRecord | undefined) => {
+      expect(row?.delivery).toMatchObject({
+        status: "pending",
+        requesterDelivery: { state: "waiting" },
+      });
+      expect(row?.delivery?.disposition).toBeUndefined();
+    };
+    expectRequesterHandoff(loadSubagentRegistryFromSqlite().get("handoff-child"));
+
+    await restartGateway();
+    await testing.sweepOnceForTests();
+    await fixture.settle();
+
+    // The requester still owns this result; a restart does not stamp it as not delivered.
+    expectRequesterHandoff(loadSubagentRegistryFromSqlite().get("handoff-child"));
+    expect(fixture.announce).toHaveBeenCalledOnce();
+  },
+);
 
 it("2: a crash-restored delegate with no execution owner settles interrupted, never relaunched", async () => {
   await addRunningChild("crashed-delegate");
