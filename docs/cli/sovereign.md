@@ -148,7 +148,11 @@ native error text, or names outside the registry.
   conversation bound to a Codex thread (`/codex bind`: `codex:conversation-binding`;
   a Codex CLI node session: `codex:cli-node-session`), which runs on Codex's own
   base, and a worker-hosted Codex app-server (`appServer.workerHostedCloud`:
-  `codex:worker-hosted`), which would take the base off the Gateway host.
+  `codex:worker-hosted`), which would take the base off the Gateway host. The
+  Codex settled-turn finalizer (`codex:settled-turn-finalization`) writes a new
+  answer in the agent's name on an empty base, so it refuses before any handoff.
+  The turn then ends with the host's missing-reply notice. An answer the agent
+  already wrote is still delivered.
 - **Which agent.** An agent's files render only for a call that names that agent.
   A render or check that names no agent, or an invalid one, is refused while any
   agent is `enforce`, counting one that was `enforce` when the process read its
@@ -193,14 +197,19 @@ native error text, or names outside the registry.
   resumes cold and is checked again, or, for an ephemeral (incognito) thread,
   refuses. A missing, altered or foreign span fails the run with
   `transform_altered` (`route=codex`, `site=app_server_handoff:<site>`) before the
-  handoff is written. What Codex does with the handed instructions stays
-  unverified: the request it builds, a resume it serves from a thread another
-  client still holds loaded (Codex ignores resume overrides there), and the
+  handoff is written. Codex ignores the instructions a resume hands to a thread
+  it keeps loaded (another client holds it, a turn is running, or its shutdown
+  did not finish), and answers as usual. So a resume earns `handoff-verified`
+  only for a thread OpenClaw saw unloaded: cold before the request, or closed or
+  reloaded during it. Otherwise the run fails without a receipt, and the thread
+  is kept. What Codex does with the handed instructions stays unverified: the
+  request it builds, a thread another client loads on an external app-server
+  between OpenClaw's read and its resume (Codex's answer does not say), and the
   parent-local inference relay, the only carrier of the personal `USER.md` line.
-  Codex threads that carry no OpenClaw base are not checked: the settled-turn
-  finalizer and web-search or media workers run code-owned prompts, as compaction
-  summaries do, and forks or attached threads keep their source's base until the
-  next resume hands the agent's.
+  Codex threads that carry no OpenClaw base are not checked: web-search or media
+  workers run code-owned prompts, as compaction summaries do, and forks or
+  attached threads keep their source's base until the next resume hands the
+  agent's.
 - **Never echoed.** Plugin hook payloads (`llm_input`, `before_agent_run`), session
   extension `before_agent_start` payloads and `getSystemPrompt()`, trajectory
   records, diagnostics, model-call content capture, debug proxy capture and
