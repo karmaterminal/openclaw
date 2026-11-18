@@ -500,7 +500,7 @@ src/agents/subagents/registry/subagent-registry-read.ts	8
 src/agents/subagents/registry/subagent-registry-requester-claim.ts	6
 src/agents/subagents/registry/subagent-registry-requester-wake-mutation.ts	1
 src/agents/subagents/registry/subagent-registry-requester-yield.ts	18
-src/agents/subagents/registry/subagent-registry-run-launch.ts	14
+src/agents/subagents/registry/subagent-registry-run-launch.ts	8
 src/agents/subagents/registry/subagent-registry-run-manager.ts	9
 src/agents/subagents/registry/subagent-registry-run-pause.ts	1
 src/agents/subagents/registry/subagent-registry-run-recovery.ts	30
@@ -508,7 +508,7 @@ src/agents/subagents/registry/subagent-registry-sweep-cleanup.ts	2
 src/agents/subagents/registry/subagent-registry-sweep-kill.ts	6
 src/agents/subagents/registry/subagent-registry-sweep-settle.ts	2
 src/agents/subagents/registry/subagent-registry-sweeper-retire.ts	7
-src/agents/subagents/registry/subagent-registry-sweeper.ts	6
+src/agents/subagents/registry/subagent-registry-sweeper.ts	4
 src/agents/subagents/registry/subagent-registry-typing.ts	1
 src/agents/subagents/registry/subagent-registry.mocks.shared.ts	1
 src/agents/subagents/registry/subagent-registry.ts	1
@@ -1351,7 +1351,6 @@ src/infra/session-cost-usage-reporting.ts	8
 src/infra/session-cost-usage-worker-overview.ts	1
 src/infra/session-cost-usage-worker-refresh.ts	2
 src/infra/session-cost-usage-worker-report.ts	2
-src/infra/session-delivery-queue.records.ts	1
 src/infra/session-sqlite-migration-artifact.ts	1
 src/infra/sqlite-database-admission-descriptor.ts	1
 src/infra/sqlite-database-admission-read.ts	1
