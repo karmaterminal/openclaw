@@ -199,11 +199,15 @@ native error text, or names outside the registry.
   tool) or a class instance refuses; the run's own abort signal passes. The
   Google SDK merges `config.httpOptions.extraBody` over the request it built, so
   an extra body naming `systemInstruction` or `system_instruction` refuses;
-  other extra-body fields are sent. On a Gemini route that restores native
-  video by its placeholder (the Google plugin's Gemini API and Vertex
-  transport, and Interactions), a native video then falls back to its omission
-  text, as it does after any hook replaces the request. An altered, missing or unrecognised system field
-  fails the run with `transform_altered` (`site=provider_request`) before anything
+  other extra-body fields are sent. The Google plugin's Gemini API and
+  Interactions transports send native video for a `google` model on AI Studio,
+  restoring it by a placeholder the copy does not keep. So, as after any hook
+  replaces the request, an `enforce` agent's video reaches the model as the
+  text `(video omitted: native video slot unavailable)` in its place, and
+  nothing in the request says it was received. An `off` agent's video is sent
+  as before. Vertex sends no native video in either mode. An altered, missing
+  or unrecognized system field fails the run with `transform_altered`
+  (`site=provider_request`) before anything
   is sent, and the Gateway logs a content-free `[SOVEREIGN_PROMPTS_REFUSED]` line
   naming the site. Formatting a provider adds around a span (cache blocks, an
   identity block, a developer role) passes. Each send is checked, including the

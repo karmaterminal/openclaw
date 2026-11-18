@@ -61,7 +61,11 @@ const VIDEO = MP4.toString("base64");
 const VIDEO_OMITTED = "(video omitted: native video slot unavailable)";
 const VERTEX_OMITTED = "(video omitted: provider does not support native video)";
 const AI_STUDIO = "https://generativelanguage.googleapis.com/v1beta";
-const REFUSED = { stopReason: "error", errorCode: "transform_altered" };
+/** The refusal as the run ends: the transport redacts its `key=value` text. */
+const REFUSED = {
+  stopReason: "error",
+  errorMessage: expect.stringMatching(/^sovereign prompts refused: /),
+};
 
 /** Each request that reached the network edge, with the signal it was sent under. */
 let sent: { body: Record<string, unknown>; signal: AbortSignal }[] = [];
@@ -261,6 +265,20 @@ const vertex = makeProviderModelFixture({
   input: VIDEO_INPUT,
 });
 
+// No plugin serves this provider, so the built-in Google SDK builder sends it, with the run's
+// composed abort signal in its config. The reserved `.test` host stays off the network.
+const fixturePlugin: ProviderPlugin = {
+  id: "fixture-provider",
+  label: "Fixture provider",
+  auth: [],
+};
+const vertexSdk = makeProviderModelFixture({
+  id: "gemini-3-pro-preview",
+  provider: "fixture-provider",
+  api: "google-vertex",
+  baseUrl: "https://vertex.fixture.test/v1",
+});
+
 const geminiParts = (body: Record<string, unknown>) =>
   (body.contents as { parts: unknown[] }[])[0]!.parts;
 const interactionsParts = (body: Record<string, unknown>) =>
@@ -360,6 +378,105 @@ describe.skipIf(process.platform === "win32")("sovereign enforce: Google native 
       expect(verification).toEqual(
         mode === "enforce" ? expect.objectContaining({ site: "google-vertex" }) : undefined,
       );
+    },
+  );
+
+  const TEXT_TURN: Context["messages"] = [{ role: "user", content: "Reply OK", timestamp: 1 }];
+  const DIFFERENT = "Different system instructions";
+
+  // A request member the transport reads after the check could run code there (openclaw#1571
+  // review 5964056490, finding 1). The getter edits only once this send's check has passed, so
+  // earlier reads by the outer chain cannot trip it first; the plugin serializes `contents` and
+  // `model` before the instruction.
+  it.each([
+    {
+      route: "Gemini API",
+      model: geminiApi,
+      errorCode: "transform_altered",
+      sibling: "contents",
+      edit: (payload: Record<string, unknown>) => {
+        payload.systemInstruction = { parts: [{ text: DIFFERENT }] };
+      },
+    },
+    {
+      route: "Vertex",
+      model: vertex,
+      errorCode: "transform_altered",
+      sibling: "contents",
+      edit: (payload: Record<string, unknown>) => {
+        payload.systemInstruction = { parts: [{ text: DIFFERENT }] };
+      },
+    },
+    {
+      route: "Interactions",
+      model: interactions,
+      // The plugin's Interactions wrapper rethrows the stream's error as a plain Error, which
+      // drops its code (follow-up); the refusal and the empty wire hold.
+      errorCode: undefined,
+      sibling: "model",
+      edit: (payload: Record<string, unknown>) => {
+        payload.system_instruction = DIFFERENT;
+      },
+    },
+  ])(
+    "$route: a sibling getter that edits the instruction after the check sends nothing",
+    async ({ model, errorCode, sibling, edit }) => {
+      const { send } = await composeAttempt({
+        config: writeAgent("enforce"),
+        model,
+        plugin: googlePlugin,
+      });
+      hook = (payload) => {
+        const value = payload[sibling];
+        return Object.defineProperty(payload, sibling, {
+          enumerable: true,
+          configurable: true,
+          get() {
+            if (verification) {
+              edit(payload);
+            }
+            return value;
+          },
+        });
+      };
+
+      const outcome = await capture(() => send(TEXT_TURN));
+      expect(outcome.value).toMatchObject(errorCode ? { ...REFUSED, errorCode } : REFUSED);
+      expect(sent).toHaveLength(0);
+      expect(verification).toBeUndefined();
+      expectNoSentinel(outcome);
+    },
+  );
+
+  // Cancellation crosses the check: the run's abort reaches the request on the wire, whether the
+  // transport takes the signal from its options (the plugin routes) or, on the SDK builder, from
+  // the detached copy's config, where the embedded stream composed it with the caller's signal.
+  it.each([
+    { route: "Gemini API", model: geminiApi, plugin: googlePlugin },
+    { route: "Vertex", model: vertex, plugin: googlePlugin },
+    { route: "Interactions", model: interactions, plugin: googlePlugin },
+    { route: "Vertex SDK builder", model: vertexSdk, plugin: fixturePlugin },
+  ])(
+    "$route: aborting the run mid-send cancels the request and sends nothing further",
+    async ({ model, plugin }) => {
+      const { send, abort } = await composeAttempt({
+        config: writeAgent("enforce"),
+        model,
+        plugin,
+      });
+      afterSend = () => abort.abort();
+
+      const outcome = await capture(() => send(TEXT_TURN));
+      expect(sent).toHaveLength(1);
+      expect(sent[0]!.signal.aborted).toBe(true);
+      expect(JSON.stringify(sent[0]!.body)).toContain(SENTINEL);
+      expect(verification).toMatchObject({ result: "final-payload-verified", site: model.api });
+      expect(outcome.value).toMatchObject({ stopReason: "aborted" });
+      // No retry, key rotation or later call of the canceled run reaches the network.
+      const later = await capture(() => send(TEXT_TURN));
+      expect(sent).toHaveLength(1);
+      expectNoSentinel(outcome);
+      expectNoSentinel(later);
     },
   );
 });
