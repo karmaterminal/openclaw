@@ -471,6 +471,150 @@ describe.skipIf(process.platform === "win32")("provider request check on the sen
     expect(sent).toHaveLength(1);
   });
 
+  // A plain carrier is not enough: any member the transport reads after the check can run
+  // code (openclaw#1571 review 5964056490, finding 1). The getter sits on the sibling `model`.
+  it.each(BUILDERS)(
+    "$api: refuses a sibling getter that edits the plain carrier when the transport reads it",
+    async ({ api, model }) => {
+      const { prompt, spans } = await renderMain();
+      const receipts: unknown[] = [];
+      const outcome = await send(checkedBuilder(spans, receipts), model, prompt, (payload) => {
+        const originalModel = payload.model;
+        const plain = { ...payload };
+        Object.defineProperty(payload, "model", {
+          enumerable: true,
+          configurable: true,
+          get() {
+            // The reviewer's Google probes verbatim; elsewhere the same edit of the carrier.
+            if (api === "google-interactions") {
+              payload.system_instruction = DIFFERENT;
+            } else if (api === "google-generative-ai" || api === "google-vertex") {
+              (payload.config as Record<string, unknown>).systemInstruction = DIFFERENT;
+            } else {
+              const { model: _model, ...altered } = alterSpans(plain);
+              Object.assign(payload, altered);
+            }
+            return originalModel;
+          },
+        });
+        return payload;
+      });
+      expect(outcome.value).toMatchObject(REFUSED);
+      expectNoSentinel(outcome);
+      expect(sent).toHaveLength(0);
+      expect(receipts.at(-1)).toBeUndefined();
+    },
+  );
+
+  // A hook that keeps the request it returned can edit it once the check has passed, before
+  // the transport serializes it. The receipt callback marks that moment deterministically.
+  it.each(BUILDERS)(
+    "$api: never sends an edit a hook makes to its kept request after the check",
+    async ({ model }) => {
+      const { prompt, spans } = await renderMain();
+      let kept: Record<string, unknown> | undefined;
+      const receipts: unknown[] = [];
+      const checked = wrapStreamFnWithSovereignRequestCheck(streamSimple as StreamFn, {
+        sessionAgentId: "main",
+        sovereignSpans: () => spans,
+        onSovereignVerification: (verification) => {
+          receipts.push(verification);
+          if (kept) {
+            Object.assign(kept, alterSpans(kept));
+            kept = undefined;
+          }
+        },
+      });
+      const outcome = await send(checked, model, prompt, (payload) => {
+        kept = payload;
+        return undefined;
+      });
+      expectNoSentinel(outcome);
+      expect(JSON.stringify(sent)).not.toContain("Altered prose");
+      if (sent.length > 0) {
+        expect(sent).toHaveLength(1);
+        expect(JSON.stringify(sent[0])).toContain(SENTINEL);
+        expect(receipts.at(-1)).toMatchObject({ result: "final-payload-verified" });
+      } else {
+        // A route that encodes through the host reads the edit in the bytes it would send.
+        expect(outcome.value).toMatchObject(REFUSED);
+        expect(receipts.at(-1)).toBeUndefined();
+      }
+    },
+  );
+
+  it.each(["google-generative-ai", "google-vertex"])(
+    "%s: refuses an SDK fetch the request supplies, which would send past the check",
+    async (api) => {
+      const { prompt, spans } = await renderMain();
+      const hookFetch = vi.fn<typeof fetch>(async () => new Response("{}", { status: 400 }));
+      const receipts: unknown[] = [];
+      const outcome = await send(
+        checkedBuilder(spans, receipts),
+        modelFor(api),
+        prompt,
+        (payload) => {
+          (payload.config as Record<string, unknown>).httpOptions = { fetch: hookFetch };
+          return undefined;
+        },
+      );
+      expect(outcome.value).toMatchObject(REFUSED);
+      expect(hookFetch).not.toHaveBeenCalled();
+      expect(sent).toHaveLength(0);
+      expect(receipts.at(-1)).toBeUndefined();
+    },
+  );
+
+  it("google-generative-ai: carries the run's own abort signal, which the SDK builder places in config", async () => {
+    const { prompt, spans } = await renderMain();
+    const receipts: unknown[] = [];
+    const outcome = await send(
+      checkedBuilder(spans, receipts),
+      modelFor("google-generative-ai"),
+      prompt,
+      undefined,
+      { signal: new AbortController().signal },
+    );
+    expect(outcome.value).toMatchObject({ errorCode: "400" });
+    expect(sent).toHaveLength(1);
+    expect(JSON.stringify(sent[0]!.systemInstruction)).toContain(SENTINEL);
+    expect(receipts.at(-1)).toMatchObject({ result: "final-payload-verified" });
+  });
+
+  // Plain data the SDK merges into the body after the checked carrier (finding 2).
+  it.each(["google-generative-ai", "google-vertex"])(
+    "%s: refuses an SDK extraBody that replaces the checked instruction, and sends a harmless one",
+    async (api) => {
+      const { prompt, spans } = await renderMain();
+      const model = modelFor(api);
+      const receipts: unknown[] = [];
+      for (const field of ["systemInstruction", "system_instruction"]) {
+        const replaced = await send(checkedBuilder(spans, receipts), model, prompt, (payload) => {
+          (payload.config as Record<string, unknown>).httpOptions = {
+            extraBody: { [field]: { parts: [{ text: DIFFERENT }] } },
+          };
+          return undefined;
+        });
+        expect(replaced.value).toMatchObject(REFUSED);
+        expectNoSentinel(replaced);
+      }
+      expect(sent).toHaveLength(0);
+      expect(receipts).toEqual([undefined, undefined]);
+
+      const harmless = await send(checkedBuilder(spans, receipts), model, prompt, (payload) => {
+        (payload.config as Record<string, unknown>).httpOptions = {
+          extraBody: { labels: { fixture: "harmless" } },
+        };
+        return undefined;
+      });
+      expect(harmless.value).toMatchObject({ errorCode: "400" });
+      expect(sent).toHaveLength(1);
+      expect(sent[0]!.labels).toEqual({ fixture: "harmless" });
+      expect(JSON.stringify(sent[0]!.systemInstruction)).toContain(SENTINEL);
+      expect(receipts.at(-1)).toMatchObject({ result: "final-payload-verified", site: api });
+    },
+  );
+
   it("checks the bytes the host encoder returns, and returns those bytes", async () => {
     const { prompt, spans } = await renderMain();
     const model = modelFor("openai-responses");

@@ -16,6 +16,7 @@ import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { SUMMARIZATION_SYSTEM_PROMPT } from "../../../packages/agent-core/src/harness/compaction/summarization-prompts.js";
 import type { SovereignPromptVerification } from "../../config/sessions/session-system-prompt-report.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { isDeeplyFrozenPlainData } from "../../shared/immutable-data.js";
 import type { StreamFn } from "../runtime/index.js";
 import type { SovereignPromptSpans } from "./runtime.js";
 import { describeSovereignPromptsRefused, SovereignPromptRefusal } from "./snapshot.js";
@@ -34,12 +35,11 @@ type SystemTextExtractor = (
 ) => string[] | undefined;
 
 /*
- * A transport serializes the request after this check, with `JSON.stringify` or its SDK's
- * own field reads. A proxy, a `toJSON` or a class prototype runs payload code there, and an
- * accessor answers each read anew, so the text sent could differ from the text read. The
- * readers below take only own enumerable data members of plain objects and arrays, what
- * `JSON.stringify` writes; anything else on the way to the system text reads as absent and
- * refuses (openclaw#1571 review).
+ * The readers below take only own enumerable data members of plain objects and arrays, what
+ * `JSON.stringify` writes, so reading never runs payload code: a proxy, a `toJSON`, a class
+ * prototype or an accessor on the way to the system text reads as absent and refuses. That
+ * makes the read itself safe, not what is sent: the transport reads and serializes the whole
+ * request afterwards, so the check also owns what it sends (see `detachRequest`).
  */
 function isPlainJsonContainer(value: object): boolean {
   if (types.isProxy(value) || Object.hasOwn(value, "toJSON")) {
@@ -152,6 +152,29 @@ function readGoogleInstruction(value: unknown): string[] | undefined {
 }
 
 /**
+ * Whether a Google SDK `config.httpOptions` lets the SDK replace the instruction it converted.
+ * The SDK deep-merges `extraBody` into the serialized REST body after converting `config`
+ * (`@google/genai` `includeExtraBodyToRequestInit`), so an extra body naming the instruction
+ * field, by either of its JSON names, overrides the carrier this check read. Options it cannot
+ * read refuse too.
+ */
+function overridesGoogleInstruction(httpOptions: unknown): boolean {
+  if (httpOptions === undefined || httpOptions === null) {
+    return false;
+  }
+  const options = readJsonRecord(httpOptions);
+  const extraBody = options ? readJsonMember(options, "extraBody") : undefined;
+  if (options && (extraBody === undefined || extraBody === null)) {
+    return false;
+  }
+  const body = readJsonRecord(extraBody);
+  return (
+    !body ||
+    Object.keys(body).some((key) => key === "systemInstruction" || key === "system_instruction")
+  );
+}
+
+/**
  * Two transports build Gemini requests under these API ids. The SDK builder hands the SDK
  * `GenerateContentParameters`, which sends the instruction from `config` and ignores a
  * top-level field; the managed transport (extensions/google) sends the REST body, which
@@ -159,8 +182,13 @@ function readGoogleInstruction(value: unknown): string[] | undefined {
  * that carrier is read: a hook cannot satisfy the check with a field the transport drops.
  */
 const readGoogleSystemText: SystemTextExtractor = (payload, builtConfig) => {
-  const carrier = builtConfig ? readJsonRecord(readJsonMember(payload, "config")) : payload;
-  return carrier ? readGoogleInstruction(readJsonMember(carrier, "systemInstruction")) : undefined;
+  if (!builtConfig) {
+    return readGoogleInstruction(readJsonMember(payload, "systemInstruction"));
+  }
+  const config = readJsonRecord(readJsonMember(payload, "config"));
+  return config && !overridesGoogleInstruction(readJsonMember(config, "httpOptions"))
+    ? readGoogleInstruction(readJsonMember(config, "systemInstruction"))
+    : undefined;
 };
 
 /**
@@ -239,6 +267,66 @@ function parseSentRequest(body: Uint8Array): unknown {
   }
 }
 
+/** A request member that could run code when its transport reads or serializes it. */
+const NOT_DATA = Symbol("not data");
+
+/**
+ * A copy of the settled request that its transport alone holds: the own data members of plain
+ * objects and arrays, with symbol keys and enumerability kept for transport bookkeeping, read
+ * without running payload code. A transport that serializes the request itself, or hands it
+ * to an SDK, reads every member after this check. An accessor, a proxy, a function (a `toJSON`,
+ * an SDK `fetch` or callable tool) or a class instance would run payload code there, so the
+ * request is `NOT_DATA`; and a hook that kept the request it returned could edit it there. No
+ * hook holds the copy. Deeply frozen plain data cannot change and is shared, as is the run's own
+ * abort signal, which the Google SDK builder places in its config.
+ */
+function detachRequest(
+  value: unknown,
+  signal: AbortSignal | undefined,
+  copies = new Map<object, unknown>(),
+): unknown {
+  if (typeof value === "function") {
+    return NOT_DATA;
+  }
+  if (!value || typeof value !== "object" || value === signal || isDeeplyFrozenPlainData(value)) {
+    return value;
+  }
+  if (copies.has(value)) {
+    return copies.get(value);
+  }
+  if (!isPlainJsonContainer(value)) {
+    return NOT_DATA;
+  }
+  const array = Array.isArray(value);
+  const copy: object = array ? [] : Object.create(Object.getPrototypeOf(value) as object | null);
+  copies.set(value, copy);
+  for (const key of Reflect.ownKeys(value)) {
+    if (array && key === "length") {
+      continue;
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
+    const member =
+      "value" in descriptor ? detachRequest(descriptor.value, signal, copies) : NOT_DATA;
+    if (member === NOT_DATA) {
+      return NOT_DATA;
+    }
+    if (descriptor.enumerable && key !== "__proto__") {
+      Reflect.set(copy, key, member);
+    } else {
+      Object.defineProperty(copy, key, {
+        value: member,
+        enumerable: descriptor.enumerable,
+        writable: true,
+        configurable: true,
+      });
+    }
+  }
+  if (array) {
+    Reflect.set(copy, "length", Reflect.get(value, "length"));
+  }
+  return copy;
+}
+
 /** What the check reads of its run. */
 type SovereignRequestCheckRun = {
   sessionAgentId: string;
@@ -257,9 +345,10 @@ const checkedEncoders = new WeakMap<EncodeModelRequestBody, EncodeModelRequestBo
  * the whole outer hook chain first, then checks what that chain returned, against the
  * API the transport built it for. A transport that encodes through the host is checked
  * again on the bytes of each encoded attempt, which covers resends that skip the hook (a
- * slower service tier, stripped reasoning), and sends exactly the bytes it checked. A
- * transport that serializes the request itself is checked on plain data only, so its own
- * serialization writes what was read. A refusal throws before any byte is sent.
+ * slower service tier, stripped reasoning), and sends exactly the bytes it checked. Any other
+ * transport, core or plugin, serializes the request itself or through an SDK: it is handed a
+ * detached copy of plain data, checked, so what it serializes is what was read. A refusal
+ * throws before any byte is sent.
  *
  * Each passed check reports `final-payload-verified` with the API it read; a refusal
  * withdraws it, so the run's prompt report holds the outcome of its latest check.
@@ -318,11 +407,19 @@ export function wrapStreamFnWithSovereignRequestCheck(
         builtConfig = isRecord(payload) && isRecord(payload.config);
         const replacement = await originalOnPayload?.(payload, payloadModel);
         api = payloadModel.api;
-        assertPayload(replacement === undefined ? payload : replacement);
-        return replacement;
+        const settled = replacement === undefined ? payload : replacement;
+        // A transport that encodes through the host sends the bytes checked at encoding,
+        // so its request stays its own: frozen input and continuation state rely on identity.
+        if (modelRequestBodyState(checkedOptions).enabled) {
+          assertPayload(settled);
+          return replacement;
+        }
+        const detached = detachRequest(settled, options?.signal);
+        assertPayload(detached);
+        return detached;
       },
     };
-    // Mutability follows the caller's hook; this one never edits the payload.
+    // Mutability follows the caller's hook; this one never edits the payload it is handed.
     markModelPayloadObserver(checkedOptions.onPayload!, originalOnPayload);
     const bodyState = modelRequestBodyState(checkedOptions);
     const current = bodyState.encode;
