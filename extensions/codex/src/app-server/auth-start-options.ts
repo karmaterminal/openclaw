@@ -79,9 +79,10 @@ export function withEphemeralCodexAuthStore(params: {
 }
 
 /**
- * OpenClaw spawned this app-server as its stdio child, so no other client can load its
- * threads. Codex keeps loaded threads per process, whichever home it shares. A custom stdio
- * command counts too: OpenClaw cannot see past its child.
+ * OpenClaw spawned this app-server as its stdio child, not as an `app-server proxy` launch:
+ * Codex keeps loaded threads per process, whichever home it shares. A custom command is
+ * OpenClaw's child too, though what runs behind it is not proven; sovereign placement
+ * (sovereign-handoff.ts) admits only the managed binary.
  */
 export function isOwnedCodexAppServerProcess(start: CodexAppServerStartOptions): boolean {
   return start.transport === "stdio" && !isCodexAppServerProxyLaunch(start.args);

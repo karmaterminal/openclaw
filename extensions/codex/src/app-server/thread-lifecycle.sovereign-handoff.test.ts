@@ -131,7 +131,13 @@ afterAll(() => {
 
 function appServerOptions(): CodexAttemptThreadInput["appServer"] {
   return {
-    start: { transport: "stdio", command: "codex", args: ["app-server"], headers: {} },
+    start: {
+      transport: "stdio",
+      command: "codex",
+      commandSource: "managed",
+      args: ["app-server"],
+      headers: {},
+    },
     requestTimeoutMs: 60_000,
     approvalPolicy: "never",
     approvalsReviewer: "user",
@@ -669,10 +675,11 @@ describe.skipIf(process.platform === "win32")("Codex route: sovereign handoff ch
   });
 
   describe("an app-server whose local placement OpenClaw cannot establish", () => {
-    // Phase A hands sovereign text only to an app-server OpenClaw spawned as its own stdio
-    // child (loader design § 5.4). A loopback port or a Unix socket can forward to another
-    // host, an `app-server proxy` launch forwards to a server it does not own, and the
-    // sandbox route stays marked remote until its receiving side is approved.
+    // Phase A hands sovereign text only to OpenClaw's managed Codex binary, spawned as its own
+    // stdio child (loader design § 5.4). A loopback port or a Unix socket can forward to
+    // another host, an `app-server proxy` launch forwards to a server it does not own, a
+    // custom command proves only that OpenClaw owns its pipe, and the sandbox route stays
+    // marked remote until its receiving side is approved.
     type Placement = {
       route: string;
       connectionClass: CodexAttemptThreadInput["appServer"]["connectionClass"];
@@ -703,6 +710,18 @@ describe.skipIf(process.platform === "win32")("Codex route: sovereign handoff ch
         route: "codex:unowned-app-server",
         connectionClass: "local-loopback",
         start: { args: ["app-server", "proxy"] },
+      },
+      // A synthetic forwarding wrapper, never launched: `appServer.command` or
+      // OPENCLAW_CODEX_APP_SERVER_BIN, each without the `proxy` argument.
+      "custom stdio command (config)": {
+        route: "codex:unowned-app-server",
+        connectionClass: "local-loopback",
+        start: { command: "/opt/fixture/codex-forwarder", commandSource: "config" },
+      },
+      "custom stdio command (env)": {
+        route: "codex:unowned-app-server",
+        connectionClass: "local-loopback",
+        start: { command: "/opt/fixture/codex-forwarder", commandSource: "env" },
       },
       "sandbox route marked remote": {
         route: "codex:remote-app-server",
@@ -796,6 +815,25 @@ describe.skipIf(process.platform === "win32")("Codex route: sovereign handoff ch
       expect(methods(staged.request)).toEqual([]);
       await staged.kept();
     });
+
+    it.each([
+      { commandSource: "managed" as const, command: "codex" },
+      { commandSource: "resolved-managed" as const, command: "/opt/fixture/openclaw/codex" },
+    ])(
+      "admits OpenClaw's $commandSource Codex binary as its stdio child and checks the handoff",
+      async ({ commandSource, command }) => {
+        const { client, request } = await createAgentLifecycleHarness({
+          respond: respond("thread-managed"),
+        });
+        const appServer = appServerOptions();
+        const started = await start(client, attempt("main", `placed-${++sessions}`), {
+          appServer: { ...appServer, start: { ...appServer.start, command, commandSource } },
+        });
+
+        expect(methods(request)).toEqual([...PREFLIGHT, "thread/start"]);
+        expect(started.sovereignReceipt?.verification).toEqual(verification("thread/start"));
+      },
+    );
 
     it.each(Object.entries(placements))(
       "%s: leaves an off agent's thread/start as it was",

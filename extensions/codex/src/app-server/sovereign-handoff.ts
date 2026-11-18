@@ -115,23 +115,27 @@ export function isCodexThreadLoadedBy(
 
 /**
  * Placement admission for every instruction-bearing handoff (loader design § 5.4, phase A):
- * an enforce agent's thread is started, resumed, reused or refreshed only on an app-server
- * OpenClaw spawned as its own stdio child. Span checks prove what a handoff carries, not
- * where it goes. A remote connection (including the sandbox route marked remote) refuses
- * as `codex:remote-app-server`; a loopback WebSocket or Unix socket, whose listener may
- * forward anywhere, and an `app-server proxy` launch refuse as `codex:unowned-app-server`.
- * Such a server is also one other clients can reach, so a resume there could not prove which
- * instructions its loaded thread runs on. Passing this never waives a handoff's span or
- * loaded-thread checks.
+ * an enforce agent's thread is started, resumed, reused or refreshed only on OpenClaw's
+ * managed Codex binary, spawned as its own stdio child. Span checks prove what a handoff
+ * carries, not where it goes. A remote connection (including the sandbox route marked
+ * remote) refuses as `codex:remote-app-server`; a loopback WebSocket or Unix socket, whose
+ * listener may forward anywhere, an `app-server proxy` launch, and a custom command (the
+ * `appServer.command` config or the OPENCLAW_CODEX_APP_SERVER_BIN override) refuse as
+ * `codex:unowned-app-server`. Spawning a custom command proves OpenClaw owns its pipe, not
+ * that the process behind it ends locally: a forwarding wrapper reaches a server other
+ * clients share, where a resume could not prove which instructions its loaded thread runs
+ * on. Passing this never waives a handoff's span or loaded-thread checks.
  */
 export function assertCodexAppServerPlacement(
   attempt: CodexSovereignAttempt,
   appServer: Pick<CodexAppServerRuntimeOptions, "start" | "connectionClass">,
 ): void {
+  const { start } = appServer;
+  const managed = start.commandSource === "managed" || start.commandSource === "resolved-managed";
   const route =
     appServer.connectionClass === "remote"
       ? "codex:remote-app-server"
-      : isOwnedCodexAppServerProcess(appServer.start)
+      : managed && isOwnedCodexAppServerProcess(start)
         ? undefined
         : "codex:unowned-app-server";
   if (route) {
