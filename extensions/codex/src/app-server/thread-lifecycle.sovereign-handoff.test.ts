@@ -578,6 +578,95 @@ describe.skipIf(process.platform === "win32")("Codex route: sovereign handoff ch
     }
   });
 
+  describe("a loaded thread that Codex can serve without the resume's instructions", () => {
+    // Codex ignores resume overrides on a thread another client still holds, or a running one,
+    // and answers as for any resume (codex-rs app-server thread_processor.rs,
+    // resume_running_thread). A resume earns handoff-verified only for a thread seen unloaded:
+    // cold before the request, or reloaded during it. An external server reloads in place.
+    const external = () => {
+      const appServer = appServerOptions();
+      return {
+        appServer: { ...appServer, start: { ...appServer.start, homeScope: "user" as const } },
+      };
+    };
+    const loadRecord = (input: ReturnType<typeof attempt>, client: object, threadId: string) => {
+      try {
+        return checkCodexUnrenderedThreadReuse(input.params, client, threadId);
+      } catch (error) {
+        return error;
+      }
+    };
+
+    async function loadedThread(
+      session: string,
+      subscribed: boolean,
+      status: Record<string, unknown> = { type: "idle" },
+    ) {
+      const harness = await createAgentLifecycleHarness({ respond: respond("thread-loaded") });
+      const input = attempt("main", session);
+      await writeBinding(input, "thread-loaded");
+      const loaded = threadStartResult("thread-loaded");
+      harness.seed(
+        { ...loaded, thread: { ...loaded.thread, status } },
+        { loaded: true, subscribed },
+      );
+      return { ...harness, input };
+    }
+
+    it("refuses a thread another client holds, with no handoff-verified and no load record", async () => {
+      const { client, request, input } = await loadedThread("held", true);
+
+      const error = await start(client, input, external()).catch((cause: unknown) => cause);
+
+      expect(error).toMatchObject({
+        name: "CodexThreadPolicyHandoffError",
+        cause: { message: expect.stringContaining("Codex did not confirm unloading") },
+      });
+      // Codex answered the resume; nothing ran on that answer, and the thread was released.
+      expect(methods(request)).toEqual([
+        ...PREFLIGHT,
+        "thread/read",
+        "thread/resume",
+        "thread/unsubscribe",
+      ]);
+      expectRefused(loadRecord(input, client, "thread-loaded"), "live_thread_reuse");
+      await expect(readCodexAppServerBinding(input.sessionFile)).resolves.toMatchObject({
+        threadId: "thread-loaded",
+      });
+    });
+
+    it("refuses a running thread before its resume is written", async () => {
+      const { client, request, input } = await loadedThread("running", true, {
+        type: "active",
+        activeFlags: [],
+      });
+
+      const error = await start(client, input, external()).catch((cause: unknown) => cause);
+
+      expect(error).toMatchObject({ name: "CodexAdoptedThreadActiveError" });
+      expect(methods(request)).toEqual([...PREFLIGHT, "thread/read"]);
+      expectRefused(loadRecord(input, client, "thread-loaded"), "live_thread_reuse");
+    });
+
+    it("credits a loaded thread that Codex reloads cold for the resume", async () => {
+      const { client, request, input } = await loadedThread("reloaded", false);
+
+      const resumed = await start(client, input, external());
+
+      expect(methods(request)).toEqual([
+        ...PREFLIGHT,
+        "thread/read",
+        "thread/resume",
+        "thread/inject_items",
+      ]);
+      expect(sent(request, "thread/resume")[0]?.baseInstructions).toContain(IDENTITY);
+      expect(resumed.sovereignReceipt?.verification).toEqual(verification("thread/resume"));
+      expect(loadRecord(input, client, "thread-loaded")).toMatchObject({
+        verification: verification("live_thread_reuse"),
+      });
+    });
+  });
+
   it("leaves an off agent's handoffs as they were and records no result", async () => {
     const { client, request } = await createAgentLifecycleHarness({
       respond: respond("thread-off"),
