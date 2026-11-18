@@ -602,15 +602,8 @@ export async function tryReuseCodexLiveThread(
     // and is checked again; an ephemeral one has no resume source and refuses. A refusal
     // leaves the owner as it was.
     preserveSubscription = true;
-    const sovereignReceipt = checkCodexThreadHandoff(
-      params.params,
-      "live_thread_reuse",
-      resumeParams,
-    );
-    if (
-      sovereignReceipt &&
-      !isCodexThreadLoadedBy(params.client, binding.threadId, sovereignReceipt)
-    ) {
+    const sovereign = checkCodexThreadHandoff(params.params, "live_thread_reuse", resumeParams);
+    if (sovereign && !isCodexThreadLoadedBy(params.client, binding.threadId, sovereign)) {
       if (!incognito) {
         return { kind: "resume", prebuiltFinalConfigPatch };
       }
@@ -762,7 +755,7 @@ export async function tryReuseCodexLiveThread(
         liveThreadEphemeralPolicy,
         liveThreadOwnership: retainedThread,
         preparedOpenClawBaseInstructions: options.resolveOpenClawBaseInstructions(promptBinding),
-        ...(sovereignReceipt ? { sovereignReceipt } : {}),
+        ...(sovereign ? { sovereignReceipt: sovereign } : {}),
         ...(!incognito && retainedThread.serviceTier && resumeParams.serviceTier === undefined
           ? { clearInheritedServiceTier: true }
           : {}),
