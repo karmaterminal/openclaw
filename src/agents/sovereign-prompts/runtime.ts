@@ -204,6 +204,13 @@ export function assertSovereignPromptNotReplaced(
   }
 }
 
+/** A provider transform may add text but never alter a rendered sovereign span (§ 7.1). */
+export function assertSovereignSpansIntact(prompt: string, instances: readonly string[]): void {
+  if (instances.some((instance) => !prompt.includes(instance))) {
+    throw new SovereignPromptRefusal("transform_altered");
+  }
+}
+
 /** One render's view of a snapshot: converted bodies, each registered for redaction. */
 export type SovereignPromptRender = {
   readonly agentId: string;

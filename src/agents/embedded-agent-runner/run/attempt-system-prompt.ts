@@ -2,7 +2,7 @@ import {
   splitSystemPromptCacheBoundary,
   SYSTEM_PROMPT_CACHE_BOUNDARY,
 } from "@openclaw/ai/internal/shared";
-import { SovereignPromptRefusal } from "../../sovereign-prompts/snapshot.js";
+import { assertSovereignSpansIntact } from "../../sovereign-prompts/runtime.js";
 import type { buildConfiguredAgentSystemPrompt } from "../../system-prompt-config.js";
 
 export type SystemPromptRefresh = ((currentSystemPrompt: string) => string) & {
@@ -52,12 +52,8 @@ export async function buildAttemptSystemPrompt(params: BuildAttemptSystemPromptP
   const transformedSystemPrompt = params.isRawModelRun
     ? ""
     : params.transformSystemPrompt(baseSystemPrompt);
-  // A provider transform may add text, never alter a sovereign span (design § 7.1).
-  if (
-    transformedSystemPrompt &&
-    sovereignInstances.some((instance) => !transformedSystemPrompt.includes(instance))
-  ) {
-    throw new SovereignPromptRefusal("transform_altered");
+  if (transformedSystemPrompt) {
+    assertSovereignSpansIntact(transformedSystemPrompt, sovereignInstances);
   }
   // Runtime additions at the cache boundary stay outside both owned regions;
   // permission refreshes replace capability guidance without dropping that context.
