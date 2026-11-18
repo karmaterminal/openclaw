@@ -511,5 +511,5 @@ another agent's spans, or loses one; write nothing after it.
 
 A route that cannot carry an agent's sovereign text at all calls
 `assertSovereignPromptRoute` with its route name before any handoff. See
-[Sovereign prompts CLI](/cli/sovereign#checked-at-the-codex-handoff) for what
+[Sovereign prompts CLI](/cli/sovereign#what-enforce-does) for what
 the check covers and what stays unverified.

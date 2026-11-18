@@ -153,22 +153,23 @@ native error text, or names outside the registry.
   or `codex:`). The turn then ends as an incomplete turn, with the host's
   missing-reply notice wherever the host delivers one. An answer the agent
   already wrote is still delivered.
-- **Codex app-server placement.** The files go only to a Codex app-server
-  OpenClaw starts as its own stdio child. On any other app-server, every Codex
+- **Codex app-server placement.** The files go only to OpenClaw's managed Codex
+  binary, started as its own stdio child. On any other app-server, every Codex
   handoff that carries a thread's instructions refuses before OpenClaw reads or
   writes anything: a new thread, a supervised branch, a resume, reuse of a
   loaded thread, and the policy refreshes that follow them. A remote connection
   refuses with `codex:remote-app-server`. That covers an authenticated
   non-loopback WebSocket and a worker-hosted app-server
   (`appServer.workerHostedCloud`), which runs off the Gateway host. A loopback
-  WebSocket or Unix socket, whose listener could forward anywhere, and an
-  `app-server proxy` launch refuse with `codex:unowned-app-server`. Other
-  clients can reach such a server too, so a resume there could not prove which
-  instructions the thread runs on. To continue, use an app-server OpenClaw
-  starts over stdio. Any other stdio command, including a custom
-  `appServer.command`, counts as OpenClaw's own process; a command that bridges
-  to another server is outside this check. An off agent's handoffs are
-  unchanged on every placement.
+  WebSocket or Unix socket, whose listener could forward anywhere, an
+  `app-server proxy` launch, and a custom command (`appServer.command` or
+  `OPENCLAW_CODEX_APP_SERVER_BIN`) refuse with `codex:unowned-app-server`.
+  Starting a custom command proves OpenClaw owns its stdio pipe, not that the
+  process behind it keeps the thread local: a wrapper could forward to a server
+  other clients reach, where a resume could not prove which instructions the
+  thread runs on. To continue, remove the custom command so OpenClaw starts its
+  managed Codex binary over stdio. An off agent's handoffs are unchanged on
+  every placement.
 - **Which agent.** An agent's files render only for a call that names that agent.
   A render or check that names no agent, or an invalid one, is refused while any
   agent is `enforce`, counting one that was `enforce` when the process read its
@@ -189,9 +190,18 @@ native error text, or names outside the registry.
   `systemInstruction` in the REST body the managed Google transport sends. The
   check reads what will be sent. On a route that encodes its body through
   OpenClaw (OpenAI), it reads the encoded bytes and those exact bytes are sent.
-  Elsewhere it reads plain JSON data only: a `toJSON`, an accessor, a proxy or
-  a class instance on the way to the system field reads as missing. An altered,
-  missing or unrecognised system field
+  Every other route serializes the request itself or through an SDK
+  (Anthropic, Mistral, Gemini, the ChatGPT route, a plugin's own transport): it
+  is handed a detached copy of the request, checked, holding only plain JSON
+  data. Nothing in it runs when the transport reads or sends it, and no hook
+  keeps a reference it could edit afterwards. A request holding an accessor, a
+  proxy, a function (a `toJSON`, a Google SDK `httpOptions.fetch` or callable
+  tool) or a class instance refuses; the run's own abort signal passes. The
+  Google SDK merges `config.httpOptions.extraBody` over the request it built, so
+  an extra body naming `systemInstruction` or `system_instruction` refuses;
+  other extra-body fields are sent. On the Gemini Interactions route a native
+  video slot then falls back to its omission text, as it does after any hook
+  replaces the request. An altered, missing or unrecognised system field
   fails the run with `transform_altered` (`site=provider_request`) before anything
   is sent, and the Gateway logs a content-free `[SOVEREIGN_PROMPTS_REFUSED]` line
   naming the site. Formatting a provider adds around a span (cache blocks, an
@@ -207,7 +217,7 @@ native error text, or names outside the registry.
   stable prompt in a separate request, is not used for the agent. Compaction
   summaries send OpenClaw's summarizer prompt, not the agent's, and are not
   checked. A plugin that sends a request itself instead of through the stream it
-  wraps, or edits a payload after handing it back, is outside this check.
+  wraps is outside this check.
 - **Checked at the Codex handoff.** Codex builds its provider request inside its
   binary, where OpenClaw cannot read it, so the Codex route is checked at the last
   request OpenClaw writes: every app-server handoff that carries a thread's
@@ -223,8 +233,8 @@ native error text, or names outside the registry.
   handoff is written. Codex ignores the instructions a resume hands to a thread
   it keeps loaded (another client holds it, a turn is running, or its shutdown
   did not finish), and answers as usual. So a resume earns `handoff-verified`
-  only on an app-server OpenClaw starts over stdio, which no other client
-  reaches, for a thread OpenClaw saw unloaded: cold before the request, or
+  only on the managed Codex binary OpenClaw starts over stdio, which no other
+  client reaches, for a thread OpenClaw saw unloaded: cold before the request, or
   closed or reloaded during it. Otherwise the run fails without a receipt, and
   the thread is kept. What Codex does with the handed instructions stays
   unverified: the request it builds, and the parent-local inference relay, the
