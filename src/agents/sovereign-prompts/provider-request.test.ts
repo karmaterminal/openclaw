@@ -416,6 +416,15 @@ describe.skipIf(process.platform === "win32")("provider request check on the sen
       expect(sent).toHaveLength(0);
       expect(receipts).toEqual([undefined]);
 
+      // The same move made in place: the built request named its carrier before the hook ran.
+      const moved = await send(checkedBuilder(spans, receipts), model, prompt, (payload) => {
+        payload.systemInstruction = (payload.config as Record<string, unknown>).systemInstruction;
+        delete payload.config;
+        return undefined;
+      });
+      expect(moved.value).toMatchObject(REFUSED);
+      expect(sent).toHaveLength(0);
+
       await send(checkedBuilder(spans, receipts), model, prompt);
       expect(sent).toHaveLength(1);
       expect(JSON.stringify(sent[0]!.systemInstruction)).toContain(SENTINEL);
@@ -448,6 +457,17 @@ describe.skipIf(process.platform === "win32")("provider request check on the sen
       onPayload: () => ({ contents: [], config: { systemInstruction: prompt } }),
     });
     await expect(moved).rejects.toMatchObject({ code: "transform_altered" });
+    // An in-place edit that adds the SDK's `config` beside other top-level text.
+    const edited = checked(model, context, {
+      onPayload: (payload) => {
+        Object.assign(payload as Record<string, unknown>, {
+          config: { systemInstruction: prompt },
+          systemInstruction: { parts: [{ text: DIFFERENT }] },
+        });
+        return undefined;
+      },
+    });
+    await expect(edited).rejects.toMatchObject({ code: "transform_altered" });
     expect(sent).toHaveLength(1);
   });
 

@@ -24,12 +24,13 @@ import { finalPayloadVerified, type SovereignProviderRequestApi } from "./verifi
 const log = createSubsystemLogger("agents/sovereign-prompts");
 
 /**
- * Reads a payload's system text. `built` is the request the transport built, before any
- * hook ran: where two transports share an API id, its shape names the carrier.
+ * Reads a payload's system text. `builtConfig` says whether the request the transport built,
+ * read before any hook ran, nests its settings in `config`: where two transports share an
+ * API id, that shape names the carrier.
  */
 type SystemTextExtractor = (
   payload: Record<string, unknown>,
-  built: unknown,
+  builtConfig: boolean,
 ) => string[] | undefined;
 
 /*
@@ -157,11 +158,8 @@ function readGoogleInstruction(value: unknown): string[] | undefined {
  * carries it top-level and has no `config`. The built request names the contract, and only
  * that carrier is read: a hook cannot satisfy the check with a field the transport drops.
  */
-const readGoogleSystemText: SystemTextExtractor = (payload, built) => {
-  const carrier =
-    isRecord(built) && isRecord(built.config)
-      ? readJsonRecord(readJsonMember(payload, "config"))
-      : payload;
+const readGoogleSystemText: SystemTextExtractor = (payload, builtConfig) => {
+  const carrier = builtConfig ? readJsonRecord(readJsonMember(payload, "config")) : payload;
   return carrier ? readGoogleInstruction(readJsonMember(carrier, "systemInstruction")) : undefined;
 };
 
@@ -205,11 +203,11 @@ function carriesSovereignSpans(params: {
   spans: SovereignPromptSpans | undefined;
   api: SovereignProviderRequestApi;
   payload: unknown;
-  built: unknown;
+  builtConfig: boolean;
 }): boolean {
   const { spans } = params;
   const root = readJsonRecord(params.payload);
-  const segments = root ? SYSTEM_TEXT_EXTRACTORS[params.api](root, params.built) : undefined;
+  const segments = root ? SYSTEM_TEXT_EXTRACTORS[params.api](root, params.builtConfig) : undefined;
   return (
     spans?.agentId === params.agentId &&
     segments !== undefined &&
@@ -226,7 +224,7 @@ function isResponsesContinuationDelta(api: string, sent: unknown): boolean {
     SYSTEM_TEXT_EXTRACTORS[api] === readResponsesSystemText &&
     isRecord(sent) &&
     typeof sent.previous_response_id === "string" &&
-    readResponsesSystemText(sent, undefined) === undefined
+    readResponsesSystemText(sent, false) === undefined
   );
 }
 
@@ -294,12 +292,18 @@ export function wrapStreamFnWithSovereignRequestCheck(
     }
     // A provider transport can build for another API than it was routed by (LM Studio).
     let api = model.api;
-    let built: unknown;
+    let builtConfig = false;
     const assertPayload = (payload: unknown) => {
       const checkedApi = isCheckedApi(api) ? api : undefined;
       if (
         checkedApi &&
-        carriesSovereignSpans({ agentId, spans: readSpans(), api: checkedApi, payload, built })
+        carriesSovereignSpans({
+          agentId,
+          spans: readSpans(),
+          api: checkedApi,
+          payload,
+          builtConfig,
+        })
       ) {
         onSovereignVerification?.(finalPayloadVerified(checkedApi));
       } else {
@@ -311,7 +315,7 @@ export function wrapStreamFnWithSovereignRequestCheck(
       ...options,
       onPayload: async (payload, payloadModel) => {
         // Read before the outer chain runs: a hook can edit the built request in place.
-        built = payload;
+        builtConfig = isRecord(payload) && isRecord(payload.config);
         const replacement = await originalOnPayload?.(payload, payloadModel);
         api = payloadModel.api;
         assertPayload(replacement === undefined ? payload : replacement);
