@@ -78,12 +78,16 @@ export function withEphemeralCodexAuthStore(params: {
   return args === startOptions.args ? startOptions : { ...startOptions, args };
 }
 
+/**
+ * OpenClaw spawned this app-server as its stdio child, so no other client can load its
+ * threads. Codex keeps loaded threads per process, whichever home it shares.
+ */
+export function isOwnedCodexAppServerProcess(start: CodexAppServerStartOptions): boolean {
+  return start.transport === "stdio" && !isCodexAppServerProxyLaunch(start.args);
+}
+
 export function usesManagedCodexThreadUnloading(start: CodexAppServerStartOptions): boolean {
-  return (
-    start.transport === "stdio" &&
-    start.homeScope !== "user" &&
-    !isCodexAppServerProxyLaunch(start.args)
-  );
+  return isOwnedCodexAppServerProcess(start) && start.homeScope !== "user";
 }
 
 // OpenClaw retains warm/child subscriptions; native post-release caching is redundant.

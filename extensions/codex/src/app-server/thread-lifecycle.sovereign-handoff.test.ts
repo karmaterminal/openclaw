@@ -582,8 +582,9 @@ describe.skipIf(process.platform === "win32")("Codex route: sovereign handoff ch
     // Codex ignores resume overrides on a thread another client still holds, or a running one,
     // and answers as for any resume (codex-rs app-server thread_processor.rs,
     // resume_running_thread). A resume earns handoff-verified only for a thread seen unloaded:
-    // cold before the request, or reloaded during it. An external server reloads in place.
-    const external = () => {
+    // cold before the request, or reloaded during it. A user home keeps Codex's own idle
+    // retention, so its server reloads in place.
+    const userHome = () => {
       const appServer = appServerOptions();
       return {
         appServer: { ...appServer, start: { ...appServer.start, homeScope: "user" as const } },
@@ -616,7 +617,7 @@ describe.skipIf(process.platform === "win32")("Codex route: sovereign handoff ch
     it("refuses a thread another client holds, with no handoff-verified and no load record", async () => {
       const { client, request, input } = await loadedThread("held", true);
 
-      const error = await start(client, input, external()).catch((cause: unknown) => cause);
+      const error = await start(client, input, userHome()).catch((cause: unknown) => cause);
 
       expect(error).toMatchObject({
         name: "CodexThreadPolicyHandoffError",
@@ -641,7 +642,7 @@ describe.skipIf(process.platform === "win32")("Codex route: sovereign handoff ch
         activeFlags: [],
       });
 
-      const error = await start(client, input, external()).catch((cause: unknown) => cause);
+      const error = await start(client, input, userHome()).catch((cause: unknown) => cause);
 
       expect(error).toMatchObject({ name: "CodexAdoptedThreadActiveError" });
       expect(methods(request)).toEqual([...PREFLIGHT, "thread/read"]);
@@ -651,7 +652,7 @@ describe.skipIf(process.platform === "win32")("Codex route: sovereign handoff ch
     it("credits a loaded thread that Codex reloads cold for the resume", async () => {
       const { client, request, input } = await loadedThread("reloaded", false);
 
-      const resumed = await start(client, input, external());
+      const resumed = await start(client, input, userHome());
 
       expect(methods(request)).toEqual([
         ...PREFLIGHT,
@@ -664,6 +665,73 @@ describe.skipIf(process.platform === "win32")("Codex route: sovereign handoff ch
       expect(loadRecord(input, client, "thread-loaded")).toMatchObject({
         verification: verification("live_thread_reuse"),
       });
+    });
+  });
+
+  describe("a resume on an app-server other clients can reach", () => {
+    // Another client can load the thread between OpenClaw's thread/read and its thread/resume;
+    // Codex then ignores the resume's instructions, and its answer names none in effect
+    // (codex-rs ThreadResumeResponse; thread_processor.rs, resume_running_thread). Only an
+    // app-server OpenClaw spawned over stdio has no other client.
+    const shared = {
+      websocket: { transport: "websocket" as const, url: "ws://127.0.0.1:4500" },
+      unix: { transport: "unix" as const, homeScope: "user" as const },
+      "stdio proxy": { args: ["app-server", "proxy"] },
+    };
+    const on = (start: (typeof shared)[keyof typeof shared]) => {
+      const appServer = appServerOptions();
+      return { appServer: { ...appServer, start: { ...appServer.start, ...start } } };
+    };
+    async function boundSession(agentId: string, session: string) {
+      const harness = await createAgentLifecycleHarness({
+        respond: respond("thread-shared"),
+        persistedThreads: ["thread-shared"],
+      });
+      const input = attempt(agentId, session);
+      await writeBinding(input, "thread-shared");
+      return { ...harness, input };
+    }
+
+    it.each(Object.entries(shared))(
+      "refuses an enforce agent's resume on a %s server before anything is read",
+      async (name, transport) => {
+        const { client, request, input } = await boundSession("main", `shared-${name}`);
+
+        const outcome = await start(client, input, on(transport)).catch((cause: unknown) => cause);
+
+        // The preflight read alone never earns handoff-verified: nothing is read or resumed.
+        expect(outcome).not.toHaveProperty("sovereignReceipt");
+        expect(outcome).toMatchObject({
+          name: "SovereignPromptRefusal",
+          code: "route_unconverted",
+          details: { route: "codex:external-resume" },
+        });
+        expect(methods(request)).toEqual(PREFLIGHT);
+        await expect(readCodexAppServerBinding(input.sessionFile)).resolves.toMatchObject({
+          threadId: "thread-shared",
+        });
+      },
+    );
+
+    it("resumes an off agent there as before, with no receipt", async () => {
+      const { client, request, seed } = await createAgentLifecycleHarness({
+        respond: respond("thread-off-shared"),
+      });
+      const input = attempt("off", "shared-off");
+      await start(client, input, on(shared.websocket));
+      // The server unloaded the thread after the turn; the next turn resumes it cold.
+      seed(threadStartResult("thread-off-shared"));
+      request.mockClear();
+
+      const resumed = await start(client, input, on(shared.websocket));
+
+      expect(methods(request)).toEqual([
+        ...PREFLIGHT,
+        "thread/read",
+        "thread/resume",
+        "thread/inject_items",
+      ]);
+      expect(resumed.sovereignReceipt).toBeUndefined();
     });
   });
 
