@@ -1,4 +1,4 @@
-// Handoff verification on the Codex route (openclaw#1321, 🌻's ruling (c)). Codex builds the
+// Handoff verification on the Codex route (openclaw#1321). Codex builds the
 // provider request inside its binary, so OpenClaw checks the last request it controls: each
 // app-server handoff that carries the thread's instructions must carry every span of the
 // attempt's own validated render, or refuse before it is written. A reused thread keeps the
@@ -33,6 +33,7 @@ import {
   fixtureBody,
   writeSovereignGeneration,
 } from "./sovereign-generation.test-support.js";
+import { checkCodexUnrenderedThreadReuse } from "./sovereign-handoff.js";
 import {
   startOrResumeAttemptThreadWithoutSkills,
   type CodexAttemptThreadInput,
@@ -468,11 +469,9 @@ describe.skipIf(process.platform === "win32")("Codex route: sovereign handoff ch
     expect(methods(request).filter((method) => method.startsWith("thread/"))).toEqual([]);
   });
 
-  it.each([
-    { name: "checks", edit: undefined },
-    { name: "refuses an altered", edit: "alter" as const },
-  ])("$name supervised branch thread/start", async ({ edit }) => {
-    const input = attempt("main", `supervised-${edit ?? "verified"}`);
+  /** A session with a pending supervised branch, and a synthetic server for its handoffs. */
+  async function supervisedSession(session: string, incognito = false) {
+    const input = attempt("main", session, incognito);
     registerCodexTestSessionIdentity(
       input.sessionFile,
       input.params.sessionId,
@@ -480,13 +479,6 @@ describe.skipIf(process.platform === "win32")("Codex route: sovereign handoff ch
       input.params.agentId,
     );
     const identity = sessionBindingIdentity(input.params);
-    const pendingSupervisionBranch = {
-      connectionFingerprint: buildCodexAppServerConnectionFingerprint(
-        appServerOptions(),
-        input.params.agentDir,
-      ),
-      sourceThreadId: "thread-source",
-    };
     await testCodexAppServerBindingStore.mutate(identity, {
       kind: "set",
       if: { kind: "absent" },
@@ -496,7 +488,13 @@ describe.skipIf(process.platform === "win32")("Codex route: sovereign handoff ch
         connectionScope: "supervision",
         supervisionSourceThreadId: "thread-source",
         preserveNativeModel: true,
-        pendingSupervisionBranch,
+        pendingSupervisionBranch: {
+          connectionFingerprint: buildCodexAppServerConnectionFingerprint(
+            appServerOptions(),
+            input.params.agentDir,
+          ),
+          sourceThreadId: "thread-source",
+        },
         conversationSourceTransferComplete: true,
         historyCoveredThrough: new Date(0).toISOString(),
       },
@@ -532,9 +530,19 @@ describe.skipIf(process.platform === "win32")("Codex route: sovereign handoff ch
           throw new Error(`unexpected method: ${method}`);
       }
     });
+    return { input, identity, request, client: { request } as never };
+  }
+
+  it.each([
+    { name: "checks", edit: undefined },
+    { name: "refuses an altered", edit: "alter" as const },
+  ])("$name supervised branch thread/start", async ({ edit }) => {
+    const { input, identity, request, client } = await supervisedSession(
+      `supervised-${edit ?? "verified"}`,
+    );
     seams.edit = edit;
     try {
-      const outcome = await start({ request } as never, input).catch((cause: unknown) => cause);
+      const outcome = await start(client, input).catch((cause: unknown) => cause);
       if (edit) {
         expectRefused(outcome, "thread/start");
         expect(methods(request)).not.toContain("thread/start");
@@ -547,6 +555,23 @@ describe.skipIf(process.platform === "win32")("Codex route: sovereign handoff ch
           sovereignReceipt: { verification: verification("thread/start") },
         });
         expect(sent(request, "thread/start")[0]?.baseInstructions).toContain(IDENTITY);
+        // A native ephemeral branch is sent nothing on reuse, so its loading handoff
+        // vouches for it; a thread no checked handoff loaded refuses.
+        expect(checkCodexUnrenderedThreadReuse(input.params, client, "thread-final")).toMatchObject(
+          {
+            verification: verification("live_thread_reuse"),
+          },
+        );
+        expectRefused(
+          (() => {
+            try {
+              return checkCodexUnrenderedThreadReuse(input.params, client, "thread-probe");
+            } catch (error) {
+              return error;
+            }
+          })(),
+          "live_thread_reuse",
+        );
       }
     } finally {
       seams.edit = undefined;

@@ -1,4 +1,4 @@
-// The handoff check's contract (#1321, 🌻's ruling (c)): a harness hands it the spans of the
+// The handoff check's contract (#1321): a harness hands it the spans of the
 // render that built a handoff and the handoff's instruction carriers. A passed check
 // returns a content-free receipt; an enforce agent's handoff with no spans, another agent's
 // or generation's spans, or a lost span refuses with a content-free line; an off agent

@@ -38,9 +38,9 @@ import type { CodexAppServerThreadBinding } from "./session-binding.js";
 import { retainSharedCodexAppServerClientByInstanceId } from "./shared-client.js";
 import {
   checkCodexThreadHandoff,
-  checkCodexThreadReuse,
   checkCodexUnrenderedThreadReuse,
-  codexSovereignHandoffIdentity,
+  isCodexThreadLoadedBy,
+  refuseUnverifiedCodexThreadReuse,
 } from "./sovereign-handoff.js";
 import {
   fingerprintCodexThreadConfig,
@@ -398,7 +398,8 @@ export async function tryReuseCodexLiveThread(
       params.assertCurrent?.();
       const sovereignReceipt = checkCodexUnrenderedThreadReuse(
         params.params,
-        creationPolicy?.sovereignReceipt,
+        params.client,
+        binding.threadId,
       );
       return {
         kind: "ready",
@@ -597,17 +598,24 @@ export async function tryReuseCodexLiveThread(
       throw new CodexIncognitoPolicyChangeError();
     }
     // The thread keeps the instructions of the handoff that loaded it: this attempt's request
-    // must pass, and an ephemeral thread, which cannot resume cold, needs its creation to
-    // have passed. A refusal leaves the owner as it was.
+    // must pass, and so must that handoff. A persistent thread it did not load resumes cold
+    // and is checked again; an ephemeral one has no resume source and refuses. A refusal
+    // leaves the owner as it was.
     preserveSubscription = true;
-    const currentReceipt = checkCodexThreadHandoff(
+    const sovereignReceipt = checkCodexThreadHandoff(
       params.params,
       "live_thread_reuse",
       resumeParams,
     );
-    const sovereignReceipt = incognito
-      ? checkCodexThreadReuse(params.params, ephemeralPolicy?.sovereignReceipt, currentReceipt)
-      : currentReceipt;
+    if (
+      sovereignReceipt &&
+      !isCodexThreadLoadedBy(params.client, binding.threadId, sovereignReceipt)
+    ) {
+      if (!incognito) {
+        return { kind: "resume", prebuiltFinalConfigPatch };
+      }
+      refuseUnverifiedCodexThreadReuse(params.params);
+    }
     preserveSubscription = false;
     if (
       options.requireRestrictedThreadConfigFingerprint &&
@@ -639,7 +647,6 @@ export async function tryReuseCodexLiveThread(
           dynamicToolsFingerprint,
           binding,
           params,
-          codexSovereignHandoffIdentity(sovereignReceipt),
         );
     if (!incognito && retainedThread.configFingerprint !== liveThreadConfigFingerprint) {
       // Return the same owner first: cold-resume preparation must observe native teardown

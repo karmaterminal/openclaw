@@ -26,7 +26,7 @@ import type {
   CodexAppServerPendingSupervisionBranch,
   CodexAppServerThreadBinding,
 } from "./session-binding.js";
-import { checkCodexThreadHandoff } from "./sovereign-handoff.js";
+import { checkCodexThreadHandoff, recordCodexThreadLoad } from "./sovereign-handoff.js";
 import type { CodexThreadConfigurationOptions } from "./thread-configuration-options.js";
 import {
   CodexThreadBindingConflictError,
@@ -274,6 +274,7 @@ export async function materializePendingSupervisionBranch(
       otherThreadId: probeThreadId,
       role: "supervised branch",
     });
+    recordCodexThreadLoad(params.client, finalThreadId, sovereignReceipt);
     await trackPendingSupervisionArtifacts([finalThreadId]);
     params.throwIfAborted();
     const startResponse = assertCodexThreadStartResponse(rawStartResponse);

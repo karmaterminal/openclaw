@@ -1,5 +1,5 @@
 /**
- * Sovereign prompt handoff checks on the Codex route (openclaw#1321, 🌻's ruling (c)).
+ * Sovereign prompt handoff checks on the Codex route (openclaw#1321).
  *
  * Codex builds the provider request in its binary, so OpenClaw checks each app-server
  * handoff that carries a thread's instructions against the spans of the render that built
@@ -74,24 +74,45 @@ export function checkCodexPolicyRefresh(
   });
 }
 
-/**
- * A reused thread keeps the instructions of the handoff that loaded it. Reuse needs that
- * handoff to have passed for this agent's loaded generation; an enforce agent's reuse of a
- * thread no passed handoff loaded refuses (`undefined` for an agent with no sovereign text).
- */
-export function checkCodexThreadReuse(
-  attempt: CodexSovereignAttempt,
-  loadedBy: SovereignPromptHandoffReceipt | undefined,
-  current: SovereignPromptHandoffReceipt | undefined,
-): SovereignPromptHandoffReceipt | undefined {
-  if (
-    loadedBy &&
-    loadedBy.agentId === current?.agentId &&
-    loadedBy.setDigest === current.setDigest
-  ) {
-    return current;
+// The passed handoff that loaded each live thread, per client: a reused thread keeps the
+// instructions of the handoff that loaded it. Process-local like live threads (a restart
+// resumes cold, which is checked again); bounded above the client's live-thread capacity.
+const loadedThreads = new WeakMap<object, Map<string, SovereignPromptHandoffReceipt>>();
+const MAX_LOADED_THREADS = 256;
+
+/** Records the checked handoff that loaded `threadId`; one that passed no check clears it. */
+export function recordCodexThreadLoad(
+  client: object,
+  threadId: string,
+  receipt: SovereignPromptHandoffReceipt | undefined,
+): void {
+  const threads = loadedThreads.get(client) ?? new Map<string, SovereignPromptHandoffReceipt>();
+  loadedThreads.set(client, threads);
+  threads.delete(threadId);
+  if (receipt) {
+    threads.set(threadId, receipt);
   }
-  return checkSovereignPromptHandoff({
+  for (const oldest of threads.keys()) {
+    if (threads.size <= MAX_LOADED_THREADS) {
+      break;
+    }
+    threads.delete(oldest);
+  }
+}
+
+/** Whether a passed handoff for `receipt`'s agent and generation loaded the live thread. */
+export function isCodexThreadLoadedBy(
+  client: object,
+  threadId: string,
+  receipt: SovereignPromptHandoffReceipt,
+): boolean {
+  const loadedBy = loadedThreads.get(client)?.get(threadId);
+  return loadedBy?.agentId === receipt.agentId && loadedBy.setDigest === receipt.setDigest;
+}
+
+/** Refuses an enforce agent's reuse of a live thread no passed handoff loaded. */
+export function refuseUnverifiedCodexThreadReuse(attempt: CodexSovereignAttempt): void {
+  checkSovereignPromptHandoff({
     config: attempt.config,
     agentId: attempt.agentId,
     spans: undefined,
@@ -101,30 +122,19 @@ export function checkCodexThreadReuse(
 }
 
 /**
- * Reuse that renders nothing (a native ephemeral thread is sent nothing): the creating
- * handoff's receipt stands for this attempt only when it names this attempt's agent.
+ * Reuse that renders nothing (a native ephemeral thread is sent nothing) takes the loading
+ * handoff's receipt when it names this attempt's agent, and otherwise refuses for an enforce
+ * agent. `undefined` for an agent with no sovereign text.
  */
 export function checkCodexUnrenderedThreadReuse(
   attempt: CodexSovereignAttempt,
-  loadedBy: SovereignPromptHandoffReceipt | undefined,
+  client: object,
+  threadId: string,
 ): SovereignPromptHandoffReceipt | undefined {
-  const current =
-    loadedBy && loadedBy.agentId === attempt.agentId
-      ? {
-          ...loadedBy,
-          verification: loadedBy.verification && {
-            ...loadedBy.verification,
-            site: "live_thread_reuse",
-          },
-        }
-      : undefined;
-  return checkCodexThreadReuse(attempt, loadedBy, current);
-}
-
-/**
- * A live thread's fingerprint input: the passed handoff that loaded it. A thread handed
- * the same bytes without a passed check never matches, so it resumes cold and is checked.
- */
-export function codexSovereignHandoffIdentity(receipt: SovereignPromptHandoffReceipt | undefined) {
-  return receipt && { agentId: receipt.agentId, setDigest: receipt.setDigest };
+  const loadedBy = loadedThreads.get(client)?.get(threadId);
+  if (loadedBy?.verification && loadedBy.agentId === attempt.agentId) {
+    return { ...loadedBy, verification: { ...loadedBy.verification, site: "live_thread_reuse" } };
+  }
+  refuseUnverifiedCodexThreadReuse(attempt);
+  return undefined;
 }

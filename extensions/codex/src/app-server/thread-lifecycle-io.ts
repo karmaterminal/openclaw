@@ -38,7 +38,7 @@ import { getCurrentSharedClientEntry } from "./shared-client-lifecycle.js";
 import {
   checkCodexPolicyRefresh,
   checkCodexThreadHandoff,
-  codexSovereignHandoffIdentity,
+  recordCodexThreadLoad,
 } from "./sovereign-handoff.js";
 import { buildContextEngineBinding } from "./thread-context-engine.js";
 import {
@@ -307,6 +307,7 @@ export async function resumeExistingCodexThread(
       withCurrent: params.authority?.withCurrent,
     });
     policyOutcome = "acknowledged";
+    recordCodexThreadLoad(params.client, resumeBinding.threadId, sovereignReceipt);
     assertHandoffCurrent();
     const resumePatch = {
       // Resume moves native subscription ownership to this physical client.
@@ -381,7 +382,6 @@ export async function resumeExistingCodexThread(
           preserveNativeModel: resumeBinding.preserveNativeModel,
         },
         params,
-        codexSovereignHandoffIdentity(sovereignReceipt),
       ),
       ...(sovereignReceipt ? { sovereignReceipt } : {}),
       preparedOpenClawBaseInstructions: context.resolveOpenClawBaseInstructions(promptBinding),
@@ -561,6 +561,7 @@ export async function startFreshCodexThread(
   });
   const response = assertCodexThreadStartResponse(threadStartResponse);
   recordCodexThreadForkSettings(params.client, response.thread.id, startParams);
+  recordCodexThreadLoad(params.client, response.thread.id, sovereignReceipt);
   const provisionalAppIds = pluginThreadConfig?.provisionalAppIds;
   const rejectUncommittedThread = async (cause: unknown): Promise<never> => {
     const cleanupConfirmed = await discardUnattestedCodexPluginThread({
@@ -716,13 +717,10 @@ export async function startFreshCodexThread(
     ...(sovereignReceipt ? { sovereignReceipt } : {}),
     // Restricted ephemeral threads also need creation policy for fenced warm reuse.
     liveThreadEphemeralPolicy: startParams.ephemeral
-      ? {
-          ...createCodexEphemeralThreadPolicy(
-            { ...params, baseInstructions, config: startParams.config },
-            context.effectiveConfig.config,
-          ),
-          ...(sovereignReceipt ? { sovereignReceipt } : {}),
-        }
+      ? createCodexEphemeralThreadPolicy(
+          { ...params, baseInstructions, config: startParams.config },
+          context.effectiveConfig.config,
+        )
       : undefined,
     // Transient starts do not own the persisted binding, so their native
     // subscriptions must be released instead of entering the warm cache.
@@ -734,7 +732,6 @@ export async function startFreshCodexThread(
             dynamicToolsFingerprint,
             { model: response.model, modelProvider: bindingModelProvider ?? null },
             params,
-            codexSovereignHandoffIdentity(sovereignReceipt),
           ),
         }
       : {}),

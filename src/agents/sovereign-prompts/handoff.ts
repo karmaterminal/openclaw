@@ -1,6 +1,6 @@
 import type { SessionSystemPromptReport } from "../../config/sessions/session-system-prompt-report.js";
 /**
- * Handoff verification for sovereign prompts (openclaw#1321, 🌻's ruling (c)).
+ * Handoff verification for sovereign prompts (openclaw#1321, design § 7.1).
  *
  * Codex builds the provider request inside its binary, past anything OpenClaw can read, so
  * OpenClaw checks the last request it controls: each app-server handoff that carries the

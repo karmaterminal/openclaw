@@ -4,7 +4,6 @@ import {
   type CodexPluginThreadConfig,
 } from "./plugin-thread-config.js";
 import type { CodexAppServerThreadBinding } from "./session-binding.js";
-import { checkCodexThreadHandoff, codexSovereignHandoffIdentity } from "./sovereign-handoff.js";
 import {
   areCodexDynamicToolFingerprintsCompatible,
   fingerprintCodexThreadConfig,
@@ -100,10 +99,6 @@ export async function qualifyCodexProjectionBackgroundWork(
       context.dynamicToolsFingerprint,
       binding,
       params,
-      // As warm reuse fingerprints it: the live thread is kept only under a passed handoff.
-      codexSovereignHandoffIdentity(
-        checkCodexThreadHandoff(params.params, "live_thread_reuse", resumeParams),
-      ),
     ),
   )
     ? "retained"

@@ -1,9 +1,9 @@
 /**
- * Where each converted route checks sovereign spans (openclaw#1321, design § 7.1, 🌻's
- * ruling (c)). A route is converted only with a declared check: the embedded runtime checks
- * the settled provider request it builds (`final-payload`); Codex builds its provider request
- * inside its binary, so OpenClaw checks the last request it controls, each app-server handoff
- * that carries the thread's instructions (`handoff`), and names what stays unverified.
+ * Where each converted route checks sovereign spans (openclaw#1321, design § 7.1). A route
+ * is converted only with a declared check: the embedded runtime checks the settled provider
+ * request it builds (`final-payload`); Codex builds its provider request inside its binary,
+ * so OpenClaw checks the last request it controls, each app-server handoff that carries the
+ * thread's instructions (`handoff`), and names what stays unverified.
  *
  * A declaration says where a check runs; it is never a result. A passed check reports a
  * `*-verified` result into the run's prompt report.
