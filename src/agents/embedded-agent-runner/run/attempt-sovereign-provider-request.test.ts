@@ -458,14 +458,19 @@ describe.skipIf(process.platform === "win32")("embedded route: provider request 
       site: "google-vertex",
     });
 
-    // A getter on a sibling field the SDK reads after the check cannot change what it sends.
+    // A getter on a sibling field cannot change what the SDK sends. It edits only once the
+    // check has passed this send, so earlier reads by the outer chain cannot trip it first.
+    verification = undefined;
     edits.provider = (payload) => {
       const model = payload.model;
       return Object.defineProperty(payload, "model", {
         enumerable: true,
         configurable: true,
         get() {
-          (payload.config as Record<string, unknown>).systemInstruction = "Different instructions";
+          if (verification) {
+            (payload.config as Record<string, unknown>).systemInstruction =
+              "Different instructions";
+          }
           return model;
         },
       });
