@@ -2,8 +2,7 @@
 // the attempt's model-facing system prompt, the hot path never rereads it, and a provider
 // transform cannot alter a sovereign span.
 import fs from "node:fs";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.js";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../../config/types.js";
 import { resetSovereignRedactionForTests } from "../../../logging/sovereign-redaction.js";
 import { prepareSystemAgentRunAdmission } from "../../admitted-run-context.js";
@@ -13,10 +12,10 @@ import {
   body,
   capture,
   expectNoSentinel,
-  expectNoSentinelFilesSince,
   GENERATION,
   SENTINEL,
   sovereignAgentsConfig,
+  useSovereignTempDirs,
   writeAgentGeneration,
 } from "../../sovereign-prompts/sovereign-fixture.test-support.js";
 import { fakeTool } from "../../test-helpers/fake-tool.js";
@@ -38,10 +37,8 @@ vi.mock("../../../plugins/providers.runtime-core.js", () => ({
   }),
 }));
 
-const startedAt = Date.now();
-const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+const tempDirs = useSovereignTempDirs(afterEach);
 const admissions: Array<ReturnType<typeof prepareSystemAgentRunAdmission>> = [];
-afterAll(() => expectNoSentinelFilesSince(startedAt));
 afterEach(() => {
   for (const admission of admissions.splice(0)) {
     admission.close();

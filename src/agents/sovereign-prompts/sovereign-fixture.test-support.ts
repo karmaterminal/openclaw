@@ -1,13 +1,18 @@
 // Synthetic sovereign prompt generations and the sentinel check every case runs.
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { inspect } from "node:util";
 import { expect, vi } from "vitest";
+import { createTempDirTracker } from "../../../test/helpers/temp-dir.js";
 
 /** Every fixture body carries this token; no captured surface may ever show it. */
 export const SENTINEL = `sovereign-sentinel-${randomUUID()}`;
+
+// Roots and generation directories the fixture wrote, whose files carry the sentinel by
+// design. Keyed by device and inode, so a test that renames one keeps it a source.
+const sourceDirs = new Set<string>();
+const inodeKey = (stat: fs.Stats) => `${stat.dev}:${stat.ino}`;
 export const GENERATION = "20261107T120000Z-0123456789ab";
 const COMMIT = "0123456789ab".padEnd(40, "c");
 
@@ -54,6 +59,7 @@ export function writeGeneration(dir: string, spec: GenerationSpec = {}): void {
     ...spec.files,
   };
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  sourceDirs.add(inodeKey(fs.statSync(dir)));
   const entries: ManifestFile[] = [];
   for (const [file, content] of Object.entries(files)) {
     if (content === null) {
@@ -84,6 +90,7 @@ export function writeRoot(root: string, spec: GenerationSpec = {}): string {
   const dir = path.join(root, "generations", generation);
   writeGeneration(dir, spec);
   fs.writeFileSync(path.join(root, "CURRENT"), `${generation}\n`, { mode: 0o600 });
+  sourceDirs.add(inodeKey(fs.statSync(root)));
   return dir;
 }
 
@@ -179,40 +186,54 @@ export function expectNoSentinel(outcome: Outcome, forbidden: readonly string[] 
 }
 
 /**
- * Run once per file after fixtures are cleaned up: no file under the system temp root
- * written since `since` carries the sentinel. The token is unique per run, so the
- * one-minute margin for coarse file clocks costs nothing.
+ * The file-surface assertion: no file under `dirs` carries the sentinel, outside the roots
+ * and generations the fixture wrote. It reads `dirs` only and follows no symlink, so it
+ * never opens a file outside them (another test's, or another user's).
  */
-export function expectNoSentinelFilesSince(since: number): void {
+export function expectNoSentinelFilesIn(dirs: Iterable<string>): void {
   const leaked: string[] = [];
-  const walk = (dir: string, depth: number) => {
-    let entries: fs.Dirent[];
+  const walk = (dir: string) => {
+    let stat: fs.Stats;
     try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
+      stat = fs.lstatSync(dir);
     } catch {
+      // A case may remove its own fixture directory.
       return;
     }
-    for (const entry of entries) {
+    if (!stat.isDirectory() || sourceDirs.has(inodeKey(stat))) {
+      return;
+    }
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
-      if (entry.isDirectory() && depth < 8) {
-        walk(full, depth + 1);
-        continue;
-      }
-      try {
-        const stat = fs.lstatSync(full);
-        if (
-          stat.isFile() &&
-          stat.mtimeMs >= since - 60_000 &&
-          stat.size < 1 << 20 &&
-          fs.readFileSync(full, "utf8").includes(SENTINEL)
-        ) {
-          leaked.push(full);
-        }
-      } catch {
-        // Entries owned by concurrent tests can disappear mid-walk.
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.isFile() && fs.readFileSync(full).includes(SENTINEL)) {
+        leaked.push(full);
       }
     }
   };
-  walk(fs.realpathSync(os.tmpdir()), 0);
-  expect(leaked).toEqual([]);
+  for (const dir of dirs) {
+    walk(dir);
+  }
+  if (leaked.length > 0) {
+    throw new Error(`Files carry the sovereign sentinel:\n${leaked.join("\n")}`);
+  }
+}
+
+/**
+ * Temp dirs for one test file. After each test, before they are removed, every file a
+ * product path wrote under them must be free of the sentinel (`expectNoSentinelFilesIn`).
+ */
+export function useSovereignTempDirs(registerCleanup: (cleanup: () => void) => unknown) {
+  const tracker = createTempDirTracker();
+  registerCleanup(() => {
+    try {
+      expectNoSentinelFilesIn(tracker.dirs);
+    } finally {
+      tracker.cleanup();
+      // Removed directories free their inodes for reuse.
+      sourceDirs.clear();
+    }
+  });
+  return { dirs: tracker.dirs, make: tracker.make };
 }

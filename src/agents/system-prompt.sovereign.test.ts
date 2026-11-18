@@ -2,8 +2,7 @@
 // the stable-prefix cache, and the chokepoint's refusals, from real fixture generations.
 import path from "node:path";
 import { SYSTEM_PROMPT_CACHE_BOUNDARY } from "@openclaw/ai/internal/shared";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
-import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import { afterEach, describe, expect, it } from "vitest";
 import type { OpenClawConfig } from "../config/types.js";
 import {
   redactSovereignText,
@@ -18,18 +17,16 @@ import {
   body,
   capture,
   expectNoSentinel,
-  expectNoSentinelFilesSince,
   SENTINEL,
   sovereignAgentsConfig,
+  useSovereignTempDirs,
   writeAgentGeneration,
   type GenerationSpec,
 } from "./sovereign-prompts/sovereign-fixture.test-support.js";
 import { buildConfiguredAgentSystemPrompt } from "./system-prompt-config.js";
 import { buildAgentHarnessBasePrompt } from "./system-prompt-harness-base.js";
 
-const startedAt = Date.now();
-const tempDirs = useAutoCleanupTempDirTracker(afterEach);
-afterAll(() => expectNoSentinelFilesSince(startedAt));
+const tempDirs = useSovereignTempDirs(afterEach);
 afterEach(() => {
   resetSovereignPromptRuntimeForTests();
   resetSovereignRedactionForTests();

@@ -1,7 +1,6 @@
 // Echo surfaces never carry sovereign text (#1321, design § 5.4). A real render registers
 // its instances; each write point then hands out a copy with slot-and-digest markers.
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../config/types.js";
 import {
   getSecretRedactionRegistryRevision,
@@ -17,15 +16,13 @@ import { runAgentHarnessLlmInputHook } from "../harness/lifecycle-hook-helpers.j
 import { buildConfiguredAgentSystemPrompt } from "../system-prompt-config.js";
 import { resetSovereignPromptRuntimeForTests } from "./runtime.js";
 import {
-  expectNoSentinelFilesSince,
   SENTINEL,
   sovereignAgentsConfig,
+  useSovereignTempDirs,
   writeAgentGeneration,
 } from "./sovereign-fixture.test-support.js";
 
-const startedAt = Date.now();
-const tempDirs = useAutoCleanupTempDirTracker(afterEach);
-afterAll(() => expectNoSentinelFilesSince(startedAt));
+const tempDirs = useSovereignTempDirs(afterEach);
 afterEach(() => {
   vi.restoreAllMocks();
   resetSovereignPromptRuntimeForTests();

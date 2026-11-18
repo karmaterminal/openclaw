@@ -1,24 +1,21 @@
 // Harness routes (Codex) frame workspace files with their own preamble; a sovereign prompt
 // agent's personal USER.md line there is its own fragment, never the built-in one (#1321).
 import path from "node:path";
-import { afterAll, afterEach, expect, it, vi } from "vitest";
-import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
+import { afterEach, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../config/types.js";
 import { resetSovereignRedactionForTests } from "../../logging/sovereign-redaction.js";
 import * as bootstrapRuntime from "../bootstrap-files.js";
 import { resetSovereignPromptRuntimeForTests } from "../sovereign-prompts/runtime.js";
 import {
   body,
-  expectNoSentinelFilesSince,
   sovereignAgentsConfig,
+  useSovereignTempDirs,
   writeAgentGeneration,
 } from "../sovereign-prompts/sovereign-fixture.test-support.js";
 import { PERSONAL_USER_CONTEXT_INSTRUCTIONS } from "../system-prompt-context-files.js";
 import { prepareAgentWorkspaceContext } from "./workspace-context.js";
 
-const startedAt = Date.now();
-const tempDirs = useAutoCleanupTempDirTracker(afterEach);
-afterAll(() => expectNoSentinelFilesSince(startedAt));
+const tempDirs = useSovereignTempDirs(afterEach);
 afterEach(() => {
   vi.restoreAllMocks();
   resetSovereignPromptRuntimeForTests();

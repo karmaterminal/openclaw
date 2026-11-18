@@ -2,25 +2,22 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { inspect } from "node:util";
-import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadSovereignPromptSnapshot } from "./loader.js";
 import { SovereignPromptRefusal, SovereignPromptSnapshot } from "./snapshot.js";
 import {
   body,
   capture,
   expectNoSentinel,
-  expectNoSentinelFilesSince,
   GENERATION,
   SENTINEL,
+  useSovereignTempDirs,
   writeGeneration,
   writeRoot,
   type GenerationSpec,
 } from "./sovereign-fixture.test-support.js";
 
-const startedAt = Date.now();
-const tempDirs = useAutoCleanupTempDirTracker(afterEach);
-afterAll(() => expectNoSentinelFilesSince(startedAt));
+const tempDirs = useSovereignTempDirs(afterEach);
 
 const OTHER_GENERATION = "20261107T130000Z-0123456789ab";
 const TOOLING = "tool-section.d/tooling.md";

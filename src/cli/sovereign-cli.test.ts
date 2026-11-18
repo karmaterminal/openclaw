@@ -1,13 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   capture,
   expectNoSentinel,
-  expectNoSentinelFilesSince,
   GENERATION,
+  useSovereignTempDirs,
   writeGeneration,
   writeRoot,
 } from "../agents/sovereign-prompts/sovereign-fixture.test-support.js";
@@ -21,9 +20,7 @@ vi.mock("../config/config.js", async (importOriginal) => ({
   captureRuntimeConfigAsyncReader: () => async () => state.config,
 }));
 
-const startedAt = Date.now();
-const tempDirs = useAutoCleanupTempDirTracker(afterEach);
-afterAll(() => expectNoSentinelFilesSince(startedAt));
+const tempDirs = useSovereignTempDirs(afterEach);
 
 let agentDir = "";
 let root = "";

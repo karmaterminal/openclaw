@@ -2,8 +2,7 @@
 // the per-render view and receipts, on real files in temp directories.
 import fs from "node:fs";
 import path from "node:path";
-import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../config/types.js";
 import { resetSovereignRedactionForTests } from "../../logging/sovereign-redaction.js";
 import {
@@ -19,16 +18,14 @@ import { SovereignPromptRefusal } from "./snapshot.js";
 import {
   capture,
   expectNoSentinel,
-  expectNoSentinelFilesSince,
   SENTINEL,
   sovereignAgentsConfig,
+  useSovereignTempDirs,
   writeAgentGeneration,
   type GenerationSpec,
 } from "./sovereign-fixture.test-support.js";
 
-const startedAt = Date.now();
-const tempDirs = useAutoCleanupTempDirTracker(afterEach);
-afterAll(() => expectNoSentinelFilesSince(startedAt));
+const tempDirs = useSovereignTempDirs(afterEach);
 afterEach(() => {
   resetSovereignPromptRuntimeForTests();
   resetSovereignRedactionForTests();
