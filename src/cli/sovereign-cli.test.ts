@@ -3,6 +3,7 @@ import path from "node:path";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as loader from "../agents/sovereign-prompts/loader.js";
+import { describeSovereignPromptStatus } from "../agents/sovereign-prompts/runtime.js";
 import {
   capture,
   expectNoSentinel,
@@ -103,6 +104,47 @@ describe.skipIf(process.platform === "win32")("openclaw sovereign", () => {
     ]);
     expect(json.reserved.headings).toContain("# Project Context");
     expect(json.reserved.markers).toContain("<!-- openclaw:sovereign");
+  });
+
+  it("slots --json declares each route's verification boundary and executes none", async () => {
+    configure("enforce");
+    writeRoot(root);
+    const result = await run(["slots", "--json"]);
+    expect(result.exitCode).toBe(0);
+    expect(result.json().routes).toEqual([
+      {
+        route: "openclaw",
+        check: "final-payload",
+        boundary: "provider_request",
+        sites: [
+          "anthropic-messages",
+          "openai-completions",
+          "mistral-conversations",
+          "openai-responses",
+          "azure-openai-responses",
+          "openai-chatgpt-responses",
+          "google-generative-ai",
+          "google-vertex",
+          "google-interactions",
+        ],
+        unverified: [],
+      },
+      {
+        route: "codex",
+        check: "handoff",
+        boundary: "app_server_handoff",
+        sites: ["thread/start", "thread/resume", "thread/inject_items", "live_thread_reuse"],
+        unverified: ["codex_binary"],
+      },
+    ]);
+    // A declaration is not a receipt: no executed result, no load, no diagnostic line.
+    expect(result.output).not.toMatch(/-verified|"result"|SOVEREIGN_PROMPTS_/);
+    expect(describeSovereignPromptStatus()).toBeUndefined();
+    const text = await run(["slots"]);
+    expect(text.output).toContain(
+      "route codex: declared handoff check at app_server_handoff (thread/start, thread/resume, thread/inject_items, live_thread_reuse); unverified: codex_binary",
+    );
+    expect(text.output).not.toMatch(/-verified/);
   });
 
   it("check loads CURRENT's generation into content-free JSON", async () => {

@@ -271,6 +271,7 @@ export const databaseWorkerExtensionTestFiles = [
   "extensions/codex/src/app-server/thread-lifecycle.warm-cleanup.test.ts",
   "extensions/codex/src/app-server/thread-lifecycle.remote-hooks.test.ts",
   "extensions/codex/src/app-server/thread-lifecycle.native-config.test.ts",
+  "extensions/codex/src/app-server/thread-lifecycle.sovereign-handoff.test.ts",
   "extensions/codex/src/app-server/thread-shell-environment.native.test.ts",
   "extensions/codex/src/app-server/transport-process-registration.test.ts",
   "extensions/codex/src/app-server/transport-process-registration.procfs.test.ts",

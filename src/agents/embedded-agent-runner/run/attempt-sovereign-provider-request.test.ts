@@ -56,6 +56,7 @@ let afterSend: (() => void) | undefined;
 let originalHost: ReturnType<typeof getAiTransportHost>;
 
 beforeEach(() => {
+  verification = undefined;
   sent = [];
   replies = [];
   afterSend = undefined;
@@ -170,6 +171,9 @@ async function createSession(model: Model, systemPrompt: string) {
   return { session, settingsManager, modelRegistry, send };
 }
 
+/** The executed result the check last reported for the run's prompt report. */
+let verification: unknown;
+
 async function composeAttemptStream(params: {
   config: OpenClawConfig;
   model: Model;
@@ -203,6 +207,9 @@ async function composeAttemptStream(params: {
     sandboxSessionKey: "agent:main:sovereign-request",
     codeModeControlsEnabled: false,
     sovereignSpans: params.spans,
+    onSovereignVerification: (result) => {
+      verification = result;
+    },
     providerPromptState: { state: {}, effectiveContextTokenBudget: 200_000 },
   });
   return { send };
@@ -281,13 +288,22 @@ describe.skipIf(process.platform === "win32")("embedded route: provider request 
     for (const instance of spans!.instances) {
       expect(systemText(sent[0]!)).toContain(JSON.stringify(instance).slice(1, -1));
     }
+    // The executed result names the route, the boundary and the API builder it read.
+    expect(verification).toEqual({
+      result: "final-payload-verified",
+      route: "openclaw",
+      boundary: "provider_request",
+      site: "anthropic-messages",
+    });
 
     // A later send through the same chain is checked again: a hook that passed once
-    // and then edits the system text is caught before the second request leaves.
+    // and then edits the system text is caught before the second request leaves, and
+    // the run no longer reports a passed check.
     edits.hook = (payload) => ({ ...payload, system: "You are a different assistant." });
     const outcome = await capture(send);
     expect(outcome.value).toMatchObject(REFUSED);
     expect(sent).toHaveLength(1);
+    expect(verification).toBeUndefined();
     expectNoSentinel(outcome);
   });
 
@@ -377,6 +393,10 @@ describe.skipIf(process.platform === "win32")("embedded route: provider request 
     await send(undefined, { serviceTier: "priority" });
     expect(sent.map((request) => request.service_tier)).toEqual(["priority", "default"]);
     expect(JSON.stringify(sent[1])).toContain(SENTINEL);
+    expect(verification).toMatchObject({
+      result: "final-payload-verified",
+      site: "openai-responses",
+    });
 
     // This route resends its own copy, taken after the hooks: a hook that keeps the payload
     // and edits it after the first send cannot reach the resend, which is checked and sent
@@ -442,5 +462,6 @@ describe.skipIf(process.platform === "win32")("embedded route: provider request 
     await send();
     expect(sent).toHaveLength(1);
     expect(sent[0]!.system).toBe("Hook-chosen system text.");
+    expect(verification).toBeUndefined();
   });
 });
