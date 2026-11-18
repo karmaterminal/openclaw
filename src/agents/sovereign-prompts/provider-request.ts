@@ -256,10 +256,10 @@ function isResponsesContinuationDelta(api: string, sent: unknown): boolean {
   );
 }
 
-/** The request the encoded bytes carry, as the provider parses it. */
-function parseSentRequest(body: Uint8Array): unknown {
+/** The request the sent JSON carries, as the provider parses it. */
+function parseSentRequest(json: string): unknown {
   try {
-    return JSON.parse(new TextDecoder().decode(body));
+    return JSON.parse(json);
   } catch {
     // Not JSON: nothing the check can read, so it refuses. The parse error quotes the body,
     // so it never reaches the run's error.
@@ -363,8 +363,10 @@ const checkedEncoders = new WeakMap<EncodeModelRequestBody, EncodeModelRequestBo
  * again on the bytes of each encoded attempt, which covers resends that skip the hook (a
  * slower service tier, stripped reasoning), and sends exactly the bytes it checked. Any other
  * transport, core or plugin, serializes the request itself or through an SDK: it is handed a
- * detached copy of plain data, checked, so what it serializes is what was read. A refusal
- * throws before any byte is sent.
+ * detached copy of plain data, checked, so what it serializes is what was read. One that still
+ * edits that copy before sending (the Google transports materialize video across the whole
+ * request) hands the JSON it sends to `admitModelRequestBody`, and those bytes are checked
+ * again. A refusal throws before any byte is sent.
  *
  * Each passed check reports `final-payload-verified` with the API it read; a refusal
  * withdraws it, so the run's prompt report holds the outcome of its latest check.
@@ -440,18 +442,22 @@ export function wrapStreamFnWithSovereignRequestCheck(
     const bodyState = modelRequestBodyState(checkedOptions);
     const current = bodyState.encode;
     const encode = current && checkedEncoders.has(current) ? checkedEncoders.get(current) : current;
-    const checkedEncode: EncodeModelRequestBody = async (payload) => {
-      const encoded = encode ? await encode(payload) : serializeModelRequestBody(payload);
-      const sent = parseSentRequest(encoded.body);
+    const assertSent = (json: string) => {
+      const sent = parseSentRequest(json);
       // A Responses continuation sends only new input after `previous_response_id`; the
       // provider reuses the stored prefix the hook check above already passed.
       if (!isResponsesContinuationDelta(api, sent)) {
         assertPayload(sent);
       }
+    };
+    const checkedEncode: EncodeModelRequestBody = async (payload) => {
+      const encoded = encode ? await encode(payload) : serializeModelRequestBody(payload);
+      assertSent(new TextDecoder().decode(encoded.body));
       return encoded;
     };
     checkedEncoders.set(checkedEncode, encode);
     bodyState.encode = checkedEncode;
+    bodyState.admit = assertSent;
     return streamFn(model, context, checkedOptions);
   };
 }

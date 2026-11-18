@@ -513,6 +513,133 @@ describe.skipIf(process.platform === "win32")("sovereign enforce: Google native 
     },
   );
 
+  // The plugin's transports materialize video after the check, across the whole request: a part
+  // marked as video is replaced, whole, by the omission text (openclaw#1571 review 5966532014).
+  // Each hook leaves every instruction text in place and adds only plain data, so the check before
+  // materialization passes; the instruction that would have been sent has lost its text.
+  const INJECTED_VIDEO = { mimeType: "video/mp4", data: "AA==" };
+  type GeminiContent = { parts: Record<string, unknown>[] };
+  const besideEachText = (payload: Record<string, unknown>) => {
+    for (const part of (payload.systemInstruction as GeminiContent).parts) {
+      if (typeof part.text === "string") {
+        part.inlineData = INJECTED_VIDEO;
+      }
+    }
+  };
+  // The instruction's own text part, shared into the user turn and marked there.
+  const sharedWithUserTurn = (payload: Record<string, unknown>) => {
+    const userParts = (payload.contents as GeminiContent[])[0]!.parts;
+    userParts.push((payload.systemInstruction as GeminiContent).parts[0]!);
+    userParts.at(-1)!.inlineData = INJECTED_VIDEO;
+  };
+  const onInstructionContent = (payload: Record<string, unknown>) => {
+    (payload.systemInstruction as Record<string, unknown>).inlineData = INJECTED_VIDEO;
+  };
+  const GEMINI_INSTRUCTION_EDITS = [
+    { mark: "a video beside each instruction text", edit: besideEachText },
+    { mark: "the instruction text part shared into the user turn", edit: sharedWithUserTurn },
+    { mark: "a video on the instruction content itself", edit: onInstructionContent },
+  ];
+  it.each([
+    ...GEMINI_INSTRUCTION_EDITS.flatMap((row) =>
+      [
+        { route: "Gemini API", model: geminiApi },
+        { route: "Vertex", model: vertex },
+      ].map((route) => ({ ...route, ...row, errorCode: "transform_altered" })),
+    ),
+    // Interactions carries the instruction as a string member of the request itself, so the
+    // object a video mark there would replace is the whole request. The wrapper drops the code.
+    {
+      route: "Interactions",
+      model: interactions,
+      mark: "a video type on the request that carries the instruction",
+      errorCode: undefined,
+      edit: (payload: Record<string, unknown>) => {
+        payload.type = "video";
+      },
+    },
+  ])("$route: $mark sends nothing", async ({ model, errorCode, edit }) => {
+    const { send } = await composeAttempt({
+      config: writeAgent("enforce"),
+      model,
+      plugin: googlePlugin,
+    });
+    hook = (payload) => {
+      edit(payload);
+      return undefined;
+    };
+
+    const outcome = await capture(() => send(TEXT_TURN));
+    // The instruction each send carried, had one gone out: the omission text in its place.
+    expect(sent.map(({ body }) => body.systemInstruction ?? body.system_instruction)).toEqual([]);
+    expect(verification).toBeUndefined();
+    expect(outcome.value).toMatchObject(errorCode ? { ...REFUSED, errorCode } : REFUSED);
+    expect(logged.join("\n")).toContain(REFUSED_LOG);
+    expectNoSentinel(outcome);
+  });
+
+  // Materialization still omits a video a hook adds where it does not take the instruction with
+  // it: in the user turn, or as a part of its own beside the instruction text, which the check
+  // passes like any text a hook adds around the spans.
+  it.each([
+    {
+      route: "Gemini API",
+      model: geminiApi,
+      instruction: (body: Record<string, unknown>) => body.systemInstruction,
+      edit: (payload: Record<string, unknown>) => {
+        (payload.contents as GeminiContent[])[0]!.parts.push({ inlineData: INJECTED_VIDEO });
+        (payload.systemInstruction as GeminiContent).parts.push({ inlineData: INJECTED_VIDEO });
+      },
+      userParts: [{ text: "Reply OK" }, { text: VIDEO_OMITTED }],
+    },
+    {
+      route: "Vertex",
+      model: vertex,
+      instruction: (body: Record<string, unknown>) => body.systemInstruction,
+      edit: (payload: Record<string, unknown>) => {
+        (payload.contents as GeminiContent[])[0]!.parts.push({ inlineData: INJECTED_VIDEO });
+        (payload.systemInstruction as GeminiContent).parts.push({ inlineData: INJECTED_VIDEO });
+      },
+      userParts: [{ text: "Reply OK" }, { text: VIDEO_OMITTED }],
+    },
+    {
+      route: "Interactions",
+      model: interactions,
+      instruction: (body: Record<string, unknown>) => body.system_instruction,
+      edit: (payload: Record<string, unknown>) => {
+        const [step] = payload.input as { content: unknown[] }[];
+        step!.content.push({ type: "video", mime_type: "video/mp4", data: "AA==" });
+      },
+      userParts: [
+        { type: "text", text: "Reply OK" },
+        { type: "text", text: VIDEO_OMITTED },
+      ],
+    },
+  ])(
+    "$route: a video a hook adds beside the instruction is omitted and the request is sent",
+    async ({ model, instruction, edit, userParts }) => {
+      const { send } = await composeAttempt({
+        config: writeAgent("enforce"),
+        model,
+        plugin: googlePlugin,
+      });
+      hook = (payload) => {
+        edit(payload);
+        return undefined;
+      };
+
+      await send(TEXT_TURN);
+      expect(sent).toHaveLength(1);
+      const { body } = sent[0]!;
+      expect(
+        model.api === "google-interactions" ? interactionsParts(body) : geminiParts(body),
+      ).toEqual(userParts);
+      expect(JSON.stringify(instruction(body))).toContain(SENTINEL);
+      expect(withoutOmission(body)).not.toMatch(/video|AA==/i);
+      expect(verification).toMatchObject({ result: "final-payload-verified", site: model.api });
+    },
+  );
+
   // Only the Google SDK builder merges `config.httpOptions.extraBody` into the body it serializes
   // (openclaw#1571 review 5964056490, finding 2); the plugin's REST and Interactions routes send
   // the plain body. An extra body naming the instruction, by either JSON name, sends nothing.

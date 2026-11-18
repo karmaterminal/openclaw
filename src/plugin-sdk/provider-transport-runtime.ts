@@ -23,6 +23,7 @@ export {
   buildGoogleGenerationConfig,
   buildGoogleSimpleThinking,
 } from "@openclaw/ai/internal/google";
+export { admitModelRequestBody } from "@openclaw/ai/internal/model-request-body";
 export {
   applyProviderPayloadHook,
   coerceTransportToolCallArguments,

@@ -20,6 +20,7 @@ import {
 } from "openclaw/plugin-sdk/provider-http";
 import { omitNullRequestHeaders } from "openclaw/plugin-sdk/provider-request-headers";
 import {
+  admitModelRequestBody,
   buildAssistantMessage,
   buildGoogleGenerationConfig,
   buildGoogleSimpleThinking,
@@ -443,7 +444,11 @@ async function openGoogleSseAttempt(params: {
     const response = await params.guardedFetch(params.url, {
       method: "POST",
       headers: params.headers,
-      body: serializeGoogleRequest(params.request, params.videoSlots),
+      // The exact bytes this attempt sends, after video materialization and shedding.
+      body: admitModelRequestBody(
+        params.options,
+        serializeGoogleRequest(params.request, params.videoSlots),
+      ),
       signal,
     });
     // Response hooks share the first-response deadline. A stalled hook must cancel

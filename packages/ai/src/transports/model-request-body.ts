@@ -94,6 +94,7 @@ type ModelRequestBodyState = {
   reportsBytes?: boolean;
   encode?: (payload: unknown) => Promise<EncodedModelRequestBody>;
   onBytes?: (bytes: number) => void;
+  admit?: (json: string) => void;
 };
 
 /** Call-local state survives option spreads; no payload is cached across requests. */
@@ -124,6 +125,19 @@ export function withModelRequestBodyBytes(
     }
     return fetch(input, init);
   };
+}
+
+/**
+ * A transport that serializes its own request hands the JSON it sends here, after the last edit
+ * it makes past `onPayload`, so the host can refuse those exact bytes by throwing. A host-encoded
+ * transport needs no call: its encoder already sees each body.
+ */
+export function admitModelRequestBody(options: object | undefined, json: string): string {
+  // SAFETY: Only this module writes the private symbol, always with ModelRequestBodyState.
+  const state =
+    options && (Reflect.get(options, REQUEST_BODY) as ModelRequestBodyState | undefined);
+  state?.admit?.(json);
+  return json;
 }
 
 export function serializeModelRequestBody(
