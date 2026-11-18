@@ -55,15 +55,17 @@ function strictAgentId(agentId: string | undefined): string | undefined {
 
 /**
  * The agent a render or check is for: the named one, or for a call that names none, the
- * owner OpenClaw resolves without a selection (the recorded system agent, the legacy
- * default, or the sole agent). `undefined` when none resolves (§ 4.6): an invalid id, or
- * a fleet with no owner.
+ * owner OpenClaw resolves without a selection (an explicit fleet's recorded system agent,
+ * the legacy default, or the sole agent) when that owner is `off`. `undefined` when none
+ * resolves (§ 4.6): an invalid id, a fleet with no owner, or a sovereign owner, since an
+ * agent's sovereign text is only ever rendered for a call that names it.
  */
 function resolveCheckedAgentId(config: OpenClawConfig | undefined, agentId: string | undefined) {
   if (agentId?.trim()) {
     return strictAgentId(agentId);
   }
-  return config ? strictAgentId(tryResolveAgentOperationAgentId(config)) : undefined;
+  const owner = config ? strictAgentId(tryResolveAgentOperationAgentId(config)) : undefined;
+  return owner && !isSovereignAgentId(config, owner) ? owner : undefined;
 }
 
 function configuredMode(config: OpenClawConfig | undefined, agentId: string) {
@@ -142,13 +144,17 @@ export function loadSovereignPromptsForProcess(
   return agents;
 }
 
-/** True when this agent renders sovereign text in this process; reads no file. */
+/**
+ * True when a render for this call comes from a snapshot or is refused, never from code
+ * text: the agent is sovereign, or no agent resolves for the call while this process has
+ * a sovereign agent, as the renderer chokepoint decides it. Reads no file.
+ */
 export function isSovereignPromptAgent(
   config: OpenClawConfig | undefined,
   agentId: string | undefined,
 ): boolean {
   const id = resolveCheckedAgentId(config, agentId);
-  return Boolean(id && isSovereignAgentId(config, id));
+  return id ? isSovereignAgentId(config, id) : hasSovereignAgent(config);
 }
 
 /**
@@ -184,22 +190,16 @@ export function resolveSovereignPromptSnapshot(params: {
   return state.snapshot;
 }
 
-/**
- * For a refusal check: the resolved agent's own state, or when no agent resolves, whether
- * this process has any sovereign agent, as the renderer chokepoint decides it.
- */
-function checksAsSovereign(config: OpenClawConfig | undefined, agentId: string | undefined) {
-  const id = resolveCheckedAgentId(config, agentId);
-  return id ? isSovereignAgentId(config, id) : hasSovereignAgent(config);
-}
-
 /** Fails a run routed where no test proves the loaded text reaches the model (§ 7.3). */
 export function assertSovereignPromptRoute(params: {
   config?: OpenClawConfig;
   agentId?: string;
   route: string;
 }): void {
-  if (!CONVERTED_ROUTES.has(params.route) && checksAsSovereign(params.config, params.agentId)) {
+  if (
+    !CONVERTED_ROUTES.has(params.route) &&
+    isSovereignPromptAgent(params.config, params.agentId)
+  ) {
     throw new SovereignPromptRefusal("route_unconverted", { route: params.route });
   }
 }
@@ -228,7 +228,7 @@ export function assertSovereignPromptNotReplaced(
   agentId: string | undefined,
   site: string,
 ): void {
-  if (checksAsSovereign(config, agentId)) {
+  if (isSovereignPromptAgent(config, agentId)) {
     throw new SovereignPromptRefusal("sovereign_override_denied", { site });
   }
 }

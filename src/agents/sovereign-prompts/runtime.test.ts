@@ -231,7 +231,7 @@ describe.skipIf(process.platform === "win32")("sovereign prompt process registry
     );
   });
 
-  it("decides a call that names no agent by the agent OpenClaw resolves for it", () => {
+  it("renders stock for an agentless call an off owner resolves for, and never an enforce owner's text", () => {
     const main = writeAgent("main");
     const prince = writeAgent("prince");
     const entries = {
@@ -250,9 +250,13 @@ describe.skipIf(process.platform === "win32")("sovereign prompt process registry
       () => assertSovereignPromptRoute({ config: offOwner, agentId: "prince", route: "cli" }),
       "route_unconverted",
     );
-    // An enforce owner's agentless call is its own: its snapshot, and its checks.
+    // An enforce owner's text is never handed to a call that does not name it: that call alone
+    // is refused, while a call naming the owner gets its snapshot.
     const enforceOwner = fleet("prince", entries);
-    expect(resolveSovereignPromptSnapshot({ config: enforceOwner })?.agentId).toBe("prince");
+    expectRefusal(() => resolveSovereignPromptSnapshot({ config: enforceOwner }), "agent_unknown");
+    expect(
+      resolveSovereignPromptSnapshot({ config: enforceOwner, agentId: "prince" })?.agentId,
+    ).toBe("prince");
     expect(isSovereignPromptAgent(enforceOwner, undefined)).toBe(true);
     expectRefusal(
       () => assertSovereignPromptRoute({ config: enforceOwner, route: "cli" }),
@@ -273,6 +277,7 @@ describe.skipIf(process.platform === "win32")("sovereign prompt process registry
       prince: { agentDir: prince.agentDir, mode: "enforce" },
     });
     for (const agentId of [undefined, "%%%"]) {
+      expect(isSovereignPromptAgent(ownerless, agentId)).toBe(true);
       expectRefusal(
         () => resolveSovereignPromptSnapshot({ config: ownerless, agentId }),
         "agent_unknown",
