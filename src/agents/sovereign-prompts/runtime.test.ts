@@ -281,6 +281,13 @@ describe.skipIf(process.platform === "win32")("sovereign prompt process registry
       main: { agentDir: writeAgent("main").agentDir },
       prince: { agentDir: writeAgent("prince", ownIdentity("prince")).agentDir, mode: "enforce" },
     } as const;
+    // Current config alone counts: before any load, and after a load with no enforce agent
+    // when hot reload adds one.
+    expectNamelessRefused(fleet("main", entries));
+    const allOff = { main: entries.main, prince: { agentDir: entries.prince.agentDir } };
+    loadSovereignPromptsForProcess(fleet("main", allOff), { log: recordingLog() });
+    expectNamelessRefused(fleet("main", entries));
+    resetSovereignPromptRuntimeForTests();
     loadSovereignPromptsForProcess(fleet("main", entries), { log: recordingLog() });
     for (const owner of ["main", "prince", undefined]) {
       const config = fleet(owner, entries);

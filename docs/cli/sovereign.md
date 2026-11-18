@@ -147,11 +147,12 @@ native error text, or names outside the registry.
   built-in identity line there) refuse with `route_unconverted`.
 - **Which agent.** An agent's files render only for a call that names that agent.
   A render or check that names no agent, or an invalid one, is refused while any
-  agent is `enforce`, counting one loaded as `enforce` that config has since turned
-  off, until restart: a render with `agent_unknown`, a route or replacement check
-  with `route_unconverted` or `sovereign_override_denied`. No default agent stands in
-  for the missing id, so neither built-in text nor another agent's files reach that
-  call. A call that names an `off` agent is unaffected.
+  agent is `enforce`, counting one that was `enforce` when the process read its
+  files (loaded or refused) even after config turns it off, until restart. The render
+  fails with `agent_unknown`, a run on an unconverted route with `route_unconverted`,
+  and a whole-prompt replacement with `sovereign_override_denied`. No default agent
+  stands in for the missing id, so neither built-in text nor another agent's files
+  reach that call. A call that names an `off` agent is unaffected.
 - **No replacement.** A plugin hook that replaces the whole prompt fails the run
   with `sovereign_override_denied`; prepend and append still apply. A provider
   transform that alters a sovereign span fails with `transform_altered`.
