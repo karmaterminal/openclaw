@@ -138,13 +138,30 @@ describe.skipIf(process.platform === "win32")("sovereign echo surfaces", () => {
       sessionFile: "/tmp/session.jsonl",
       env: { OPENCLAW_TRAJECTORY: "1" },
     });
+    // A provider SDK error is a class instance whose message and body echo the request; a
+    // payload can also reference one object twice. Sinks project both to plain data.
+    const providerError = () =>
+      Object.assign(new Error(`request rejected: ${prompt}`), { body: { system: prompt } });
+    const shared = { system: prompt };
     recorder?.recordEvent("context.compiled", { systemPrompt: prompt, messages: [{ prompt }] });
-    expect(lines).toHaveLength(1);
-    expect(lines[0]).not.toContain(SENTINEL);
-    expect(lines[0]).toMatch(MARKER);
+    recorder?.recordEvent("model.failed", {
+      error: providerError(),
+      first: shared,
+      second: shared,
+    });
+    expect(lines).toHaveLength(2);
+    for (const line of lines) {
+      expect(line).not.toContain(SENTINEL);
+      expect(line).toMatch(MARKER);
+    }
 
     const diagnostic = JSON.stringify(
-      redactAgentDiagnosticPayload({ system: prompt, error: { body: `echo: ${prompt}` } }),
+      redactAgentDiagnosticPayload({
+        system: prompt,
+        error: providerError(),
+        first: shared,
+        second: shared,
+      }),
     );
     expect(diagnostic).not.toContain(SENTINEL);
     expect(diagnostic).toMatch(MARKER);

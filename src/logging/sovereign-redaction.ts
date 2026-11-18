@@ -60,44 +60,67 @@ export function redactSovereignText(text: string | undefined): string | undefine
   return redacted;
 }
 
-function redactValue(value: unknown, depth: number, seen: WeakSet<object>): unknown {
+/** Own data properties, non-enumerable ones too, as the diagnostic projection reads them. */
+function ownDataEntries(value: object): [string, unknown][] {
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype === Object.prototype || prototype === null) {
+    return Object.entries(value);
+  }
+  return Object.getOwnPropertyNames(value).flatMap((key) => {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    return descriptor && "value" in descriptor
+      ? [[key, descriptor.value] as [string, unknown]]
+      : [];
+  });
+}
+
+function redactValue(value: unknown, depth: number, memo: Map<object, unknown>): unknown {
   if (typeof value === "string") {
     return redactSovereignText(value);
   }
-  if (typeof value !== "object" || value === null || depth > MAX_VALUE_DEPTH || seen.has(value)) {
+  if (typeof value !== "object" || value === null || depth > MAX_VALUE_DEPTH) {
     return value;
   }
+  // A shared reference reuses its result; a cycle back to an ancestor keeps the edge.
+  if (memo.has(value)) {
+    return memo.get(value);
+  }
+  if (ArrayBuffer.isView(value) || value instanceof Date || value instanceof RegExp) {
+    return value;
+  }
+  memo.set(value, value);
+  let result: unknown;
   if (Array.isArray(value)) {
-    seen.add(value);
     let changed = false;
     const items = value.map((item) => {
-      const next = redactValue(item, depth + 1, seen);
+      const next = redactValue(item, depth + 1, memo);
       changed ||= next !== item;
       return next;
     });
-    return changed ? items : value;
+    result = changed ? items : value;
+  } else {
+    let changed = false;
+    const entries = ownDataEntries(value).map(([key, item]) => {
+      const next = redactValue(item, depth + 1, memo);
+      changed ||= next !== item;
+      return [key, next] as const;
+    });
+    // Sanitizers project class instances (provider errors echoing a request) to plain data,
+    // so a changed instance becomes that plain copy, with the sovereign spans replaced.
+    result = changed ? Object.fromEntries(entries) : value;
   }
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) {
-    return value;
-  }
-  seen.add(value);
-  let changed = false;
-  const entries = Object.entries(value).map(([key, item]) => {
-    const next = redactValue(item, depth + 1, seen);
-    changed ||= next !== item;
-    return [key, next] as const;
-  });
-  return changed ? Object.fromEntries(entries) : value;
+  memo.set(value, result);
+  return result;
 }
 
 /**
- * Redacts strings inside plain objects and arrays, returning the input itself when
- * nothing matched. Class instances pass through untouched; their owners redact.
+ * Redacts strings inside objects and arrays, returning the input itself when nothing
+ * matched. An object that held a sovereign span comes back as a plain copy.
  */
 export function redactSovereignValue<T>(value: T): T {
-  // SAFETY: redaction only replaces string leaves, so the shape and types are unchanged.
-  return state.markers.size === 0 ? value : (redactValue(value, 0, new WeakSet()) as T);
+  // SAFETY: only string leaves change; a changed object becomes a plain copy of its own data
+  // properties, which is what every diagnostic and trajectory sink serializes anyway.
+  return state.markers.size === 0 ? value : (redactValue(value, 0, new Map()) as T);
 }
 
 export function resetSovereignRedactionForTests(): void {
