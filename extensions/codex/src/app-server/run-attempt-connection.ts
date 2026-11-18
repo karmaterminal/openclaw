@@ -132,6 +132,7 @@ export async function prepareCodexAttemptConnection({ params, options }: CodexRu
     options.clientFactory ??
     (workerHostedCloud && sandbox
       ? createCodexWorkerClientFactory({
+          attempt: params,
           runtime: options.runtime,
           permissionMode: params.permissionMode,
           sandbox,

@@ -709,8 +709,12 @@ export async function prepareCodexAttemptPrompt(context: CodexAttemptContext) {
       parentLocalEgress = !usesSupervisionConnection;
       Object.assign(systemPromptReport, buildSystemPromptReport(!workspaceReferencesIncluded));
     },
-    /** Pending supervision probes its native model during startup, after the estimate. */
+    /**
+     * Pending supervision probes its native model during startup, after the estimate. The
+     * thread's sovereign handoff receipt stays through later rebuilds, which never set it.
+     */
     adoptThreadBaseInstructions: (thread: CodexAppServerThreadLifecycleBinding) => {
+      systemPromptReport.sovereign = thread.sovereignReceipt;
       reportedOpenClawBaseInstructions = thread.preparedOpenClawBaseInstructions;
       baseInDeveloperCarrier = hasAuthoredCodexBaseInstructions({
         nativeConfig: thread.preparedEffectiveConfig,

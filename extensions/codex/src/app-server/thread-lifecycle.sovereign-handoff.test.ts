@@ -10,6 +10,7 @@ import { inspect } from "node:util";
 import type * as AgentHarnessRuntime from "openclaw/plugin-sdk/agent-harness-runtime";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { retainCodexAppServerLiveThread } from "./client-runtime.js";
+import { buildCodexAppServerConnectionFingerprint } from "./plugin-app-cache-key.js";
 import {
   createAgentLifecycleHarness,
   createParams as createRunAttemptParams,
@@ -20,6 +21,8 @@ import {
 import {
   readCodexAppServerBinding,
   registerCodexTestSessionIdentity,
+  sessionBindingIdentity,
+  testCodexAppServerBindingStore,
   writeCodexAppServerBinding,
 } from "./session-binding.test-helpers.js";
 import {
@@ -427,6 +430,91 @@ describe.skipIf(process.platform === "win32")("Codex route: sovereign handoff ch
 
     expectRefused(error, "live_thread_reuse");
     expect(methods(request).filter((method) => method.startsWith("thread/"))).toEqual([]);
+  });
+
+  it.each([
+    { name: "checks", edit: undefined },
+    { name: "refuses an altered", edit: "alter" as const },
+  ])("$name supervised branch thread/start", async ({ edit }) => {
+    const input = attempt("main", `supervised-${edit ?? "verified"}`);
+    registerCodexTestSessionIdentity(
+      input.sessionFile,
+      input.params.sessionId,
+      input.params.sessionKey,
+      input.params.agentId,
+    );
+    const identity = sessionBindingIdentity(input.params);
+    const pendingSupervisionBranch = {
+      connectionFingerprint: buildCodexAppServerConnectionFingerprint(
+        appServerOptions(),
+        input.params.agentDir,
+      ),
+      sourceThreadId: "thread-source",
+    };
+    await testCodexAppServerBindingStore.mutate(identity, {
+      kind: "set",
+      if: { kind: "absent" },
+      binding: {
+        threadId: "thread-source",
+        cwd: input.workspaceDir,
+        connectionScope: "supervision",
+        supervisionSourceThreadId: "thread-source",
+        preserveNativeModel: true,
+        pendingSupervisionBranch,
+        conversationSourceTransferComplete: true,
+        historyCoveredThrough: new Date(0).toISOString(),
+      },
+    });
+    const native = (threadId: string) => {
+      const result = threadStartResult(threadId);
+      return {
+        ...result,
+        model: "gpt-5.6-luna",
+        modelProvider: "openai",
+        thread: { ...result.thread, modelProvider: "openai" },
+      };
+    };
+    const request = vi.fn(async (method: string) => {
+      switch (method) {
+        case "config/read":
+          return { config: {}, origins: {}, layers: [] };
+        case "configRequirements/read":
+          return { requirements: null };
+        case "thread/read":
+          return {
+            thread: { ...native("thread-source").thread, status: { type: "idle" }, turns: [] },
+          };
+        case "thread/fork":
+          return native("thread-probe");
+        case "thread/start":
+          return native("thread-final");
+        case "thread/unsubscribe":
+        case "thread/archive":
+        case "thread/inject_items":
+          return {};
+        default:
+          throw new Error(`unexpected method: ${method}`);
+      }
+    });
+    seams.edit = edit;
+    try {
+      const outcome = await start({ request } as never, input).catch((cause: unknown) => cause);
+      if (edit) {
+        expectRefused(outcome, "thread/start");
+        expect(methods(request)).not.toContain("thread/start");
+        expect(testCodexAppServerBindingStore.read(identity)).toMatchObject({
+          pendingSupervisionBranch: { sourceThreadId: "thread-source" },
+        });
+      } else {
+        expect(outcome).toMatchObject({
+          threadId: "thread-final",
+          sovereignReceipt: { verification: verification("thread/start") },
+        });
+        expect(sent(request, "thread/start")[0]?.baseInstructions).toContain(IDENTITY);
+      }
+    } finally {
+      seams.edit = undefined;
+    }
   });
 
   it("leaves an off agent's handoffs as they were and records no result", async () => {

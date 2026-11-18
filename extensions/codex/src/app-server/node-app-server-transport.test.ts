@@ -33,6 +33,7 @@ afterEach(async () => {
 
 async function connect(
   start?: (factory: CodexAppServerClientFactory) => Promise<CodexAppServerClient>,
+  attempt: Parameters<typeof createCodexWorkerClientFactory>[0]["attempt"] = { agentId: "main" },
 ) {
   const { configVersion } = provisionWorker();
   const closed = Promise.withResolvers<void>();
@@ -106,6 +107,7 @@ async function connect(
     placementOwnerEpoch: 1,
   };
   const factory = createCodexWorkerClientFactory({
+    attempt,
     runtime,
     permissionMode: "full",
     sandbox,
@@ -132,6 +134,22 @@ async function connect(
     deliver: async (value: unknown) => receive?.(Buffer.from(JSON.stringify(value))),
   };
 }
+
+it("refuses an enforce agent's worker-hosted app-server before opening the duplex (#1321)", async () => {
+  const start = vi.fn();
+  // Sovereign text never leaves the Gateway host; an off agent is unaffected (cases below).
+  await expect(
+    connect(start, {
+      agentId: "main",
+      config: { agents: { entries: { main: { sovereignPrompts: { mode: "enforce" } } } } },
+    }),
+  ).rejects.toMatchObject({
+    name: "SovereignPromptRefusal",
+    code: "route_unconverted",
+    details: { route: "codex:worker-hosted" },
+  });
+  expect(start).not.toHaveBeenCalled();
+});
 
 it("uses the versioned placement duplex and joins caller-owned probe shutdown", async () => {
   const fixture = await connect();

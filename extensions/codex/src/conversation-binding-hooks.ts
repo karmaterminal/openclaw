@@ -24,6 +24,9 @@ import {
 import type { resumeCodexCliSessionOnNode } from "./node-cli-sessions.js";
 
 const loadSandboxGuard = createLazyRuntimeModule(() => import("./app-server/sandbox-guard.js"));
+const loadHarnessRuntime = createLazyRuntimeModule(
+  () => import("openclaw/plugin-sdk/agent-harness-runtime"),
+);
 const loadBindingInspection = createLazyRuntimeModule(
   () => import("openclaw/plugin-sdk/conversation-binding-inspection-runtime"),
 );
@@ -81,6 +84,19 @@ export async function handleCodexConversationInboundClaim(
   }
   const sessionKey = event.sessionKey ?? ctx.sessionKey;
   try {
+    // A bound conversation runs on Codex's own base, never the agent's sovereign files, so
+    // an enforce agent's message refuses before any handoff (openclaw#1321).
+    (await loadHarnessRuntime()).assertSovereignPromptRoute({
+      config: options.config,
+      agentId:
+        data.kind === "codex-cli-node-session"
+          ? data.agentId
+          : (data.source?.agentId ?? data.agentId),
+      route:
+        data.kind === "codex-cli-node-session"
+          ? "codex:cli-node-session"
+          : "codex:conversation-binding",
+    });
     if (data.kind === "codex-cli-node-session") {
       const text = await getNodeConversationState().queue.enqueue(
         `${data.nodeId}:${data.sessionId}`,
