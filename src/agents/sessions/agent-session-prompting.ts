@@ -6,6 +6,7 @@ import {
 } from "../../auto-reply/reply/message-injection-authority.js";
 import { throwCollectedErrors } from "../../infra/error-graph-internal.js";
 import type { ImageContent, TextContent } from "../../llm/types.js";
+import { redactSovereignText, redactSovereignValue } from "../../logging/sovereign-redaction.js";
 import { attachRuntimePromptMediaFacts, type MediaFact } from "../../media/media-facts.js";
 import type { PromptImageOrderEntry } from "../../media/prompt-image-order.js";
 import { readRuntimePromptImageFactIndexes } from "../../media/runtime-prompt-image-provenance.js";
@@ -396,11 +397,12 @@ export abstract class AgentSessionPrompting extends AgentSessionBase {
       messages.push(...pendingContextMessages);
       this.pendingNextTurnMessages = [];
 
+      // Extensions observe sovereign spans as markers, as plugin hooks do (openclaw#1321).
       const result = await this.currentExtensionRunner.emitBeforeAgentStart(
         expandedText,
         currentImages,
-        this.baseSystemPrompt,
-        this.baseSystemPromptOptions,
+        redactSovereignText(this.baseSystemPrompt),
+        redactSovereignValue(this.baseSystemPromptOptions),
       );
       if (result?.messages) {
         for (const msg of result.messages) {

@@ -1,18 +1,21 @@
 // Whole-prompt replacement for a sovereign prompt agent fails the run (#1321, design
 // question 6): the embedded before_prompt_build site and the session-extension
 // before_agent_start site. Prepend and append stay allowed; an off agent's replacement
-// still applies.
+// still applies. Session extensions observe sovereign spans as markers (§ 5.4).
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
 } from "../../../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../../../config/types.js";
+import { resetSovereignRedactionForTests } from "../../../logging/sovereign-redaction.js";
 import type { PluginHookBeforePromptBuildResult } from "../../../plugins/hook-before-agent-start.types.js";
 import { createHookRunner } from "../../../plugins/hooks.js";
 import { prepareSystemAgentRunAdmission } from "../../admitted-run-context.js";
 import { forgetPromptBuildDrainCacheForRun } from "../../plugin-turn-context.js";
 import {
+  createAssistant,
+  createAssistantResultStream,
   createTestSession,
   registerAgentSessionLoopTestLifecycle,
   streamMocks,
@@ -23,6 +26,13 @@ import {
   resetSovereignPromptRuntimeForTests,
 } from "../../sovereign-prompts/runtime.js";
 import { SovereignPromptRefusal } from "../../sovereign-prompts/snapshot.js";
+import {
+  SENTINEL,
+  sovereignAgentsConfig,
+  useSovereignTempDirs,
+  writeAgentGeneration,
+} from "../../sovereign-prompts/sovereign-fixture.test-support.js";
+import { buildConfiguredAgentSystemPrompt } from "../../system-prompt-config.js";
 import { createStubTool } from "../../test-helpers/agent-tool-stubs.js";
 import { prepareEmbeddedAttemptPromptAssembly } from "./attempt-prompt-build.js";
 
@@ -31,9 +41,11 @@ vi.mock("../../../plugins/host-hook-state.js", () => ({
 }));
 
 registerAgentSessionLoopTestLifecycle();
+const tempDirs = useSovereignTempDirs(afterEach);
 afterEach(() => {
   clearRuntimeConfigSnapshot();
   resetSovereignPromptRuntimeForTests();
+  resetSovereignRedactionForTests();
 });
 
 // The switch alone decides; no generation is read at these sites.
@@ -148,5 +160,46 @@ describe("sovereign whole-prompt replacement", () => {
       details: { site: "before_agent_start" },
     });
     expect(streamMocks.streamSimple).not.toHaveBeenCalled();
+  });
+
+  it("session extensions see sovereign spans as markers; the model still gets the prompt", async () => {
+    const agentDir = tempDirs.make("openclaw-sovereign-extension-");
+    writeAgentGeneration(agentDir, "main");
+    const config = sovereignAgentsConfig({ main: { agentDir, mode: "enforce" } }) as OpenClawConfig;
+    // A real render registers the instances the redactor masks.
+    const prompt = await buildConfiguredAgentSystemPrompt({
+      config,
+      agentId: "main",
+      workspaceDir: "/openclaw-sovereign-fixture/workspace",
+      toolNames: ["read"],
+    });
+    expect(prompt).toContain(SENTINEL);
+    let modelPrompt: string | undefined;
+    streamMocks.streamSimple.mockImplementation((model, context) => {
+      modelPrompt = context.systemPrompt;
+      return createAssistantResultStream(createAssistant(model, "Done."));
+    });
+    const views: Record<string, unknown> = {};
+    const { session } = await createTestSession({
+      systemPrompt: prompt,
+      extension: (api) => {
+        api.on("before_agent_start", async (event, ctx) => {
+          views.event = event.systemPrompt;
+          views.options = event.systemPromptOptions.customPrompt;
+          views.eventContext = ctx.getSystemPrompt();
+        });
+        api.on("agent_end", async (_event, ctx) => {
+          views.context = ctx.getSystemPrompt();
+        });
+      },
+    });
+    await session.prompt("hello");
+    expect(modelPrompt).toBe(prompt);
+    expect(Object.keys(views).toSorted()).toEqual(["context", "event", "eventContext", "options"]);
+    for (const [name, view] of Object.entries(views)) {
+      expect(typeof view, name).toBe("string");
+      expect(view, name).not.toContain(SENTINEL);
+      expect(view, name).toMatch(/<!-- openclaw:sovereign identity\/opening sha256:[0-9a-f]{12} /);
+    }
   });
 });
