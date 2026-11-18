@@ -44,7 +44,22 @@ const seams = vi.hoisted(() => ({
   edit: undefined as "alter" | "other-agent" | undefined,
   /** A handoff path that skips the check, so the thread's instructions are unverified. */
   unchecked: false,
+  /** The developer policy refresh loses its policy text after the resume was checked. */
+  emptyRefresh: false,
 }));
+
+vi.mock("./thread-policy.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./thread-policy.js")>();
+  return {
+    ...actual,
+    refreshCodexThreadPolicy: (params: Parameters<typeof actual.refreshCodexThreadPolicy>[0]) =>
+      actual.refreshCodexThreadPolicy(
+        seams.emptyRefresh
+          ? { ...params, developerInstructions: "<thread_policy>\n\n</thread_policy>" }
+          : params,
+      ),
+  };
+});
 
 vi.mock("openclaw/plugin-sdk/agent-harness-runtime", async (importOriginal) => {
   const actual = await importOriginal<typeof AgentHarnessRuntime>();
@@ -331,6 +346,27 @@ describe.skipIf(process.platform === "win32")("Codex route: sovereign handoff ch
     // The resumed history still holds its creation-time policy; the refresh carries this one.
     expect(injectedText(request)).toContain(JSON.stringify(IDENTITY).slice(1, -1));
     expect(resumed.sovereignReceipt?.verification).toEqual(verification("thread/resume"));
+  });
+
+  it("refuses a policy refresh that lost the span behind an authored base before it is injected", async () => {
+    const { client, request } = await createAgentLifecycleHarness({
+      respond: respond("thread-existing", { instructions: "Operator-authored base" }),
+      persistedThreads: ["thread-existing"],
+    });
+    const input = attempt("main", "refresh");
+    await writeBinding(input, "thread-existing");
+    seams.emptyRefresh = true;
+    try {
+      const error = await start(client, input).catch((cause: unknown) => cause);
+      // The resume was written and checked; its refresh is refused, and the resumed
+      // subscription is released as for any failed policy handoff.
+      expect(error).toMatchObject({ name: "CodexThreadPolicyHandoffError" });
+      expectRefused((error as Error).cause, "thread/inject_items");
+    } finally {
+      seams.emptyRefresh = false;
+    }
+    expect(methods(request)).toContain("thread/resume");
+    expect(methods(request)).not.toContain("thread/inject_items");
   });
 
   it("reuses a live thread loaded by a passed handoff without writing, and records the reuse", async () => {
