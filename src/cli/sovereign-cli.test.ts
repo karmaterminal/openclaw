@@ -2,10 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as loader from "../agents/sovereign-prompts/loader.js";
 import {
   capture,
   expectNoSentinel,
   GENERATION,
+  SENTINEL,
   useSovereignTempDirs,
   writeGeneration,
   writeRoot,
@@ -114,6 +116,26 @@ describe.skipIf(process.platform === "win32")("openclaw sovereign", () => {
       generation: GENERATION,
       files: expect.arrayContaining([expect.objectContaining({ path: "identity-section.md" })]),
     });
+  });
+
+  it("check reports an unexpected load failure as io_error, never its native message", async () => {
+    writeRoot(root);
+    const load = vi.spyOn(loader, "loadSovereignPromptSnapshot").mockImplementation(() => {
+      throw new TypeError(`cannot read ${root}: ${SENTINEL}`);
+    });
+    try {
+      const result = await run(["check", "--agent", "main", "--json"], [root, "cannot read"]);
+      expect(result.exitCode).toBe(1);
+      expect(result.json()).toEqual({
+        ok: false,
+        event: "sovereign_prompts.refused",
+        agentId: "main",
+        code: "io_error",
+        errno: "EUNKNOWN",
+      });
+    } finally {
+      load.mockRestore();
+    }
   });
 
   it("check refuses a candidate generation with its code and a nonzero exit", async () => {

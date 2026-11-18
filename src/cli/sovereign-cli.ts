@@ -4,6 +4,7 @@ import { theme } from "../../packages/terminal-core/src/theme.js";
 import {
   loadSovereignPromptSnapshot,
   resolveSovereignPromptTarget,
+  toSovereignPromptRefusal,
 } from "../agents/sovereign-prompts/loader.js";
 import { describeSovereignPromptRegistry } from "../agents/sovereign-prompts/registry.js";
 import {
@@ -32,15 +33,14 @@ async function runSovereignCommand(
 ): Promise<void> {
   let agentId = opts.agent;
   let result: SovereignResult;
+  const config = await captureRuntimeConfigAsyncReader()();
   try {
-    const target = resolveSovereignPromptTarget(await captureRuntimeConfigAsyncReader()(), agentId);
+    const target = resolveSovereignPromptTarget(config, agentId);
     agentId = target.agentId;
     result = run(target);
   } catch (error) {
-    if (!(error instanceof SovereignPromptRefusal)) {
-      throw error;
-    }
-    result = refusedResult(agentId, error);
+    // An unexpected failure is io_error too (§ 5.2), so native error text never prints.
+    result = refusedResult(agentId, toSovereignPromptRefusal(error));
   }
   if (opts.json) {
     defaultRuntime.writeJson(result.payload);
