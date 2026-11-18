@@ -2,10 +2,10 @@ import path from "node:path";
 import type { Command } from "commander";
 import { theme } from "../../packages/terminal-core/src/theme.js";
 import {
-  loadAgentSovereignPrompts,
   loadSovereignPromptSnapshot,
   resolveSovereignPromptTarget,
 } from "../agents/sovereign-prompts/loader.js";
+import { describeSovereignPromptRegistry } from "../agents/sovereign-prompts/registry.js";
 import {
   describeSovereignPromptsLoaded,
   describeSovereignPromptsRefused,
@@ -71,6 +71,7 @@ export function registerSovereignCli(program: Command) {
             "openclaw sovereign check --agent main --generation <dir> --json",
             "Check a candidate generation before publishing it.",
           ],
+          ["openclaw sovereign slots --json", "List the slots this build declares and renders."],
         ])}\n${formatDocsHelp("/cli/sovereign")}`,
     );
 
@@ -80,24 +81,11 @@ export function registerSovereignCli(program: Command) {
     .requiredOption("--agent <id>", "Agent id")
     .option("--json", "Print JSON", false)
     .action(async (opts: SovereignOptions) => {
-      await runSovereignCommand(opts, (target) => {
-        const { agentId, mode, root, current, generations } = target;
-        const startup = loadAgentSovereignPrompts(target);
-        const lines = [`agent: ${agentId}`, `mode: ${mode}`, `root: ${root}`];
-        if (startup.state === "refused") {
-          const refused = refusedResult(agentId, startup.refusal);
-          return {
-            ok: false,
-            payload: { ...refused.payload, mode, root, current, generations },
-            lines: [...lines, ...refused.lines],
-          };
-        }
-        return {
-          ok: true,
-          payload: { ok: true, agentId, mode, state: startup.state, root, current, generations },
-          lines,
-        };
-      });
+      await runSovereignCommand(opts, ({ agentId, mode, root, current, generations }) => ({
+        ok: true,
+        payload: { ok: true, agentId, mode, root, current, generations },
+        lines: [`agent: ${agentId}`, `mode: ${mode}`, `root: ${root}`],
+      }));
     });
 
   sovereign
@@ -125,5 +113,25 @@ export function registerSovereignCli(program: Command) {
         const { line, fields } = describeSovereignPromptsLoaded(snapshot);
         return { ok: true, payload: { ok: true, ...fields }, lines: [line] };
       });
+    });
+
+  sovereign
+    .command("slots")
+    .description("List the slots, files and reserved tokens this build declares; reads no file")
+    .option("--json", "Print JSON", false)
+    .action((opts: { json?: boolean }) => {
+      const registry = describeSovereignPromptRegistry();
+      if (opts.json) {
+        defaultRuntime.writeJson({ ok: true, ...registry });
+        return;
+      }
+      defaultRuntime.log(
+        registry.slots
+          .map(
+            ({ slot, files, required, phase, converted }) =>
+              `${slot} phase=${phase}${required ? " required" : ""}${converted ? " converted" : ""}: ${files.join(", ")}`,
+          )
+          .join("\n"),
+      );
     });
 }

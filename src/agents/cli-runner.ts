@@ -75,6 +75,7 @@ import {
 } from "./harness/lifecycle-hook-helpers.js";
 import { isRequiredReplyExpectation, resolveReplyExpectation } from "./reply-completion.js";
 import { isAgentRunDirectAbortReason } from "./run-termination.js";
+import { assertSovereignPromptRoute } from "./sovereign-prompts/runtime.js";
 import {
   createAdmittedGatewayToolCallerIdentity,
   withGatewayToolCallerIdentity,
@@ -120,6 +121,9 @@ async function runCliAgentInternal(
   diagnosticLifecycle?: ClaudeCliRunDiagnosticLifecycle,
 ): Promise<EmbeddedAgentRunResult> {
   assertAgentRunLifecycleGenerationCurrent(params.lifecycleGeneration!);
+  // No test proves a CLI transport carries sovereign text, and node-host placement would
+  // send it off the Gateway host, so CLI runs refuse `enforce` agents up front.
+  assertSovereignPromptRoute({ config: params.config, agentId: params.agentId, route: "cli" });
   // The hook gate must fire before prepareCliRunContext — that call allocates
   // backend resources released only by runPreparedCliAgent's try…finally.
   await params.onExecutionStarted?.();

@@ -98,6 +98,11 @@ export interface AgentSessionConfig {
   ) => ThinkingLevel;
   /** Whether disposing this object ends the durable provider session. Defaults to true. */
   cleanupProviderSessionResourcesOnDispose?: boolean;
+  /**
+   * Throws to fail an extension's whole-prompt replacement instead of applying it, as
+   * the runtime owner does for sovereign prompt agents (openclaw#1321).
+   */
+  assertSystemPromptReplacementAllowed?: () => void;
 }
 
 export interface ExtensionBindings {

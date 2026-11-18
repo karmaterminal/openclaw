@@ -34,6 +34,10 @@ import {
   unwrapModelHeaderSentinelsForProviderEgress,
   unwrapSecretSentinelsForProviderEgress,
 } from "../provider-secret-egress.js";
+import {
+  assertSovereignPromptRoute,
+  resolveSovereignPromptHarnessRoute,
+} from "../sovereign-prompts/runtime.js";
 import type { SystemAgentToolOptions } from "../tools/system-agent-tool.js";
 import { copyCoreTtsAttemptResultProvenance } from "../tools/tts-tool-result-provenance.js";
 import { createOpenClawAgentHarness, isBuiltInOpenClawAgentHarness } from "./builtin-openclaw.js";
@@ -252,6 +256,17 @@ export async function runAgentHarnessAttempt(
           preparedModelProvider: params.runtimePlan?.auth !== undefined,
         });
   const harness = selection.harness;
+  // Sovereign prompt route admission (openclaw#1321, design § 4.6): refuse an `enforce`
+  // agent's run on a route that does not carry its loaded text, before any preparation.
+  assertSovereignPromptRoute({
+    config: params.config,
+    agentId: params.agentId,
+    route: resolveSovereignPromptHarnessRoute({
+      harnessId: harness.id,
+      ringZero: Boolean(internalParams.systemAgentTool),
+      promptMode: params.promptMode,
+    }),
+  });
   // Capture this registration before any awaited preparation; IDs and dispatch methods
   // do not establish that an external sink understands separate question permission.
   const queueInputAdapter = selection.builtIn

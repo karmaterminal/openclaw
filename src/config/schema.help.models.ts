@@ -169,7 +169,7 @@ export const MODEL_FIELD_HELP: Record<string, string> = {
   "agents.entries.*.sovereignPrompts":
     "Sovereign prompt loading for this agent: its own prompt files, loaded once at start from <agentDir>/sovereign/systemprompts and checked mechanically. Inspect with openclaw sovereign paths and openclaw sovereign check.",
   "agents.entries.*.sovereignPrompts.mode":
-    'Only "off" (the default) is accepted until the phase A wiring slice lands: it renders the built-in prompt text and reads no sovereign file. Config validation refuses "enforce" on this build; the wiring slice accepts it in the same change that makes the runtime load sovereign files.',
+    '"off" (the default) renders the built-in prompt text and reads no sovereign file. "enforce" loads the agent\'s current generation once at Gateway start and renders its files in place of the built-in identity, policy and workspace-file framing text. A missing, empty or invalid required file refuses that agent, never the Gateway, with a content-free code; nothing falls back to built-in text. Runs on a route that cannot carry the files (CLI backends, worker or node placement, harnesses other than the embedded runtime and Codex) are refused. Changes take effect at the next Gateway start.',
   "agents.defaults.cwd":
     "Working directory for agent reply runs, separate from workspace bootstrap and memory files. Agent-specific cwd and session-spawned cwd take precedence. Supports ~ and relative paths; a distinct cwd requires an unsandboxed run.",
   "agents.defaults.skipBootstrap":

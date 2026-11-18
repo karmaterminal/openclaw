@@ -31,6 +31,10 @@ import { buildModelToolsUnavailablePrompt } from "../../model-tool-support.js";
 import { prepareProjectMemoryBootstrap } from "../../project-memory-bootstrap.js";
 import { resolveAgentPromptSurfaceForSessionKey } from "../../prompt-surface.js";
 import { resolveAgentRuntimePrompt } from "../../runtime-prompt.js";
+import {
+  describeSovereignPromptReceipt,
+  resolveSovereignPromptSnapshot,
+} from "../../sovereign-prompts/runtime.js";
 import { buildSubagentStandingInstructions } from "../../subagents/spawn/subagent-system-prompt.js";
 import type { buildConfiguredAgentSystemPrompt } from "../../system-prompt-config.js";
 import { buildSystemPromptReport } from "../../system-prompt-report.js";
@@ -466,6 +470,11 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
   };
   const attemptSystemPrompt = await buildAttemptSystemPrompt(promptInputs);
   assertPreparationCurrent();
+  // The render already refused an agent without a loaded snapshot; this reads the receipt.
+  const sovereignSnapshot = resolveSovereignPromptSnapshot({
+    config: attempt.config,
+    agentId: params.setup.sessionAgentId,
+  });
   phases.mark("attempt.system-prompt.report");
   const reportInputs: Parameters<typeof buildSystemPromptReport>[0] = {
     source: "run",
@@ -487,6 +496,7 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
     skillsPrompt: attemptSystemPrompt.skillsPrompt,
     tools: params.effectiveTools,
     catalogEntries: params.toolSearchCatalogRef?.current?.entries,
+    ...(sovereignSnapshot ? { sovereign: describeSovereignPromptReceipt(sovereignSnapshot) } : {}),
   };
   const systemPromptReport = buildSystemPromptReport(reportInputs);
   params.setup.prepStages?.mark("system-prompt");

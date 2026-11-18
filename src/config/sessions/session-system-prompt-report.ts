@@ -22,6 +22,22 @@ export type SessionSystemPromptReport = {
     mode?: string;
     sandboxed?: boolean;
   };
+  /**
+   * The sovereign prompt generation this prompt rendered from (openclaw#1321). Names,
+   * sizes and digests only; `converted: false` files were validated but not rendered.
+   */
+  sovereign?: {
+    generation: string;
+    setDigest: string;
+    bytes: number;
+    files: ReadonlyArray<{
+      path: string;
+      slot: string;
+      bytes: number;
+      sha256: string;
+      converted: boolean;
+    }>;
+  };
   systemPrompt: {
     chars: number;
     projectContextChars: number;

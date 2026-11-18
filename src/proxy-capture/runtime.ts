@@ -7,6 +7,7 @@ import {
   hasRegisteredSecretValuesForRedaction,
   redactRegisteredSecretValues,
 } from "../logging/secret-redaction-registry.js";
+import { redactSovereignText } from "../logging/sovereign-redaction.js";
 import { warnPluginSdkDeprecation } from "../plugins/sdk-deprecation.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { resolveEnabledDebugProxySettings, type DebugProxySettings } from "./env.js";
@@ -126,7 +127,10 @@ function redactCaptureUrl(rawUrl: string): string {
 }
 
 function redactCaptureText(value: string): string {
-  return redactRegisteredSecretValues(value, () => REDACTED_CAPTURE_HEADER_VALUE);
+  return redactRegisteredSecretValues(
+    redactSovereignText(value),
+    () => REDACTED_CAPTURE_HEADER_VALUE,
+  );
 }
 
 function redactCapturePayload(value: string | Buffer | null | undefined): string | Buffer | null {

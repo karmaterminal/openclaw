@@ -4,11 +4,20 @@
  * Reuses the regular prompt's policy sections and omits every turn, channel,
  * workspace, and catalog fact: those keep their own harness carriers, so a
  * routine turn cannot change the pinned bytes and invalidate the native thread.
+ *
+ * Like `buildConfiguredAgentSystemPrompt`, this renderer is a sovereign prompt chokepoint
+ * (openclaw#1321): a sovereign agent's identity and policy bodies come from its snapshot,
+ * and a refused or unloaded agent throws before anything renders. A snapshot is frozen
+ * for the process, so the pinned bytes stay stable until the next Gateway start.
  */
 import { isRestartEnabled } from "../config/commands.flags.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { describeSystemAgentConfigConflict } from "../system-agent/setup-config-snapshot.js";
 import { buildPromisedWorkPromptSection } from "./promised-work-prompt.js";
+import {
+  beginSovereignPromptRender,
+  resolveSovereignPromptSnapshot,
+} from "./sovereign-prompts/runtime.js";
 import type { ProviderSystemPromptContribution } from "./system-prompt-contribution.js";
 import { buildOpenClawControlSection } from "./system-prompt-control.js";
 import { buildDocumentationSection } from "./system-prompt-documentation.js";
@@ -27,6 +36,8 @@ const HARNESS_IDENTITY = "You are a personal assistant running inside OpenClaw."
 
 export function buildAgentHarnessBasePrompt(params: {
   config?: OpenClawConfig;
+  /** The agent whose thread this is; selects its sovereign prompt files when it has any. */
+  agentId?: string;
   /** Unqualified callable tool names; deferred tools count because they stay callable. */
   toolNames: Iterable<string>;
   promptMode?: PromptMode;
@@ -35,24 +46,37 @@ export function buildAgentHarnessBasePrompt(params: {
   nativeCommandGuidanceLines?: readonly string[];
 }): string {
   const promptMode = params.promptMode ?? "full";
+  const snapshot = resolveSovereignPromptSnapshot({
+    config: params.config,
+    agentId: params.agentId,
+  });
+  const sovereign = snapshot ? beginSovereignPromptRender(snapshot) : undefined;
+  const identity = sovereign ? sovereign.slot("identity-section.md") : HARNESS_IDENTITY;
   if (promptMode === "none") {
-    return HARNESS_IDENTITY;
+    return identity ?? "";
   }
   const isMinimal = promptMode === "minimal";
   const availableTools = new Set([...params.toolNames].map((name) => name.trim().toLowerCase()));
   const overrides = params.promptContribution?.sectionOverrides;
   const toolGuidance = listToolPromptGuidance(availableTools);
+  // A sovereign agent's own execution and tool sections outrank provider overrides.
+  const executionBiasOverride = sovereign
+    ? undefined
+    : normalizeProviderPromptBlock(overrides?.execution_bias);
+  const toolCallStyleOverride = sovereign
+    ? undefined
+    : normalizeProviderPromptBlock(overrides?.tool_call_style);
   const sections: (readonly (string | undefined | false)[])[] = [
-    [HARNESS_IDENTITY, ""],
+    [identity, ""],
     [normalizeProviderPromptBlock(overrides?.interaction_style)],
-    normalizeProviderPromptBlock(overrides?.execution_bias)
-      ? [normalizeProviderPromptBlock(overrides?.execution_bias)]
+    executionBiasOverride
+      ? [executionBiasOverride]
       : isMinimal
         ? []
-        : buildExecutionBiasSection(),
+        : buildExecutionBiasSection(sovereign),
     buildPromisedWorkPromptSection(),
     [normalizeProviderPromptBlock(params.promptContribution?.stablePrefix)],
-    buildRuntimeContextSection(),
+    buildRuntimeContextSection(sovereign),
     [""],
     params.nativeCommandGuidanceLines ?? [],
     availableTools.has("process")
@@ -66,15 +90,16 @@ export function buildAgentHarnessBasePrompt(params: {
           "Treat subagent outputs as reports to synthesize.",
         ]
       : [],
-    buildMediaGenerationToolLines(availableTools),
+    buildMediaGenerationToolLines(availableTools, sovereign),
     [""],
-    normalizeProviderPromptBlock(overrides?.tool_call_style)
-      ? [normalizeProviderPromptBlock(overrides?.tool_call_style)]
+    toolCallStyleOverride
+      ? [toolCallStyleOverride]
       : !isMinimal || availableTools.size > 0
-        ? buildToolCallStyleSection()
+        ? buildToolCallStyleSection(sovereign)
         : [],
     buildCareSection({
       controlToolsAvailable: availableTools.has("openclaw") || availableTools.has("gateway"),
+      sovereign,
     }),
     buildOpenClawControlSection({
       setupIssue: params.config ? describeSystemAgentConfigConflict(params.config) : undefined,

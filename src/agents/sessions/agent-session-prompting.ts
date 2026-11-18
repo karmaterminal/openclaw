@@ -407,6 +407,10 @@ export abstract class AgentSessionPrompting extends AgentSessionBase {
           messages.push(createCustomMessage(msg));
         }
       }
+      if (result?.systemPrompt !== undefined) {
+        // Even an empty string replaces the prompt here, so even it is refused.
+        this.assertSystemPromptReplacementAllowed?.();
+      }
       this.systemPromptOverride = result?.systemPrompt;
       this.agent.state.systemPrompt =
         this.systemPromptOverride !== undefined ? this.systemPromptOverride : this.baseSystemPrompt;

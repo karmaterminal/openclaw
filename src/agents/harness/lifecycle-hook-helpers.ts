@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { normalizeOptionalString as normalizeTrimmedString } from "@openclaw/normalization-core/string-coerce";
 import { pruneMapToMaxSize } from "../../infra/map-size.js";
+import { redactSovereignText } from "../../logging/sovereign-redaction.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import type { BeforeAgentFinalizeResultWithRetryCandidates } from "../../plugins/hook-runner-types.js";
@@ -42,11 +43,12 @@ export function runAgentHarnessLlmInputHook(
   if (!hookRunner?.hasHooks("llm_input")) {
     return;
   }
-  void hookRunner
-    .runLlmInput(params.event, buildAgentHookContext(params.ctx))
-    .catch((error: unknown) => {
-      log.warn(`llm_input hook failed: ${String(error)}`);
-    });
+  const event = { ...params.event };
+  // Plugins observe a copy whose sovereign spans are markers (openclaw#1321).
+  event.systemPrompt &&= redactSovereignText(event.systemPrompt);
+  void hookRunner.runLlmInput(event, buildAgentHookContext(params.ctx)).catch((error: unknown) => {
+    log.warn(`llm_input hook failed: ${String(error)}`);
+  });
 }
 
 /** Dispatches best-effort LLM output hooks for a harness attempt. */

@@ -433,7 +433,8 @@ function loadGeneration(
       refuse(placeholder, details);
     }
     if (normalized) {
-      bodies.set(entry.path, text);
+      // The renderer places the normalized body, as it normalizes every other section.
+      bodies.set(entry.path, normalized);
     } else if (entry.slot.required) {
       refuse("required_empty", details);
     }
@@ -443,7 +444,7 @@ function loadGeneration(
       slot: entry.slot.slot,
       bytes: file.bytes,
       sha256: file.sha256,
-      converted: entry.converted,
+      converted: entry.slot.converted,
     });
   }
   return new SovereignPromptSnapshot(
@@ -542,20 +543,4 @@ export function resolveSovereignPromptTarget(
     current: path.join(root, CURRENT_FILE),
     generations: path.join(root, GENERATIONS_DIR),
   };
-}
-
-/**
- * The per-agent start-time load. `off` reads nothing and changes nothing. `enforce` is
- * refused until the snapshot is wired into prompt assembly, so a seat cannot flip
- * early and nothing falls back to code text.
- */
-export function loadAgentSovereignPrompts(
-  // Wider than the config schema, which refuses "enforce" until the wiring slice; direct
-  // callers still reach this refusal.
-  target: { mode: "off" | "enforce" },
-): { state: "off" } | { state: "refused"; refusal: SovereignPromptRefusal } {
-  if (target.mode === "off") {
-    return { state: "off" };
-  }
-  return { state: "refused", refusal: new SovereignPromptRefusal("enforce_unwired") };
 }

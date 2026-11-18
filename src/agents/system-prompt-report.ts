@@ -192,6 +192,7 @@ export function buildSystemPromptReport(params: {
   tools: PromptReportTool[];
   catalogEntries?: readonly ToolSearchCatalogEntry[];
   currentTurn?: SessionSystemPromptReport["currentTurn"];
+  sovereign?: SessionSystemPromptReport["sovereign"];
 }): SessionSystemPromptReport {
   const systemPromptChars = params.systemPrompt.length;
   const projectContextChars = measureRenderedProjectContextChars(params.systemPrompt);
@@ -212,6 +213,7 @@ export function buildSystemPromptReport(params: {
     bootstrapTotalMaxChars: params.bootstrapTotalMaxChars,
     ...(params.bootstrapTruncation ? { bootstrapTruncation: params.bootstrapTruncation } : {}),
     sandbox: params.sandbox,
+    ...(params.sovereign ? { sovereign: params.sovereign } : {}),
     systemPrompt: {
       chars: systemPromptChars,
       hash: sha256Hex(params.systemPrompt),

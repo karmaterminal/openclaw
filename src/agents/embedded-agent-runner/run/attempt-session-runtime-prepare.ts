@@ -16,6 +16,7 @@ import {
   sessionManagerReadToolResultProjectionEntries,
   sessionManagerReadTranscriptBranch,
 } from "../../sessions/session-manager-view-types.js";
+import { isSovereignPromptAgent } from "../../sovereign-prompts/runtime.js";
 import type { AnyAgentTool } from "../../tools/common.js";
 import { declarePromptToolPin } from "../prompt-cache-observability.js";
 import { getProviderPromptState } from "../provider-prompt-state.js";
@@ -157,12 +158,18 @@ export async function prepareEmbeddedAttemptSessionRuntime(input: {
   const sessionPromptState = promptStateLease.state;
   const usesSystemPromptSeries =
     !input.isRawModelRun && attempt.operation !== "settled-tool-finalization";
+  // A sovereign prompt agent does not pin: the checkpoint would persist its rendered prefix
+  // and deltas would write its text into history. Redacted hydration is not proven, so the
+  // design keeps privacy over the pin's cache benefit (openclaw#1321, design § 6.4).
+  const pinsSystemPrompt =
+    transcriptPolicy.inHistorySystemUpdates === true &&
+    !isSovereignPromptAgent(attempt.config, sessionAgentId);
   const promptRouteKey = buildSystemPromptRouteKey({
     provider: attempt.provider,
     model: attempt.modelId,
     api: attempt.model.api,
     baseUrl: attempt.model.baseUrl,
-    inHistorySystemUpdates: transcriptPolicy.inHistorySystemUpdates === true,
+    inHistorySystemUpdates: pinsSystemPrompt,
     // Personal bootstrap follows the session's selected human, not only the session ID.
     personalProfile: attempt.bootstrapUserProfileId,
   });
@@ -181,7 +188,7 @@ export async function prepareEmbeddedAttemptSessionRuntime(input: {
     beginSessionSystemPrompt({
       state: sessionPromptState,
       routeKey: promptRouteKey,
-      enabled: transcriptPolicy.inHistorySystemUpdates === true,
+      enabled: pinsSystemPrompt,
       getEntries: () => sessionManager[sessionManagerReadTranscriptBranch](),
     })
   ) {
@@ -190,7 +197,7 @@ export async function prepareEmbeddedAttemptSessionRuntime(input: {
   let freshSystemPrompt = systemPromptText;
   let projectedSystemPrompt: string | undefined;
   const prepareSystemPromptUpdate =
-    usesSystemPromptSeries && transcriptPolicy.inHistorySystemUpdates
+    usesSystemPromptSeries && pinsSystemPrompt
       ? async (systemPrompt: string, freshlyRendered = false) => {
           if (freshlyRendered || systemPrompt !== projectedSystemPrompt) {
             freshSystemPrompt = systemPrompt;

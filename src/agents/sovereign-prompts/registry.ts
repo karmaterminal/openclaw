@@ -11,6 +11,7 @@ import {
   SYSTEM_PROMPT_RELOCATABLE_BOUNDARY,
   SYSTEM_PROMPT_RELOCATABLE_BOUNDARY_END,
 } from "@openclaw/ai/internal/shared";
+import { SOVEREIGN_REDACTION_MARKER_PREFIX } from "../../logging/sovereign-redaction.js";
 
 type SovereignPromptPhase = "A" | "B" | "C";
 
@@ -20,7 +21,13 @@ type SovereignPromptSlot = {
   /** The key file or `<key stem>.d/<fragment>.md`, plus gate-selected variants. */
   files: readonly string[];
   required: boolean;
+  /** The design phase that owns the slot (loader design § 4.4, § 8). */
   phase: SovereignPromptPhase;
+  /**
+   * Whether this build renders the slot from the snapshot. An unconverted slot's file is
+   * validated, digested and receipted, while code text still renders there (§ 11.2 T2).
+   */
+  converted: boolean;
   /** Closed list of `{{oc:<fact>}}` placeholders the slot's gate guarantees. */
   facts: readonly string[];
 };
@@ -29,28 +36,34 @@ function slot(
   id: string,
   phase: SovereignPromptPhase,
   files: readonly string[],
-  options: { required?: boolean; facts?: readonly string[] } = {},
+  options: { required?: boolean; converted?: boolean; facts?: readonly string[] } = {},
 ): SovereignPromptSlot {
   return {
     slot: id,
     files,
     required: options.required ?? false,
     phase,
+    converted: options.converted ?? false,
     facts: options.facts ?? [],
   };
 }
+
+const CONVERTED = { converted: true } as const;
 
 const TOOL = "tool-section.d";
 const EXECUTION = "execution-section.d";
 const SAFETY = "safety-section.d";
 
-// Slots of the loader design § 4.4. Inventory rows and S/D positions arrive with the
-// renderer wiring, which pins them by test.
+// Slots of the loader design § 4.4. Converted slots are the ones the shared builders,
+// both identity lines and the workspace-file framing render (system-prompt.ts,
+// system-prompt-harness-base.ts, system-prompt-policy-sections.ts,
+// system-prompt-context-files.ts). The other phase-A slots interpolate facts their
+// declarations do not list yet, so they stay code text until those facts are declared.
 const SOVEREIGN_PROMPT_SLOTS: readonly SovereignPromptSlot[] = [
   // Phase A: the four #1001 keys.
-  slot("identity/opening", "A", ["identity-section.md"], { required: true }),
+  slot("identity/opening", "A", ["identity-section.md"], { required: true, ...CONVERTED }),
   slot("identity/model", "A", ["identity-section.d/model.md"]),
-  slot("execution/bias", "A", ["execution-section.md"]),
+  slot("execution/bias", "A", ["execution-section.md"], CONVERTED),
   slot("execution/default-execution", "A", [`${EXECUTION}/default-execution.md`]),
   slot("execution/automations-promotion", "A", [`${EXECUTION}/automations-promotion.md`]),
   slot("execution/status-polling", "A", [`${EXECUTION}/status-polling.md`]),
@@ -59,7 +72,7 @@ const SOVEREIGN_PROMPT_SLOTS: readonly SovereignPromptSlot[] = [
     `${EXECUTION}/spawn-collection.yield.md`,
     `${EXECUTION}/spawn-collection.events.md`,
   ]),
-  slot("tool/call-style", "A", ["tool-section.md"], { required: true }),
+  slot("tool/call-style", "A", ["tool-section.md"], { required: true, ...CONVERTED }),
   slot("tool/workspace-only", "A", [`${TOOL}/workspace-only.md`]),
   slot("tool/tooling", "A", [`${TOOL}/tooling.md`]),
   slot("tool/automations-entry", "A", [`${TOOL}/automations-entry.md`]),
@@ -72,29 +85,36 @@ const SOVEREIGN_PROMPT_SLOTS: readonly SovereignPromptSlot[] = [
   slot("tool/screen-turn", "A", [`${TOOL}/screen-turn.md`]),
   slot("tool/acp-routing", "A", [`${TOOL}/acp-routing.md`]),
   slot("tool/process-input", "A", [`${TOOL}/process-input.md`]),
-  slot("tool/media-dedupe", "A", [`${TOOL}/media-dedupe.md`], { facts: ["tool:current"] }),
+  slot("tool/media-dedupe", "A", [`${TOOL}/media-dedupe.md`], {
+    facts: ["tool:current"],
+    ...CONVERTED,
+  }),
   slot("tool/acp-thread", "A", [`${TOOL}/acp-thread.md`, `${TOOL}/acp-thread.discord.md`]),
   slot("tool/exec-approval", "A", [
     `${TOOL}/exec-approval.native-ui.md`,
     `${TOOL}/exec-approval.chat.md`,
   ]),
-  slot("safety/care", "A", ["safety-section.md"], { required: true }),
-  slot("safety/credentials", "A", [
-    `${SAFETY}/credentials.control-tools.md`,
-    `${SAFETY}/credentials.no-control-tools.md`,
-  ]),
+  slot("safety/care", "A", ["safety-section.md"], { required: true, ...CONVERTED }),
+  slot(
+    "safety/credentials",
+    "A",
+    [`${SAFETY}/credentials.control-tools.md`, `${SAFETY}/credentials.no-control-tools.md`],
+    CONVERTED,
+  ),
   slot("safety/sandbox-acp", "A", [`${SAFETY}/sandbox-acp.md`]),
   slot("safety/sandbox-elevated-send", "A", [`${SAFETY}/sandbox-elevated-send.md`]),
   slot("safety/sandbox-elevated-advice", "A", [`${SAFETY}/sandbox-elevated-advice.md`]),
   // Phase B: the remaining main-assembly keys. Variants the design leaves unnamed are
-  // declared when their phase converts them.
+  // declared when their phase converts them. Runtime Context is one of the four shared
+  // policy sections, and the workspace-file framing shapes how a prince's own files are
+  // read, so both convert with phase A (openclaw#1321 wiring slice).
   slot("promised-work/main", "B", ["promised-work-section.md"]),
-  slot("runtime-context/main", "B", ["runtime-context-section.md"]),
+  slot("runtime-context/main", "B", ["runtime-context-section.md"], CONVERTED),
   slot("bootstrap/full", "B", ["bootstrap-section.md"]),
   slot("bootstrap/limited", "B", ["bootstrap-section.d/limited.md"]),
-  slot("project-context/main", "B", ["project-context-section.md"]),
+  slot("project-context/main", "B", ["project-context-section.md"], CONVERTED),
   ...["personal-user", "precedence-soul", "precedence-memory", "precedence-user"].map((name) =>
-    slot(`project-context/${name}`, "B", [`project-context-section.d/${name}.md`]),
+    slot(`project-context/${name}`, "B", [`project-context-section.d/${name}.md`], CONVERTED),
   ),
   slot("openclaw-control/main", "B", ["openclaw-control-section.md"]),
   slot("skills/main", "B", ["skills-section.md"]),
@@ -128,22 +148,14 @@ const SOVEREIGN_PROMPT_SLOTS: readonly SovereignPromptSlot[] = [
   slot("continuation-chain/main", "C", ["continuation-chain-section.md"]),
 ];
 
-// Phase A is this loader line's conversion. Nothing renders from a snapshot until the
-// renderer wiring lands; until then `enforce` is refused (`enforce_unwired`).
-const CONVERTED_PHASES: ReadonlySet<SovereignPromptPhase> = new Set(["A"]);
-
 type SovereignPromptFileEntry = {
   path: string;
   slot: SovereignPromptSlot;
-  converted: boolean;
 };
 
 const FILES_BY_PATH: ReadonlyMap<string, SovereignPromptFileEntry> = new Map(
   SOVEREIGN_PROMPT_SLOTS.flatMap((entry) =>
-    entry.files.map((file) => [
-      file,
-      { path: file, slot: entry, converted: CONVERTED_PHASES.has(entry.phase) },
-    ]),
+    entry.files.map((file) => [file, { path: file, slot: entry }]),
   ),
 );
 
@@ -162,9 +174,6 @@ export const SOVEREIGN_PROMPT_REQUIRED_FILES: readonly string[] = SOVEREIGN_PROM
 export function lookupSovereignPromptFile(path: string): SovereignPromptFileEntry | undefined {
   return FILES_BY_PATH.get(path);
 }
-
-/** Prefix of the slot-and-digest marker that replaces a rendered span on echo surfaces. */
-const SOVEREIGN_REDACTION_MARKER_PREFIX = "<!-- openclaw:sovereign";
 
 /** Code markers a sovereign body may never contain, matched anywhere as code matches them. */
 const RESERVED_MARKERS: readonly string[] = [
@@ -188,6 +197,21 @@ const RESERVED_HEADINGS: ReadonlySet<string> = new Set([
 // starts with this after whitespace, so the per-run fact must stay on its code-owned line.
 const MODEL_IDENTITY_PREFIX = "Current model identity:";
 
+/** The registry as `openclaw sovereign slots` publishes it: names and flags, no text. */
+export function describeSovereignPromptRegistry() {
+  return {
+    slots: SOVEREIGN_PROMPT_SLOTS.map(({ slot: id, files, required, phase, converted, facts }) => ({
+      slot: id,
+      files,
+      required,
+      phase,
+      converted,
+      facts,
+    })),
+    reserved: { markers: RESERVED_MARKERS, headings: [...RESERVED_HEADINGS] },
+  };
+}
+
 /** True when a body carries a code marker or a line code would match as its own. */
 export function containsReservedSovereignToken(raw: string, normalized: string): boolean {
   return (
@@ -201,7 +225,28 @@ export function containsReservedSovereignToken(raw: string, normalized: string):
 }
 
 const PLACEHOLDER_OPEN = "{{oc:";
-const PLACEHOLDER = /^\{\{oc:([a-z]+:[a-z0-9_]+(?:[.-][a-z0-9_]+)*)\}\}/;
+const PLACEHOLDER_TOKEN = String.raw`\{\{oc:([a-z]+:[a-z0-9_]+(?:[.-][a-z0-9_]+)*)\}\}`;
+const PLACEHOLDER = new RegExp(`^${PLACEHOLDER_TOKEN}`);
+
+/**
+ * Replaces each `{{oc:<fact>}}` with its code-owned value. The loader already proved every
+ * token names one of the slot's facts, so a missing value is a renderer bug.
+ */
+export function resolveSovereignPlaceholders(
+  text: string,
+  facts: Readonly<Record<string, string>>,
+): string {
+  if (!text.includes(PLACEHOLDER_OPEN)) {
+    return text;
+  }
+  return text.replace(new RegExp(PLACEHOLDER_TOKEN, "g"), (_token, fact: string) => {
+    const value = facts[fact];
+    if (value === undefined) {
+      throw new Error(`Sovereign placeholder fact not supplied: ${fact}`);
+    }
+    return value;
+  });
+}
 
 /** Returns the first placeholder problem in a body, or undefined when every token is valid. */
 export function findSovereignPlaceholderProblem(

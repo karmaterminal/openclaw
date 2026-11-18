@@ -116,6 +116,7 @@ function buildCodexBaseInstructions(
   return joinPresentSections(
     buildAgentHarnessBasePrompt({
       config: params.config,
+      agentId: params.agentId,
       toolNames,
       promptMode,
       promptContribution: promptPlan?.prompt.resolveSystemPromptContribution({

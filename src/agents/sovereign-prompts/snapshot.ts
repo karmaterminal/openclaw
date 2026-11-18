@@ -35,9 +35,12 @@ type SovereignPromptRefusalCode =
   | "placeholder_unknown"
   | "generation_changed"
   | "io_error"
-  // Phase A wiring into the prompt is not present at this build, so enforce cannot load.
-  | "enforce_unwired"
-  | "agent_unknown";
+  | "agent_unknown"
+  // Run-time codes (design § 5.2): one run fails, or every run of an agent with no snapshot.
+  | "not_loaded"
+  | "route_unconverted"
+  | "transform_altered"
+  | "sovereign_override_denied";
 
 /** Metadata a refusal may carry; never content, native error text or absolute paths. */
 type SovereignPromptRefusalDetails = {
@@ -53,6 +56,10 @@ type SovereignPromptRefusalDetails = {
   mode?: string;
   /** Errno name, never the native message. */
   errno?: string;
+  /** Code-owned runtime or placement id a run was routed to (`route_unconverted`). */
+  route?: string;
+  /** Code-owned name of the replacement site (`sovereign_override_denied`). */
+  site?: string;
 };
 
 export class SovereignPromptRefusal extends Error {
@@ -60,7 +67,12 @@ export class SovereignPromptRefusal extends Error {
   readonly details: Readonly<SovereignPromptRefusalDetails>;
 
   constructor(code: SovereignPromptRefusalCode, details: SovereignPromptRefusalDetails = {}) {
-    super(`sovereign prompts refused: code=${code}${details.file ? ` file=${details.file}` : ""}`);
+    super(
+      `sovereign prompts refused: code=${code}` +
+        (details.file ? ` file=${details.file}` : "") +
+        (details.route ? ` route=${details.route}` : "") +
+        (details.site ? ` site=${details.site}` : ""),
+    );
     this.name = "SovereignPromptRefusal";
     this.code = code;
     this.details = Object.freeze(details);
@@ -94,7 +106,7 @@ export class SovereignPromptSnapshot {
   readonly setDigest: string;
   readonly bytes: number;
   readonly files: readonly SovereignPromptFileReceipt[];
-  // An empty optional file is the same as an absent one, so it has no body here.
+  // Normalized bodies. An empty optional file is the same as an absent one, so it has none.
   readonly #bodies: ReadonlyMap<string, string>;
 
   constructor(metadata: SovereignPromptSnapshotMetadata, bodies: ReadonlyMap<string, string>) {
@@ -137,12 +149,14 @@ export class SovereignPromptSnapshot {
 
 /** The § 5.3 refusal diagnostic: one line plus structured, content-free fields. */
 export function describeSovereignPromptsRefused(agentId: string, refusal: SovereignPromptRefusal) {
-  const { slot, file, generation } = refusal.details;
+  const { slot, file, generation, route, site } = refusal.details;
   const line =
     `[SOVEREIGN_PROMPTS_REFUSED] agent:${agentId} code=${refusal.code}` +
     (slot ? ` slot=${slot}` : "") +
     (file ? ` file=${file}` : "") +
-    (generation ? ` generation=${generation}` : "");
+    (generation ? ` generation=${generation}` : "") +
+    (route ? ` route=${route}` : "") +
+    (site ? ` site=${site}` : "");
   return { line, fields: { event: "sovereign_prompts.refused", agentId, ...refusal.toJSON() } };
 }
 

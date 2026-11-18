@@ -26,6 +26,7 @@ import {
 import { buildRuntimeFactsContext } from "../../runtime-facts-prompt.js";
 import type { AgentMessage } from "../../runtime/index.js";
 import type { AgentSession, SessionManager } from "../../sessions/index.js";
+import { assertSovereignPromptNotReplaced } from "../../sovereign-prompts/runtime.js";
 import {
   appendModelIdentitySystemPrompt,
   buildModelIdentityPromptLine,
@@ -274,6 +275,12 @@ export async function prepareEmbeddedAttemptPromptAssembly(input: {
   }
   const legacySystemPrompt = normalizeOptionalString(hookResult?.systemPrompt) ?? "";
   if (legacySystemPrompt) {
+    // Before any send, trajectory write or hook echo; prepend and append stay allowed.
+    assertSovereignPromptNotReplaced({
+      config: attempt.config,
+      agentId: input.sessionAgentId,
+      site: "before_prompt_build",
+    });
     setSystemPrompt(legacySystemPrompt);
   }
   const composedSystemPrompt = composeSystemPromptWithHookContext({

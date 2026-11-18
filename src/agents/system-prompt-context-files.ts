@@ -1,5 +1,6 @@
 import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
 import type { EmbeddedContextFile } from "./embedded-agent-helpers/context-file.js";
+import type { SovereignPromptRender } from "./sovereign-prompts/runtime.js";
 
 export const PERSONAL_USER_CONTEXT_INSTRUCTIONS =
   "The personal users/<profile-id>/USER.md belongs to this session's selected person (assigned human owner, otherwise human creator). It supplements shared USER.md and overrides conflicting shared preferences, not higher-priority rules. Other participants do not change this personal context.";
@@ -69,25 +70,52 @@ export function prepareContextFilesForPrompt<T extends EmbeddedContextFile>(
     });
 }
 
-export function buildProjectContextSection(files: ReturnType<typeof prepareContextFilesForPrompt>) {
+/** Per-file framing fragments of a sovereign prompt agent's `project-context-section.d/`. */
+const SOVEREIGN_CONTEXT_FILE_FRAMING = {
+  "soul.md": "project-context-section.d/precedence-soul.md",
+  "memory.md": "project-context-section.d/precedence-memory.md",
+  "user.md": "project-context-section.d/precedence-user.md",
+} as const;
+
+/**
+ * The workspace-file framing. The heading and each file's own heading and content stay
+ * code-owned; for a sovereign prompt agent the framing prose comes from its snapshot.
+ */
+export function buildProjectContextSection(
+  files: ReturnType<typeof prepareContextFilesForPrompt>,
+  sovereign?: SovereignPromptRender,
+) {
   if (files.length === 0) {
     return [];
   }
   const lines = ["# Project Context", ""];
-  lines.push("Loaded project context:");
-  for (const [basename, guidance] of Object.entries({
-    "soul.md": "SOUL.md: persona/tone. Follow it unless higher-priority instructions override.",
-    "memory.md":
-      "MEMORY.md: durable non-profile facts and decisions; use when relevant unless higher-priority instructions override.",
-    "user.md":
-      "USER.md: durable user preferences and profile directives; follow unless higher-priority instructions override.",
-  })) {
-    if (files.some((file) => file.basename === basename)) {
-      lines.push(guidance);
+  const present = (basename: string) => files.some((file) => file.basename === basename);
+  const personalUser = files.some(({ file }) => file.personalUser);
+  if (sovereign) {
+    const framing = [
+      sovereign.slot("project-context-section.md"),
+      ...Object.entries(SOVEREIGN_CONTEXT_FILE_FRAMING).map(([basename, fragment]) =>
+        present(basename) ? sovereign.slot(fragment) : undefined,
+      ),
+      personalUser ? sovereign.slot("project-context-section.d/personal-user.md") : undefined,
+    ];
+    lines.push(...framing.filter((line): line is string => line !== undefined));
+  } else {
+    lines.push("Loaded project context:");
+    for (const [basename, guidance] of Object.entries({
+      "soul.md": "SOUL.md: persona/tone. Follow it unless higher-priority instructions override.",
+      "memory.md":
+        "MEMORY.md: durable non-profile facts and decisions; use when relevant unless higher-priority instructions override.",
+      "user.md":
+        "USER.md: durable user preferences and profile directives; follow unless higher-priority instructions override.",
+    })) {
+      if (present(basename)) {
+        lines.push(guidance);
+      }
     }
-  }
-  if (files.some(({ file }) => file.personalUser)) {
-    lines.push(PERSONAL_USER_CONTEXT_INSTRUCTIONS);
+    if (personalUser) {
+      lines.push(PERSONAL_USER_CONTEXT_INSTRUCTIONS);
+    }
   }
   lines.push("");
   for (const { file } of files) {
