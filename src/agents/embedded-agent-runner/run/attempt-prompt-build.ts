@@ -276,11 +276,7 @@ export async function prepareEmbeddedAttemptPromptAssembly(input: {
   const legacySystemPrompt = normalizeOptionalString(hookResult?.systemPrompt) ?? "";
   if (legacySystemPrompt) {
     // Before any send, trajectory write or hook echo; prepend and append stay allowed.
-    assertSovereignPromptNotReplaced({
-      config: attempt.config,
-      agentId: input.sessionAgentId,
-      site: "before_prompt_build",
-    });
+    assertSovereignPromptNotReplaced(attempt.config, input.sessionAgentId, "before_prompt_build");
     setSystemPrompt(legacySystemPrompt);
   }
   const composedSystemPrompt = composeSystemPromptWithHookContext({

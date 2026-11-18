@@ -225,11 +225,7 @@ export async function prepareEmbeddedAttemptAgentSession(input: {
       ? createToolLoopBatchAdmission(clientTools.catalogToolHookContext)
       : undefined,
     assertSystemPromptReplacementAllowed: () =>
-      assertSovereignPromptNotReplaced({
-        config: attempt.config,
-        agentId: input.sessionAgentId,
-        site: "before_agent_start",
-      }),
+      assertSovereignPromptNotReplaced(attempt.config, input.sessionAgentId, "before_agent_start"),
   });
   // Publish ownership before post-construction hooks. Outer cleanup must dispose
   // the session if prompt or terminal-hook installation fails.

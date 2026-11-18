@@ -198,14 +198,14 @@ export function resolveSovereignPromptHarnessRoute(params: {
   return params.harnessId;
 }
 
-/** Fails a whole-prompt replacement for an `enforce` agent (§ 7.1, design question 6). */
-export function assertSovereignPromptNotReplaced(params: {
-  config?: OpenClawConfig;
-  agentId?: string;
-  site: string;
-}): void {
-  if (isSovereignPromptAgent(params.config, params.agentId)) {
-    throw new SovereignPromptRefusal("sovereign_override_denied", { site: params.site });
+/** Fails a whole-prompt replacement at `site` for an `enforce` agent (§ 7.1, question 6). */
+export function assertSovereignPromptNotReplaced(
+  config: OpenClawConfig | undefined,
+  agentId: string | undefined,
+  site: string,
+): void {
+  if (isSovereignPromptAgent(config, agentId)) {
+    throw new SovereignPromptRefusal("sovereign_override_denied", { site });
   }
 }
 
@@ -275,7 +275,7 @@ export function describeSovereignPromptStatus() {
           files: entry.snapshot.files.length,
           bytes: entry.snapshot.bytes,
         }
-      : { agentId, state: "refused" as const, ...entry.refusal.toJSON() },
+      : Object.assign({ agentId, state: "refused" as const }, entry.refusal.toJSON()),
   );
 }
 

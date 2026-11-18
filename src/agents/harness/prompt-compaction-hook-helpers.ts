@@ -118,11 +118,11 @@ export async function resolveAgentHarnessBeforePromptBuildResult(params: {
   if (systemPromptReplaced) {
     // A replacement here withdraws the harness base too (Codex `baseInstructions`); outside
     // the hook's catch, so the refusal fails the run instead of being logged and dropped.
-    assertSovereignPromptNotReplaced({
-      config: params.ctx.config,
-      agentId: params.ctx.agentId,
-      site: "harness_before_prompt_build",
-    });
+    assertSovereignPromptNotReplaced(
+      params.ctx.config,
+      params.ctx.agentId,
+      "harness_before_prompt_build",
+    );
   }
   const systemPrompt = systemPromptReplaced ? replacementSystemPrompt : developerInstructions;
   const promptPrefix = joinPresentTextSegments([

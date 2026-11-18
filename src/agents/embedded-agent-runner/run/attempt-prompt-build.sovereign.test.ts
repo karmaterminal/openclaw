@@ -140,7 +140,7 @@ describe("sovereign whole-prompt replacement", () => {
       },
       // What the embedded runner passes for this agent (attempt-session-prepare.ts).
       assertSystemPromptReplacementAllowed: () =>
-        assertSovereignPromptNotReplaced({ config, agentId: "main", site: "before_agent_start" }),
+        assertSovereignPromptNotReplaced(config, "main", "before_agent_start"),
     });
     const outcome = await session.prompt("hello").catch((error: unknown) => error);
     expect(outcome).toMatchObject({
