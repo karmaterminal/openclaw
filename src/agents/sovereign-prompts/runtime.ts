@@ -9,7 +9,7 @@ import { registerSovereignRenderedInstance } from "../../logging/sovereign-redac
  * restart (§ 6.3), and an `enforce` agent the registry never loaded fails `not_loaded`.
  * An agent loaded as `enforce` stays `enforce` until restart, whatever later config says.
  */
-import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { createSubsystemLogger, type SubsystemLogger } from "../../logging/subsystem.js";
 import { normalizeAgentIdStrict } from "../../routing/session-key.js";
 import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
 import { listAgentEntries } from "../agent-roster.js";
@@ -26,11 +26,6 @@ import {
 type SovereignAgentState =
   | { state: "loaded"; snapshot: SovereignPromptSnapshot }
   | { state: "refused"; refusal: SovereignPromptRefusal };
-
-type SovereignPromptLog = {
-  info: (message: string, meta?: Record<string, unknown>) => void;
-  warn: (message: string, meta?: Record<string, unknown>) => void;
-};
 
 // Duplicated runtime chunks (core and the plugin SDK) share one registry. An in-process
 // Gateway restart clears it, and the next start loads every generation again.
@@ -94,7 +89,7 @@ function loadAgent(
  */
 export function loadSovereignPromptsForProcess(
   config: OpenClawConfig,
-  options: { env?: NodeJS.ProcessEnv; log?: SovereignPromptLog } = {},
+  options: { env?: NodeJS.ProcessEnv; log?: Pick<SubsystemLogger, "info" | "warn"> } = {},
 ): ReadonlyMap<string, SovereignAgentState> {
   if (runtime.agents) {
     return runtime.agents;
@@ -252,12 +247,6 @@ export function beginSovereignPromptRender(
       return rendered.map(({ text }) => text);
     },
   };
-}
-
-/** The content-free receipt bound to a session's prompt report (§ 1.6). */
-export function describeSovereignPromptReceipt(snapshot: SovereignPromptSnapshot) {
-  const { generation, setDigest, bytes, files } = snapshot.toJSON();
-  return { generation, setDigest, bytes, files };
 }
 
 /** Gateway status: each loaded agent's generation and digest, or its refusal code. */

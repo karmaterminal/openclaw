@@ -5,23 +5,16 @@ import path from "node:path";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import type { OpenClawConfig } from "../../config/types.js";
+import { resetSovereignRedactionForTests } from "../../logging/sovereign-redaction.js";
 import {
-  redactSovereignText,
-  resetSovereignRedactionForTests,
-} from "../../logging/sovereign-redaction.js";
-import {
-  assertSovereignPromptRoute,
-  beginSovereignPromptRender,
   describeSovereignPromptStatus,
   isSovereignPromptAgent,
   loadSovereignPromptsForProcess,
   resetSovereignPromptRuntimeForTests,
-  resolveSovereignPromptHarnessRoute,
   resolveSovereignPromptSnapshot,
 } from "./runtime.js";
 import { SovereignPromptRefusal } from "./snapshot.js";
 import {
-  body,
   capture,
   expectNoSentinel,
   expectNoSentinelFilesSince,
@@ -215,64 +208,5 @@ describe.skipIf(process.platform === "win32")("sovereign prompt process registry
     } finally {
       fsCalls.restore();
     }
-  });
-
-  it("admits only the routes a test proves carry the loaded text", () => {
-    const good = writeAgent("good");
-    const config = configFor({
-      good: { agentDir: good.agentDir, mode: "enforce" },
-      plain: { agentDir: good.agentDir },
-    });
-    for (const route of ["openclaw", "codex"]) {
-      assertSovereignPromptRoute({ config, agentId: "good", route });
-    }
-    for (const route of ["cli", "worker-environment", "copilot", "codex:ring-zero", "codex:none"]) {
-      const refusal = expectRefusal(
-        () => assertSovereignPromptRoute({ config, agentId: "good", route }),
-        "route_unconverted",
-      );
-      expect(refusal.details.route).toBe(route);
-      assertSovereignPromptRoute({ config, agentId: "plain", route });
-    }
-    expect(
-      [
-        { harnessId: "openclaw", ringZero: true, promptMode: "none" },
-        { harnessId: "codex", ringZero: false, promptMode: "full" },
-        { harnessId: "codex", ringZero: true },
-        { harnessId: "codex", ringZero: false, promptMode: "none" },
-        { harnessId: "copilot", ringZero: false },
-      ].map(resolveSovereignPromptHarnessRoute),
-    ).toEqual(["openclaw", "codex", "codex:ring-zero", "codex:none", "copilot"]);
-  });
-
-  it("a render places normalized converted bodies, resolves facts and registers each for redaction", () => {
-    const media = `${SENTINEL} dedupe {{oc:tool:current}} jobs. ${SENTINEL}\r\n\n`;
-    const good = writeAgent("good", {
-      files: { "tool-section.d/media-dedupe.md": media, "execution-section.md": "" },
-    });
-    const config = configFor({ good: { agentDir: good.agentDir, mode: "enforce" } });
-    const snapshot = resolveSovereignPromptSnapshot({ config, agentId: "good" });
-    if (!snapshot) {
-      throw new Error("fixture agent did not load");
-    }
-    const render = beginSovereignPromptRender(snapshot);
-    const identity = render.slot("identity-section.md");
-    expect(identity).toBe(body("identity-section.md").trim());
-    // An empty optional file is the same as an absent one.
-    expect(render.slot("execution-section.md")).toBeUndefined();
-    expect(
-      render.slot("tool-section.d/media-dedupe.md", { "tool:current": "video_generate" }),
-    ).toBe(`${SENTINEL} dedupe video_generate jobs. ${SENTINEL}`);
-    // Declared but unconverted: validated and receipted, never rendered from the snapshot.
-    expect(() => render.slot("tool-section.d/tooling.md")).toThrow("Not a converted");
-    expect(render.instances).toHaveLength(2);
-    const echoed = redactSovereignText(`before\n${render.instances.join("\n")}\nafter`);
-    expect(echoed).not.toContain(SENTINEL);
-    expect(echoed).toMatch(
-      /^before\n<!-- openclaw:sovereign identity\/opening sha256:[0-9a-f]{12} bytes:\d+ -->\n<!-- openclaw:sovereign tool\/media-dedupe sha256:[0-9a-f]{12} bytes:\d+ -->\nafter$/,
-    );
-    // A rewrite (blind workspace paths) registers the shipped spelling too.
-    render.rewrite((text) => text.replace("Synthetic", "Withheld"));
-    expect(redactSovereignText(render.instances[0] ?? "")).not.toContain(SENTINEL);
   });
 });

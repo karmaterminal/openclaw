@@ -31,10 +31,7 @@ import { buildModelToolsUnavailablePrompt } from "../../model-tool-support.js";
 import { prepareProjectMemoryBootstrap } from "../../project-memory-bootstrap.js";
 import { resolveAgentPromptSurfaceForSessionKey } from "../../prompt-surface.js";
 import { resolveAgentRuntimePrompt } from "../../runtime-prompt.js";
-import {
-  describeSovereignPromptReceipt,
-  resolveSovereignPromptSnapshot,
-} from "../../sovereign-prompts/runtime.js";
+import { resolveSovereignPromptSnapshot } from "../../sovereign-prompts/runtime.js";
 import { buildSubagentStandingInstructions } from "../../subagents/spawn/subagent-system-prompt.js";
 import type { buildConfiguredAgentSystemPrompt } from "../../system-prompt-config.js";
 import { buildSystemPromptReport } from "../../system-prompt-report.js";
@@ -496,7 +493,8 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
     skillsPrompt: attemptSystemPrompt.skillsPrompt,
     tools: params.effectiveTools,
     catalogEntries: params.toolSearchCatalogRef?.current?.entries,
-    ...(sovereignSnapshot ? { sovereign: describeSovereignPromptReceipt(sovereignSnapshot) } : {}),
+    // The snapshot's JSON is its content-free receipt (§ 1.6).
+    ...(sovereignSnapshot ? { sovereign: sovereignSnapshot.toJSON() } : {}),
   };
   const systemPromptReport = buildSystemPromptReport(reportInputs);
   params.setup.prepStages?.mark("system-prompt");

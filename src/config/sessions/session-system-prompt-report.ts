@@ -27,6 +27,7 @@ export type SessionSystemPromptReport = {
    * sizes and digests only; `converted: false` files were validated but not rendered.
    */
   sovereign?: {
+    agentId: string;
     generation: string;
     setDigest: string;
     bytes: number;
