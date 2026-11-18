@@ -1,6 +1,5 @@
 // Sovereign slots in both prompt renderers (#1321): positions, gates, provider overrides,
 // the stable-prefix cache, and the chokepoint's refusals, from real fixture generations.
-import path from "node:path";
 import { SYSTEM_PROMPT_CACHE_BOUNDARY } from "@openclaw/ai/internal/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import type { OpenClawConfig } from "../config/types.js";
@@ -315,7 +314,9 @@ describe.skipIf(process.platform === "win32")(
         buildAgentHarnessBasePrompt({ config, agentId: "broken", toolNames }),
       );
       expect((outcome.error as SovereignPromptRefusal).code).toBe("required_empty");
-      expectNoSentinel(outcome, [path.dirname(broken)]);
+      // The fixture's own root: its parent is the shared temp root, which an unrelated
+      // source path (a checkout under /var/tmp) can contain.
+      expectNoSentinel(outcome, [broken]);
     });
   },
 );

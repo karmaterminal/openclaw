@@ -147,23 +147,28 @@ native error text, or names outside the registry.
   built-in identity line there) refuse with `route_unconverted`. So do a
   conversation bound to a Codex thread (`/codex bind`: `codex:conversation-binding`;
   a Codex CLI node session: `codex:cli-node-session`), which runs on Codex's own
-  base, and a worker-hosted Codex app-server (`appServer.workerHostedCloud`:
-  `codex:worker-hosted`), which would take the base off the Gateway host. The
-  settled-turn finalizer, which writes a new answer in the agent's name from a
+  base. The settled-turn finalizer, which writes a new answer in the agent's name from a
   code-owned prompt when a tool turn ends without one, refuses on every runtime
   before any handoff (`<runtime>:settled-turn-finalization`, such as `openclaw:`
   or `codex:`). The turn then ends as an incomplete turn, with the host's
   missing-reply notice wherever the host delivers one. An answer the agent
-  already wrote is still delivered. A resume of an existing Codex thread on an
-  app-server other clients can reach (a WebSocket or Unix socket connection, or
-  an `app-server proxy` launch) refuses before the thread is read
-  (`codex:external-resume`): another client can load the thread between
-  OpenClaw's read and its resume, and Codex then ignores the resume's
-  instructions without saying so. New threads there are checked as usual. To
-  continue, start a new session or use an app-server OpenClaw starts over stdio.
-  Any other stdio command, including a custom `appServer.command`, counts as
-  OpenClaw's own process; a command that bridges to a shared server is outside
-  this check.
+  already wrote is still delivered.
+- **Codex app-server placement.** The files go only to a Codex app-server
+  OpenClaw starts as its own stdio child. On any other app-server, every Codex
+  handoff that carries a thread's instructions refuses before OpenClaw reads or
+  writes anything: a new thread, a supervised branch, a resume, reuse of a
+  loaded thread, and the policy refreshes that follow them. A remote connection
+  refuses with `codex:remote-app-server`. That covers an authenticated
+  non-loopback WebSocket and a worker-hosted app-server
+  (`appServer.workerHostedCloud`), which runs off the Gateway host. A loopback
+  WebSocket or Unix socket, whose listener could forward anywhere, and an
+  `app-server proxy` launch refuse with `codex:unowned-app-server`. Other
+  clients can reach such a server too, so a resume there could not prove which
+  instructions the thread runs on. To continue, use an app-server OpenClaw
+  starts over stdio. Any other stdio command, including a custom
+  `appServer.command`, counts as OpenClaw's own process; a command that bridges
+  to another server is outside this check. An off agent's handoffs are
+  unchanged on every placement.
 - **Which agent.** An agent's files render only for a call that names that agent.
   A render or check that names no agent, or an invalid one, is refused while any
   agent is `enforce`, counting one that was `enforce` when the process read its
@@ -179,7 +184,14 @@ native error text, or names outside the registry.
   (`before_provider_request`, a provider plugin's `wrapStreamFn`, OpenClaw's own),
   each request must still carry every sovereign span whole in its system field:
   `system`, `instructions`, the leading system or developer message, or
-  `systemInstruction`, by API. An altered, missing or unrecognised system field
+  `systemInstruction`, by API. For Gemini that is the field its transport sends:
+  `config.systemInstruction` in the Google SDK request, the top-level
+  `systemInstruction` in the REST body the managed Google transport sends. The
+  check reads what will be sent. On a route that encodes its body through
+  OpenClaw (OpenAI), it reads the encoded bytes and those exact bytes are sent.
+  Elsewhere it reads plain JSON data only: a `toJSON`, an accessor, a proxy or
+  a class instance on the way to the system field reads as missing. An altered,
+  missing or unrecognised system field
   fails the run with `transform_altered` (`site=provider_request`) before anything
   is sent, and the Gateway logs a content-free `[SOVEREIGN_PROMPTS_REFUSED]` line
   naming the site. Formatting a provider adds around a span (cache blocks, an

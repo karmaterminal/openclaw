@@ -60,13 +60,13 @@ function readJsonMember(container: object, key: string | number): unknown {
   return descriptor?.enumerable && "value" in descriptor ? descriptor.value : undefined;
 }
 
-function* readJsonElements(array: readonly unknown[]): Generator<unknown> {
+function* readJsonElements(array: readonly unknown[]): Iterable<unknown> {
   for (let index = 0; index < array.length; index++) {
     yield readJsonMember(array, index);
   }
 }
 
-function readJsonArray(value: unknown): Generator<unknown> | undefined {
+function readJsonArray(value: unknown): Iterable<unknown> | undefined {
   return Array.isArray(value) && isPlainJsonContainer(value) ? readJsonElements(value) : undefined;
 }
 
