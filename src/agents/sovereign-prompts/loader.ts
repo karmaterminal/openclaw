@@ -80,6 +80,13 @@ function errnoOf(error: unknown): string {
   return code && /^E[A-Z0-9]+$/.test(code) ? code : "EUNKNOWN";
 }
 
+/** § 5.2's "anything else": a failure that is not a refusal is `io_error`, by errno name only. */
+export function toSovereignPromptRefusal(error: unknown): SovereignPromptRefusal {
+  return error instanceof SovereignPromptRefusal
+    ? error
+    : new SovereignPromptRefusal("io_error", { errno: errnoOf(error) });
+}
+
 function octal(mode: number): string {
   return mode.toString(8).padStart(4, "0");
 }

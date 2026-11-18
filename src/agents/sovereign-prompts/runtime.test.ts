@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../config/types.js";
 import { resetSovereignRedactionForTests } from "../../logging/sovereign-redaction.js";
+import * as loader from "./loader.js";
 import {
   assertSovereignPromptNotReplaced,
   assertSovereignPromptRoute,
@@ -39,6 +40,16 @@ function writeAgent(agentId: string, spec: GenerationSpec = {}) {
 
 const configFor = (entries: Parameters<typeof sovereignAgentsConfig>[0]) =>
   sovereignAgentsConfig(entries) as OpenClawConfig;
+
+/** An explicit fleet; `owner` is its recorded system agent, the owner of agentless calls. */
+const fleet = (owner: string | undefined, entries: Parameters<typeof sovereignAgentsConfig>[0]) =>
+  ({
+    agents: {
+      ownership: "explicit",
+      ...(owner ? { defaults: { systemAgent: { agentId: owner } } } : {}),
+      entries: sovereignAgentsConfig(entries).agents.entries,
+    },
+  }) as OpenClawConfig;
 
 function recordingLog() {
   const lines: { level: "info" | "warn"; message: string; meta?: Record<string, unknown> }[] = [];
@@ -146,6 +157,52 @@ describe.skipIf(process.platform === "win32")("sovereign prompt process registry
     },
   );
 
+  it("start-time load refuses an agent whose load throws unexpectedly, as io_error, and goes on", async () => {
+    const good = writeAgent("good");
+    const crashing = writeAgent("crashing");
+    const config = configFor({
+      crashing: { agentDir: crashing.agentDir, mode: "enforce" },
+      good: { agentDir: good.agentDir, mode: "enforce" },
+    });
+    const realLoad = loader.loadSovereignPromptSnapshot;
+    const load = vi.spyOn(loader, "loadSovereignPromptSnapshot").mockImplementation((params) => {
+      if (params.agentId === "crashing") {
+        // Not a refusal: a bug or native failure whose message echoes a path and content.
+        throw new TypeError(`cannot read ${crashing.root}: ${SENTINEL}`);
+      }
+      return realLoad(params);
+    });
+    try {
+      const log = recordingLog();
+      const outcome = await capture(() => {
+        loadSovereignPromptsForProcess(config, { log });
+        return describeSovereignPromptStatus();
+      });
+      expect(outcome.error).toBeUndefined();
+      expect(outcome.value).toEqual([
+        { agentId: "crashing", state: "refused", code: "io_error", errno: "EUNKNOWN" },
+        expect.objectContaining({ agentId: "good", state: "loaded" }),
+      ]);
+      expect(log.lines.map(({ level, message }) => [level, message])).toEqual([
+        ["warn", "[SOVEREIGN_PROMPTS_REFUSED] agent:crashing code=io_error"],
+        ["info", expect.stringMatching(/^\[SOVEREIGN_PROMPTS_LOADED\] agent:good /)],
+      ]);
+      const refused = await capture(() =>
+        resolveSovereignPromptSnapshot({ config, agentId: "crashing" }),
+      );
+      expect((refused.error as SovereignPromptRefusal).code).toBe("io_error");
+      expect(resolveSovereignPromptSnapshot({ config, agentId: "good" })?.agentId).toBe("good");
+      for (const result of [outcome, refused]) {
+        expectNoSentinel(
+          { ...result, logs: [...result.logs, ...log.lines.map((line) => JSON.stringify(line))] },
+          [crashing.agentDir, good.agentDir, "cannot read"],
+        );
+      }
+    } finally {
+      load.mockRestore();
+    }
+  });
+
   it("refuses an enforce agent this process never loaded, and keeps a loaded one until restart", () => {
     const good = writeAgent("good");
     const late = writeAgent("late");
@@ -174,24 +231,72 @@ describe.skipIf(process.platform === "win32")("sovereign prompt process registry
     );
   });
 
-  it("refuses a render or check with no resolvable agent while any sovereign agent exists", () => {
-    const good = writeAgent("good");
-    const enforced = configFor({ good: { agentDir: good.agentDir, mode: "enforce" } });
-    expectRefusal(() => resolveSovereignPromptSnapshot({ config: enforced }), "agent_unknown");
+  it("decides a call that names no agent by the agent OpenClaw resolves for it", () => {
+    const main = writeAgent("main");
+    const prince = writeAgent("prince");
+    const entries = {
+      main: { agentDir: main.agentDir },
+      prince: { agentDir: prince.agentDir, mode: "enforce" as const },
+    };
+    const offOwner = fleet("main", entries);
+    loadSovereignPromptsForProcess(offOwner, { log: recordingLog() });
+    // The off owner's agentless renders and checks are untouched by the enforce agent beside it.
+    expect(resolveSovereignPromptSnapshot({ config: offOwner })).toBeUndefined();
+    expect(isSovereignPromptAgent(offOwner, undefined)).toBe(false);
+    assertSovereignPromptRoute({ config: offOwner, route: "cli" });
+    assertSovereignPromptNotReplaced(offOwner, undefined, "before_prompt_build");
+    // The enforce agent is still checked under its own id.
     expectRefusal(
-      () => resolveSovereignPromptSnapshot({ config: enforced, agentId: "%%%" }),
-      "agent_unknown",
+      () => assertSovereignPromptRoute({ config: offOwner, agentId: "prince", route: "cli" }),
+      "route_unconverted",
     );
-    // Refusal checks decide the same way: an unidentified run is refused, never admitted.
+    // An enforce owner's agentless call is its own: its snapshot, and its checks.
+    const enforceOwner = fleet("prince", entries);
+    expect(resolveSovereignPromptSnapshot({ config: enforceOwner })?.agentId).toBe("prince");
+    expect(isSovereignPromptAgent(enforceOwner, undefined)).toBe(true);
     expectRefusal(
-      () => assertSovereignPromptRoute({ config: enforced, route: "cli" }),
+      () => assertSovereignPromptRoute({ config: enforceOwner, route: "cli" }),
       "route_unconverted",
     );
     expectRefusal(
-      () => assertSovereignPromptNotReplaced(enforced, undefined, "before_prompt_build"),
+      () => assertSovereignPromptNotReplaced(enforceOwner, undefined, "before_prompt_build"),
       "sovereign_override_denied",
     );
-    const off = configFor({ good: { agentDir: good.agentDir } });
+  });
+
+  it("refuses only the call when no agent resolves, and only while a sovereign agent exists", () => {
+    const main = writeAgent("main");
+    const prince = writeAgent("prince");
+    // An explicit fleet with no recorded owner: an agentless call could be the enforce agent's.
+    const ownerless = fleet(undefined, {
+      main: { agentDir: main.agentDir },
+      prince: { agentDir: prince.agentDir, mode: "enforce" },
+    });
+    for (const agentId of [undefined, "%%%"]) {
+      expectRefusal(
+        () => resolveSovereignPromptSnapshot({ config: ownerless, agentId }),
+        "agent_unknown",
+      );
+      expectRefusal(
+        () => assertSovereignPromptRoute({ config: ownerless, agentId, route: "cli" }),
+        "route_unconverted",
+      );
+      expectRefusal(
+        () => assertSovereignPromptNotReplaced(ownerless, agentId, "before_prompt_build"),
+        "sovereign_override_denied",
+      );
+    }
+    // Every named agent keeps its own answer in the same fleet.
+    expect(resolveSovereignPromptSnapshot({ config: ownerless, agentId: "main" })).toBeUndefined();
+    expect(resolveSovereignPromptSnapshot({ config: ownerless, agentId: "prince" })?.agentId).toBe(
+      "prince",
+    );
+    // With no sovereign agent anywhere, nothing refuses.
+    resetSovereignPromptRuntimeForTests();
+    const off = fleet(undefined, {
+      main: { agentDir: main.agentDir },
+      prince: { agentDir: prince.agentDir },
+    });
     expect(resolveSovereignPromptSnapshot({ config: off })).toBeUndefined();
     assertSovereignPromptRoute({ config: off, route: "cli" });
     assertSovereignPromptNotReplaced(off, undefined, "before_prompt_build");

@@ -1,8 +1,10 @@
 // Gateway start loads each enforce agent's sovereign generation (#1321, design § 6.1, § 10.2):
-// before connections attach, one content-free status entry per agent, a broken agent
-// refused without taking the Gateway down, and the status method reporting both.
+// before connections attach, one content-free status entry per agent, a broken agent (or
+// one whose load throws unexpectedly) refused without taking the Gateway down, and the
+// status method reporting each.
 import fs from "node:fs";
 import { expect, it, vi } from "vitest";
+import * as sovereignLoader from "../agents/sovereign-prompts/loader.js";
 import {
   describeSovereignPromptStatus,
   resetSovereignPromptRuntimeForTests,
@@ -18,7 +20,7 @@ import { healthHandlers } from "./server-methods/health.js";
 import { startGatewayServerCore } from "./server-start.js";
 import { createPluginEnabledGatewayTestEnv } from "./test-helpers.env.js";
 
-it("loads sovereign generations at start, refuses only the broken agent and stays up", async () => {
+it("loads sovereign generations at start, refuses only the failing agents and stays up", async () => {
   resetSovereignPromptRuntimeForTests();
   const token = "sovereign-startup-token";
   const state = await createOpenClawTestState({
@@ -34,6 +36,17 @@ it("loads sovereign generations at start, refuses only the broken agent and stay
   writeAgentGeneration(good, "good");
   const broken = agentDir("broken");
   writeAgentGeneration(broken, "broken", { files: { "safety-section.md": "" } });
+  const crashing = agentDir("crashing");
+  writeAgentGeneration(crashing, "crashing");
+  const realLoad = sovereignLoader.loadSovereignPromptSnapshot;
+  const load = vi
+    .spyOn(sovereignLoader, "loadSovereignPromptSnapshot")
+    .mockImplementation((params) => {
+      if (params.agentId === "crashing") {
+        throw new TypeError(`unexpected loader failure: ${SENTINEL}`);
+      }
+      return realLoad(params);
+    });
   const config: OpenClawConfig = {
     agents: {
       ownership: "explicit",
@@ -41,6 +54,7 @@ it("loads sovereign generations at start, refuses only the broken agent and stay
         main: {},
         good: { agentDir: good, sovereignPrompts: { mode: "enforce" } },
         broken: { agentDir: broken, sovereignPrompts: { mode: "enforce" } },
+        crashing: { agentDir: crashing, sovereignPrompts: { mode: "enforce" } },
       },
     },
     gateway: { auth: { mode: "token", token } },
@@ -59,6 +73,7 @@ it("loads sovereign generations at start, refuses only the broken agent and stay
     expect(status).toEqual([
       expect.objectContaining({ agentId: "good", state: "loaded" }),
       expect.objectContaining({ agentId: "broken", state: "refused", code: "required_empty" }),
+      { agentId: "crashing", state: "refused", code: "io_error", errno: "EUNKNOWN" },
     ]);
     const respond = vi.fn();
     await healthHandlers.status?.({
@@ -75,6 +90,7 @@ it("loads sovereign generations at start, refuses only the broken agent and stay
     expect(printed).not.toContain(SENTINEL);
     expect(printed).not.toContain(good);
   } finally {
+    load.mockRestore();
     await server?.close({ reason: "sovereign startup test complete" });
     await state.cleanup();
     resetSovereignPromptRuntimeForTests();
