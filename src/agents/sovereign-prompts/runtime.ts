@@ -73,7 +73,7 @@ function configuredMode(config: OpenClawConfig | undefined, agentId: string) {
 }
 
 function isSovereignAgentId(config: OpenClawConfig | undefined, agentId: string): boolean {
-  return Boolean(runtime.agents?.has(agentId) || configuredMode(config, agentId) === "enforce");
+  return runtime.agents?.has(agentId) || configuredMode(config, agentId) === "enforce";
 }
 
 /** Whether this process has any sovereign agent, loaded or configured. */

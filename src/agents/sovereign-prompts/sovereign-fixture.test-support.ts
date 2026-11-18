@@ -224,7 +224,10 @@ export function expectNoSentinelFilesIn(dirs: Iterable<string>): void {
  * Temp dirs for one test file. After each test, before they are removed, every file a
  * product path wrote under them must be free of the sentinel (`expectNoSentinelFilesIn`).
  */
-export function useSovereignTempDirs(registerCleanup: (cleanup: () => void) => unknown) {
+export function useSovereignTempDirs(registerCleanup: (cleanup: () => void) => unknown): {
+  readonly dirs: ReadonlySet<string>;
+  make(prefix: string, root?: string): string;
+} {
   const tracker = createTempDirTracker();
   registerCleanup(() => {
     try {
@@ -235,5 +238,5 @@ export function useSovereignTempDirs(registerCleanup: (cleanup: () => void) => u
       sourceDirs.clear();
     }
   });
-  return { dirs: tracker.dirs, make: tracker.make };
+  return tracker;
 }
