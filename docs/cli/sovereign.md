@@ -156,11 +156,14 @@ native error text, or names outside the registry.
   missing-reply notice wherever the host delivers one. An answer the agent
   already wrote is still delivered. A resume of an existing Codex thread on an
   app-server other clients can reach (a WebSocket or Unix socket connection, or
-  an `app-server proxy` launch) refuses before anything is read
+  an `app-server proxy` launch) refuses before the thread is read
   (`codex:external-resume`): another client can load the thread between
   OpenClaw's read and its resume, and Codex then ignores the resume's
   instructions without saying so. New threads there are checked as usual. To
   continue, start a new session or use an app-server OpenClaw starts over stdio.
+  Any other stdio command, including a custom `appServer.command`, counts as
+  OpenClaw's own process; a command that bridges to a shared server is outside
+  this check.
 - **Which agent.** An agent's files render only for a call that names that agent.
   A render or check that names no agent, or an invalid one, is refused while any
   agent is `enforce`, counting one that was `enforce` when the process read its

@@ -114,8 +114,8 @@ export function isCodexThreadLoadedBy(
 }
 
 /**
- * Refuses an enforce agent's resume on an app-server other clients can reach, before
- * anything is read. One can load the thread between OpenClaw's read and its resume; Codex
+ * Refuses an enforce agent's resume on an app-server other clients can reach, before the
+ * thread is read. One can load the thread between OpenClaw's read and its resume; Codex
  * then ignores the resume's instructions, and its answer names none in effect.
  */
 export function refuseSharedCodexServerResume(

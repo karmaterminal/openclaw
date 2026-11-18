@@ -80,7 +80,8 @@ export function withEphemeralCodexAuthStore(params: {
 
 /**
  * OpenClaw spawned this app-server as its stdio child, so no other client can load its
- * threads. Codex keeps loaded threads per process, whichever home it shares.
+ * threads. Codex keeps loaded threads per process, whichever home it shares. A custom stdio
+ * command counts too: OpenClaw cannot see past its child.
  */
 export function isOwnedCodexAppServerProcess(start: CodexAppServerStartOptions): boolean {
   return start.transport === "stdio" && !isCodexAppServerProxyLaunch(start.args);

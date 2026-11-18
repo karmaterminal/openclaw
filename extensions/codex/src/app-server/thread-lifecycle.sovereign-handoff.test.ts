@@ -693,13 +693,13 @@ describe.skipIf(process.platform === "win32")("Codex route: sovereign handoff ch
     }
 
     it.each(Object.entries(shared))(
-      "refuses an enforce agent's resume on a %s server before anything is read",
+      "refuses an enforce agent's resume on a %s server before the thread is read",
       async (name, transport) => {
         const { client, request, input } = await boundSession("main", `shared-${name}`);
 
         const outcome = await start(client, input, on(transport)).catch((cause: unknown) => cause);
 
-        // The preflight read alone never earns handoff-verified: nothing is read or resumed.
+        // A preflight read never earns handoff-verified: the thread is not read or resumed.
         expect(outcome).not.toHaveProperty("sovereignReceipt");
         expect(outcome).toMatchObject({
           name: "SovereignPromptRefusal",
