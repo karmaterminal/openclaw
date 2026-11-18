@@ -8,6 +8,7 @@ import {
   normalizeAgentRunAttemptTerminal,
   projectAgentRunAttemptTerminal,
 } from "../src/agents/agent-run-terminal-outcome.js";
+import { log as embeddedRunLog } from "../src/agents/embedded-agent-runner/logger.js";
 import { resolveReplayInvalidFlag } from "../src/agents/embedded-agent-runner/run/incomplete-turn-resolution.js";
 import { prepareTerminalWithSettledTurnFinalization } from "../src/agents/embedded-agent-runner/run/settled-turn-finalization.js";
 import { createSettledFinalizationTestInput } from "../src/agents/embedded-agent-runner/run/settled-turn-finalization.test-support.js";
@@ -33,7 +34,11 @@ describe("registered Codex finalizer host silence contract", () => {
 
   afterEach(() => admission.close());
 
-  async function createInput(options: { failedTool?: boolean; timedOut?: boolean } = {}) {
+  async function createInput(
+    options: Parameters<typeof createCodexSettledFinalizerTestFixture>[0] & {
+      timedOut?: boolean;
+    } = {},
+  ) {
     fixture = await createCodexSettledFinalizerTestFixture(options);
     const { attempt, params } = fixture;
     if (options.timedOut) {
@@ -223,4 +228,117 @@ describe("registered Codex finalizer host silence contract", () => {
       expect(fixture.mirror).not.toHaveBeenCalled();
     },
   );
+
+  describe("for a sovereign agent (openclaw#1321)", () => {
+    // The finalizer asks for a new answer in the agent's name, from a code-owned prompt and an
+    // empty base, so it never carries the agent's sovereign files. An enforce agent refuses it
+    // before any handoff, and the host's settled-tool fallback keeps the reply.
+    const config = {
+      agents: {
+        entries: {
+          main: { sovereignPrompts: { mode: "enforce" as const } },
+          off: { sovereignPrompts: { mode: "off" as const } },
+          plain: {},
+        },
+      },
+    };
+    const generated = "A generated answer the agent never authored.";
+
+    async function createAgentInput(
+      agentId: string,
+      options: Parameters<typeof createInput>[0] = {},
+    ) {
+      const input = await createInput({ terminalStatus: "completed", ...options });
+      Object.assign(input.finalization.preparedAttempt, { config, agentId });
+      input.terminalBase.runParams.trigger = "user";
+      return input;
+    }
+
+    async function resolveTerminal(
+      input: Awaited<ReturnType<typeof createInput>>,
+      result: Awaited<ReturnType<typeof prepareTerminalWithSettledTurnFinalization>>,
+    ) {
+      const resolved = await resolveEmbeddedRunTerminal(
+        makeTerminalInput({
+          ...result.prepared,
+          attempt: result.attempt,
+          attemptAssistant: result.attemptAssistant,
+          terminalState: result.terminalState,
+          runParams: input.terminalBase.runParams,
+          settledTurnFinalizationOutcome: result.finalizationOutcome,
+          replayState: { hadPotentialSideEffects: true, replayInvalid: true },
+          resolveReplayInvalid: () => true,
+        }),
+      );
+      if (resolved.action !== "complete") {
+        throw new Error("A settled turn must complete without replay");
+      }
+      return resolved.result;
+    }
+
+    it("refuses before any handoff and keeps the reply", async () => {
+      const input = await createAgentInput("main");
+      returnBoundedText(generated);
+      const warn = vi.spyOn(embeddedRunLog, "warn");
+
+      const result = await prepareTerminalWithSettledTurnFinalization(input);
+
+      // No auth handoff, no bounded app-server turn, no transcript write.
+      expect(fixture.authHandoff).not.toHaveBeenCalled();
+      expect(fixture.runBounded).not.toHaveBeenCalled();
+      expect(fixture.mirror).not.toHaveBeenCalled();
+      expect(result.finalizationOutcome).toBe("failed");
+      expect(result.attempt).toBe(input.initial.attempt);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "sovereign prompts refused: code=route_unconverted route=codex:settled-turn-finalization",
+        ),
+      );
+      // Settled-tool fallback: a failed finalization ends the turn with the host notice.
+      const terminal = await resolveTerminal(input, result);
+      expect(terminal.meta.error).toMatchObject({ kind: "incomplete_turn" });
+      expect(terminal.payloads).toEqual([
+        expect.objectContaining({
+          text: expect.stringContaining("No answer was returned"),
+          isError: true,
+        }),
+      ]);
+      expect(JSON.stringify(terminal)).not.toContain(generated);
+    });
+
+    it("finalizes an off agent exactly as an agent with no sovereign setting", async () => {
+      const runs = [];
+      for (const agentId of ["off", "plain"]) {
+        const input = await createAgentInput(agentId);
+        returnBoundedText(generated);
+        const result = await prepareTerminalWithSettledTurnFinalization(input);
+        const { signal: _signal, historyItems, ...request } = fixture.runBounded.mock.lastCall![0];
+        runs.push({
+          request,
+          history: historyItems?.length,
+          mirrored: fixture.mirror.mock.lastCall?.[0].messages.map(
+            ({ timestamp: _timestamp, ...message }) => message,
+          ),
+          outcome: result.finalizationOutcome,
+          texts: result.attempt.assistantTexts,
+        });
+      }
+      expect(runs[0]).toMatchObject({ outcome: "answered", texts: [generated] });
+      expect(runs[0]).toEqual(runs[1]);
+    });
+
+    it("forwards the enforce agent's own settled answer without the finalizer", async () => {
+      const answer = "The command printed settled.";
+      const input = await createAgentInput("main", { answer });
+
+      const result = await prepareTerminalWithSettledTurnFinalization(input);
+
+      expect(result.finalizationOutcome).toBe("not-attempted");
+      expect(fixture.authHandoff).not.toHaveBeenCalled();
+      expect(fixture.runBounded).not.toHaveBeenCalled();
+      const terminal = await resolveTerminal(input, result);
+      expect(terminal.meta.error).toBeUndefined();
+      expect(terminal.payloads).toEqual([expect.objectContaining({ text: answer })]);
+    });
+  });
 });
