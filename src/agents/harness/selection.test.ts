@@ -2859,4 +2859,49 @@ describe("selectAgentHarness", () => {
     ).toThrow('Requested agent harness "google-gemini-cli" is not registered');
   });
 });
+
+describe("runAgentHarnessAttempt sovereign prompt route admission", () => {
+  // The agent switch alone decides admission; no generation is read before the refusal.
+  const sovereignRuntimeConfig = (runtime: string) =>
+    ({
+      ...providerRuntimeConfig("codex", runtime),
+      agents: { entries: { main: { sovereignPrompts: { mode: "enforce" } } } },
+    }) as OpenClawConfig;
+  const ringZero = {
+    toolsAllow: ["openclaw"],
+    systemAgentTool: { surface: "cli", proposalRef: {}, directiveRef: {} },
+  };
+
+  it.each([
+    ["copilot", {}, "copilot"],
+    ["codex", { promptMode: "none" }, "codex:none"],
+    ["codex", ringZero, "codex:ring-zero"],
+  ] as const)(
+    "refuses an enforce agent's %s run before the harness runs (%j)",
+    async (runtime, extra, route) => {
+      const runAttempt = vi.fn<AgentHarness["runAttempt"]>(async () =>
+        createAttemptResult(runtime),
+      );
+      registerHarness({ id: runtime, runAttempt });
+      const params = Object.assign(createAttemptParams(sovereignRuntimeConfig(runtime)), extra);
+
+      await expect(runAgentHarnessAttempt(params)).rejects.toMatchObject({
+        name: "SovereignPromptRefusal",
+        code: "route_unconverted",
+        details: { route },
+      });
+      expect(runAttempt).not.toHaveBeenCalled();
+    },
+  );
+
+  it("admits an enforce agent's ordinary Codex thread, whose base carries its text", async () => {
+    const runAttempt = vi.fn<AgentHarness["runAttempt"]>(async () => createAttemptResult("codex"));
+    registerHarness({ id: "codex", runAttempt });
+
+    await runAgentHarnessAttempt(createAttemptParams(sovereignRuntimeConfig("codex")));
+
+    expect(runAttempt).toHaveBeenCalledOnce();
+  });
+});
+
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
