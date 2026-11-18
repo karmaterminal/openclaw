@@ -1,4 +1,4 @@
-// 🌻's phase-A ruling on Gemini native video under sovereign enforce (openclaw#1321): a
+// The phase-A ruling on Gemini native video under sovereign enforce (openclaw#1321): a
 // self-serializing transport is handed a detached copy of the checked request, so an enforce
 // run's native video cannot be restored by its placeholder. It must reach the model as the
 // transport's omission text, in the request itself, and nothing may claim the video was
@@ -38,6 +38,7 @@ import { makeProviderModelFixture } from "../src/agents/test-helpers/provider-mo
 import type { OpenClawConfig } from "../src/config/types.js";
 import type { Context, Model } from "../src/llm/types.js";
 import { resetSovereignRedactionForTests } from "../src/logging/sovereign-redaction.js";
+import type { SubsystemLogger } from "../src/logging/subsystem.js";
 import { attachModelProviderRuntimePluginHandle } from "../src/plugins/provider-hook-runtime.js";
 import type { ProviderPlugin } from "../src/plugins/types.js";
 import { buildPersistedUserTurnMessage } from "../src/sessions/user-turn-transcript.js";
@@ -50,9 +51,45 @@ vi.mock("../src/agents/provider-transport-fetch.js", async (importOriginal) => (
   buildGuardedModelFetch: (): typeof fetch => (input, init) => guardedFetch.record!(input, init),
 }));
 
+// Every subsystem log call a run makes, at any level, whether or not a sink would write it.
+const logged = vi.hoisted((): string[] => []);
+vi.mock("../src/logging/subsystem.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/logging/subsystem.js")>();
+  const { inspect } = await import("node:util");
+  const recording = (logger: SubsystemLogger): SubsystemLogger => {
+    const record =
+      (level: "trace" | "debug" | "info" | "warn" | "error" | "fatal") =>
+      (message: string, meta?: Record<string, unknown>) => {
+        logged.push(inspect([logger.subsystem, level, message, meta], { depth: 8 }));
+        logger[level](message, meta);
+      };
+    return {
+      ...logger,
+      // Test runs log silently; every level counts as enabled, so each message is built.
+      isEnabled: () => true,
+      trace: record("trace"),
+      debug: record("debug"),
+      info: record("info"),
+      warn: record("warn"),
+      error: record("error"),
+      fatal: record("fatal"),
+      raw: (message) => {
+        logged.push(inspect([logger.subsystem, "raw", message]));
+        logger.raw(message);
+      },
+      child: (name) => recording(logger.child(name)),
+    };
+  };
+  return {
+    ...actual,
+    createSubsystemLogger: (subsystem: string) =>
+      recording(actual.createSubsystemLogger(subsystem)),
+  };
+});
+
 const tempDirs = useSovereignTempDirs(afterEach);
-// The fixtures use Google's real hosts (native video needs AI Studio): every request must reach
-// the capture, and a missed one fails instead of leaving the process.
+// The fixtures use Google's real hosts (native video needs AI Studio), so every request must
+// reach the capture; a connection it missed fails the case.
 useDeniedNetworkEgress(beforeEach, afterEach);
 
 const WORKSPACE = "/openclaw-sovereign-fixture/workspace";
@@ -66,6 +103,8 @@ const REFUSED = {
   stopReason: "error",
   errorMessage: expect.stringMatching(/^sovereign prompts refused: /),
 };
+const REFUSED_LOG =
+  "[SOVEREIGN_PROMPTS_REFUSED] agent:main code=transform_altered site=provider_request";
 
 /** Each request that reached the network edge, with the signal it was sent under. */
 let sent: { body: Record<string, unknown>; signal: AbortSignal }[] = [];
@@ -79,6 +118,7 @@ beforeEach(() => {
   env = captureEnv(["OPENCLAW_STATE_DIR", "GOOGLE_CLOUD_PROJECT"]);
   setTestEnvValue("GOOGLE_CLOUD_PROJECT", "openclaw-fixture-project");
   sent = [];
+  logged.length = 0;
   afterSend = undefined;
   hook = undefined;
   verification = undefined;
@@ -239,29 +279,44 @@ async function composeAttempt(params: {
 }
 
 const googlePlugin = buildGoogleProvider();
-// The Google plugin's model resolution adds video for Gemini on AI Studio; canonical model
-// types omit it.
-const VIDEO_INPUT = ["text", "image", "video"] as unknown as Model["input"];
-const geminiApi = makeProviderModelFixture({
+/** A catalog model as the Google plugin resolves it, which decides its API and video input. */
+function resolveGoogleModel(
+  model: Parameters<typeof makeProviderModelFixture>[0],
+  config: OpenClawConfig = {},
+): Model {
+  const catalog = makeProviderModelFixture({ ...model, input: ["text", "image"] });
+  return googlePlugin.normalizeResolvedModel!({
+    provider: catalog.provider,
+    modelId: catalog.id,
+    model: catalog,
+    config,
+  }) as Model;
+}
+// AI Studio serves a Gemini text model over Interactions unless the operator pins its API.
+const geminiApi = resolveGoogleModel(
+  {
+    id: "gemini-3-pro-preview",
+    provider: "google",
+    api: "google-generative-ai",
+    baseUrl: AI_STUDIO,
+  },
+  {
+    models: {
+      providers: { google: { baseUrl: AI_STUDIO, api: "google-generative-ai", models: [] } },
+    },
+  },
+);
+const interactions = resolveGoogleModel({
   id: "gemini-3-pro-preview",
   provider: "google",
   api: "google-generative-ai",
   baseUrl: AI_STUDIO,
-  input: VIDEO_INPUT,
 });
-const interactions = makeProviderModelFixture({
-  id: "gemini-3-pro-preview",
-  provider: "google",
-  api: "google-interactions",
-  baseUrl: AI_STUDIO,
-  input: VIDEO_INPUT,
-});
-const vertex = makeProviderModelFixture({
+const vertex = resolveGoogleModel({
   id: "gemini-3-pro-preview",
   provider: "google-vertex",
   api: "google-vertex",
   baseUrl: "https://us-central1-aiplatform.googleapis.com",
-  input: VIDEO_INPUT,
 });
 
 // No plugin serves this provider, so the built-in Google SDK builder sends it, with the run's
@@ -283,6 +338,10 @@ const geminiParts = (body: Record<string, unknown>) =>
 const interactionsParts = (body: Record<string, unknown>) =>
   (body.input as { content: unknown[] }[])[0]!.content;
 
+const API: Record<string, string> = {
+  "Gemini API": "google-generative-ai",
+  Interactions: "google-interactions",
+};
 /** The Google plugin's transports that restore native video by its placeholder. */
 const NATIVE_VIDEO_ROUTES = [
   {
@@ -310,7 +369,8 @@ const withoutOmission = (body: Record<string, unknown>) =>
 describe.skipIf(process.platform === "win32")("sovereign enforce: Google native video", () => {
   it.each(NATIVE_VIDEO_ROUTES)(
     "$route: an enforce run's video reaches the model as the omission text, never as video",
-    async ({ model, userParts, text, omitted }) => {
+    async ({ route, model, userParts, text, omitted }) => {
+      expect(model).toMatchObject({ api: API[route], input: expect.arrayContaining(["video"]) });
       const messages = await writeVideoTurn(model);
       const { send } = await composeAttempt({
         config: writeAgent("enforce"),
@@ -332,14 +392,17 @@ describe.skipIf(process.platform === "win32")("sovereign enforce: Google native 
         boundary: "provider_request",
         site: model.api,
       });
-      expect(outcome.logs.join("\n")).not.toMatch(/video/i);
+      const logs = [...outcome.logs, ...logged].join("\n");
+      expect(logs).not.toMatch(/video/i);
+      expect(logs).not.toContain(SENTINEL);
       expectNoSentinel(outcome);
     },
   );
 
   it.each(NATIVE_VIDEO_ROUTES)(
     "$route: an off run sends the native video part unchanged",
-    async ({ model, userParts, text, native }) => {
+    async ({ route, model, userParts, text, native }) => {
+      expect(model).toMatchObject({ api: API[route], input: expect.arrayContaining(["video"]) });
       const messages = await writeVideoTurn(model);
       const { send, spans } = await composeAttempt({
         config: writeAgent("off"),
@@ -356,12 +419,13 @@ describe.skipIf(process.platform === "win32")("sovereign enforce: Google native 
     },
   );
 
-  // The Vertex route admits no native video (the plugin adds video input only for provider
-  // `google` on AI Studio), so enforce changes nothing there: in both modes the turn carries the
-  // canonical omission the context transform wrote, and never the video.
+  // The Vertex route admits no native video (the plugin's model resolution adds video input only
+  // for provider `google` on AI Studio), so enforce changes nothing there: in both modes the turn
+  // carries the canonical omission the context transform wrote, and never the video.
   it.each(["enforce", "off"] as const)(
     "Vertex: an %s run sends the canonical omission text, never the video",
     async (mode) => {
+      expect(vertex.input).not.toContain("video");
       const messages = await writeVideoTurn(vertex);
       const { send } = await composeAttempt({
         config: writeAgent(mode),
@@ -443,9 +507,43 @@ describe.skipIf(process.platform === "win32")("sovereign enforce: Google native 
       expect(outcome.value).toMatchObject(errorCode ? { ...REFUSED, errorCode } : REFUSED);
       expect(sent).toHaveLength(0);
       expect(verification).toBeUndefined();
+      // The log capture the video rows read sees the refusal's content-free line.
+      expect(logged.join("\n")).toContain(REFUSED_LOG);
       expectNoSentinel(outcome);
     },
   );
+
+  // Only the Google SDK builder merges `config.httpOptions.extraBody` into the body it serializes
+  // (openclaw#1571 review 5964056490, finding 2); the plugin's REST and Interactions routes send
+  // the plain body. An extra body naming the instruction, by either JSON name, sends nothing.
+  it("Vertex SDK builder: an extraBody naming the instruction sends nothing; a harmless one is sent", async () => {
+    const { send } = await composeAttempt({
+      config: writeAgent("enforce"),
+      model: vertexSdk,
+      plugin: fixturePlugin,
+    });
+    const extraBody = (body: Record<string, unknown>) => (payload: Record<string, unknown>) => {
+      (payload.config as Record<string, unknown>).httpOptions = { extraBody: body };
+      return payload;
+    };
+    for (const field of ["systemInstruction", "system_instruction"]) {
+      hook = extraBody({ [field]: { parts: [{ text: DIFFERENT }] } });
+      const outcome = await capture(() => send(TEXT_TURN));
+      expect(outcome.value).toMatchObject({ ...REFUSED, errorCode: "transform_altered" });
+      expect(verification).toBeUndefined();
+      expectNoSentinel(outcome);
+    }
+    expect(sent).toHaveLength(0);
+    expect(logged.join("\n")).toContain(REFUSED_LOG);
+
+    hook = extraBody({ labels: { fixture: "harmless" } });
+    await send(TEXT_TURN);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.body.labels).toEqual({ fixture: "harmless" });
+    expect(JSON.stringify(sent[0]!.body.systemInstruction)).toContain(SENTINEL);
+    expect(JSON.stringify(sent[0]!.body)).not.toContain(DIFFERENT);
+    expect(verification).toMatchObject({ result: "final-payload-verified", site: "google-vertex" });
+  });
 
   // Cancellation crosses the check. Inside it, the embedded stream composes the run's signal with
   // the caller's, which the check passes on. A transport takes the composed signal from its

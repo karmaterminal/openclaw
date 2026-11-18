@@ -243,31 +243,63 @@ export function useSovereignTempDirs(registerCleanup: (cleanup: () => void) => u
   return tracker;
 }
 
+/** Where a denied connection was headed: options, `(port, host)`, a socket path or a URL. */
+function describeTarget(args: unknown[]): string {
+  const text = (value: unknown) =>
+    typeof value === "string" || typeof value === "number" ? String(value) : undefined;
+  // `net.connect` hands `Socket#connect` its normalized arguments as one array.
+  const [first, second] = Array.isArray(args[0]) ? (args[0] as unknown[]) : args;
+  if (first && typeof first === "object" && !(first instanceof URL)) {
+    const target = first as Record<string, unknown>;
+    return (
+      text(target.path) ??
+      `${text(target.host) ?? text(target.servername) ?? "localhost"}:${text(target.port)}`
+    );
+  }
+  return typeof first === "number"
+    ? `${text(second) ?? "localhost"}:${first}`
+    : (text(first) ?? (first instanceof URL ? first.href : "?"));
+}
+
 /**
- * Denies every TCP and TLS connection while each case runs, then asserts none was attempted.
- * Provider fixtures use real provider hosts (Google admits native video only on AI Studio), so
- * a request a fetch capture missed must fail here instead of reaching the provider.
+ * Denies network connections while each case runs, then asserts none was attempted. Provider
+ * fixtures use real provider hosts (Google admits native video only on AI Studio), so a request
+ * a fetch capture missed must fail here instead of reaching the provider. On Node every TCP and
+ * TLS connection passes through `node:net` and `node:tls`. Bun's native clients do not: its
+ * global `WebSocket` is denied here and its global `fetch` is each file's capture, but its native
+ * `node:http` client and DNS lookups stay outside this guard.
  */
 export function useDeniedNetworkEgress(
   registerSetup: (setup: () => void) => unknown,
   registerCleanup: (cleanup: () => void) => unknown,
 ): void {
   let attempts: string[] = [];
-  let spies: { mockRestore(): void }[] = [];
+  let restores: (() => void)[] = [];
   registerSetup(() => {
     attempts = [];
-    const deny = (kind: string) => () => {
-      attempts.push(kind);
-      throw new Error(`sovereign fixture: ${kind} egress denied`);
-    };
-    spies = [
+    const deny =
+      (kind: string) =>
+      (...args: unknown[]): never => {
+        attempts.push(`${kind} ${describeTarget(args)}`);
+        throw new Error(`sovereign fixture: ${kind} egress denied`);
+      };
+    const denyWebSocket = deny("websocket");
+    const webSocket: unknown = Reflect.get(globalThis, "WebSocket");
+    Reflect.set(globalThis, "WebSocket", function DeniedWebSocket(url: unknown) {
+      denyWebSocket(url);
+    });
+    const spies = [
       vi.spyOn(net.Socket.prototype, "connect").mockImplementation(deny("tcp")),
       vi.spyOn(tls, "connect").mockImplementation(deny("tls")),
     ];
+    restores = [
+      ...spies.map((spy) => () => spy.mockRestore()),
+      () => Reflect.set(globalThis, "WebSocket", webSocket),
+    ];
   });
   registerCleanup(() => {
-    for (const spy of spies) {
-      spy.mockRestore();
+    for (const restore of restores) {
+      restore();
     }
     expect(attempts).toEqual([]);
   });

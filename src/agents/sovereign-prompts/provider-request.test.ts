@@ -38,7 +38,7 @@ vi.mock("../../logging/subsystem.js", async (importOriginal) => {
 });
 
 const tempDirs = useSovereignTempDirs(afterEach);
-// Every request must reach the capture below; a missed one fails instead of leaving.
+// Every request must reach the capture below; a connection it missed fails the case.
 useDeniedNetworkEgress(beforeEach, afterEach);
 const REFUSED = { stopReason: "error", errorCode: "transform_altered" };
 
@@ -124,6 +124,8 @@ async function send(
   return await capture(async () => {
     const stream = await streamFn(model, context, {
       apiKey: model.api === "openai-chatgpt-responses" ? CHATGPT_TOKEN : "synthetic-key",
+      // The ChatGPT route opens a WebSocket first by default, which no fetch capture sees.
+      ...(model.api === "openai-chatgpt-responses" ? { transport: "sse" } : {}),
       ...options,
       ...(onPayload
         ? { onPayload: (payload: unknown) => onPayload(payload as Record<string, unknown>) }
