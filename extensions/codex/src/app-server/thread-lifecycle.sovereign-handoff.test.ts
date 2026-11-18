@@ -153,8 +153,12 @@ function start(
   });
 }
 
-/** Native config whose `instructions` key makes the Codex base the operator's. */
+/**
+ * A synthetic server: `nativeConfig` with an `instructions` key makes the Codex base the
+ * operator's. Each thread/start after the first gets a numbered id.
+ */
 function respond(threadId: string, nativeConfig: Record<string, unknown> = {}) {
+  let starts = 0;
   return async (method: string) => {
     if (method === "config/read") {
       return { config: nativeConfig, origins: {}, layers: [] };
@@ -162,7 +166,11 @@ function respond(threadId: string, nativeConfig: Record<string, unknown> = {}) {
     if (method === "configRequirements/read") {
       return { requirements: null };
     }
-    if (method === "thread/start" || method === "thread/resume") {
+    if (method === "thread/start") {
+      starts += 1;
+      return threadStartResult(starts === 1 ? threadId : `${threadId}-${starts}`);
+    }
+    if (method === "thread/resume") {
       return threadStartResult(threadId);
     }
     throw new Error(`unexpected method: ${method}`);

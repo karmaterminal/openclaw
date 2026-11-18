@@ -37,6 +37,12 @@ import { isJsonObject, type CodexThread } from "./protocol.js";
 import type { CodexAppServerThreadBinding } from "./session-binding.js";
 import { retainSharedCodexAppServerClientByInstanceId } from "./shared-client.js";
 import {
+  checkCodexThreadHandoff,
+  checkCodexThreadReuse,
+  checkCodexUnrenderedThreadReuse,
+  codexSovereignHandoffIdentity,
+} from "./sovereign-handoff.js";
+import {
   fingerprintCodexThreadConfig,
   fingerprintRestrictedThreadConfig,
 } from "./thread-fingerprints.js";
@@ -390,6 +396,10 @@ export async function tryReuseCodexLiveThread(
       await prepareCodexThreadFinalConfigPatch(params, options.nativeModelInputTools, binding);
       throwIfAborted();
       params.assertCurrent?.();
+      const sovereignReceipt = checkCodexUnrenderedThreadReuse(
+        params.params,
+        creationPolicy?.sovereignReceipt,
+      );
       return {
         kind: "ready",
         binding: {
@@ -397,6 +407,7 @@ export async function tryReuseCodexLiveThread(
           // Nothing is sent to this live thread, so report the base it got at creation,
           // never a render of current inputs.
           preparedOpenClawBaseInstructions: creationPolicy?.baseInstructions,
+          ...(sovereignReceipt ? { sovereignReceipt } : {}),
           lifecycle: { action: "resumed" },
         },
       };
@@ -585,6 +596,19 @@ export async function tryReuseCodexLiveThread(
       preserveSubscription = true;
       throw new CodexIncognitoPolicyChangeError();
     }
+    // The thread keeps the instructions of the handoff that loaded it: this attempt's request
+    // must pass, and an ephemeral thread, which cannot resume cold, needs its creation to
+    // have passed. A refusal leaves the owner as it was.
+    preserveSubscription = true;
+    const currentReceipt = checkCodexThreadHandoff(
+      params.params,
+      "live_thread_reuse",
+      resumeParams,
+    );
+    const sovereignReceipt = incognito
+      ? checkCodexThreadReuse(params.params, ephemeralPolicy?.sovereignReceipt, currentReceipt)
+      : currentReceipt;
+    preserveSubscription = false;
     if (
       options.requireRestrictedThreadConfigFingerprint &&
       (Boolean(binding.nativeToolPolicyRestricted) !== restrictedToolSurface ||
@@ -615,6 +639,7 @@ export async function tryReuseCodexLiveThread(
           dynamicToolsFingerprint,
           binding,
           params,
+          codexSovereignHandoffIdentity(sovereignReceipt),
         );
     if (!incognito && retainedThread.configFingerprint !== liveThreadConfigFingerprint) {
       // Return the same owner first: cold-resume preparation must observe native teardown
@@ -730,6 +755,7 @@ export async function tryReuseCodexLiveThread(
         liveThreadEphemeralPolicy,
         liveThreadOwnership: retainedThread,
         preparedOpenClawBaseInstructions: options.resolveOpenClawBaseInstructions(promptBinding),
+        ...(sovereignReceipt ? { sovereignReceipt } : {}),
         ...(!incognito && retainedThread.serviceTier && resumeParams.serviceTier === undefined
           ? { clearInheritedServiceTier: true }
           : {}),

@@ -1,4 +1,8 @@
-import { embeddedAgentLog, formatErrorMessage } from "openclaw/plugin-sdk/agent-harness-runtime";
+import {
+  embeddedAgentLog,
+  formatErrorMessage,
+  type SovereignPromptHandoffReceipt,
+} from "openclaw/plugin-sdk/agent-harness-runtime";
 import type { CodexServiceTier, JsonObject } from "./protocol.js";
 
 export type ThreadOwnerToken = {
@@ -52,6 +56,8 @@ export type CodexEphemeralThreadPolicy = {
    * client-authored refresh, so this is the section a compacted thread reverts to.
    */
   nativeRefreshableInstructions?: string;
+  /** The sovereign handoff check the creating thread/start passed; reuse requires it. */
+  sovereignReceipt?: SovereignPromptHandoffReceipt;
 };
 
 export type RetainedLiveThread = {

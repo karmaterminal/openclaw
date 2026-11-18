@@ -12,6 +12,7 @@ import {
   describeSovereignPromptsRefused,
   SovereignPromptRefusal,
 } from "../agents/sovereign-prompts/snapshot.js";
+import { describeSovereignRouteVerification } from "../agents/sovereign-prompts/verification.js";
 import { captureRuntimeConfigAsyncReader } from "../config/config.js";
 import { defaultRuntime } from "../runtime.js";
 import { formatDocsHelp, formatHelpExamples } from "./help-format.js";
@@ -117,21 +118,30 @@ export function registerSovereignCli(program: Command) {
 
   sovereign
     .command("slots")
-    .description("List the slots, files and reserved tokens this build declares; reads no file")
+    .description(
+      "List the slots, files, reserved tokens and route checks this build declares; reads no file",
+    )
     .option("--json", "Print JSON", false)
     .action((opts: { json?: boolean }) => {
       const registry = describeSovereignPromptRegistry();
+      // Declared boundaries only: listing runs no check, so it never reports a result.
+      const routes = describeSovereignRouteVerification();
       if (opts.json) {
-        defaultRuntime.writeJson({ ok: true, ...registry });
+        defaultRuntime.writeJson({ ok: true, ...registry, routes });
         return;
       }
       defaultRuntime.log(
-        registry.slots
-          .map(
+        [
+          ...registry.slots.map(
             ({ slot, files, required, phase, converted }) =>
               `${slot} phase=${phase}${required ? " required" : ""}${converted ? " converted" : ""}: ${files.join(", ")}`,
-          )
-          .join("\n"),
+          ),
+          ...routes.map(
+            ({ route, check, boundary, sites, unverified }) =>
+              `route ${route}: declared ${check} check at ${boundary} (${sites.join(", ")})` +
+              (unverified.length ? `; unverified: ${unverified.join(", ")}` : ""),
+          ),
+        ].join("\n"),
       );
     });
 }

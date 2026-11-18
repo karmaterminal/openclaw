@@ -1,3 +1,4 @@
+import type { SovereignPromptHandoffReceipt } from "openclaw/plugin-sdk/agent-harness-runtime";
 import type { AgentHarnessSessionRuntimeParamsV1 } from "openclaw/plugin-sdk/codex-mcp-projection";
 import type {
   CodexAppServerLiveThreadOwnership,
@@ -40,6 +41,8 @@ export type CodexAppServerThreadLifecycleBinding = CodexAppServerThreadBinding &
   preparedOpenClawBaseInstructions?: string;
   /** This attempt's preflight config/read snapshot; never persisted in the binding. */
   preparedEffectiveConfig?: CodexConfigReadResponse;
+  /** The sovereign handoff check this lifecycle passed, for the prompt report; never persisted. */
+  sovereignReceipt?: SovereignPromptHandoffReceipt;
 };
 
 export type CodexThreadFinalConfigPatchDecision = (

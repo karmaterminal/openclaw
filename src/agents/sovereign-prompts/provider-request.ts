@@ -13,10 +13,12 @@ import {
 } from "@openclaw/ai/internal/model-request-body";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { SUMMARIZATION_SYSTEM_PROMPT } from "../../../packages/agent-core/src/harness/compaction/summarization-prompts.js";
+import type { SovereignPromptVerification } from "../../config/sessions/session-system-prompt-report.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { StreamFn } from "../runtime/index.js";
 import type { SovereignPromptSpans } from "./runtime.js";
 import { describeSovereignPromptsRefused, SovereignPromptRefusal } from "./snapshot.js";
+import { finalPayloadVerified, type SovereignProviderRequestApi } from "./verification.js";
 
 const log = createSubsystemLogger("agents/sovereign-prompts");
 
@@ -94,9 +96,10 @@ const readGoogleSystemText: SystemTextExtractor = (payload) =>
 
 /**
  * Where each supported API builder (`@openclaw/ai` built-in registrations) places the
- * system prompt. An API absent here cannot be checked, so an `enforce` run there refuses.
+ * system prompt; the declared list (verification.ts) and this map must match. An API
+ * absent here cannot be checked, so an `enforce` run there refuses.
  */
-const SYSTEM_TEXT_EXTRACTORS: Readonly<Record<string, SystemTextExtractor>> = {
+const SYSTEM_TEXT_EXTRACTORS: Readonly<Record<SovereignProviderRequestApi, SystemTextExtractor>> = {
   "anthropic-messages": (payload) => readTextBlocks(payload.system, "text"),
   "openai-completions": (payload) =>
     readLeadingSystemMessages(payload.messages, SYSTEM_OR_DEVELOPER_ROLES, "text"),
@@ -111,6 +114,10 @@ const SYSTEM_TEXT_EXTRACTORS: Readonly<Record<string, SystemTextExtractor>> = {
     typeof payload.system_instruction === "string" ? [payload.system_instruction] : undefined,
 };
 
+function isCheckedApi(api: string): api is SovereignProviderRequestApi {
+  return Object.hasOwn(SYSTEM_TEXT_EXTRACTORS, api);
+}
+
 /**
  * Whether every span of this run's agent appears whole in one system text segment of the
  * payload. Formatting a provider adds around a span (cache blocks, an identity block,
@@ -119,12 +126,13 @@ const SYSTEM_TEXT_EXTRACTORS: Readonly<Record<string, SystemTextExtractor>> = {
 function carriesSovereignSpans(params: {
   agentId: string;
   spans: SovereignPromptSpans | undefined;
-  api: string;
+  api: SovereignProviderRequestApi;
   payload: unknown;
 }): boolean {
   const { spans } = params;
-  const extract = SYSTEM_TEXT_EXTRACTORS[params.api];
-  const segments = extract && isRecord(params.payload) ? extract(params.payload) : undefined;
+  const segments = isRecord(params.payload)
+    ? SYSTEM_TEXT_EXTRACTORS[params.api](params.payload)
+    : undefined;
   return (
     spans?.agentId === params.agentId &&
     segments !== undefined &&
@@ -136,12 +144,22 @@ type EncodeModelRequestBody = NonNullable<ReturnType<typeof modelRequestBodyStat
 
 function isResponsesContinuationDelta(api: string, payload: unknown): boolean {
   return (
+    isCheckedApi(api) &&
     SYSTEM_TEXT_EXTRACTORS[api] === readResponsesSystemText &&
     isRecord(payload) &&
     typeof payload.previous_response_id === "string" &&
     readResponsesSystemText(payload) === undefined
   );
 }
+
+/** What the check reads of its run. */
+export type SovereignRequestCheckRun = {
+  sessionAgentId: string;
+  /** The applied render's spans; a tool refresh can re-render mid-run. */
+  sovereignSpans?: () => SovereignPromptSpans | undefined;
+  /** Receives each check's outcome for the prompt report; `undefined` after a refusal. */
+  onSovereignVerification?: (verification: SovereignPromptVerification | undefined) => void;
+};
 
 // A re-sent call can reuse its options' body state; unwrap an earlier check, never nest.
 const checkedEncoders = new WeakMap<EncodeModelRequestBody, EncodeModelRequestBody | undefined>();
@@ -154,19 +172,18 @@ const checkedEncoders = new WeakMap<EncodeModelRequestBody, EncodeModelRequestBo
  * again on each encoded attempt, which covers resends that skip the hook (a slower
  * service tier, stripped reasoning). A refusal throws before any byte is sent.
  *
+ * Each passed check reports `final-payload-verified` with the API it read; a refusal
+ * withdraws it, so the run's prompt report holds the outcome of its latest check.
+ *
  * A run whose render placed no span (an off agent, a raw run) keeps its stream as is.
  * Compaction summaries share the run's stream with their own code-owned system prompt,
  * which carries no sovereign span; a request whose prompt starts with it is not checked.
  */
 export function wrapStreamFnWithSovereignRequestCheck(
   streamFn: StreamFn,
-  run: {
-    sessionAgentId: string;
-    /** The applied render's spans; a tool refresh can re-render mid-run. */
-    sovereignSpans?: () => SovereignPromptSpans | undefined;
-  },
+  run: SovereignRequestCheckRun,
 ): StreamFn {
-  const { sessionAgentId: agentId, sovereignSpans: readSpans } = run;
+  const { sessionAgentId: agentId, sovereignSpans: readSpans, onSovereignVerification } = run;
   if (!readSpans?.()) {
     return streamFn;
   }
@@ -174,19 +191,26 @@ export function wrapStreamFnWithSovereignRequestCheck(
     // The transport's error projection redacts `key=value` text; the log keeps the site.
     const { line, fields } = describeSovereignPromptsRefused(agentId, refusal);
     log.warn(line, fields);
+    onSovereignVerification?.(undefined);
     throw refusal;
   };
   return (model, context, options) => {
     if (context.systemPrompt?.startsWith(SUMMARIZATION_SYSTEM_PROMPT)) {
       return streamFn(model, context, options);
     }
-    if (!Object.hasOwn(SYSTEM_TEXT_EXTRACTORS, model.api)) {
+    if (!isCheckedApi(model.api)) {
       refuse(new SovereignPromptRefusal("route_unconverted", { route: `api:${model.api}` }));
     }
     // A provider transport can build for another API than it was routed by (LM Studio).
     let api = model.api;
     const assertPayload = (payload: unknown) => {
-      if (!carriesSovereignSpans({ agentId, spans: readSpans(), api, payload })) {
+      const checkedApi = isCheckedApi(api) ? api : undefined;
+      if (
+        checkedApi &&
+        carriesSovereignSpans({ agentId, spans: readSpans(), api: checkedApi, payload })
+      ) {
+        onSovereignVerification?.(finalPayloadVerified(checkedApi));
+      } else {
         refuse(new SovereignPromptRefusal("transform_altered", { site: "provider_request" }));
       }
     };

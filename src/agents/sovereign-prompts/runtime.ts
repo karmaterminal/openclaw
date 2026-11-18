@@ -26,6 +26,10 @@ import {
   SovereignPromptRefusal,
   type SovereignPromptSnapshot,
 } from "./snapshot.js";
+// Routes whose prompt carrier a test proves receives the loaded text, each with a declared
+// check (the embedded renderer, Codex `baseInstructions`). Every other route is refused for
+// an `enforce` agent, so no run there falls back to stock text (§ 7.3).
+import { SOVEREIGN_CONVERTED_ROUTES } from "./verification.js";
 
 type SovereignAgentState =
   | { state: "loaded"; snapshot: SovereignPromptSnapshot }
@@ -41,14 +45,7 @@ const runtime = resolveGlobalSingleton<{ agents: Map<string, SovereignAgentState
   },
 );
 
-/**
- * Routes whose prompt carrier a test proves receives the loaded text (the embedded
- * OpenClaw renderer, and Codex `baseInstructions`). Every other route is refused for an
- * `enforce` agent, so no run there falls back to stock text (§ 7.3).
- */
-const CONVERTED_ROUTES: ReadonlySet<string> = new Set(["openclaw", "codex"]);
-
-function strictAgentId(agentId: string | undefined): string | undefined {
+export function strictAgentId(agentId: string | undefined): string | undefined {
   const normalized = agentId?.trim() ? normalizeAgentIdStrict(agentId) : undefined;
   return normalized?.ok ? normalized.value : undefined;
 }
@@ -188,7 +185,7 @@ export function assertSovereignPromptRoute(params: {
   route: string;
 }): void {
   if (
-    !CONVERTED_ROUTES.has(params.route) &&
+    !SOVEREIGN_CONVERTED_ROUTES.has(params.route) &&
     isSovereignPromptAgent(params.config, params.agentId)
   ) {
     throw new SovereignPromptRefusal("route_unconverted", { route: params.route });
@@ -282,6 +279,14 @@ export function beginSovereignPromptRender(
       return rendered.map(({ text }) => text);
     },
   };
+}
+
+/** The snapshot this process loaded for `agentId`, for a receipt; never a load or a refusal. */
+export function readLoadedSovereignPromptSnapshot(
+  agentId: string,
+): SovereignPromptSnapshot | undefined {
+  const state = runtime.agents?.get(agentId);
+  return state?.state === "loaded" ? state.snapshot : undefined;
 }
 
 /** Gateway status: each loaded agent's generation and digest, or its refusal code. */

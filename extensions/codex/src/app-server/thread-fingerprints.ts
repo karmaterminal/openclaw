@@ -61,7 +61,11 @@ export function fingerprintJsonObject(value: JsonObject): string {
   return JSON.stringify(stabilizeJsonValue(value));
 }
 
-/** Hash thread-creation identity; settings already applied by turn/start must not restart Codex. */
+/**
+ * Hash thread-creation identity; settings already applied by turn/start must not restart Codex.
+ * `sovereignHandoff` is the passed sovereign check that handed these instructions; absent,
+ * the hash is unchanged.
+ */
 export function fingerprintCodexThreadConfig(
   initialRequest: JsonObject,
   authProfileId?: string,
@@ -72,6 +76,7 @@ export function fingerprintCodexThreadConfig(
     preserveNativeModel?: boolean;
   },
   inference?: CodexThreadFingerprintInference,
+  sovereignHandoff?: JsonObject,
 ): string {
   let { model, requestedModel, modelProvider, requestedModelProvider } = initialRequest;
   if (selection) {
@@ -113,6 +118,7 @@ export function fingerprintCodexThreadConfig(
         isJsonObject(initialRequest.config) ? initialRequest.config : {},
         inference,
       ),
+      ...(sovereignHandoff ? { sovereignHandoff } : {}),
     }),
   );
 }

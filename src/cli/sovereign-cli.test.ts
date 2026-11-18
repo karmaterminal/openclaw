@@ -134,7 +134,7 @@ describe.skipIf(process.platform === "win32")("openclaw sovereign", () => {
         check: "handoff",
         boundary: "app_server_handoff",
         sites: ["thread/start", "thread/resume", "thread/inject_items", "live_thread_reuse"],
-        unverified: ["codex_binary"],
+        unverified: ["codex_binary", "inference_relay"],
       },
     ]);
     // A declaration is not a receipt: no executed result, no load, no diagnostic line.
@@ -142,7 +142,7 @@ describe.skipIf(process.platform === "win32")("openclaw sovereign", () => {
     expect(describeSovereignPromptStatus()).toBeUndefined();
     const text = await run(["slots"]);
     expect(text.output).toContain(
-      "route codex: declared handoff check at app_server_handoff (thread/start, thread/resume, thread/inject_items, live_thread_reuse); unverified: codex_binary",
+      "route codex: declared handoff check at app_server_handoff (thread/start, thread/resume, thread/inject_items, live_thread_reuse); unverified: codex_binary, inference_relay",
     );
     expect(text.output).not.toMatch(/-verified/);
   });

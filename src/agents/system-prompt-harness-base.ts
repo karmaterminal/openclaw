@@ -17,6 +17,7 @@ import { buildPromisedWorkPromptSection } from "./promised-work-prompt.js";
 import {
   beginSovereignPromptRender,
   resolveSovereignPromptSnapshot,
+  type SovereignPromptSpans,
 } from "./sovereign-prompts/runtime.js";
 import type { ProviderSystemPromptContribution } from "./system-prompt-contribution.js";
 import { buildOpenClawControlSection } from "./system-prompt-control.js";
@@ -44,6 +45,8 @@ export function buildAgentHarnessBasePrompt(params: {
   /** Only the thread-stable parts apply: the provider's dynamic suffix is not rendered. */
   promptContribution?: ProviderSystemPromptContribution;
   nativeCommandGuidanceLines?: readonly string[];
+  /** The sovereign spans this render placed, for the harness's handoff check. */
+  onRenderedSovereignSpans?: (spans: SovereignPromptSpans) => void;
 }): string {
   const promptMode = params.promptMode ?? "full";
   const snapshot = resolveSovereignPromptSnapshot({
@@ -51,9 +54,19 @@ export function buildAgentHarnessBasePrompt(params: {
     agentId: params.agentId,
   });
   const sovereign = snapshot ? beginSovereignPromptRender(snapshot) : undefined;
+  const placed = (prompt: string) => {
+    if (sovereign) {
+      params.onRenderedSovereignSpans?.({
+        agentId: sovereign.agentId,
+        setDigest: sovereign.setDigest,
+        instances: sovereign.instances,
+      });
+    }
+    return prompt;
+  };
   const identity = sovereign ? sovereign.slot("identity-section.md") : HARNESS_IDENTITY;
   if (promptMode === "none") {
-    return identity ?? "";
+    return placed(identity ?? "");
   }
   const isMinimal = promptMode === "minimal";
   const availableTools = new Set([...params.toolNames].map((name) => name.trim().toLowerCase()));
@@ -113,10 +126,12 @@ export function buildAgentHarnessBasePrompt(params: {
     // names the public mirror.
     isMinimal ? [] : buildDocumentationSection({ availableTools, sandboxed: false }),
   ];
-  return sections
-    .flat()
-    .filter((line): line is string => line !== undefined && line !== false)
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return placed(
+    sections
+      .flat()
+      .filter((line): line is string => line !== undefined && line !== false)
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim(),
+  );
 }

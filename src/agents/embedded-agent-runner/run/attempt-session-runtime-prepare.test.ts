@@ -303,6 +303,28 @@ describe("prepareEmbeddedAttemptSessionRuntime", () => {
     expect(plain.prepareSystemPromptUpdate).toBeDefined();
   });
 
+  it("records the provider request check's latest result in the run's prompt report (#1321)", async () => {
+    const fixture = createFixture();
+    const systemPromptReport = { sovereign: { agentId: "main" } };
+    Object.assign(fixture.input.systemPrompt, { systemPromptReport });
+    await fixture.prepare();
+    const [transport] = mocks.prepareTransport.mock.calls[0] as [
+      Parameters<typeof import("./attempt-stream-settle.js").prepareEmbeddedAttemptTransport>[0],
+    ];
+    const verified = {
+      result: "final-payload-verified" as const,
+      route: "openclaw",
+      boundary: "provider_request",
+      site: "anthropic-messages",
+    };
+
+    transport.onSovereignVerification?.(verified);
+    expect(systemPromptReport.sovereign).toEqual({ agentId: "main", verification: verified });
+    // A refused request withdraws it.
+    transport.onSovereignVerification?.(undefined);
+    expect(systemPromptReport.sovereign).toEqual({ agentId: "main", verification: undefined });
+  });
+
   it("clears an unsent prompt without reading history when prompt updates remain enabled", async () => {
     const fixture = createHistoryFixture();
     const first = await prepareEmbeddedAttemptSessionRuntime(fixture.input);

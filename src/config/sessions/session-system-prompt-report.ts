@@ -1,3 +1,18 @@
+/**
+ * The sovereign span check a run's request passed (openclaw#1321): `final-payload-verified`
+ * in the provider request OpenClaw built, or `handoff-verified` at the last handoff OpenClaw
+ * controls on a route whose binary builds the provider request itself. Content-free.
+ */
+export type SovereignPromptVerification = {
+  result: "final-payload-verified" | "handoff-verified";
+  /** The converted route: `openclaw` (embedded) or `codex`. */
+  route: string;
+  /** `provider_request`, or `app_server_handoff`. */
+  boundary: string;
+  /** The API builder read, or the handoff checked (`thread/start`, `live_thread_reuse`, …). */
+  site: string;
+};
+
 /** Persisted size and provenance summary for one assembled system prompt. */
 export type SessionSystemPromptReport = {
   source: "run" | "estimate";
@@ -38,6 +53,8 @@ export type SessionSystemPromptReport = {
       sha256: string;
       converted: boolean;
     }>;
+    /** The run's latest check, absent until one passes and after a refusal. */
+    verification?: SovereignPromptVerification;
   };
   systemPrompt: {
     chars: number;

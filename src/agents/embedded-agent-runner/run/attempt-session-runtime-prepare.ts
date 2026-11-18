@@ -509,6 +509,11 @@ export async function prepareEmbeddedAttemptSessionRuntime(input: {
     ...(sandbox !== undefined ? { sandbox } : {}),
     codeModeControlsEnabled: codeModeControlsEnabledForRun,
     sovereignSpans: input.systemPrompt.sovereignSpans,
+    onSovereignVerification: (verification) => {
+      if (systemPromptReport?.sovereign) {
+        systemPromptReport.sovereign.verification = verification;
+      }
+    },
     providerPromptState: {
       state: getProviderPromptState(attempt.runId),
       effectiveContextTokenBudget: Math.max(
