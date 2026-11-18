@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import type { bindSubagentSpawnCleanup } from "./subagent-spawn-cleanup.js";
+import {
+  terminateAcceptedCollectorRun,
+  type bindSubagentSpawnCleanup,
+} from "./subagent-spawn-cleanup.js";
 import type { PreparedContextEngineSubagentSpawn } from "./subagent-spawn-context.js";
 import { cleanupAcceptedSubagentSpawnFailure } from "./subagent-spawn-rollback.js";
 
@@ -93,7 +96,9 @@ describe("cleanupAcceptedSubagentSpawnFailure retained-owner termination", () =>
 });
 
 describe("cleanupAcceptedSubagentSpawnFailure after termination", () => {
-  function failOwnedRegistration() {
+  function failOwnedRegistration(
+    identity: { expectedSessionId?: string; expectedLifecycleRevision?: string } = {},
+  ) {
     calls.length = 0;
     ownership.current = true;
     const contextEnginePreparation = {
@@ -119,8 +124,27 @@ describe("cleanupAcceptedSubagentSpawnFailure after termination", () => {
         calls.push(`cleanup-session:${String(emitLifecycleHooks)}`);
       },
       isCurrent: () => ownership.current,
+      ...identity,
     });
   }
+
+  it("hands termination the accepted child's frozen incarnation", async () => {
+    // A definitive abort miss falls back to deleting the child session, which is safe only
+    // against the accepted transcript id and lifecycle revision, never the key alone.
+    await failOwnedRegistration({
+      expectedSessionId: "sess-accepted-child",
+      expectedLifecycleRevision: "revision-accepted-child",
+    });
+
+    expect(vi.mocked(terminateAcceptedCollectorRun)).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        childSessionKey: "agent:main:subagent:child",
+        gatewayRunId: "accepted-run",
+        expectedSessionId: "sess-accepted-child",
+        expectedLifecycleRevision: "revision-accepted-child",
+      }),
+    );
+  });
 
   it("re-reads ownership after termination: disposes the context and keeps attachments it no longer owns", async () => {
     await expect(failOwnedRegistration()).resolves.toBeUndefined();
