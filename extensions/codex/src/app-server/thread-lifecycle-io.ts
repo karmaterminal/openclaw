@@ -1,7 +1,4 @@
-import {
-  assertSovereignPromptRoute,
-  embeddedAgentLog,
-} from "openclaw/plugin-sdk/agent-harness-runtime";
+import { embeddedAgentLog } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { codexCatalogHomeId } from "../session-catalog-home-id.js";
 import {
   CODEX_APP_SERVER_UNSUBSCRIBE_TIMEOUT_MS,
@@ -11,7 +8,6 @@ import {
   unsubscribeCodexThreadBestEffort,
 } from "./attempt-client-cleanup.js";
 import {
-  isOwnedCodexAppServerProcess,
   resolveCodexAppServerLocalHomeDir,
   usesManagedCodexThreadUnloading,
 } from "./auth-start-options.js";
@@ -43,6 +39,7 @@ import {
   checkCodexPolicyRefresh,
   checkCodexThreadHandoff,
   recordCodexThreadLoad,
+  refuseSharedCodexServerResume,
 } from "./sovereign-handoff.js";
 import { buildContextEngineBinding } from "./thread-context-engine.js";
 import {
@@ -117,16 +114,8 @@ export async function resumeExistingCodexThread(
     throwIfAborted,
     stageBindingReplacement,
   } = context;
-  // Another client of a shared app-server can load this thread between OpenClaw's read and
-  // its resume. Codex then ignores the resume's instructions and its answer names none in
-  // effect, so an enforce agent refuses before anything is read (openclaw#1321).
-  if (!isOwnedCodexAppServerProcess(params.appServer.start)) {
-    assertSovereignPromptRoute({
-      config: params.params.config,
-      agentId: params.params.agentId,
-      route: "codex:external-resume",
-    });
-  }
+  // A resume on a shared app-server cannot prove what it loads (openclaw#1321).
+  refuseSharedCodexServerResume(params.params, params.appServer.start);
   let acceptedConfiguration: CodexThreadResumePreparation | undefined;
   let disposeConfiguration: (() => void) | undefined;
   let resumeReservation: { release: () => void } | undefined;

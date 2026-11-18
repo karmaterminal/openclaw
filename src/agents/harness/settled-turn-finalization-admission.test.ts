@@ -165,15 +165,12 @@ describe("settled-turn finalizer admission for a sovereign agent", () => {
 
   it("refuses another harness's finalizer before it is called", async () => {
     const input = createInput("main", { harness: "plugin" });
-    vi.mocked(input.finalization.harness.finalizeSettledTurn!).mockResolvedValue({
+    const finalizeSettledTurn = vi.fn(async () => ({
       assistant: textAssistant(generated, { stopReason: "stop" }),
-    });
+    }));
+    input.finalization.harness.finalizeSettledTurn = finalizeSettledTurn;
 
-    await expectRefused(
-      input,
-      "test-harness:settled-turn-finalization",
-      vi.mocked(input.finalization.harness.finalizeSettledTurn!),
-    );
+    await expectRefused(input, "test-harness:settled-turn-finalization", finalizeSettledTurn);
   });
 
   it("refuses an agent loaded as enforce after config turns it off, until restart", async () => {

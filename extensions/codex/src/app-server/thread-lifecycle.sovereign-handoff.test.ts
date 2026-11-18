@@ -678,9 +678,9 @@ describe.skipIf(process.platform === "win32")("Codex route: sovereign handoff ch
       unix: { transport: "unix" as const, homeScope: "user" as const },
       "stdio proxy": { args: ["app-server", "proxy"] },
     };
-    const on = (start: (typeof shared)[keyof typeof shared]) => {
+    const on = (transport: (typeof shared)[keyof typeof shared]) => {
       const appServer = appServerOptions();
-      return { appServer: { ...appServer, start: { ...appServer.start, ...start } } };
+      return { appServer: { ...appServer, start: { ...appServer.start, ...transport } } };
     };
     async function boundSession(agentId: string, session: string) {
       const harness = await createAgentLifecycleHarness({

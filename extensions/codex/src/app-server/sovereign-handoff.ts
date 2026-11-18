@@ -7,10 +7,13 @@
  * reshaped request carries none, so for an enforce agent it refuses rather than passing.
  */
 import {
+  assertSovereignPromptRoute,
   checkSovereignPromptHandoff,
   type SovereignPromptHandoffReceipt,
   type SovereignPromptSpans,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
+import { isOwnedCodexAppServerProcess } from "./auth-start-options.js";
+import type { CodexAppServerStartOptions } from "./config-contracts.js";
 
 type CodexSovereignAttempt = Pick<
   Parameters<typeof checkSovereignPromptHandoff>[0],
@@ -108,6 +111,24 @@ export function isCodexThreadLoadedBy(
 ): boolean {
   const loadedBy = loadedThreads.get(client)?.get(threadId);
   return loadedBy?.agentId === receipt.agentId && loadedBy.setDigest === receipt.setDigest;
+}
+
+/**
+ * Refuses an enforce agent's resume on an app-server other clients can reach, before
+ * anything is read. One can load the thread between OpenClaw's read and its resume; Codex
+ * then ignores the resume's instructions, and its answer names none in effect.
+ */
+export function refuseSharedCodexServerResume(
+  attempt: CodexSovereignAttempt,
+  start: CodexAppServerStartOptions,
+): void {
+  if (!isOwnedCodexAppServerProcess(start)) {
+    assertSovereignPromptRoute({
+      config: attempt.config,
+      agentId: attempt.agentId,
+      route: "codex:external-resume",
+    });
+  }
 }
 
 /** Refuses an enforce agent's reuse of a live thread no passed handoff loaded. */
