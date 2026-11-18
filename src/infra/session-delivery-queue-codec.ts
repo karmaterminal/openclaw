@@ -25,7 +25,7 @@ import {
 } from "../shared/inline-attachments.js";
 import type { DeliveryContext } from "../utils/delivery-context.types.js";
 import type { DeliveryQueueEntryLoadResult } from "./delivery-queue-sqlite-codec.js";
-import type { DeliveryQueueCompletionRetention } from "./delivery-queue-sqlite.js";
+import type { DeliveryQueueCompletionRetention } from "./delivery-queue-sqlite.types.js";
 import { normalizeDiagnosticTraceparent } from "./diagnostic-trace-context.js";
 import {
   hasOnlyGenericAttachmentRefs,

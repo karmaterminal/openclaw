@@ -6,7 +6,6 @@ import {
   executeSqliteQuerySync,
   getNodeSqliteKysely,
 } from "openclaw/plugin-sdk/sqlite-worker-runtime";
-import type { MemoryIndexDatabase } from "./manager-database-context.js";
 
 export const MEMORY_REINDEX_FAILURE_META_KEY = "memory_reindex_failure_v1";
 
@@ -113,7 +112,8 @@ export function writeMemoryReindexFailure(
 
 /** Records a failure through the published database's owner, which must still be open. */
 export async function publishMemoryReindexFailure(
-  database: MemoryIndexDatabase,
+  // Inline type import: a declaration would close an import cycle with manager-database-context.
+  database: import("./manager-database-context.js").MemoryIndexDatabase,
   failure: MemoryReindexResourceFailure,
 ): Promise<void> {
   await database.settlePublication(() =>
