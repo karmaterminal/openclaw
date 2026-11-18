@@ -535,17 +535,24 @@ describe.skipIf(process.platform === "win32")("sovereign enforce: Google native 
   const onInstructionContent = (payload: Record<string, unknown>) => {
     (payload.systemInstruction as Record<string, unknown>).inlineData = INJECTED_VIDEO;
   };
+  const REST_ROUTES = [
+    { route: "Gemini API", model: geminiApi },
+    { route: "Vertex", model: vertex },
+  ];
   const GEMINI_INSTRUCTION_EDITS = [
     { mark: "a video beside each instruction text", edit: besideEachText },
     { mark: "the instruction text part shared into the user turn", edit: sharedWithUserTurn },
     { mark: "a video on the instruction content itself", edit: onInstructionContent },
   ];
   it.each([
-    ...GEMINI_INSTRUCTION_EDITS.flatMap((row) =>
-      [
-        { route: "Gemini API", model: geminiApi },
-        { route: "Vertex", model: vertex },
-      ].map((route) => ({ ...route, ...row, errorCode: "transform_altered" })),
+    ...REST_ROUTES.flatMap(({ route, model }) =>
+      GEMINI_INSTRUCTION_EDITS.map(({ mark, edit }) => ({
+        route,
+        model,
+        mark,
+        edit,
+        errorCode: "transform_altered",
+      })),
     ),
     // Interactions carries the instruction as a string member of the request itself, so the
     // object a video mark there would replace is the whole request. The wrapper drops the code.
@@ -582,26 +589,16 @@ describe.skipIf(process.platform === "win32")("sovereign enforce: Google native 
   // it: in the user turn, or as a part of its own beside the instruction text, which the check
   // passes like any text a hook adds around the spans.
   it.each([
-    {
-      route: "Gemini API",
-      model: geminiApi,
+    ...REST_ROUTES.map(({ route, model }) => ({
+      route,
+      model,
       instruction: (body: Record<string, unknown>) => body.systemInstruction,
       edit: (payload: Record<string, unknown>) => {
         (payload.contents as GeminiContent[])[0]!.parts.push({ inlineData: INJECTED_VIDEO });
         (payload.systemInstruction as GeminiContent).parts.push({ inlineData: INJECTED_VIDEO });
       },
       userParts: [{ text: "Reply OK" }, { text: VIDEO_OMITTED }],
-    },
-    {
-      route: "Vertex",
-      model: vertex,
-      instruction: (body: Record<string, unknown>) => body.systemInstruction,
-      edit: (payload: Record<string, unknown>) => {
-        (payload.contents as GeminiContent[])[0]!.parts.push({ inlineData: INJECTED_VIDEO });
-        (payload.systemInstruction as GeminiContent).parts.push({ inlineData: INJECTED_VIDEO });
-      },
-      userParts: [{ text: "Reply OK" }, { text: VIDEO_OMITTED }],
-    },
+    })),
     {
       route: "Interactions",
       model: interactions,
@@ -683,8 +680,8 @@ describe.skipIf(process.platform === "win32")("sovereign enforce: Google native 
     { route: "Vertex SDK builder", model: vertexSdk, plugin: fixturePlugin },
   ];
   it.each(
-    CANCEL_ROUTES.flatMap((row) =>
-      (["run", "caller"] as const).map((source) => ({ ...row, source })),
+    CANCEL_ROUTES.flatMap(({ route, model, plugin }) =>
+      (["run", "caller"] as const).map((source) => ({ route, model, plugin, source })),
     ),
   )(
     "$route: aborting the $source signal mid-send cancels the request and sends nothing further",
