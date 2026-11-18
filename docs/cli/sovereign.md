@@ -151,8 +151,9 @@ native error text, or names outside the registry.
   `codex:worker-hosted`), which would take the base off the Gateway host. The
   Codex settled-turn finalizer (`codex:settled-turn-finalization`) writes a new
   answer in the agent's name on an empty base, so it refuses before any handoff.
-  The turn then ends with the host's missing-reply notice. An answer the agent
-  already wrote is still delivered.
+  The turn then ends as an incomplete turn, with the host's missing-reply notice
+  wherever the host delivers one. An answer the agent already wrote is still
+  delivered.
 - **Which agent.** An agent's files render only for a call that names that agent.
   A render or check that names no agent, or an invalid one, is refused while any
   agent is `enforce`, counting one that was `enforce` when the process read its
