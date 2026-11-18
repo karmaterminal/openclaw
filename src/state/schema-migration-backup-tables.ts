@@ -48,6 +48,8 @@ export const SCHEMA_MIGRATION_BACKUP_TABLES: Record<
     41: ["session_transcript_active_event_facts"],
     // Empty ranking table; migration does not scan or rewrite transcripts.
     42: ["agent_tool_usage"],
+    // Pending input columns and legacy retirement facts change together.
+    43: ["session_pending_inputs"],
     // Continuation (karmaterminal): the authority step only creates its table. The fleet's own
     // schema 26, the fleet-shaped 39, jump 13's 41 and jump 14's 42 also cross upstream steps
     // outside these scopes, so Doctor keeps their full image (isAgentFleetSchema26Migration,

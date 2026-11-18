@@ -36,6 +36,10 @@ export type SessionEntryStateRepair = {
   entry: Record<string, unknown>;
   numericChanges?: SessionEntryNumericSnapshot;
   repairedIsoEndedAt?: boolean;
+  pendingInputOrigins?: {
+    sessionId: string;
+    inputs: { inputId: string; runId: string; sourceJson: string }[];
+  };
 };
 
 function parseLegacyIsoEndedAt(value: string): number | undefined {
@@ -243,7 +247,7 @@ export function migrateLegacySessionRunOutcome(
       // Startup resumes any marker as a new turn; recovery only reopens admission.
       delete next.resumeAfterRestart;
     } else if (next.archivedAt === undefined && !next.modelSelectionLocked && !next.acp) {
-      next.resumeAfterRestart ??= { queuedInputIds: [] };
+      next.resumeAfterRestart ??= {};
     }
     return next;
   }

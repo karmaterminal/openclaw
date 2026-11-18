@@ -6,6 +6,7 @@ import type { SessionPreviewItem, SessionTitleFields } from "../../gateway/sessi
 import type { SessionMemoryTranscript } from "../../hooks/bundled/session-memory/capture.types.js";
 import type { UserTurnTranscriptAdmissionReceipt } from "../../sessions/user-turn-transcript.types.js";
 import type { SkillCommandSpec } from "../../skills/types.js";
+import type { AgentCreationClaimWitness } from "../../state/agent-creation-claim.js";
 import type { OpenClawAgentDatabaseReadValidation } from "../../state/openclaw-agent-db-validation-cache.js";
 import type { VoiceSessionMatch } from "../../talk/client-voice-session-store.js";
 import type {
@@ -131,6 +132,11 @@ import type {
   SessionStoreTargetReadResult,
 } from "./session-store-target-inventory.js";
 import type { SessionStoreTargetInventoryRequest } from "./session-store-target-routing.js";
+import type {
+  TranscriptActiveFactsBackfillCursor,
+  TranscriptActiveFactsBackfillProbe,
+  TranscriptActiveFactsBackfillSession,
+} from "./session-transcript-active-facts-backfill.worker.js";
 import type { SessionTranscriptAnchorFacts } from "./session-transcript-anchor-read.types.js";
 import type {
   SessionTranscriptHydrationWorkerInput,
@@ -287,6 +293,17 @@ type TrajectoryEventsWorkerInput = {
 };
 
 export type SessionHistoryWorkerInput =
+  | {
+      kind: "transcript-facts-discover";
+      database: { agentId: string; path: string };
+      env: NodeJS.ProcessEnv;
+    }
+  | {
+      kind: "transcript-facts-probe";
+      database: { agentId: string; path: string };
+      env: NodeJS.ProcessEnv;
+      cursor: TranscriptActiveFactsBackfillCursor;
+    }
   | AgentToolUsageReadInput
   | AgentToolUsageImportReadInput
   | SessionRetirementReadWorkerInput
@@ -376,6 +393,7 @@ export type SessionTranscriptWorkerInput =
 
 /** Only the dispatch owner attaches live physical proof; caller-prepared inputs cannot supply it. */
 export type SessionTranscriptWorkerRequest = SessionTranscriptWorkerInput & {
+  creationClaim?: AgentCreationClaimWitness;
   validation?: OpenClawAgentDatabaseReadValidation;
   readCustody?: readonly SessionStoreReadCustody[];
   projectionReceipt?: SessionTranscriptProjectionReceipt;
@@ -392,6 +410,14 @@ export type SessionHistoryWorkerPreparedInput =
 
 export type SessionTranscriptWorkerValues = SessionTranscriptInventoryWorkerValues &
   SessionTranscriptHydrationWorkerValues & {
+    "transcript-facts-discover": {
+      kind: "transcript-facts-discover";
+      result: { supported: boolean; sessions: TranscriptActiveFactsBackfillSession[] };
+    };
+    "transcript-facts-probe": {
+      kind: "transcript-facts-probe";
+      result: TranscriptActiveFactsBackfillProbe;
+    };
     "compaction-preparation": SessionPreparedCompactionWireValue;
     "session-retirement-read": {
       kind: "session-retirement-read";
@@ -582,6 +608,8 @@ export type SessionHistoryWorkerDatabase = SessionTranscriptInventoryReaders &
       signal?: AbortSignal,
     ) => Promise<SessionPreparedCompactionValue>;
     readAgentToolUsage: SessionHistoryReader<"agent-tool-usage", "status">;
+    discoverTranscriptFacts: CancellableSessionHistoryReader<"transcript-facts-discover", "result">;
+    probeTranscriptFacts: CancellableSessionHistoryReader<"transcript-facts-probe", "result">;
     readAgentToolUsageImport: SessionHistoryReader<"agent-tool-usage-import", "scan">;
     readRetirement: CancellableSessionHistoryReader<"session-retirement-read", "result">;
     readTrajectoryEvents: CancellableSessionHistoryReader<"trajectory-events", "events">;

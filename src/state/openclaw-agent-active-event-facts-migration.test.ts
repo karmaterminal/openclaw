@@ -1,9 +1,5 @@
 import { constants, DatabaseSync } from "node:sqlite";
 import { expect, it } from "vitest";
-import {
-  runSqliteIntegrityCheckSync,
-  sqliteIntegrityCheckSteps,
-} from "../infra/sqlite-integrity.js";
 import { runSqliteImmediateTransactionSync } from "../infra/sqlite-transaction.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { AGENT_ACTIVE_EVENT_FACTS_SQL } from "./openclaw-agent-active-event-facts-schema.js";
@@ -98,7 +94,7 @@ it("restores the verified scoped predecessor without reverting unrelated later w
   );
 });
 
-it("admits the empty-table upgrade without scanning existing payload or active rows", async () => {
+it("admits the empty-table upgrade to v42 without scanning existing payload or active rows", async () => {
   await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
     const pathname = state.statePath("active-facts-no-scan.sqlite");
     using database = new DatabaseSync(pathname);
@@ -122,28 +118,13 @@ it("admits the empty-table upgrade without scanning existing payload or active r
       return constants.SQLITE_OK;
     });
     try {
-      // Continuation (karmaterminal): the startup gate's crossing to the current schema also
-      // includes recipient authority (43), which reads session_nodes for legacy epochs, so this
-      // checks the v41 crossing's own gate and step.
-      for (const check of sqliteIntegrityCheckSteps(
-        database,
-        pathname,
-        undefined,
-        resolveSchemaMigrationIntegrityCheck({
-          kind: "agent",
-          foundVersion: 40,
-          supportedVersion: 41,
-        }),
-      )) {
-        runSqliteIntegrityCheckSync(check);
-      }
       await withAgentDatabaseMaintenanceLease({ env: state.env }, async () => {
-        ensureOpenClawAgentSchema(database, "main", pathname, 41);
+        ensureOpenClawAgentSchema(database, "main", pathname, 42);
       });
     } finally {
       database.setAuthorizer(null);
     }
-    expectVersion(database, 41);
+    expectVersion(database, 42);
     expect(
       resolveSchemaMigrationIntegrityCheck(
         { kind: "agent", foundVersion: 40, supportedVersion: 41 },
@@ -161,16 +142,9 @@ it("refuses a foreign-key violation in the new companion at migration finalizati
     database.exec(`PRAGMA foreign_keys=OFF; ${AGENT_ACTIVE_EVENT_FACTS_SQL}
       INSERT INTO ${table} VALUES ('missing',1,1,'{}');`);
     await withAgentDatabaseMaintenanceLease({ env: state.env }, async () => {
-      expect(
-        () =>
-          ensureOpenClawAgentDatabaseSchema(database, {
-            agentId: "main",
-            path: pathname,
-            env: state.env,
-          }),
-        // Continuation (karmaterminal): the crossing to the current schema is not schema-only, so
-        // the global pre-mutation check refuses the orphan before finalization; either refuses.
-      ).toThrow(/foreign.?key/iu);
+      expect(() => ensureOpenClawAgentSchema(database, "main", pathname, 41)).toThrow(
+        /foreign key validation/u,
+      );
     });
     expectVersion(database, 40);
   });

@@ -1,4 +1,3 @@
-import { AGENT_ACTIVE_EVENT_FACTS_SCHEMA_VERSION } from "./openclaw-agent-active-event-facts-schema.js";
 // Continuation's recipient authority in migration witnesses, split from
 // openclaw-migration-witness.ts to keep that file under its line cap.
 import {
@@ -8,36 +7,10 @@ import {
 import {
   AGENT_RECIPIENT_AUTHORITY_JUMP13_SCHEMA_VERSION,
   AGENT_RECIPIENT_AUTHORITY_JUMP14_SCHEMA_VERSION,
-  AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
   RECIPIENT_AUTHORITY_TABLE,
 } from "./openclaw-agent-recipient-authority-schema.js";
-import { AGENT_TOOL_USAGE_SCHEMA_VERSION } from "./openclaw-agent-tool-usage-schema.js";
 
 export { RECIPIENT_AUTHORITY_TABLE };
-
-/** Agent schemas a witness admits: upstream's 24..42 and continuation's authority step. */
-export const AGENT_WITNESS_SCHEMA_VERSIONS: ReadonlySet<number> = new Set([
-  24,
-  25,
-  26,
-  27,
-  28,
-  29,
-  30,
-  31,
-  32,
-  33,
-  34,
-  35,
-  36,
-  37,
-  38,
-  39,
-  40,
-  AGENT_ACTIVE_EVENT_FACTS_SCHEMA_VERSION,
-  AGENT_TOOL_USAGE_SCHEMA_VERSION,
-  AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
-]);
 
 const ACTIVE_EVENT_FACTS_TABLE = "session_transcript_active_event_facts";
 const TOOL_USAGE_TABLE = "agent_tool_usage";

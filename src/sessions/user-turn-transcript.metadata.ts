@@ -126,24 +126,6 @@ export function buildPersistedUserTurnMetadata(
   };
 }
 
-export function applyPersistedUserTurnReplacementText(
-  candidate: PersistedUserTurnMessage | undefined,
-  replacementText: string | undefined,
-): PersistedUserTurnMessage | undefined {
-  if (!candidate || replacementText === undefined) {
-    return candidate;
-  }
-  const metadata = { ...candidate["__openclaw"] };
-  if (candidate.content !== replacementText) {
-    delete metadata.humanMentions;
-    delete metadata.workContext;
-    delete metadata.appContext;
-  }
-  const next = { ...candidate, content: replacementText };
-  delete next["__openclaw"];
-  return Object.keys(metadata).length > 0 ? { ...next, __openclaw: metadata } : next;
-}
-
 export function rewritePersistedSteerTargetRunId(
   message: PersistedUserTurnMessage | undefined,
   targetRunId: string | null | undefined,

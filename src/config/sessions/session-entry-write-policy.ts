@@ -28,20 +28,37 @@ export function applySessionEntryWritePolicy(
     normalizedEntry.incognito
   ) {
     delete normalizedEntry.resumeAfterRestart;
+    delete normalizedEntry.lifecycleRestartScope;
     delete normalizedEntry.mainRestartRecovery;
   } else {
-    // Public projections omit the shutdown marker; same-incarnation bookkeeping retains it.
-    normalizedEntry = {
-      ...normalizedEntry,
-      ...(!Object.hasOwn(normalizedEntry, "resumeAfterRestart") &&
-      canonicalPreviousEntry.resumeAfterRestart
-        ? { resumeAfterRestart: canonicalPreviousEntry.resumeAfterRestart }
-        : {}),
-      ...(!Object.hasOwn(normalizedEntry, "mainRestartRecovery") &&
+    // Public projections omit the shutdown marker, the run's restart resume scope and a
+    // restart tombstone; same-incarnation bookkeeping retains them.
+    if (!Object.hasOwn(normalizedEntry, "resumeAfterRestart")) {
+      normalizedEntry = {
+        ...normalizedEntry,
+        ...(canonicalPreviousEntry.resumeAfterRestart
+          ? { resumeAfterRestart: canonicalPreviousEntry.resumeAfterRestart }
+          : {}),
+      };
+    }
+    if (
+      !Object.hasOwn(normalizedEntry, "lifecycleRestartScope") &&
+      canonicalPreviousEntry.lifecycleRestartScope
+    ) {
+      normalizedEntry = {
+        ...normalizedEntry,
+        lifecycleRestartScope: canonicalPreviousEntry.lifecycleRestartScope,
+      };
+    }
+    if (
+      !Object.hasOwn(normalizedEntry, "mainRestartRecovery") &&
       canonicalPreviousEntry.mainRestartRecovery?.tombstone
-        ? { mainRestartRecovery: canonicalPreviousEntry.mainRestartRecovery }
-        : {}),
-    };
+    ) {
+      normalizedEntry = {
+        ...normalizedEntry,
+        mainRestartRecovery: canonicalPreviousEntry.mainRestartRecovery,
+      };
+    }
   }
   if (
     canonicalPreviousEntry?.sessionId === normalizedEntry.sessionId &&

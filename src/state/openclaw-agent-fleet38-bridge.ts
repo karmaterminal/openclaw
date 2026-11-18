@@ -10,19 +10,20 @@
 // they migrated reads 42 while holding upstream's 41 plus the authority table; upstream's own 42
 // adds agent_tool_usage instead. Fork builds from jump 9 (48a4a4b441) through F″ (20a1ffd3d9)
 // wrote the fleet's 38 DDL stamped 39, so a fleet-shaped 39 holds upstream's 38 plus the
-// authority table under a 39 marker. Recipient authority is now 43, above upstream's 39 (cold
-// transcript navigation), 40 (session creation receipts), 41 (active event facts) and 42 (tool
-// usage). Before a migration reaches 43 the schema owner classifies a database stamped 38-42 by
-// its markers: the authority table, upstream's creation-receipt, active-event-facts and
-// tool-usage tables, and the transcript payload CHECK upstream's 39 widens. A version number
-// alone never decides compatibility. Only upstream's own 38-42, the fleet's 38, the fleet-shaped
-// 39, the jump-13 candidate's 41 and the jump-14 candidates' 42 are admitted. The fleet's 38 and
-// fleet-shaped 39 then run upstream's 39-42, the jump-13 41 runs upstream's 41 and 42, and the
-// jump-14 42 runs upstream's 42; each then runs the idempotent authority step, which keeps its
-// table and rows, in the one migration transaction. Every other shape is refused before any
-// write, including a 39 with the authority table and upstream's widened CHECK, the earlier
-// candidate's 40, which no store holds, and any schema-41 or schema-42 shape that is neither
-// upstream's own nor the jump-13 41 or jump-14 42.
+// authority table under a 39 marker. Recipient authority is now 44, above upstream's 39 (cold
+// transcript navigation), 40 (session creation receipts), 41 (active event facts), 42 (tool
+// usage) and 43 (pending-input endings, columns on an existing table). Before a migration reaches
+// 44 the schema owner classifies a database stamped 38-43 by its markers: the authority table,
+// upstream's creation-receipt, active-event-facts and tool-usage tables, and the transcript
+// payload CHECK upstream's 39 widens. A version number alone never decides compatibility. Only
+// upstream's own 38-43, the fleet's 38, the fleet-shaped 39, the jump-13 candidate's 41 and the
+// jump-14 candidates' 42 are admitted. The fleet's 38 and fleet-shaped 39 then run upstream's
+// 39-43, the jump-13 41 runs upstream's 41-43, and the jump-14 42 runs upstream's 42 and 43; each
+// then runs the idempotent authority step, which keeps its table and rows, in the one migration
+// transaction. Every other shape is refused before any write, including a 39 with the authority
+// table and upstream's widened CHECK, the earlier candidate's 40, which no store holds, any
+// schema-41 or schema-42 shape that is neither upstream's own nor the jump-13 41 or jump-14 42,
+// and the never-deployed absorb chain's 43 (upstream's 42 plus the authority table).
 import type { DatabaseSync } from "node:sqlite";
 import { captureSqliteSchemaFacts } from "../infra/sqlite-schema-admission.js";
 import { parseSqliteTableDefinition } from "../infra/sqlite-schema-contract-assembly.js";
@@ -37,6 +38,7 @@ import {
   AGENT_COLD_NAVIGATION_SCHEMA_VERSION,
   AGENT_TEXT_SEARCH_SCHEMA_VERSION,
 } from "./openclaw-agent-db-contract.js";
+import { AGENT_PENDING_INPUT_ENDINGS_SCHEMA_VERSION } from "./openclaw-agent-pending-input-endings-schema.js";
 import {
   AGENT_RECIPIENT_AUTHORITY_JUMP14_SCHEMA_VERSION,
   AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
@@ -92,7 +94,7 @@ function readFleetBridgeMarkers(db: DatabaseSync): AgentFleetBridgeMarkers {
 type AdmittedShape = { history: AgentBridgeHistory; markers: AgentFleetBridgeMarkers };
 
 /**
- * The markers each admitted shape at 38-42 holds; anything else is refused. The fleet-38 history
+ * The markers each admitted shape at 38-43 holds; anything else is refused. The fleet-38 history
  * is the fleet's 38 DDL under either its own 38 or the jump 9-F″ 39 marker.
  */
 const ADMITTED_SHAPES: Readonly<Record<number, readonly AdmittedShape[]>> = {
@@ -200,11 +202,25 @@ const ADMITTED_SHAPES: Readonly<Record<number, readonly AdmittedShape[]>> = {
       },
     },
   ],
+  // Upstream's 43 adds pending-input ending columns; the absorb chain's never-deployed 43
+  // (upstream's 42 plus recipient authority) is refused.
+  [AGENT_PENDING_INPUT_ENDINGS_SCHEMA_VERSION]: [
+    {
+      history: "upstream",
+      markers: {
+        authority: false,
+        creationOperations: true,
+        activeEventFacts: true,
+        toolUsage: true,
+        payloadCheck: "widened",
+      },
+    },
+  ],
 };
 
 /**
- * Classifies a database at 38-42 by its markers. Undefined for any other version, which keeps its
- * own history; an unrecognized shape at 38-42 is refused.
+ * Classifies a database at 38-43 by its markers. Undefined for any other version, which keeps its
+ * own history; an unrecognized shape at 38-43 is refused.
  */
 function classifyAgentBridgeDatabase(
   db: DatabaseSync,
@@ -270,7 +286,7 @@ function bridgedHistory(
 }
 
 /**
- * Preflight for a migration from 38-42 across the authority step: refuses every shape but
+ * Preflight for a migration from 38-43 across the authority step: refuses every shape but
  * upstream's own, the fleet's 38 DDL (at 38 or 39), jump 13's 41 and jump 14's 42, and gives each bridged
  * history its own historical schema and the upstream shape it physically holds, so every
  * upstream step above that shape still runs. Undefined for upstream's shapes and for every
@@ -289,7 +305,7 @@ export function planAgentFleet38Bridge(
 }
 
 /**
- * A historical check of a database at 38-42 compares each bridged history against its own shape
+ * A historical check of a database at 38-43 compares each bridged history against its own shape
  * and refuses any shape the migration would refuse.
  */
 export function readAgentFleet38HistoricalSchema(
@@ -301,7 +317,7 @@ export function readAgentFleet38HistoricalSchema(
 }
 
 /**
- * The upstream shape a database at 38-42 physically holds when it follows a bridged history,
+ * The upstream shape a database at 38-43 physically holds when it follows a bridged history,
  * which can sit below its marker (the fleet-shaped 39 holds 38, jump 13's 41 holds 40, jump 14's
  * 42 holds 41).
  * Undefined for upstream's own shapes and every other version; unrecognized shapes are refused.

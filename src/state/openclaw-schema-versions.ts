@@ -2,9 +2,11 @@ import { isRecord } from "@openclaw/normalization-core/record-coerce";
 
 export const AGENT_ACTIVE_EVENT_FACTS_SCHEMA_VERSION = 41;
 export const AGENT_TOOL_USAGE_SCHEMA_VERSION = 42;
+export const AGENT_PENDING_INPUT_ENDINGS_SCHEMA_VERSION = 43;
 
-// v43 (continuation) records durable session-key recipient-authority generations for delayed
-// named returns on top of upstream's v42 (AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION).
+// v44 (continuation) records durable session-key recipient-authority generations for delayed
+// named returns on top of upstream's v43 (AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION).
+// v43 records pending-input endings and reserves their original-source envelope.
 // v42 adds opt-in, decayed tool usage without backfilling transcripts.
 // v41 keeps active transcript byte and dependency facts outside payload overflow chains.
 // v40 commits durable session creation receipts with their original incarnation.
@@ -16,7 +18,7 @@ export const AGENT_TOOL_USAGE_SCHEMA_VERSION = 42;
 // v34 aligns non-null PostgreSQL index keys with default query ordering.
 // v33 adds a stored PostgreSQL binary vector candidate projection.
 // v32 replaces the PostgreSQL vector decoder without rewriting canonical rows.
-export const OPENCLAW_AGENT_SCHEMA_VERSION = 43;
+export const OPENCLAW_AGENT_SCHEMA_VERSION = 44;
 
 // v40 retains the original provisioning source before worker allocation and recovery.
 // v39 retains worker policy and uncertain pause/resume operations across restart.

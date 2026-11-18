@@ -49,6 +49,10 @@ import {
   withLegacyAgentPostgresMemoryRevisionTriggers,
 } from "../../state/openclaw-agent-memory-revision-migration.js";
 import {
+  AGENT_PENDING_INPUT_ENDINGS_SCHEMA_VERSION,
+  withoutAgentPostgresPendingInputEndings,
+} from "../../state/openclaw-agent-pending-input-endings-schema.js";
+import {
   AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION,
   RECIPIENT_AUTHORITY_TABLE,
   withoutSessionRecipientAuthorityPostgresSchema,
@@ -205,12 +209,13 @@ export async function loadAgentPortDescriptor(
     // Schema 40 adds creation receipts; predecessors retain their receipt-free catalog.
     // Schema 41 adds active event facts; predecessors retain their unknown-row fallback.
     // Schema 42 adds usage counters; predecessors retain their counter-free catalog.
-    // Schema 43 (continuation) adds the recipient-authority table, which older sources omit.
+    // Schema 43 adds pending-input endings and reserved provenance columns.
+    // Schema 44 (continuation) adds the recipient-authority table, which older sources omit.
     // Pin the remaining shared layout so future DDL gets its own descriptor.
     if (
       backup ||
-      OPENCLAW_AGENT_SCHEMA_VERSION !== 43 ||
-      ![27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42].includes(sourceVersion)
+      OPENCLAW_AGENT_SCHEMA_VERSION !== 44 ||
+      ![27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43].includes(sourceVersion)
     ) {
       throw new DatabasePortDataError(
         `Missing agent PostgreSQL backup descriptor for version ${sourceVersion}`,
@@ -225,11 +230,18 @@ export async function loadAgentPortDescriptor(
   const legacyCreation = sourceVersion < AGENT_CREATION_OPERATIONS_SCHEMA_VERSION;
   const legacyActiveFacts = sourceVersion < AGENT_ACTIVE_EVENT_FACTS_SCHEMA_VERSION;
   const legacyToolUsage = sourceVersion < AGENT_TOOL_USAGE_SCHEMA_VERSION;
+  const legacyPendingEndings = sourceVersion < AGENT_PENDING_INPUT_ENDINGS_SCHEMA_VERSION;
   const legacyTrajectory = sourceVersion < 30;
   const hasRecipientAuthority = sourceVersion >= AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION;
   const catalog = agentPostgresRuntime.expectedCatalog.filter(
     (fact) =>
       (hasRecipientAuthority || fact.table !== RECIPIENT_AUTHORITY_TABLE) &&
+      !(
+        legacyPendingEndings &&
+        fact.table === "session_pending_inputs" &&
+        isColumn(fact) &&
+        ["end_cause", "origin_source_json"].includes(fact.value.name)
+      ) &&
       !(legacyToolUsage && fact.table === "agent_tool_usage") &&
       !(legacyColdArchive && fact.table === "session_transcript_cold_archive_chunks") &&
       !(legacyCreation && fact.table === "session_creation_operations") &&
@@ -505,7 +517,10 @@ export async function loadAgentPortDescriptor(
   const withoutLegacyColdArchive = (sql: string) =>
     legacyColdArchive ? withoutAgentPostgresColdArchiveChunks(sql) : sql;
   const withoutLaterSchema = (sql: string) => {
-    const toolUsage = legacyToolUsage ? withoutAgentPostgresToolUsage(sql) : sql;
+    const pendingInputs = legacyPendingEndings ? withoutAgentPostgresPendingInputEndings(sql) : sql;
+    const toolUsage = legacyToolUsage
+      ? withoutAgentPostgresToolUsage(pendingInputs)
+      : pendingInputs;
     const activeFacts = legacyActiveFacts
       ? withoutAgentPostgresActiveEventFacts(toolUsage)
       : toolUsage;

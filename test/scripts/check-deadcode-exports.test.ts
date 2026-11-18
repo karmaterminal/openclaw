@@ -945,6 +945,7 @@ function other(workAuthority: { refuseStaleContinuationWorkAtReplay(): void }) {
     const manifest = fs.readFileSync("package.json", "utf8");
     const compile = knipConfig.compilers.json;
     const compiled = compile(manifest, "package.json");
+    expect(compiled).not.toContain("import { isImmutableManagedServiceUpdateHandoffProcess");
     expect(compiled).toMatch(
       /import \{ isPackageManagerUpdateMode as __updateCompatibilityConsumer\d+ \} from "\.\/src\/cli\/update-cli\/update-command-service-recovery\.ts";/u,
     );

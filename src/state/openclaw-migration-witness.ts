@@ -29,7 +29,6 @@ import { withoutOutboxEnqueueSequence } from "./openclaw-agent-outbox-sequence-m
 import { AGENT_TOOL_USAGE_SCHEMA_VERSION } from "./openclaw-agent-tool-usage-schema.js";
 import { assertMigrationWitnessRegistryPreserved } from "./openclaw-migration-witness-registry.js";
 import {
-  AGENT_WITNESS_SCHEMA_VERSIONS,
   assertAgentWitnessHistoricalSchema,
   bridgedWitnessOmittedTable,
   omitAddedRecipientAuthority,
@@ -37,6 +36,7 @@ import {
 } from "./openclaw-migration-witness.continuation.js";
 import {
   type OpenClawMigrationWitness,
+  agentSchemaVersions,
   registryRowSchema,
   witnessIdentifierSchema as identifier,
   witnessSchema,
@@ -47,6 +47,7 @@ import { readStateSchemaContentVersion } from "./openclaw-state-db-schema-versio
 import { resolveOpenClawRegisteredAgentDatabasePath } from "./openclaw-state-db.paths.js";
 
 type OpenClawMigrationWitnessOwner = { role: "agent"; agentId: string } | { role: "global" };
+
 const ADDITIVE_AGENT_TABLES = new Map([
   ["session_transcript_cold_archive_chunks", AGENT_COLD_ARCHIVE_CHUNKS_SCHEMA_VERSION],
   ["session_creation_operations", AGENT_CREATION_OPERATIONS_SCHEMA_VERSION],
@@ -59,6 +60,7 @@ const derivedMigrationColumns = new Map<string, ReadonlySet<string>>(
     ...AGENT_JSON_PREDICATE_COLUMNS,
     session_windows: ["row_transcript_json", "row_transcript_updated_at"],
     trajectory_runtime_events: ["event_utf8_bytes", "event_payload", "event_codec"],
+    session_pending_inputs: ["end_cause", "origin_source_json"],
   }).map(([table, columns]) => [table, new Set<string>(columns)]),
 );
 
@@ -98,7 +100,7 @@ function parseOpenClawMigrationWitness(value: unknown): OpenClawMigrationWitness
   }
   if (
     (witness.role === "agent" &&
-      (witness.agentId === null || !AGENT_WITNESS_SCHEMA_VERSIONS.has(witness.schemaVersion))) ||
+      (witness.agentId === null || !agentSchemaVersions.has(witness.schemaVersion))) ||
     (witness.role !== "agent" && witness.agentId !== null) ||
     (witness.role !== "agent" && witness.schemaSha256 !== witness.migrationSchemaSha256) ||
     (witness.role !== "global" && witness.registryMigrationBinding !== null) ||
@@ -133,9 +135,8 @@ function parseOpenClawMigrationWitness(value: unknown): OpenClawMigrationWitness
   return witness;
 }
 
-// Schemas 25 and 26 change these derived facts only. persistAgentSchemaMetadata also
-// publishes the target app version and timestamp; payload and creation time stay exact.
-
+// Versioned projections and new pending-input facts may change across migration.
+// Metadata also publishes the target app version/time; accepted payload bytes stay exact.
 function migrationColumn(role: OpenClawMigrationWitness["role"], table: string, column: string) {
   return !(
     role === "agent" &&
@@ -417,7 +418,7 @@ export function captureOpenClawMigrationWitness(
         throw new Error("Migration witness database owner does not match the backup inventory");
       }
       if (owner.role === "agent") {
-        if (!AGENT_WITNESS_SCHEMA_VERSIONS.has(schemaVersion)) {
+        if (!agentSchemaVersions.has(schemaVersion)) {
           throw new Error(`Unsupported agent migration witness schema: ${schemaVersion}`);
         }
         // Assert first: `||=` would skip the schema check whenever schema 24 already set the flag.

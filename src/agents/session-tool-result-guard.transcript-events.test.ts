@@ -451,8 +451,8 @@ describe("guardSessionManager transcript updates", () => {
           message: { role: "user", content: "[approved] Unstaged source" },
         });
       } finally {
-        source.finishPendingInput?.("interrupted");
-        ambient.finishPendingInput?.("interrupted");
+        source.finishPendingInput?.("interrupted", "failed");
+        ambient.finishPendingInput?.("interrupted", "failed");
       }
     },
   );
@@ -545,7 +545,7 @@ describe("guardSessionManager transcript updates", () => {
       }
       expect(await listSessionPendingInputs(target)).toEqual({ items: [], total: 0 });
     } finally {
-      source.finishPendingInput?.("interrupted");
+      source.finishPendingInput?.("interrupted", "failed");
       clearEmbeddedSessionPromptStates([promptStateSessionId]);
     }
   });

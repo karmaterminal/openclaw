@@ -1,7 +1,10 @@
+import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import type { ReplyPayload } from "../../shared/reply-payload.types.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
+import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
 import { isAgentRunFailurePayload } from "../reply-payload.js";
 import type { SessionEventOptions, SessionEventTarget } from "./session-event-contract.js";
+import { getSessionEventRuntimeConfig } from "./session-event-target.js";
 
 type RouteReplyParams = Parameters<typeof import("./route-reply.js").routeReply>[0];
 type SessionEventDeliveryParams = Pick<
@@ -22,7 +25,7 @@ type SessionEventDeliveryParams = Pick<
  * that copy is interactive recovery advice, not the job's result. Cron records the failed run
  * and owns its failure alerts (#1447).
  */
-export function isDeliveryWithheld(
+function isDeliveryWithheld(
   options: Pick<SessionEventOptions, "deliver" | "source" | "scheduledAutomation">,
   target: Pick<SessionEventTarget, "deliver"> | undefined,
   payload: ReplyPayload,
@@ -35,7 +38,7 @@ export function isDeliveryWithheld(
   );
 }
 
-export async function prepareSessionEventDelivery(
+async function prepareSessionEventDelivery(
   route: DeliveryContext,
   assertCurrent: () => void,
 ): Promise<
@@ -65,4 +68,78 @@ export async function prepareSessionEventDelivery(
     }
     return routePreparedReply({ ...delivery, ...destination, plan });
   };
+}
+
+/** One delivery projection survives every callback of an admitted event attempt. */
+export function createSessionEventReplyDelivery(params: {
+  options: SessionEventOptions;
+  agentId: string;
+  sessionKey: string;
+  signal: AbortSignal;
+  target: () => SessionEventTarget | undefined;
+  route: () => DeliveryContext | undefined;
+  prepareCurrent: () => Promise<void>;
+  assertCurrent: () => void;
+  assertEffectCurrent: () => void;
+  sourceReplyDelivered: () => boolean;
+}) {
+  const state: {
+    delivered: boolean;
+    deliveryAttempted: boolean;
+    deliveryAmbiguous: boolean;
+    deliveryError?: string;
+    summary?: string;
+    deliver: (payload: ReplyPayload, kind: "tool" | "block" | "final") => Promise<void>;
+  } = {
+    delivered: false,
+    deliveryAttempted: false,
+    deliveryAmbiguous: false,
+    async deliver(payload, kind) {
+      await params.prepareCurrent();
+      if (kind === "final" && payload.text) {
+        state.summary ??= truncateUtf16Safe(payload.text, 2000);
+      }
+      if (
+        isDeliveryWithheld(params.options, params.target(), payload) ||
+        (params.options.suppressErrorDelivery && payload.isError === true) ||
+        (kind === "final" && params.sourceReplyDelivered())
+      ) {
+        return;
+      }
+      const route = params.route();
+      if (!route?.channel || route.channel === INTERNAL_MESSAGE_CHANNEL) {
+        // Internal/WebChat transcript results are not evidence of a transport send.
+        return;
+      }
+      const deliverReply = await prepareSessionEventDelivery(route, params.assertCurrent);
+      state.deliveryAttempted = true;
+      const assertDeliveryCurrent = () => {
+        params.assertEffectCurrent();
+        params.options.scheduledAutomation?.assertDeliveryCurrent?.();
+      };
+      const result = await deliverReply({
+        cfg: getSessionEventRuntimeConfig(),
+        agentId: params.agentId,
+        sessionKey: params.sessionKey,
+        payload,
+        replyKind: kind,
+        abortSignal: params.signal,
+        beforeDeliver: async () => {
+          await params.options.scheduledAutomation?.beforeDeliver?.();
+          assertDeliveryCurrent();
+        },
+        assertCurrent: assertDeliveryCurrent,
+      });
+      state.delivered ||= result.delivered;
+      state.deliveryAmbiguous ||= result.ambiguous === true;
+      if (!result.ok) {
+        if (!params.options.scheduledAutomation) {
+          throw new Error(result.error ?? "Session event delivery failed");
+        }
+        // Cron records transport failure separately from completed agent work.
+        state.deliveryError = result.error ?? "Session event delivery failed";
+      }
+    },
+  };
+  return state;
 }

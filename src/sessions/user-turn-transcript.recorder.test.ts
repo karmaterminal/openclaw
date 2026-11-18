@@ -319,7 +319,7 @@ describe("createUserTurnTranscriptRecorder", () => {
         __openclaw: { sessionDeliveryAckIds: ["delivery-approved"] },
       });
     } finally {
-      recorder.finishPendingInput?.("interrupted");
+      recorder.finishPendingInput?.("interrupted", "failed");
     }
   });
 

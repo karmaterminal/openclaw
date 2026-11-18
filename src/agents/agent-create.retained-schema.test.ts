@@ -128,9 +128,9 @@ it.each(["recovery-hold", "retained-deletion"] as const)(
     {
       using database = openNodeSqliteDatabase(pathname);
       database.exec(
-        // Continuation (karmaterminal): the current store also carries recipient authority (43);
-        // upstream's 41 has neither table.
-        "DROP TABLE agent_tool_usage; DROP TABLE session_recipient_authority; PRAGMA user_version=41; UPDATE schema_meta SET schema_version=41",
+        // Continuation (karmaterminal): the current store also carries recipient authority (44),
+        // which upstream's 41 lacks.
+        "DROP TABLE agent_tool_usage; DROP TABLE session_pending_inputs; DROP TABLE session_recipient_authority; PRAGMA user_version=41; UPDATE schema_meta SET schema_version=41",
       );
     }
     const original = await fs.readFile(pathname);
@@ -158,8 +158,8 @@ it.each(["recovery-hold", "retained-deletion"] as const)(
     });
     {
       using database = openNodeSqliteDatabase(pathname, { readOnly: true });
-      // Continuation (karmaterminal): recipient authority (43) sits above upstream's 42.
-      expect(database.prepare("PRAGMA user_version").get()).toEqual({ user_version: 43 });
+      // Continuation (karmaterminal): recipient authority (44) sits above upstream's 43.
+      expect(database.prepare("PRAGMA user_version").get()).toEqual({ user_version: 44 });
     }
     expect(await fs.readFile(pathname)).not.toEqual(original);
     expect(await readAgentDeletionRecoveryHoldsInWorker()).toEqual([]);

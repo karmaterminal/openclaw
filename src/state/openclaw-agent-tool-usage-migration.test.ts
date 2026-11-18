@@ -4,7 +4,6 @@ import { runSqliteImmediateTransactionSync } from "../infra/sqlite-transaction.j
 import { AGENT_ACTIVE_EVENT_FACTS_SQL } from "./openclaw-agent-active-event-facts-schema.js";
 import { migrateAgentColdNavigationInTransaction } from "./openclaw-agent-cold-navigation-schema.js";
 import { AGENT_CREATION_OPERATIONS_SQL } from "./openclaw-agent-creation-operations-schema.js";
-import { OPENCLAW_AGENT_SCHEMA_VERSION } from "./openclaw-agent-db-contract.js";
 import { assertOpenClawMigrationWitnessPreserved } from "./openclaw-migration-witness.js";
 import {
   agentWitness,
@@ -25,15 +24,11 @@ function seed(database: DatabaseSync) {
     INSERT INTO cache_entries (scope,key,blob,updated_at) VALUES ('unrelated','bytes',X'00FF01',1);
     ANALYZE;`);
 }
-// Continuation (karmaterminal): admission crosses to the current schema, whose recipient-authority
-// step (43) follows this one and creates only its own empty table.
-const target = OPENCLAW_AGENT_SCHEMA_VERSION;
 const fixture = migrationFixture({
   seed,
   predecessor: 41,
-  target,
-  scope: ["agent_tool_usage", "schema_meta", "session_recipient_authority"],
-  admission: true,
+  target: 42,
+  scope: ["agent_tool_usage", "schema_meta"],
 });
 
 it.each(["commit", "rollback"])(
@@ -42,7 +37,7 @@ it.each(["commit", "rollback"])(
     await fixture("tool-usage-migration.sqlite", async ({ database, migrate }) => {
       const before = agentWitness(database);
       await migrate(outcome);
-      expectVersion(database, outcome === "commit" ? target : 41);
+      expectVersion(database, outcome === "commit" ? 42 : 41);
       expect(assertOpenClawMigrationWitnessPreserved(before, agentWitness(database))).toEqual({
         warnings: [],
       });

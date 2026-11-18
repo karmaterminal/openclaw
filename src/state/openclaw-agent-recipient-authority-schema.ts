@@ -1,17 +1,19 @@
 import { extractSqliteTableSchema } from "../infra/sqlite-schema-sql.js";
 
 // Continuation (karmaterminal): durable session-key recipient-authority generations sit on top of
-// upstream's agent schema 42. The fleet first received them at its own schemas 25 and 26
+// upstream's agent schema 43. The fleet first received them at its own schemas 25 and 26
 // (openclaw-agent-fleet-schema-history.ts); the lane's unreleased 27 is not recognised. Earlier
-// candidates numbered this step 32, 35, 36, 38, 39, 40, 41 and then 42, all since taken upstream
-// (32-36 and 38 are PostgreSQL-only steps); on SQLite such a database below 38 is upstream's
-// same-numbered schema plus this table, so the idempotent step admits it after upstream's later
-// steps run. The deployed fleet's 38, the jump-13 candidate's 41 (upstream's 40 plus this table,
-// beside upstream's own 41) and the jump-14 candidates' 42 (upstream's 41 plus this table, beside
-// upstream's own 42) are classified explicitly by their markers (openclaw-agent-fleet38-bridge.ts).
-// The 39 and 40 candidates are neither upstream's same-numbered schema plus this table, so they are
-// refused, as are earlier PostgreSQL candidates and every unrecognized schema-41 or schema-42 shape.
-export const AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION = 43;
+// candidates numbered this step 32, 35, 36, 38, 39, 40, 41, 42 and then 43, all since taken
+// upstream (32-36 and 38 are PostgreSQL-only steps); on SQLite such a database below 38 is
+// upstream's same-numbered schema plus this table, so the idempotent step admits it after
+// upstream's later steps run. The deployed fleet's 38, the jump-13 candidate's 41 (upstream's 40
+// plus this table, beside upstream's own 41) and the jump-14 candidates' 42 (upstream's 41 plus
+// this table, beside upstream's own 42) are classified explicitly by their markers
+// (openclaw-agent-fleet38-bridge.ts). The 39, 40 and 43 candidates are neither upstream's
+// same-numbered schema plus this table (the 43, absorb b980ef8168 through fa212dbe20, was never
+// deployed and holds upstream's 42 plus this table), so they are refused, as are earlier
+// PostgreSQL candidates and every unrecognized schema-41, schema-42 or schema-43 shape.
+export const AGENT_RECIPIENT_AUTHORITY_SCHEMA_VERSION = 44;
 /** The jump-13 candidate's number for this step; upstream's 41 is active event facts. */
 export const AGENT_RECIPIENT_AUTHORITY_JUMP13_SCHEMA_VERSION = 41;
 /**
