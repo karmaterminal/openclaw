@@ -26,7 +26,8 @@ import {
   expectNoSentinel,
   expectNoSentinelFilesSince,
   SENTINEL,
-  writeRoot,
+  sovereignAgentsConfig,
+  writeAgentGeneration,
   type GenerationSpec,
 } from "./sovereign-fixture.test-support.js";
 
@@ -38,35 +39,14 @@ afterEach(() => {
   resetSovereignRedactionForTests();
 });
 
-type Mode = "off" | "enforce";
-
 /** One agent dir holding a generation for `agentId` at the default sovereign root. */
 function writeAgent(agentId: string, spec: GenerationSpec = {}) {
   const agentDir = tempDirs.make("openclaw-sovereign-runtime-");
-  const root = path.join(agentDir, "sovereign", "systemprompts");
-  fs.mkdirSync(root, { recursive: true, mode: 0o700 });
-  const dir = writeRoot(root, {
-    ...spec,
-    manifest: (manifest) => {
-      manifest.agentId = agentId;
-      spec.manifest?.(manifest);
-    },
-  });
-  return { agentDir, root, dir };
+  return { agentDir, ...writeAgentGeneration(agentDir, agentId, spec) };
 }
 
-function configFor(entries: Record<string, { agentDir: string; mode?: Mode }>): OpenClawConfig {
-  return {
-    agents: {
-      entries: Object.fromEntries(
-        Object.entries(entries).map(([id, { agentDir, mode }]) => [
-          id,
-          { agentDir, ...(mode ? { sovereignPrompts: { mode } } : {}) },
-        ]),
-      ),
-    },
-  } as OpenClawConfig;
-}
+const configFor = (entries: Parameters<typeof sovereignAgentsConfig>[0]) =>
+  sovereignAgentsConfig(entries) as OpenClawConfig;
 
 function recordingLog() {
   const lines: { level: "info" | "warn"; message: string; meta?: Record<string, unknown> }[] = [];

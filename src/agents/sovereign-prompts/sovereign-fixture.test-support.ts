@@ -87,6 +87,36 @@ export function writeRoot(root: string, spec: GenerationSpec = {}): string {
   return dir;
 }
 
+/** Writes one generation for `agentId` at the default root under `agentDir` (§ 3.2). */
+export function writeAgentGeneration(agentDir: string, agentId: string, spec: GenerationSpec = {}) {
+  const root = path.join(agentDir, "sovereign", "systemprompts");
+  fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+  const dir = writeRoot(root, {
+    ...spec,
+    manifest: (manifest) => {
+      manifest.agentId = agentId;
+      spec.manifest?.(manifest);
+    },
+  });
+  return { root, dir };
+}
+
+/** Config whose `agents.entries` set each agent's dir and sovereign switch. */
+export function sovereignAgentsConfig(
+  entries: Record<string, { agentDir: string; mode?: "off" | "enforce" }>,
+) {
+  return {
+    agents: {
+      entries: Object.fromEntries(
+        Object.entries(entries).map(([id, { agentDir, mode }]) => [
+          id,
+          { agentDir, ...(mode ? { sovereignPrompts: { mode } } : {}) },
+        ]),
+      ),
+    },
+  };
+}
+
 type Outcome = { value?: unknown; error?: unknown; logs: string[] };
 
 /** Runs `run` with console and stdio captured, so log lines join the sentinel check. */
