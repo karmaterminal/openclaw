@@ -14,31 +14,30 @@ kept as files OpenClaw loads at start instead of built-in prompt text. The
 commands read only mechanics (bytes, structure, filesystem metadata, digests) and
 print codes, names, sizes, digests and paths. They never print file content.
 
-<Note>
-This build ships the loader, its checks and these commands. Prompt assembly does
-not read sovereign files yet, so `agents.entries.<agentId>.sovereignPrompts.mode`
-accepts only `"off"` until the phase A wiring slice lands. Config validation
-refuses `"enforce"`, so `openclaw config validate` rejects a config that sets it.
-</Note>
+The switch is `agents.entries.<agentId>.sovereignPrompts.mode`: `"off"` (the
+default) or `"enforce"`. See [What `enforce` does](#what-enforce-does).
 
 | Command | Role                                                                                                  |
 | ------- | ----------------------------------------------------------------------------------------------------- |
-| `paths` | Resolves the agent's sovereign root and switch state from config; reads no file                       |
+| `paths` | Resolves the agent's sovereign root and switch from config; reads no file                             |
 | `check` | Loads a generation (the one `CURRENT` names, or `--generation <dir>`) and runs every mechanical check |
+| `slots` | Lists the slots, file names and reserved tokens this build declares and which it renders; no file     |
 
-Both commands take `--agent <id>` (required) and `--json`. They run read-only
-beside a live Gateway, so a deploy can call them before its restart.
+`paths` and `check` take `--agent <id>` (required); every command takes `--json`.
+They run read-only beside a live Gateway, so a deploy can call them before its
+restart, and `slots --json` lets a deploy validate a tree against the exact build
+it deploys.
 
 ```bash
 openclaw sovereign paths --agent main --json
 openclaw sovereign check --agent main --json
 openclaw sovereign check --agent main --generation ~/.openclaw/agents/main/agent/sovereign/systemprompts/generations/.staging-1 --json
+openclaw sovereign slots --json
 ```
 
-Exit codes: `0` when the agent resolves (`paths`) or the generation loads
-(`check`); `1` on any refusal, with the refusal code in the output. An invalid
-config, such as one that sets `"enforce"` on this build, exits `1` with the config
-error before either command runs.
+Exit codes: `0` when the agent resolves (`paths`), the generation loads (`check`)
+or the registry prints (`slots`); `1` on any refusal, with the refusal code in the
+output. An invalid config exits `1` with the config error before a command runs.
 
 ## Layout
 
@@ -110,10 +109,55 @@ Every check is mechanical; nothing reads or judges the text.
 | `placeholder_invalid`, `placeholder_unknown`       | A `{{oc:…}}` token is malformed or names a fact its slot does not provide                                                                                                                                                          |
 | `generation_changed`                               | `CURRENT` changed during the load twice in a row                                                                                                                                                                                   |
 | `io_error`                                         | Any other read failure; the output carries the errno name only                                                                                                                                                                     |
-| `enforce_unwired`                                  | `paths`: the loader was given mode `"enforce"`, which this build does not apply. Config validation refuses `"enforce"` first                                                                                                       |
 | `agent_unknown`                                    | `--agent` names no configured agent                                                                                                                                                                                                |
 
 An empty optional file counts as absent. Refusal output names the code and, where
 known, the slot, the registry file name, the generation id, byte counts and
 limits, the uid, the octal mode or the errno name. It never includes content,
 native error text, or names outside the registry.
+
+## What `enforce` does
+
+- **Load once.** The Gateway loads each `enforce` agent's current generation when
+  it starts, before agent work is admitted; any other process that renders
+  prompts loads at its first render. Files are never reread: a new generation
+  takes effect at the next start, and changing `sovereignPrompts` plans a Gateway
+  restart. An agent added as `enforce` by hot reload fails `not_loaded` until then.
+- **Fail closed, per agent.** A refused generation fails every run of that agent
+  with its code, before any model call. The Gateway, status, other agents and
+  rollback keep working. Nothing falls back to built-in text.
+- **What renders.** `openclaw sovereign slots` marks the converted slots. In this
+  build they are the identity line (`identity-section.md`, in the main prompt and
+  the Codex base), Execution Bias (`execution-section.md`), Runtime Context
+  (`runtime-context-section.md`), the media-generation lines
+  (`tool-section.d/media-dedupe.md`, with `{{oc:tool:current}}`), Tool Call Style
+  (`tool-section.md`), Care with its credential lines (`safety-section.md`,
+  `safety-section.d/credentials.{control-tools,no-control-tools}.md`) and the
+  workspace-file framing (`project-context-section.md` and
+  `project-context-section.d/*`). Headings stay OpenClaw's; an absent optional file
+  omits its section. Other declared files are checked and listed in receipts while
+  their positions still render built-in text. Provider overrides of these sections
+  are ignored for the agent.
+- **Routes.** Only the embedded OpenClaw runtime and ordinary Codex threads carry
+  the files (Codex as `baseInstructions`, or as developer text behind an authored
+  Codex base). CLI backends, worker and node placements, other harnesses, and Codex
+  ring-zero and `none` threads refuse the run with `route_unconverted`.
+- **No replacement.** A plugin hook that replaces the whole prompt fails the run
+  with `sovereign_override_denied`; prepend and append still apply. A provider
+  transform that alters a sovereign span fails with `transform_altered`.
+- **Never echoed.** Plugin hook payloads (`llm_input`, `before_agent_run`),
+  trajectory records, diagnostics, model-call content capture, debug proxy capture
+  and `/export-session` carry `<!-- openclaw:sovereign <slot> sha256:<12 hex> bytes:<n> -->`
+  in place of each sovereign span. The session prompt pin and fork checkpoints are
+  not used for the agent.
+- **Receipts.** The Gateway logs `[SOVEREIGN_PROMPTS_LOADED]` or
+  `[SOVEREIGN_PROMPTS_REFUSED]` per agent at start, the `status` method reports each
+  agent's generation and digest or refusal code, and each session's prompt report
+  carries the generation, set digest and per-file digests. None holds content.
+
+| Run-time code               | Raised when                                                                        |
+| --------------------------- | ---------------------------------------------------------------------------------- |
+| `not_loaded`                | An `enforce` agent this process did not load at start (added by hot reload)        |
+| `route_unconverted`         | A run is routed where the files cannot reach the model; the output names the route |
+| `transform_altered`         | A provider transform changed a sovereign span                                      |
+| `sovereign_override_denied` | A plugin hook returned a whole-prompt replacement; the output names the hook site  |

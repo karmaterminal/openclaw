@@ -200,6 +200,7 @@ openclaw [--dev] [--profile <name>] <command>
   sovereign
     paths
     check
+    slots
   reset
   uninstall
   update
