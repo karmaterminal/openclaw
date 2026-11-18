@@ -86,7 +86,7 @@ async function seedFleet38(env: NodeJS.ProcessEnv, seeds: Seed[]) {
   await withAgentDatabaseMaintenanceLease({ env }, async () => {
     using database = new DatabaseSync(pathname);
     ensureOpenClawAgentDatabaseSchema(database, { agentId: "main", path: pathname, env });
-    expect(database.prepare("PRAGMA user_version").get()?.user_version).toBe(43);
+    expect(database.prepare("PRAGMA user_version").get()?.user_version).toBe(44);
   });
   const db = openOpenClawAgentDatabase({ agentId: "main", env }).db;
   const read = (key: string) =>
