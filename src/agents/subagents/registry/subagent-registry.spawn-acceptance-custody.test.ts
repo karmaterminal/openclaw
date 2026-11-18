@@ -394,6 +394,34 @@ describe("armed registration: accepted-spawn custody (H1)", () => {
     expectNoDelivery();
   });
 
+  it("T3c: custody belongs to one gateway run; another run neither replaces nor releases it", async () => {
+    const result = await spawnNative({ deferred: true });
+    expect(result.ok).toBe(true);
+    const custody = { runId, childSessionKey };
+    await expect(
+      registry.recordAcceptedSubagentSpawnRollback({ ...custody, gatewayRunId, reason: "first" }),
+    ).resolves.toEqual({ status: "persisted" });
+    await expect(
+      registry.recordAcceptedSubagentSpawnRollback({
+        ...custody,
+        gatewayRunId: "other-gateway-run",
+        reason: "second",
+      }),
+    ).resolves.toEqual({ status: "rejected" });
+    await expect(
+      registry.releaseAcceptedSubagentSpawnRollback({
+        ...custody,
+        gatewayRunId: "other-gateway-run",
+      }),
+    ).resolves.toBe(false);
+    expect(durableRow()?.acceptedSpawnRollback).toMatchObject({ gatewayRunId, reason: "first" });
+
+    await expect(
+      registry.releaseAcceptedSubagentSpawnRollback({ ...custody, gatewayRunId }),
+    ).resolves.toBe(true);
+    expect(durableRow()?.acceptedSpawnRollback).toBeUndefined();
+  });
+
   it("T4 (guard): a confirmed spawn is durable without an arm and resumes normally after restart", async () => {
     const result = await spawnNative({});
     expect(result.ok).toBe(true);
