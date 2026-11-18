@@ -394,6 +394,8 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/reply/session-event-automation-result.test.ts",
   // Cael (karmaterminal, #1447): scheduled room-session failures over the real delivery owner.
   "src/auto-reply/reply/session-event-scheduled-failure.test.ts",
+  // Persisted context pressure commits its band through the real session store.
+  "src/auto-reply/continuation/context-pressure.persisted.test.ts",
   // Continuation wakes run the real session-event handoff and durable rows.
   "src/auto-reply/continuation/continuation-wake.test.ts",
   "src/auto-reply/continuation/continuation-wake.transcript-conflict.test.ts",
