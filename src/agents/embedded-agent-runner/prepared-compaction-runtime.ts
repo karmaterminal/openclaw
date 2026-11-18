@@ -46,7 +46,10 @@ import {
   SESSION_PERMISSION_BY_EXEC_MODE,
 } from "../session-permission-exec-mode.js";
 import { detectRuntimeShell } from "../shell-utils.js";
-import { assertSovereignSpansIntact } from "../sovereign-prompts/runtime.js";
+import {
+  assertSovereignSpansIntact,
+  type SovereignPromptSpans,
+} from "../sovereign-prompts/runtime.js";
 import { buildConfiguredAgentSystemPrompt } from "../system-prompt-config.js";
 import { resolveRuntimeAgentName } from "../system-prompt-params.js";
 import { toolPolicyRestrictsTools } from "../tool-policy.js";
@@ -526,10 +529,10 @@ export async function buildPreparedCompactionRuntime(
     const preparedTtsPreferences =
       promptMode === "full" ? await prepareTtsPreferences() : undefined;
     const buildSystemPromptText = async () => {
-      let sovereignInstances: readonly string[] = [];
+      const rendered: { sovereignSpans?: SovereignPromptSpans } = {};
       const builtSystemPrompt = await buildConfiguredAgentSystemPrompt({
-        onRenderedSovereignInstances: (instances) => {
-          sovereignInstances = instances;
+        onRenderedSovereignSpans: (spans) => {
+          rendered.sovereignSpans = spans;
         },
         preparedTtsPreferences,
         config: params.config,
@@ -573,8 +576,10 @@ export async function buildPreparedCompactionRuntime(
           systemPrompt: builtSystemPrompt,
         },
       });
-      assertSovereignSpansIntact(transformed, sovereignInstances);
-      return transformed;
+      if (rendered.sovereignSpans) {
+        assertSovereignSpansIntact(transformed, rendered.sovereignSpans.instances);
+      }
+      return { text: transformed, sovereignSpans: rendered.sovereignSpans };
     };
 
     return {

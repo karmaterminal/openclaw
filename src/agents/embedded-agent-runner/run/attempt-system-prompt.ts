@@ -2,7 +2,10 @@ import {
   splitSystemPromptCacheBoundary,
   SYSTEM_PROMPT_CACHE_BOUNDARY,
 } from "@openclaw/ai/internal/shared";
-import { assertSovereignSpansIntact } from "../../sovereign-prompts/runtime.js";
+import {
+  assertSovereignSpansIntact,
+  type SovereignPromptSpans,
+} from "../../sovereign-prompts/runtime.js";
 import type { buildConfiguredAgentSystemPrompt } from "../../system-prompt-config.js";
 
 export type SystemPromptRefresh = ((currentSystemPrompt: string) => string) & {
@@ -38,22 +41,24 @@ export function extractAttemptPermissionNotice(systemPrompt: string) {
 export async function buildAttemptSystemPrompt(params: BuildAttemptSystemPromptParams) {
   const { buildConfiguredAgentSystemPrompt } = await import("../../system-prompt-config.js");
   let renderedSkillsPrompt = "";
-  let sovereignInstances: readonly string[] = [];
+  const rendered: { sovereignSpans?: SovereignPromptSpans } = {};
   const baseSystemPrompt = await buildConfiguredAgentSystemPrompt({
     ...params.embeddedSystemPrompt,
     onRenderedSkillsPrompt: (skillsPrompt) => {
       renderedSkillsPrompt = skillsPrompt;
       params.embeddedSystemPrompt.onRenderedSkillsPrompt?.(skillsPrompt);
     },
-    onRenderedSovereignInstances: (instances) => {
-      sovereignInstances = instances;
+    onRenderedSovereignSpans: (spans) => {
+      rendered.sovereignSpans = spans;
     },
   });
+  // A raw run sends no system prompt, so no sovereign span reaches its provider request.
+  const sovereignSpans = params.isRawModelRun ? undefined : rendered.sovereignSpans;
   const transformedSystemPrompt = params.isRawModelRun
     ? ""
     : params.transformSystemPrompt(baseSystemPrompt);
-  if (transformedSystemPrompt) {
-    assertSovereignSpansIntact(transformedSystemPrompt, sovereignInstances);
+  if (sovereignSpans) {
+    assertSovereignSpansIntact(transformedSystemPrompt, sovereignSpans.instances);
   }
   // Runtime additions at the cache boundary stay outside both owned regions;
   // permission refreshes replace capability guidance without dropping that context.
@@ -74,6 +79,7 @@ export async function buildAttemptSystemPrompt(params: BuildAttemptSystemPromptP
   return {
     systemPrompt,
     skillsPrompt: params.isRawModelRun ? "" : renderedSkillsPrompt,
+    sovereignSpans,
     refreshSystemPrompt: (currentSystemPrompt: string, permissionNotice?: string) => {
       if (params.isRawModelRun) {
         return currentSystemPrompt;

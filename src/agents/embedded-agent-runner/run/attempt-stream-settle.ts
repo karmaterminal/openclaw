@@ -25,6 +25,8 @@ import { resolveModelCallUrgency } from "../../run-trigger.js";
 import type { SandboxContext } from "../../sandbox/types.js";
 import type { AgentSession, SessionManager, SettingsManager } from "../../sessions/index.js";
 import { withSessionManagerAppend } from "../../sessions/session-manager-append-admission.js";
+import { wrapStreamFnWithSovereignRequestCheck } from "../../sovereign-prompts/provider-request.js";
+import type { SovereignPromptSpans } from "../../sovereign-prompts/runtime.js";
 import { withPreparedSessionCapabilityRead } from "../../subagents/spawn/subagent-session-store.js";
 import { isToolExecutionAllowed } from "../../tool-policy-shared.js";
 import { hasNonzeroUsage, normalizeUsage } from "../../usage.js";
@@ -400,6 +402,8 @@ export async function prepareEmbeddedAttemptTransport(input: {
   sandboxSessionKey: string;
   sandbox?: SandboxContext | null;
   codeModeControlsEnabled: boolean;
+  /** The applied render's sovereign spans; absent when the run carries none. */
+  sovereignSpans?: () => SovereignPromptSpans | undefined;
   providerPromptState: {
     state: ProviderPromptState;
     effectiveContextTokenBudget: number;
@@ -582,6 +586,14 @@ export async function prepareEmbeddedAttemptTransport(input: {
       boundaryStreamFn(model, context, providerOptions),
     );
   };
+  if (input.sovereignSpans?.()) {
+    // Innermost of the host wrappers: hooks, provider and config wrappers all edit first.
+    session.agent.streamFn = wrapStreamFnWithSovereignRequestCheck({
+      streamFn: session.agent.streamFn,
+      agentId: input.sessionAgentId,
+      spans: input.sovereignSpans,
+    });
+  }
   // Install inside provider/config wrappers so their full onPayload chain runs
   // before admission hashes the request body that the built-in transport sends.
   session.agent.streamFn = wrapStreamFnWithProviderPromptState({

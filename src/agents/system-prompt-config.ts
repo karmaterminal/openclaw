@@ -18,6 +18,7 @@ import type { PreparedModelRuntimeSnapshot } from "./prepared-model-runtime.type
 import {
   beginSovereignPromptRender,
   resolveSovereignPromptSnapshot,
+  type SovereignPromptSpans,
 } from "./sovereign-prompts/runtime.js";
 import { buildAgentSystemPrompt } from "./system-prompt.js";
 import { resolveEffectiveToolFsWorkspaceOnly } from "./tool-fs-policy.js";
@@ -31,8 +32,8 @@ type ConfiguredAgentSystemPromptParams = Omit<
   preparedTtsPreferences?: PreparedTtsPreferences;
   tools?: { name: string; parameters: unknown }[];
   preparedModelRuntime?: Pick<PreparedModelRuntimeSnapshot, "configuredModelAliases">;
-  /** The sovereign instances this render placed, for transform checks and redaction. */
-  onRenderedSovereignInstances?: (instances: readonly string[]) => void;
+  /** The sovereign spans this render placed, for transform and provider request checks. */
+  onRenderedSovereignSpans?: (spans: SovereignPromptSpans) => void;
 };
 
 function buildModelAliasLines(owner: ConfiguredAgentSystemPromptParams["preparedModelRuntime"]) {
@@ -59,7 +60,7 @@ export async function buildConfiguredAgentSystemPrompt(params: ConfiguredAgentSy
     agentId: explicitAgentId,
     preparedModelRuntime,
     preparedTtsPreferences,
-    onRenderedSovereignInstances,
+    onRenderedSovereignSpans,
     ...renderParams
   } = params;
   const agentId = explicitAgentId ?? (tools ? params.runtimeInfo?.agentId : undefined);
@@ -71,7 +72,11 @@ export async function buildConfiguredAgentSystemPrompt(params: ConfiguredAgentSy
   const render = (input: Omit<Parameters<typeof buildAgentSystemPrompt>[0], "sovereign">) => {
     const prompt = buildAgentSystemPrompt({ ...input, sovereign });
     if (sovereign) {
-      onRenderedSovereignInstances?.(sovereign.instances);
+      onRenderedSovereignSpans?.({
+        agentId: sovereign.agentId,
+        setDigest: sovereign.setDigest,
+        instances: sovereign.instances,
+      });
     }
     return prompt;
   };

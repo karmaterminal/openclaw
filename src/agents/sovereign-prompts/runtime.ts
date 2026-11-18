@@ -231,6 +231,14 @@ export function assertSovereignSpansIntact(prompt: string, instances: readonly s
   }
 }
 
+/** What one validated render placed, carried from the chokepoint to its checks. */
+export type SovereignPromptSpans = {
+  readonly agentId: string;
+  readonly setDigest: string;
+  /** Each rendered instance, as the system prompt ships it. */
+  readonly instances: readonly string[];
+};
+
 /** One render's view of a snapshot: converted bodies, each registered for redaction. */
 export type SovereignPromptRender = {
   readonly agentId: string;

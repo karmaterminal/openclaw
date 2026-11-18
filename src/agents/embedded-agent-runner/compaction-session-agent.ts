@@ -8,6 +8,8 @@ import { wrapStreamFnTextTransforms } from "../plugin-text-transforms.js";
 import type { ModelCallUrgency } from "../run-trigger.js";
 import type { AgentRuntimePlan } from "../runtime-plan/types.js";
 import type { StreamFn } from "../runtime/index.js";
+import { wrapStreamFnWithSovereignRequestCheck } from "../sovereign-prompts/provider-request.js";
+import type { SovereignPromptSpans } from "../sovereign-prompts/runtime.js";
 import { applyExtraParamsToAgent } from "./extra-params.js";
 import {
   resolveEmbeddedAgentApiKey,
@@ -33,6 +35,8 @@ export async function prepareCompactionSessionAgent(params: {
   agentDir: string;
   runtimePlan?: AgentRuntimePlan;
   modelCallUrgency?: ModelCallUrgency;
+  /** The compaction render's sovereign spans; absent when it carries none. */
+  sovereignSpans?: SovereignPromptSpans;
 }) {
   const transportApiKey = params.authStorage
     ? await resolveEmbeddedAgentApiKey({
@@ -47,6 +51,15 @@ export async function prepareCompactionSessionAgent(params: {
     transportAuthAvailable: Boolean(transportApiKey?.trim()),
     authProfileId: params.runtimePlan?.auth.forwardedAuthProfileId,
   }).streamFn;
+  const { sovereignSpans } = params;
+  if (sovereignSpans) {
+    // Innermost, as on turns: hooks, provider and config wrappers all edit first.
+    params.session.agent.streamFn = wrapStreamFnWithSovereignRequestCheck({
+      streamFn: params.session.agent.streamFn,
+      agentId: params.sessionAgentId,
+      spans: () => sovereignSpans,
+    });
+  }
   const providerTextTransforms = resolveProviderTextTransforms({
     provider: params.provider,
     config: params.config,

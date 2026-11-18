@@ -508,6 +508,7 @@ export async function prepareEmbeddedAttemptSessionRuntime(input: {
     sandboxSessionKey,
     ...(sandbox !== undefined ? { sandbox } : {}),
     codeModeControlsEnabled: codeModeControlsEnabledForRun,
+    sovereignSpans: input.systemPrompt.sovereignSpans,
     providerPromptState: {
       state: getProviderPromptState(attempt.runId),
       effectiveContextTokenBudget: Math.max(
