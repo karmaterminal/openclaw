@@ -23,6 +23,7 @@ vi.mock("../../sessions/send-policy.js", () => ({
   resolveSendPolicy: vi.fn(() => "allow"),
 }));
 
+import { emitSessionIdentityMutation } from "../../sessions/session-lifecycle-events.js";
 import { sendReplyRestartRecoveryNotice } from "./reply-turn-recovery-notice.js";
 
 describe("restart recovery notice", () => {
@@ -41,6 +42,40 @@ describe("restart recovery notice", () => {
     expect(deliver.mock.calls[0]?.[0]).toContain("Use /reset or /new");
 
     fixture.entry.mainRestartRecovery.cycleId = "cycle-2";
+    await sendReplyRestartRecoveryNotice(params);
+    expect(deliver).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-arms only for a recorded identity change of the same chat", async () => {
+    fixture.entry.mainRestartRecovery.cycleId = "cycle-3";
+    const deliver = vi.fn(async (_text: string) => true);
+    const params = {
+      agentId: "main",
+      cfg: {},
+      sessionKey: "agent:main:notice-rearm",
+      storePath: "/tmp/restart-notice-rearm",
+      deliver,
+    };
+    await sendReplyRestartRecoveryNotice(params);
+    expect(deliver).toHaveBeenCalledTimes(1);
+
+    emitSessionIdentityMutation({
+      agentId: "main",
+      databaseIdentity: "notice-db",
+      kind: "replace",
+      previous: { sessionId: "retired", sessionKeys: ["agent:main:other-chat"] },
+      current: { sessionId: "successor", sessionKeys: ["agent:main:other-chat"] },
+    });
+    await sendReplyRestartRecoveryNotice(params);
+    expect(deliver).toHaveBeenCalledTimes(1);
+
+    emitSessionIdentityMutation({
+      agentId: "main",
+      databaseIdentity: "notice-db",
+      kind: "replace",
+      previous: { sessionId: "retired", sessionKeys: [params.sessionKey] },
+      current: { sessionId: "successor", sessionKeys: [params.sessionKey] },
+    });
     await sendReplyRestartRecoveryNotice(params);
     expect(deliver).toHaveBeenCalledTimes(2);
   });
