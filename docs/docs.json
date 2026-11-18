@@ -2864,6 +2864,7 @@
                       },
                       "cli/secrets",
                       "cli/security",
+                      "cli/sovereign",
                       "cli/triage"
                     ]
                   },

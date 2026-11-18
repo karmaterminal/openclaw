@@ -1,0 +1,2 @@
+# Sovereign prompt loader (#1321): one real-file case per refusal code and guard, snapshot printing, the off switch at the fs boundary, the sentinel helper, the sovereign CLI, and the real-config refusal of mode "enforce" (config validate and the sovereign config guard).
+879
