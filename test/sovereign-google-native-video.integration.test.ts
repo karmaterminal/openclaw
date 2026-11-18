@@ -224,15 +224,14 @@ async function composeAttempt(params: {
   });
   // The agent loop hands its `onPayload` (the `before_provider_request` emitter) and its own
   // signal to each call; the embedded stream composes the run's signal with it.
-  const send = async (messages: Context["messages"]) => {
+  const send = async (
+    messages: Context["messages"],
+    signal: AbortSignal = new AbortController().signal,
+  ) => {
     const stream = await session.agent.streamFn!(
       model,
       { systemPrompt: prompt, messages },
-      {
-        onPayload: session.agent.onPayload,
-        apiKey: "synthetic-key",
-        signal: new AbortController().signal,
-      },
+      { onPayload: session.agent.onPayload, apiKey: "synthetic-key", signal },
     );
     return await stream.result();
   };
@@ -448,32 +447,39 @@ describe.skipIf(process.platform === "win32")("sovereign enforce: Google native 
     },
   );
 
-  // Cancellation crosses the check: the run's abort reaches the request on the wire, whether the
-  // transport takes the signal from its options (the plugin routes) or, on the SDK builder, from
-  // the detached copy's config, where the embedded stream composed it with the caller's signal.
-  it.each([
+  // Cancellation crosses the check. Inside it, the embedded stream composes the run's signal with
+  // the caller's, which the check passes on. A transport takes the composed signal from its
+  // options (the plugin routes) or, on the SDK builder, from the detached copy's config. An abort
+  // from either source must reach the request on the wire.
+  const CANCEL_ROUTES = [
     { route: "Gemini API", model: geminiApi, plugin: googlePlugin },
     { route: "Vertex", model: vertex, plugin: googlePlugin },
     { route: "Interactions", model: interactions, plugin: googlePlugin },
     { route: "Vertex SDK builder", model: vertexSdk, plugin: fixturePlugin },
-  ])(
-    "$route: aborting the run mid-send cancels the request and sends nothing further",
-    async ({ model, plugin }) => {
+  ];
+  it.each(
+    CANCEL_ROUTES.flatMap((row) =>
+      (["run", "caller"] as const).map((source) => ({ ...row, source })),
+    ),
+  )(
+    "$route: aborting the $source signal mid-send cancels the request and sends nothing further",
+    async ({ model, plugin, source }) => {
       const { send, abort } = await composeAttempt({
         config: writeAgent("enforce"),
         model,
         plugin,
       });
-      afterSend = () => abort.abort();
+      const caller = new AbortController();
+      afterSend = () => (source === "run" ? abort : caller).abort();
 
-      const outcome = await capture(() => send(TEXT_TURN));
+      const outcome = await capture(() => send(TEXT_TURN, caller.signal));
       expect(sent).toHaveLength(1);
       expect(sent[0]!.signal.aborted).toBe(true);
       expect(JSON.stringify(sent[0]!.body)).toContain(SENTINEL);
       expect(verification).toMatchObject({ result: "final-payload-verified", site: model.api });
       expect(outcome.value).toMatchObject({ stopReason: "aborted" });
       // No retry, key rotation or later call of the canceled run reaches the network.
-      const later = await capture(() => send(TEXT_TURN));
+      const later = await capture(() => send(TEXT_TURN, caller.signal));
       expect(sent).toHaveLength(1);
       expectNoSentinel(outcome);
       expectNoSentinel(later);
