@@ -150,6 +150,7 @@ type TestSessionOptions = Partial<
     | "contextOverflowRecoveryOwner"
     | "resolveCompactionThinkingLevel"
     | "withSessionWriteSettlement"
+    | "assertSystemPromptReplacementAllowed"
   >
 > & { extension?: Parameters<typeof createResourceLoader>[0] };
 
