@@ -98,11 +98,12 @@ async function renderMain() {
   return { prompt, spans: spans! };
 }
 
-/** The real built-in builder for `model.api`, behind the check. */
-function checkedBuilder(spans: SovereignPromptSpans) {
+/** The real built-in builder for `model.api`, behind the check; `receipts` collects outcomes. */
+function checkedBuilder(spans: SovereignPromptSpans, receipts?: unknown[]) {
   return wrapStreamFnWithSovereignRequestCheck(streamSimple as StreamFn, {
     sessionAgentId: "main",
     sovereignSpans: () => spans,
+    onSovereignVerification: (verification) => receipts?.push(verification),
   });
 }
 
@@ -347,5 +348,149 @@ describe.skipIf(process.platform === "win32")("provider request check on each AP
     expect(outcome.value).toMatchObject(REFUSED);
     expect(sent).toHaveLength(1);
     expect(JSON.stringify(sent[0])).toContain(SENTINEL);
+  });
+});
+
+// The check reads what the transport will send (openclaw#1571 review): the serialized
+// request, from the carrier the transport uses, and never an object a serializer or an
+// accessor can present differently from what goes on the wire.
+describe.skipIf(process.platform === "win32")("provider request check on the sent request", () => {
+  const modelFor = (api: string) => BUILDERS.find((builder) => builder.api === api)!.model;
+  const DIFFERENT = "Different system instructions";
+
+  it.each(BUILDERS)(
+    "$api: refuses a hook replacement whose toJSON sends other system text",
+    async ({ model }) => {
+      const { prompt, spans } = await renderMain();
+      const receipts: unknown[] = [];
+      const outcome = await send(checkedBuilder(spans, receipts), model, prompt, (payload) => ({
+        ...payload,
+        toJSON: () => alterSpans(payload),
+      }));
+      expect(outcome.value).toMatchObject(REFUSED);
+      expect(sent).toHaveLength(0);
+      expect(receipts).toEqual([undefined]);
+    },
+  );
+
+  it("google-interactions: refuses system text behind a serializer or an accessor", async () => {
+    const { prompt, spans } = await renderMain();
+    const model = modelFor("google-interactions");
+    const receipts: unknown[] = [];
+    // The reviewer's probe: the original field stays visible beside a serializer.
+    const serializer = await send(checkedBuilder(spans, receipts), model, prompt, (payload) => ({
+      ...payload,
+      toJSON() {
+        return { ...payload, system_instruction: DIFFERENT };
+      },
+    }));
+    // An accessor that answers an object check's reads with the original, then sends other text.
+    const accessor = await send(checkedBuilder(spans, receipts), model, prompt, (payload) => {
+      let reads = 0;
+      return Object.defineProperty({ ...payload }, "system_instruction", {
+        enumerable: true,
+        get: () => (reads++ < 2 ? payload.system_instruction : DIFFERENT),
+      });
+    });
+    expect(serializer.value).toMatchObject(REFUSED);
+    expect(accessor.value).toMatchObject(REFUSED);
+    expect(sent).toHaveLength(0);
+    expect(receipts).toEqual([undefined, undefined]);
+  });
+
+  it.each(["google-generative-ai", "google-vertex"])(
+    "%s: checks the SDK's config.systemInstruction, never a top-level bait field",
+    async (api) => {
+      const { prompt, spans } = await renderMain();
+      const model = modelFor(api);
+      const receipts: unknown[] = [];
+      const bait = await send(checkedBuilder(spans, receipts), model, prompt, (payload) => {
+        const config = payload.config as Record<string, unknown>;
+        return {
+          ...payload,
+          systemInstruction: config.systemInstruction,
+          config: { ...config, systemInstruction: DIFFERENT },
+        };
+      });
+      expect(bait.value).toMatchObject(REFUSED);
+      expect(sent).toHaveLength(0);
+      expect(receipts).toEqual([undefined]);
+
+      await send(checkedBuilder(spans, receipts), model, prompt);
+      expect(sent).toHaveLength(1);
+      expect(JSON.stringify(sent[0]!.systemInstruction)).toContain(SENTINEL);
+      expect(receipts.at(-1)).toMatchObject({ result: "final-payload-verified", site: api });
+    },
+  );
+
+  it("checks the managed Google transport's top-level systemInstruction, its own carrier", async () => {
+    const { prompt, spans } = await renderMain();
+    // The managed transport (extensions/google) builds the REST body and sends it itself.
+    const managed: StreamFn = async (routed, context, options) => {
+      const built = {
+        contents: [],
+        systemInstruction: { parts: [{ text: context.systemPrompt }] },
+      };
+      const body = (await options?.onPayload?.(built, routed)) ?? built;
+      await fetch(routed.baseUrl, { method: "POST", body: JSON.stringify(body) });
+      throw new Error("fixture send");
+    };
+    const checked = wrapStreamFnWithSovereignRequestCheck(managed, {
+      sessionAgentId: "main",
+      sovereignSpans: () => spans,
+    });
+    const model = modelFor("google-generative-ai");
+    const context = { systemPrompt: prompt, messages: [] };
+    await expect(checked(model, context, {})).rejects.toThrow("fixture send");
+    expect(sent).toHaveLength(1);
+    // Spans moved into the SDK's `config` field, which the REST body does not use: none is sent.
+    const moved = checked(model, context, {
+      onPayload: () => ({ contents: [], config: { systemInstruction: prompt } }),
+    });
+    await expect(moved).rejects.toMatchObject({ code: "transform_altered" });
+    expect(sent).toHaveLength(1);
+  });
+
+  it("checks the bytes the host encoder returns, and returns those bytes", async () => {
+    const { prompt, spans } = await renderMain();
+    const model = modelFor("openai-responses");
+    const user = { role: "user", content: [{ type: "input_text", text: "Reply OK" }] };
+    const bodies: string[] = [];
+    const receipts: unknown[] = [];
+    // A resend the hook never saw, encoded through the host as OpenAI routes encode.
+    const transport: StreamFn = async (routed, _context, options) => {
+      const encodeBody = prepareModelRequestBody(options);
+      await options?.onPayload?.({ model: routed.id, instructions: prompt, input: [user] }, routed);
+      // Its accessor answers an object check's reads with the prompt, then serializes other text.
+      let reads = 0;
+      const resend = Object.defineProperty({ model: routed.id, input: [user] }, "instructions", {
+        enumerable: true,
+        get: () => (reads++ < 2 ? prompt : "Altered instructions."),
+      });
+      bodies.push(Buffer.from((await encodeBody(resend)).body).toString("utf8"));
+      await encodeBody({
+        model: routed.id,
+        instructions: prompt,
+        input: [user],
+        toJSON: () => ({ model: routed.id, instructions: "Altered instructions.", input: [user] }),
+      });
+      throw new Error("unreachable");
+    };
+    const checked = wrapStreamFnWithSovereignRequestCheck(transport, {
+      sessionAgentId: "main",
+      sovereignSpans: () => spans,
+      onSovereignVerification: (verification) => receipts.push(verification),
+    });
+    await expect(
+      checked(model, { systemPrompt: prompt, messages: [] }, { apiKey: "synthetic-key" }),
+    ).rejects.toMatchObject({ code: "transform_altered", details: { site: "provider_request" } });
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toContain(SENTINEL);
+    expect(bodies[0]).not.toContain("Altered instructions.");
+    expect(receipts.map((receipt) => (receipt as { site?: string } | undefined)?.site)).toEqual([
+      "openai-responses",
+      "openai-responses",
+      undefined,
+    ]);
   });
 });

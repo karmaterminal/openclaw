@@ -6,6 +6,7 @@
  * provider `wrapStreamFn` edits and every other payload hook, before transport, on every
  * send, including a transport's own retries. It never re-resolves an owner or re-renders.
  */
+import { types } from "node:util";
 import {
   markModelPayloadObserver,
   modelRequestBodyState,
@@ -22,21 +23,80 @@ import { finalPayloadVerified, type SovereignProviderRequestApi } from "./verifi
 
 const log = createSubsystemLogger("agents/sovereign-prompts");
 
-type SystemTextExtractor = (payload: Record<string, unknown>) => string[] | undefined;
+/**
+ * Reads a payload's system text. `built` is the request the transport built, before any
+ * hook ran: where two transports share an API id, its shape names the carrier.
+ */
+type SystemTextExtractor = (
+  payload: Record<string, unknown>,
+  built: unknown,
+) => string[] | undefined;
+
+/*
+ * A transport serializes the request after this check, with `JSON.stringify` or its SDK's
+ * own field reads. A proxy, a `toJSON` or a class prototype runs payload code there, and an
+ * accessor answers each read anew, so the text sent could differ from the text read. The
+ * readers below take only own enumerable data members of plain objects and arrays, what
+ * `JSON.stringify` writes; anything else on the way to the system text reads as absent and
+ * refuses (openclaw#1571 review).
+ */
+function isPlainJsonContainer(value: object): boolean {
+  if (types.isProxy(value) || Object.hasOwn(value, "toJSON")) {
+    return false;
+  }
+  const prototype: unknown = Object.getPrototypeOf(value);
+  return Array.isArray(value)
+    ? prototype === Array.prototype
+    : prototype === Object.prototype || prototype === null;
+}
+
+function readJsonRecord(value: unknown): Record<string, unknown> | undefined {
+  return isRecord(value) && isPlainJsonContainer(value) ? value : undefined;
+}
+
+/** The member `JSON.stringify` writes under `key`; an accessor is never called. */
+function readJsonMember(container: object, key: string | number): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(container, key);
+  return descriptor?.enumerable && "value" in descriptor ? descriptor.value : undefined;
+}
+
+function* readJsonElements(array: readonly unknown[]): Generator<unknown> {
+  for (let index = 0; index < array.length; index++) {
+    yield readJsonMember(array, index);
+  }
+}
+
+function readJsonArray(value: unknown): Generator<unknown> | undefined {
+  return Array.isArray(value) && isPlainJsonContainer(value) ? readJsonElements(value) : undefined;
+}
+
+/** The text of each element that `read` returns a string for (other elements are skipped). */
+function readTexts(
+  elements: Iterable<unknown>,
+  read: (element: Record<string, unknown>) => unknown,
+): string[] {
+  const texts: string[] = [];
+  for (const element of elements) {
+    const record = readJsonRecord(element);
+    const text = record ? read(record) : undefined;
+    if (typeof text === "string") {
+      texts.push(text);
+    }
+  }
+  return texts;
+}
 
 /** A string, or an array whose `textType` blocks carry the text (other blocks are skipped). */
 function readTextBlocks(value: unknown, textType: string): string[] | undefined {
   if (typeof value === "string") {
     return [value];
   }
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-  return value.flatMap((block) =>
-    isRecord(block) && block.type === textType && typeof block.text === "string"
-      ? [block.text]
-      : [],
-  );
+  const blocks = readJsonArray(value);
+  return blocks
+    ? readTexts(blocks, (block) =>
+        readJsonMember(block, "type") === textType ? readJsonMember(block, "text") : undefined,
+      )
+    : undefined;
 }
 
 /** The leading system-role messages of a message list: the system prompt position. */
@@ -45,15 +105,18 @@ function readLeadingSystemMessages(
   roles: ReadonlySet<string>,
   textType: string,
 ): string[] | undefined {
-  if (!Array.isArray(messages)) {
+  const elements = readJsonArray(messages);
+  if (!elements) {
     return undefined;
   }
   const segments: string[] = [];
-  for (const message of messages) {
-    if (!isRecord(message) || typeof message.role !== "string" || !roles.has(message.role)) {
+  for (const element of elements) {
+    const message = readJsonRecord(element);
+    const role = message ? readJsonMember(message, "role") : undefined;
+    if (!message || typeof role !== "string" || !roles.has(role)) {
       break;
     }
-    const text = readTextBlocks(message.content, textType);
+    const text = readTextBlocks(readJsonMember(message, "content"), textType);
     if (!text) {
       return undefined;
     }
@@ -67,9 +130,13 @@ const SYSTEM_OR_DEVELOPER_ROLES: ReadonlySet<string> = new Set(["system", "devel
 
 /** Responses routes carry the prompt in `instructions`, or first in `input` where unsupported. */
 const readResponsesSystemText: SystemTextExtractor = (payload) => {
-  const instructions =
-    typeof payload.instructions === "string" ? [payload.instructions] : undefined;
-  const input = readLeadingSystemMessages(payload.input, SYSTEM_OR_DEVELOPER_ROLES, "input_text");
+  const value = readJsonMember(payload, "instructions");
+  const instructions = typeof value === "string" ? [value] : undefined;
+  const input = readLeadingSystemMessages(
+    readJsonMember(payload, "input"),
+    SYSTEM_OR_DEVELOPER_ROLES,
+    "input_text",
+  );
   return instructions || input ? [...(instructions ?? []), ...(input ?? [])] : undefined;
 };
 
@@ -78,21 +145,25 @@ function readGoogleInstruction(value: unknown): string[] | undefined {
   if (typeof value === "string") {
     return [value];
   }
-  const parts = isRecord(value) ? value.parts : value;
-  if (!Array.isArray(parts)) {
-    return undefined;
-  }
-  return parts.flatMap((part) =>
-    isRecord(part) && typeof part.text === "string" ? [part.text] : [],
-  );
+  const content = readJsonRecord(value);
+  const parts = readJsonArray(content ? readJsonMember(content, "parts") : value);
+  return parts ? readTexts(parts, (part) => readJsonMember(part, "text")) : undefined;
 }
 
-/** The SDK builder nests it in `config`; the Google transport sends it at the top level. */
-const readGoogleSystemText: SystemTextExtractor = (payload) =>
-  readGoogleInstruction(
-    payload.systemInstruction ??
-      (isRecord(payload.config) ? payload.config.systemInstruction : undefined),
-  );
+/**
+ * Two transports build Gemini requests under these API ids. The SDK builder hands the SDK
+ * `GenerateContentParameters`, which sends the instruction from `config` and ignores a
+ * top-level field; the managed transport (extensions/google) sends the REST body, which
+ * carries it top-level and has no `config`. The built request names the contract, and only
+ * that carrier is read: a hook cannot satisfy the check with a field the transport drops.
+ */
+const readGoogleSystemText: SystemTextExtractor = (payload, built) => {
+  const carrier =
+    isRecord(built) && isRecord(built.config)
+      ? readJsonRecord(readJsonMember(payload, "config"))
+      : payload;
+  return carrier ? readGoogleInstruction(readJsonMember(carrier, "systemInstruction")) : undefined;
+};
 
 /**
  * Where each supported API builder (`@openclaw/ai` built-in registrations) places the
@@ -100,18 +171,24 @@ const readGoogleSystemText: SystemTextExtractor = (payload) =>
  * absent here cannot be checked, so an `enforce` run there refuses.
  */
 const SYSTEM_TEXT_EXTRACTORS: Readonly<Record<SovereignProviderRequestApi, SystemTextExtractor>> = {
-  "anthropic-messages": (payload) => readTextBlocks(payload.system, "text"),
+  "anthropic-messages": (payload) => readTextBlocks(readJsonMember(payload, "system"), "text"),
   "openai-completions": (payload) =>
-    readLeadingSystemMessages(payload.messages, SYSTEM_OR_DEVELOPER_ROLES, "text"),
+    readLeadingSystemMessages(
+      readJsonMember(payload, "messages"),
+      SYSTEM_OR_DEVELOPER_ROLES,
+      "text",
+    ),
   "mistral-conversations": (payload) =>
-    readLeadingSystemMessages(payload.messages, SYSTEM_ROLES, "text"),
+    readLeadingSystemMessages(readJsonMember(payload, "messages"), SYSTEM_ROLES, "text"),
   "openai-responses": readResponsesSystemText,
   "azure-openai-responses": readResponsesSystemText,
   "openai-chatgpt-responses": readResponsesSystemText,
   "google-generative-ai": readGoogleSystemText,
   "google-vertex": readGoogleSystemText,
-  "google-interactions": (payload) =>
-    typeof payload.system_instruction === "string" ? [payload.system_instruction] : undefined,
+  "google-interactions": (payload) => {
+    const value = readJsonMember(payload, "system_instruction");
+    return typeof value === "string" ? [value] : undefined;
+  },
 };
 
 function isCheckedApi(api: string): api is SovereignProviderRequestApi {
@@ -128,11 +205,11 @@ function carriesSovereignSpans(params: {
   spans: SovereignPromptSpans | undefined;
   api: SovereignProviderRequestApi;
   payload: unknown;
+  built: unknown;
 }): boolean {
   const { spans } = params;
-  const segments = isRecord(params.payload)
-    ? SYSTEM_TEXT_EXTRACTORS[params.api](params.payload)
-    : undefined;
+  const root = readJsonRecord(params.payload);
+  const segments = root ? SYSTEM_TEXT_EXTRACTORS[params.api](root, params.built) : undefined;
   return (
     spans?.agentId === params.agentId &&
     segments !== undefined &&
@@ -142,14 +219,25 @@ function carriesSovereignSpans(params: {
 
 type EncodeModelRequestBody = NonNullable<ReturnType<typeof modelRequestBodyState>["encode"]>;
 
-function isResponsesContinuationDelta(api: string, payload: unknown): boolean {
+/** `sent` is a parsed request body, so its members are plain data. */
+function isResponsesContinuationDelta(api: string, sent: unknown): boolean {
   return (
     isCheckedApi(api) &&
     SYSTEM_TEXT_EXTRACTORS[api] === readResponsesSystemText &&
-    isRecord(payload) &&
-    typeof payload.previous_response_id === "string" &&
-    readResponsesSystemText(payload) === undefined
+    isRecord(sent) &&
+    typeof sent.previous_response_id === "string" &&
+    readResponsesSystemText(sent, undefined) === undefined
   );
+}
+
+/** The request the encoded bytes carry, as the provider parses it. */
+function parseSentRequest(body: Uint8Array): unknown {
+  try {
+    return JSON.parse(new TextDecoder().decode(body));
+  } catch {
+    // Not JSON: no system field the check can read, so it refuses.
+    return undefined;
+  }
 }
 
 /** What the check reads of its run. */
@@ -169,8 +257,10 @@ const checkedEncoders = new WeakMap<EncodeModelRequestBody, EncodeModelRequestBo
  * the selected transport, so its payload hook is the one the transport calls: it runs
  * the whole outer hook chain first, then checks what that chain returned, against the
  * API the transport built it for. A transport that encodes through the host is checked
- * again on each encoded attempt, which covers resends that skip the hook (a slower
- * service tier, stripped reasoning). A refusal throws before any byte is sent.
+ * again on the bytes of each encoded attempt, which covers resends that skip the hook (a
+ * slower service tier, stripped reasoning), and sends exactly the bytes it checked. A
+ * transport that serializes the request itself is checked on plain data only, so its own
+ * serialization writes what was read. A refusal throws before any byte is sent.
  *
  * Each passed check reports `final-payload-verified` with the API it read; a refusal
  * withdraws it, so the run's prompt report holds the outcome of its latest check.
@@ -203,11 +293,12 @@ export function wrapStreamFnWithSovereignRequestCheck(
     }
     // A provider transport can build for another API than it was routed by (LM Studio).
     let api = model.api;
+    let built: unknown;
     const assertPayload = (payload: unknown) => {
       const checkedApi = isCheckedApi(api) ? api : undefined;
       if (
         checkedApi &&
-        carriesSovereignSpans({ agentId, spans: readSpans(), api: checkedApi, payload })
+        carriesSovereignSpans({ agentId, spans: readSpans(), api: checkedApi, payload, built })
       ) {
         onSovereignVerification?.(finalPayloadVerified(checkedApi));
       } else {
@@ -218,6 +309,8 @@ export function wrapStreamFnWithSovereignRequestCheck(
     const checkedOptions: NonNullable<Parameters<StreamFn>[2]> = {
       ...options,
       onPayload: async (payload, payloadModel) => {
+        // Read before the outer chain runs: a hook can edit the built request in place.
+        built = payload;
         const replacement = await originalOnPayload?.(payload, payloadModel);
         api = payloadModel.api;
         assertPayload(replacement === undefined ? payload : replacement);
@@ -230,12 +323,14 @@ export function wrapStreamFnWithSovereignRequestCheck(
     const current = bodyState.encode;
     const encode = current && checkedEncoders.has(current) ? checkedEncoders.get(current) : current;
     const checkedEncode: EncodeModelRequestBody = async (payload) => {
+      const encoded = encode ? await encode(payload) : serializeModelRequestBody(payload);
+      const sent = parseSentRequest(encoded.body);
       // A Responses continuation sends only new input after `previous_response_id`; the
       // provider reuses the stored prefix the hook check above already passed.
-      if (!isResponsesContinuationDelta(api, payload)) {
-        assertPayload(payload);
+      if (!isResponsesContinuationDelta(api, sent)) {
+        assertPayload(sent);
       }
-      return encode ? await encode(payload) : serializeModelRequestBody(payload);
+      return encoded;
     };
     checkedEncoders.set(checkedEncode, encode);
     bodyState.encode = checkedEncode;
