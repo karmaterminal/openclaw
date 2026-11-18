@@ -108,7 +108,7 @@ Every check is mechanical; nothing reads or judges the text.
 | `reserved_token`                                   | A body holds an OpenClaw prompt marker, or a line equal to a heading OpenClaw matches                                                                                                                                              |
 | `placeholder_invalid`, `placeholder_unknown`       | A `{{oc:…}}` token is malformed or names a fact its slot does not provide                                                                                                                                                          |
 | `generation_changed`                               | `CURRENT` changed during the load twice in a row                                                                                                                                                                                   |
-| `io_error`                                         | Any other read failure; the output carries the errno name only                                                                                                                                                                     |
+| `io_error`                                         | Any other read failure, or an unexpected error while loading; the output carries the errno name only                                                                                                                               |
 | `agent_unknown`                                    | `--agent` names no configured agent                                                                                                                                                                                                |
 
 An empty optional file counts as absent. Refusal output names the code and, where
@@ -142,14 +142,21 @@ native error text, or names outside the registry.
 - **Routes.** Only the embedded OpenClaw runtime and ordinary Codex threads carry
   the files (Codex as `baseInstructions`, or as developer text behind an authored
   Codex base). CLI backends, worker and node placements, other harnesses, Codex
-  ring-zero and `none` threads, and harness side questions (`/btw` on Codex) refuse
-  with `route_unconverted`.
+  ring-zero and `none` threads, harness side questions (`/btw` on Codex), and
+  `openclaw infer model run --local` on the ChatGPT Responses API (it sends the
+  built-in identity line there) refuse with `route_unconverted`.
+- **Which agent.** A render or check that names no agent is decided by the agent
+  OpenClaw resolves without a selection: `agents.defaults.systemAgent.agentId`,
+  the legacy default, or the sole agent. When none resolves while an agent is
+  `enforce`, that call alone fails with `agent_unknown`; `off` agents are never
+  affected.
 - **No replacement.** A plugin hook that replaces the whole prompt fails the run
   with `sovereign_override_denied`; prepend and append still apply. A provider
   transform that alters a sovereign span fails with `transform_altered`.
-- **Never echoed.** Plugin hook payloads (`llm_input`, `before_agent_run`),
-  trajectory records, diagnostics, model-call content capture, debug proxy capture
-  and `/export-session` carry `<!-- openclaw:sovereign <slot> sha256:<12 hex> bytes:<n> -->`
+- **Never echoed.** Plugin hook payloads (`llm_input`, `before_agent_run`), session
+  extension `before_agent_start` payloads and `getSystemPrompt()`, trajectory
+  records, diagnostics, model-call content capture, debug proxy capture and
+  `/export-session` carry `<!-- openclaw:sovereign <slot> sha256:<12 hex> bytes:<n> -->`
   in place of each sovereign span. The session prompt pin and fork checkpoints are
   not used for the agent.
 - **Receipts.** The Gateway logs `[SOVEREIGN_PROMPTS_LOADED]` or
@@ -160,6 +167,7 @@ native error text, or names outside the registry.
 | Run-time code               | Raised when                                                                        |
 | --------------------------- | ---------------------------------------------------------------------------------- |
 | `not_loaded`                | An `enforce` agent this process did not load at start (added by hot reload)        |
+| `agent_unknown`             | A render or check names no agent, none resolves, and an agent is `enforce`         |
 | `route_unconverted`         | A run is routed where the files cannot reach the model; the output names the route |
 | `transform_altered`         | A provider transform changed a sovereign span                                      |
 | `sovereign_override_denied` | A plugin hook returned a whole-prompt replacement; the output names the hook site  |
