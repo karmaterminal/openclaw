@@ -25,8 +25,8 @@ import { makeEmbeddedRunnerAttempt } from "../test-helpers/embedded-agent-runner
 import { createOpenClawAgentHarness } from "./builtin-openclaw.js";
 
 const runEmbeddedAttempt = vi.hoisted(() => vi.fn());
-// mock-isolation: The embedded runner is the built-in finalizer's model handoff; each call is
-// one generated answer, which the admission must prevent for a sovereign agent.
+// The embedded runner is the built-in finalizer's model handoff: each call is one answer.
+// mock-isolation: a call here is the generation the admission must prevent.
 vi.mock("../embedded-agent-runner/run/attempt.js", () => ({ runEmbeddedAttempt }));
 
 const getContext = useFinalizationAdmission([runEmbeddedAttempt], "finalizer-admission-test");
