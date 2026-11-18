@@ -149,11 +149,18 @@ native error text, or names outside the registry.
   a Codex CLI node session: `codex:cli-node-session`), which runs on Codex's own
   base, and a worker-hosted Codex app-server (`appServer.workerHostedCloud`:
   `codex:worker-hosted`), which would take the base off the Gateway host. The
-  Codex settled-turn finalizer (`codex:settled-turn-finalization`) writes a new
-  answer in the agent's name on an empty base, so it refuses before any handoff.
-  The turn then ends as an incomplete turn, with the host's missing-reply notice
-  wherever the host delivers one. An answer the agent already wrote is still
-  delivered.
+  settled-turn finalizer, which writes a new answer in the agent's name from a
+  code-owned prompt when a tool turn ends without one, refuses on every runtime
+  before any handoff (`<runtime>:settled-turn-finalization`, such as `openclaw:`
+  or `codex:`). The turn then ends as an incomplete turn, with the host's
+  missing-reply notice wherever the host delivers one. An answer the agent
+  already wrote is still delivered. A resume of an existing Codex thread on an
+  app-server other clients can reach (a WebSocket or Unix socket connection, or
+  an `app-server proxy` launch) refuses before anything is read
+  (`codex:external-resume`): another client can load the thread between
+  OpenClaw's read and its resume, and Codex then ignores the resume's
+  instructions without saying so. New threads there are checked as usual. To
+  continue, start a new session or use an app-server OpenClaw starts over stdio.
 - **Which agent.** An agent's files render only for a call that names that agent.
   A render or check that names no agent, or an invalid one, is refused while any
   agent is `enforce`, counting one that was `enforce` when the process read its
@@ -201,12 +208,12 @@ native error text, or names outside the registry.
   handoff is written. Codex ignores the instructions a resume hands to a thread
   it keeps loaded (another client holds it, a turn is running, or its shutdown
   did not finish), and answers as usual. So a resume earns `handoff-verified`
-  only for a thread OpenClaw saw unloaded: cold before the request, or closed or
-  reloaded during it. Otherwise the run fails without a receipt, and the thread
-  is kept. What Codex does with the handed instructions stays unverified: the
-  request it builds, a thread another client loads on an external app-server
-  between OpenClaw's read and its resume (Codex's answer does not say), and the
-  parent-local inference relay, the only carrier of the personal `USER.md` line.
+  only on an app-server OpenClaw starts over stdio, which no other client
+  reaches, for a thread OpenClaw saw unloaded: cold before the request, or
+  closed or reloaded during it. Otherwise the run fails without a receipt, and
+  the thread is kept. What Codex does with the handed instructions stays
+  unverified: the request it builds, and the parent-local inference relay, the
+  only carrier of the personal `USER.md` line.
   Codex threads that carry no OpenClaw base are not checked: web-search or media
   workers run code-owned prompts, as compaction summaries do, and forks or
   attached threads keep their source's base until the next resume hands the
