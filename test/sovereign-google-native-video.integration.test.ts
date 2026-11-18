@@ -535,6 +535,10 @@ describe.skipIf(process.platform === "win32")("sovereign enforce: Google native 
   const onInstructionContent = (payload: Record<string, unknown>) => {
     (payload.systemInstruction as Record<string, unknown>).inlineData = INJECTED_VIDEO;
   };
+  // A request inside itself has no JSON form; materialization would never finish walking it.
+  const intoOwnUserTurn = (payload: Record<string, unknown>) => {
+    (payload.contents as GeminiContent[])[0]!.parts.push(payload);
+  };
   const REST_ROUTES = [
     { route: "Gemini API", model: geminiApi },
     { route: "Vertex", model: vertex },
@@ -543,6 +547,7 @@ describe.skipIf(process.platform === "win32")("sovereign enforce: Google native 
     { mark: "a video beside each instruction text", edit: besideEachText },
     { mark: "the instruction text part shared into the user turn", edit: sharedWithUserTurn },
     { mark: "a video on the instruction content itself", edit: onInstructionContent },
+    { mark: "the request shared into its own user turn", edit: intoOwnUserTurn },
   ];
   it.each([
     ...REST_ROUTES.flatMap(({ route, model }) =>
@@ -563,6 +568,15 @@ describe.skipIf(process.platform === "win32")("sovereign enforce: Google native 
       errorCode: undefined,
       edit: (payload: Record<string, unknown>) => {
         payload.type = "video";
+      },
+    },
+    {
+      route: "Interactions",
+      model: interactions,
+      mark: "the request shared into its own user turn",
+      errorCode: undefined,
+      edit: (payload: Record<string, unknown>) => {
+        (payload.input as { content: unknown[] }[])[0]!.content.push(payload);
       },
     },
   ])("$route: $mark sends nothing", async ({ model, errorCode, edit }) => {

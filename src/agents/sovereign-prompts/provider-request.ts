@@ -293,8 +293,9 @@ function isPlatformAbortSignal(value: object): boolean {
  * to an SDK, reads every member after this check. An accessor, a proxy, a function (a `toJSON`,
  * an SDK `fetch` or callable tool) or a class instance would run payload code there, so the
  * request is `NOT_DATA`; and a hook that kept the request it returned could edit it there. No
- * hook holds the copy. Deeply frozen plain data cannot change and is shared, as is a platform
- * abort signal.
+ * hook holds the copy. An object inside itself has no JSON form and is `NOT_DATA` too; a member
+ * shared elsewhere is copied once. Deeply frozen plain data cannot change and is shared, as is a
+ * platform abort signal.
  */
 function detachRequest(value: unknown, copies = new Map<object, unknown>()): unknown {
   if (typeof value === "function") {
@@ -309,14 +310,15 @@ function detachRequest(value: unknown, copies = new Map<object, unknown>()): unk
     return value;
   }
   if (copies.has(value)) {
-    return copies.get(value);
+    // Still unset while its own members are copied: the object contains itself.
+    return copies.get(value) ?? NOT_DATA;
   }
   if (!isPlainJsonContainer(value)) {
     return NOT_DATA;
   }
   const array = Array.isArray(value);
   const copy: object = array ? [] : Object.create(Object.getPrototypeOf(value) as object | null);
-  copies.set(value, copy);
+  copies.set(value, undefined);
   for (const key of Reflect.ownKeys(value)) {
     if (array && key === "length") {
       continue;
@@ -340,6 +342,7 @@ function detachRequest(value: unknown, copies = new Map<object, unknown>()): unk
   if (array) {
     Reflect.set(copy, "length", Reflect.get(value, "length"));
   }
+  copies.set(value, copy);
   return copy;
 }
 

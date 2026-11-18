@@ -535,6 +535,53 @@ describe.skipIf(process.platform === "win32")("provider request check on the sen
     expect(receipts).toEqual([verified, verified]);
   });
 
+  // JSON writes a member shared in two places twice, so the copy keeps it shared; an object
+  // inside itself has no JSON form, and a transport walking it would never finish.
+  it("sends a member a hook shares in two places, and refuses a request inside itself", async () => {
+    const { prompt, spans } = await renderMain();
+    const receipts: unknown[] = [];
+    type Body = { contents: { parts: unknown[] }[]; systemInstruction: { parts: unknown[] } };
+    const managed: StreamFn = async (routed, context, options) => {
+      const built: Body = {
+        contents: [{ parts: [] }],
+        systemInstruction: { parts: [{ text: context.systemPrompt }] },
+      };
+      const body = (await options?.onPayload?.(built, routed)) ?? built;
+      const json = admitModelRequestBody(options, JSON.stringify(body));
+      await fetch(routed.baseUrl, { method: "POST", body: json });
+      throw new Error("fixture send");
+    };
+    const checked = wrapStreamFnWithSovereignRequestCheck(managed, {
+      sessionAgentId: "main",
+      sovereignSpans: () => spans,
+      onSovereignVerification: (verification) => receipts.push(verification),
+    });
+    const model = modelFor("google-generative-ai");
+    const context = { systemPrompt: prompt, messages: [] };
+
+    const shared = checked(model, context, {
+      onPayload: (payload) => {
+        const body = payload as Body;
+        body.contents[0]!.parts.push(body.systemInstruction.parts[0]);
+        return undefined;
+      },
+    });
+    await expect(shared).rejects.toThrow("fixture send");
+    expect(sent).toHaveLength(1);
+    expect(JSON.stringify(sent[0]!.contents)).toContain(SENTINEL);
+    expect(receipts.at(-1)).toMatchObject({ result: "final-payload-verified" });
+
+    const circular = checked(model, context, {
+      onPayload: (payload) => {
+        (payload as Body).contents[0]!.parts.push(payload);
+        return undefined;
+      },
+    });
+    await expect(circular).rejects.toMatchObject({ code: "transform_altered" });
+    expect(sent).toHaveLength(1);
+    expect(receipts.at(-1)).toBeUndefined();
+  });
+
   // A plain carrier is not enough: any member the transport reads after the check can run
   // code (openclaw#1571 review 5964056490, finding 1). The getter sits on the sibling `model`.
   it.each(BUILDERS)(
