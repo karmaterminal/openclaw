@@ -135,13 +135,15 @@ native error text, or names outside the registry.
   `safety-section.d/credentials.{control-tools,no-control-tools}.md`) and the
   workspace-file framing (`project-context-section.md` and
   `project-context-section.d/*`). Headings stay OpenClaw's; an absent optional file
-  omits its section. Other declared files are checked and listed in receipts while
-  their positions still render built-in text. Provider overrides of these sections
-  are ignored for the agent.
+  omits its section. On Codex, workspace files keep the harness's own framing; only
+  the personal `USER.md` line there comes from `project-context-section.d/personal-user.md`.
+  Other declared files are checked and listed in receipts while their positions still
+  render built-in text. Provider overrides of these sections are ignored for the agent.
 - **Routes.** Only the embedded OpenClaw runtime and ordinary Codex threads carry
   the files (Codex as `baseInstructions`, or as developer text behind an authored
-  Codex base). CLI backends, worker and node placements, other harnesses, and Codex
-  ring-zero and `none` threads refuse the run with `route_unconverted`.
+  Codex base). CLI backends, worker and node placements, other harnesses, Codex
+  ring-zero and `none` threads, and harness side questions (`/btw` on Codex) refuse
+  with `route_unconverted`.
 - **No replacement.** A plugin hook that replaces the whole prompt fails the run
   with `sovereign_override_denied`; prepend and append still apply. A provider
   transform that alters a sovereign span fails with `transform_altered`.
