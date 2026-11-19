@@ -10,6 +10,7 @@ import adaptiveMarkdownQualification from "../config/ci-adaptive-markdown.json" 
 import {
   agentVitestProjectOwners,
   embeddedAgentVitestProjectOwners,
+  isAgentsContinuationForestTestFile,
   isAgentsCoreIsolatedTestFile,
   isAgentsSpawnProductionBoundaryTestFile,
 } from "../test/vitest/vitest.agents-paths.mjs";
@@ -242,6 +243,7 @@ const DEFAULT_VITEST_CONFIG = "test/vitest/vitest.unit.config.ts";
 const AGENTS_EMBEDDED_AGENT_TEST_ROOT = agentVitestProjectOwners.embedded.root;
 const AGENTS_SPAWN_PRODUCTION_BOUNDARY_VITEST_CONFIG =
   agentVitestProjectOwners.spawnProductionBoundary.config;
+const AGENTS_CONTINUATION_FOREST_VITEST_CONFIG = agentVitestProjectOwners.continuationForest.config;
 const AGENTS_CORE_ISOLATED_VITEST_CONFIG = agentVitestProjectOwners.coreIsolated.config;
 const AGENTS_CORE_VITEST_CONFIG = agentVitestProjectOwners.core.config;
 const AGENTS_EMBEDDED_AGENT_VITEST_CONFIG = agentVitestProjectOwners.embedded.config;
@@ -586,6 +588,7 @@ const VITEST_CONFIG_BY_KIND: Record<string, string> = {
   agentTools: AGENTS_TOOLS_VITEST_CONFIG,
   agent: AGENTS_VITEST_CONFIG,
   agentsSpawnProductionBoundary: AGENTS_SPAWN_PRODUCTION_BOUNDARY_VITEST_CONFIG,
+  agentsContinuationForest: AGENTS_CONTINUATION_FOREST_VITEST_CONFIG,
   agentsCoreIsolated: AGENTS_CORE_ISOLATED_VITEST_CONFIG,
   agentsCore: AGENTS_CORE_VITEST_CONFIG,
   agentsSupport: AGENTS_SUPPORT_VITEST_CONFIG,
@@ -5145,6 +5148,9 @@ function classifyTarget(arg: string, cwd: string, beforeDatabaseWorkerOwnership 
   }
   if (isAgentsSpawnProductionBoundaryTestFile(relative)) {
     return agentVitestProjectOwners.spawnProductionBoundary.kind;
+  }
+  if (isAgentsContinuationForestTestFile(relative)) {
+    return agentVitestProjectOwners.continuationForest.kind;
   }
   if (isControlUiE2eTarget(relative)) {
     return "uiE2e";

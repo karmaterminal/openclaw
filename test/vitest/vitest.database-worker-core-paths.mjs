@@ -652,6 +652,8 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/command/session-store.test.ts",
   "src/agents/core-coding-tools.exec-workdir.test.ts",
   "src/agents/subagents/registry/subagent-registry-sweeper-recovery.test.ts",
+  // Continuation (karmaterminal): the feature cases split from the suite above share its owner.
+  "src/agents/subagents/registry/subagent-registry-sweeper-recovery.orphan-collector.test.ts",
   "src/agents/subagents/spawn/acp-spawn.authority.test.ts",
   "src/agents/subagents/spawn/acp-spawn.test.ts",
   "src/node-host/invoke-agent-cli-claude.test.ts",
@@ -727,6 +729,8 @@ export const databaseWorkerCoreTestFiles = [
   "src/agents/subagents/registry/subagent-announcement.worker.test.ts",
   "src/agents/subagents/registry/subagent-announcement-delivery.worker.test.ts",
   "src/agents/subagents/registry/subagent-registry.persistence.test.ts",
+  // Continuation (karmaterminal): the continuation-return cases share the persistence suite's owner.
+  "src/agents/subagents/registry/subagent-registry.persistence.continuation-return.test.ts",
   "src/agents/subagents/registry/subagent-registry-lifecycle.test.ts",
   "src/agents/subagents/registry/subagent-registry.test.ts",
   "src/agents/subagents/registry/subagent-registry-running-registration.native.test.ts",

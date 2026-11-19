@@ -7,6 +7,16 @@ const embeddedRoot = `${agentsRoot}/embedded-agent-runner`;
 const spawnProductionBoundaryFiles = [
   "src/agents/subagents/spawn/subagent-spawn.production-boundary.test.ts",
 ];
+// Continuation (karmaterminal): the continuation forest drives real SQLite workers under one
+// fake clock. Its own owner keeps its weight off the agents-support file stripes.
+const continuationForestFiles = [
+  "src/agents/subagents/registry/continuation-forest.followups.test.ts",
+  "src/agents/subagents/registry/continuation-forest.handovers.test.ts",
+  "src/agents/subagents/registry/continuation-forest.head-swaps.test.ts",
+  "src/agents/subagents/registry/continuation-forest.load.benchmark.test.ts",
+  "src/agents/subagents/registry/continuation-forest.maintenance.test.ts",
+  "src/agents/subagents/registry/continuation-forest.restarts.test.ts",
+];
 
 // These suites mock shared runtime, network, or plugin modules and cannot
 // share the non-isolated core worker without leaking module state.
@@ -48,6 +58,15 @@ export const agentVitestProjectOwners = {
     root: agentsRoot,
     dir: agentsRoot,
     include: spawnProductionBoundaryFiles,
+    exclude: [],
+  },
+  continuationForest: {
+    kind: "agentsContinuationForest",
+    name: "agents-continuation-forest",
+    config: "test/vitest/vitest.agents-continuation-forest.config.ts",
+    root: agentsRoot,
+    dir: agentsRoot,
+    include: continuationForestFiles,
     exclude: [],
   },
   coreIsolated: {
@@ -119,6 +138,7 @@ export const agentVitestProjectOwners = {
     exclude: [
       ...databaseWorkerCoreTestFiles,
       ...spawnProductionBoundaryFiles,
+      ...continuationForestFiles,
       ...coreIsolatedFiles,
       `${embeddedRoot}/**`,
       `${agentsRoot}/tools/**`,
@@ -137,6 +157,7 @@ export const agentVitestProjectOwners = {
 
 export const agentVitestProjectConfigs = [
   agentVitestProjectOwners.spawnProductionBoundary.config,
+  agentVitestProjectOwners.continuationForest.config,
   agentVitestProjectOwners.coreIsolated.config,
   agentVitestProjectOwners.core.config,
   agentVitestProjectOwners.embedded.config,
@@ -156,6 +177,7 @@ export const embeddedAgentVitestProjectOwners = [
 
 const coreIsolatedFileSet = new Set(coreIsolatedFiles);
 const spawnProductionBoundaryFileSet = new Set(spawnProductionBoundaryFiles);
+const continuationForestFileSet = new Set(continuationForestFiles);
 
 export function isAgentsCoreIsolatedTestFile(value) {
   return coreIsolatedFileSet.has(value.replaceAll("\\", "/"));
@@ -163,4 +185,8 @@ export function isAgentsCoreIsolatedTestFile(value) {
 
 export function isAgentsSpawnProductionBoundaryTestFile(value) {
   return spawnProductionBoundaryFileSet.has(value.replaceAll("\\", "/"));
+}
+
+export function isAgentsContinuationForestTestFile(value) {
+  return continuationForestFileSet.has(value.replaceAll("\\", "/"));
 }

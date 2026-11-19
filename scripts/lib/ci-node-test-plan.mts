@@ -2616,6 +2616,13 @@ const SPLIT_NODE_SHARDS = new Map<string, NodeTestSplitShard[] | (() => NodeTest
         configs: [agentVitestProjectOwners.support.config],
         requiresDist: false,
       },
+      // Continuation (karmaterminal): the forest's own owner, off the bounded support stripes.
+      {
+        shardName: "agentic-agents-continuation-forest",
+        configs: [agentVitestProjectOwners.continuationForest.config],
+        includePatterns: agentVitestProjectOwners.continuationForest.include,
+        requiresDist: false,
+      },
       {
         shardName: "agentic-agents-tools",
         configs: [agentVitestProjectOwners.tools.config],
