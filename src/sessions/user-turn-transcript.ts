@@ -139,9 +139,7 @@ export function createUserTurnTranscriptRecorder(
     staging ||
     selfPersistencePromise ||
     runtimePersistencePromise ||
-    runtimePersisted ||
-    committedInput ||
-    persistedResult;
+    recorder.hasPersisted();
   const deliveryAcks = createSessionDeliveryAckReplacement(message, persistenceStarted);
 
   const adoptPendingInput = (receipt: NonNullable<typeof pendingInput>) => {
