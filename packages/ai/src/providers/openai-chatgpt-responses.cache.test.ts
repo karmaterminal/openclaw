@@ -4,7 +4,6 @@ import { getEventListeners, once } from "node:events";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { setTimeout as nextTimerTurn } from "node:timers/promises";
-import { zstdDecompressSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
 import { forceFullGc } from "../../../../src/test-utils/retention.js";
@@ -43,6 +42,7 @@ import {
   emitWebSocket,
   createLoopbackModel,
   closeServer,
+  decodeRequestBody,
 } from "./openai-chatgpt-responses.test-helpers.js";
 
 const runDetached = AsyncLocalStorage.snapshot();
@@ -642,24 +642,12 @@ describe("ChatGPT Responses cached transport", () => {
 
   type RecordedRequest = Record<string, unknown>;
 
-  function decodeRequest(init: RequestInit | undefined): RecordedRequest {
-    const raw = init?.body;
-    if (typeof raw === "string") {
-      return JSON.parse(raw) as RecordedRequest;
-    }
-    if (!(raw instanceof Uint8Array)) {
-      throw new Error("missing encoded request body");
-    }
-    expect(new Headers(init?.headers).get("content-encoding")).toBe("zstd");
-    return JSON.parse(zstdDecompressSync(raw).toString("utf8")) as RecordedRequest;
-  }
-
   function installSseResponses(responses: Response[]): RecordedRequest[] {
     const requests: RecordedRequest[] = [];
     vi.stubGlobal(
       "fetch",
       vi.fn<typeof fetch>(async (_input, init) => {
-        requests.push(decodeRequest(init));
+        requests.push(JSON.parse(decodeRequestBody(init)) as RecordedRequest);
         const response = responses.shift();
         if (!response) {
           throw new Error("missing SSE response");

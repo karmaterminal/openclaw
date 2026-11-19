@@ -1,4 +1,3 @@
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 import type { BaseOpenAIStreamOptions } from "../provider-options.js";
 import type { OpenAIResponsesReplayMode } from "../transports/openai-responses-compaction-replay.js";
@@ -104,49 +103,6 @@ function buildRequestBody(
   }
 
   return body;
-}
-
-/**
- * Counts that describe a request body for failure diagnostics. Only numbers leave here:
- * never item ids, text, URLs or image data.
- */
-export function describeCodexRequestShape(body: RequestBody) {
-  const input = body.input ?? [];
-  // The current user turn starts at its user message; later tool outputs belong to it.
-  const turnStart = input.findLastIndex((item) => isRecord(item) && item.role === "user");
-  let reasoningItems = 0;
-  let turnImages = 0;
-  let historyImages = 0;
-  for (const [index, item] of input.entries()) {
-    if (!isRecord(item)) {
-      continue;
-    }
-    reasoningItems += item.type === "reasoning" ? 1 : 0;
-    // User images are message content parts; tool images are function_call_output parts.
-    const images = countInputImages(item.content) + countInputImages(item.output);
-    historyImages += images;
-    turnImages += turnStart !== -1 && index >= turnStart ? images : 0;
-  }
-  let requestBytes: number | undefined;
-  try {
-    requestBytes = new TextEncoder().encode(JSON.stringify(body)).byteLength;
-  } catch {
-    // A hook-built body that cannot serialize already failed dispatch; the failure
-    // log runs in the stream's terminal catch, which must still end the stream.
-  }
-  return {
-    inputItems: input.length,
-    reasoningItems,
-    turnImages,
-    historyImages,
-    ...(requestBytes === undefined ? {} : { requestBytes }),
-  };
-}
-
-function countInputImages(parts: unknown): number {
-  return Array.isArray(parts)
-    ? parts.filter((part) => isRecord(part) && part.type === "input_image").length
-    : 0;
 }
 
 /**

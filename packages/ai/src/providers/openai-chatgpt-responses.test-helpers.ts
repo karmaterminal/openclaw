@@ -1,4 +1,5 @@
 import type { AddressInfo } from "node:net";
+import { zstdDecompressSync } from "node:zlib";
 import { vi, type Mock } from "vitest";
 import { configureAiTransportHost } from "../host.js";
 import type { Context } from "../types.js";
@@ -52,6 +53,21 @@ export function sseResponse(...events: object[]): Response {
   return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""), {
     headers: { "content-type": "text/event-stream" },
   });
+}
+
+/** The JSON text of a captured SSE request body, zstd-decoded when the transport compressed it. */
+export function decodeRequestBody(init: RequestInit | undefined): string {
+  const body = init?.body;
+  if (typeof body === "string") {
+    return body;
+  }
+  if (
+    !(body instanceof Uint8Array) ||
+    new Headers(init?.headers).get("content-encoding") !== "zstd"
+  ) {
+    throw new Error("missing zstd request body");
+  }
+  return zstdDecompressSync(body).toString("utf8");
 }
 
 export function completedSseResponse(id = "resp_test"): Response {

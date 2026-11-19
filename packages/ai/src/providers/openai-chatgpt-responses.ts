@@ -82,6 +82,10 @@ import {
   parseErrorResponse,
 } from "./openai-chatgpt-responses-events.js";
 import {
+  logCodexStreamFailure,
+  type CodexActiveRequest,
+} from "./openai-chatgpt-responses-failure-log.js";
+import {
   CodexProtocolError,
   parseOpenAIChatGptResponsesSse,
   resolveCodexUrl,
@@ -89,7 +93,6 @@ import {
 import {
   buildHookedRequestBody,
   CODEX_TOOL_CALL_PROVIDERS,
-  describeCodexRequestShape,
   type OpenAICodexResponsesOptions,
 } from "./openai-chatgpt-responses-request.js";
 import {
@@ -167,26 +170,6 @@ function isRequestTimeoutError(
   );
 }
 
-type StreamFailureKind = "timeout" | "caller-abort" | "provider-failure" | "transport";
-
-/** Local-only failure category for transport diagnostics; never provider text. */
-function classifyStreamFailure(
-  error: unknown,
-  signal: AbortSignal | undefined,
-  requestTimedOut: boolean,
-): StreamFailureKind {
-  if (requestTimedOut) {
-    return "timeout";
-  }
-  if (signal?.aborted) {
-    return "caller-abort";
-  }
-  // CodexApiError carries a non-OK HTTP reply; both are provider decisions, not transport faults.
-  return error instanceof ResponsesStreamFailure || error instanceof CodexApiError
-    ? "provider-failure"
-    : "transport";
-}
-
 function formatRequestTimeoutError(timeoutMs: number, cause: unknown): Error {
   return new Error(`Request timed out after ${timeoutMs}ms`, {
     cause: cause instanceof Error ? cause : undefined,
@@ -235,9 +218,7 @@ export const streamOpenAICodexResponses: StreamFunction<
     let activeSignal: AbortSignal | undefined;
     let firstEventAbort: ReturnType<typeof createFirstStreamEventAbortController> | undefined;
     // The attempt in flight when a failure surfaces, described by the failure log.
-    let activeRequest:
-      | { transport: "sse" | "websocket"; attempt: ResponsesEncryptedContentAttempt<RequestBody> }
-      | undefined;
+    let activeRequest: CodexActiveRequest | undefined;
     let silentRetries = 0;
     const output = createResponsesAssistantOutput(model);
 
@@ -644,27 +625,16 @@ export const streamOpenAICodexResponses: StreamFunction<
         options?.signal,
         normalizedError instanceof CodexApiError ? normalizedError.rejection : undefined,
       );
-      // Log only locally-derived facts: timing, a fixed failure category, and the
-      // variant and counts of the request this side built. No projected provider
-      // field (message, body, code, type, name) is logged — all of them are
-      // provider-controlled text that can carry prompt- or response-derived content.
-      getAiTransportHost().logWarn("openai-transport", "ChatGPT Responses stream terminated", {
-        provider: model.provider,
-        api: model.api,
-        model: model.id,
+      logCodexStreamFailure({
+        model,
         transport: options?.transport || "auto",
-        elapsedMs: Math.max(0, Date.now() - startedAt),
+        startedAt,
         stopReason: terminal.stopReason,
-        failureKind: classifyStreamFailure(error, options?.signal, requestTimedOut),
-        // A WebSocket continuation sends only the new suffix; the counts describe the full attempt.
-        ...(activeRequest
-          ? {
-              requestTransport: activeRequest.transport,
-              attemptVariant: activeRequest.attempt.kind,
-              silentRetries,
-              ...describeCodexRequestShape(activeRequest.attempt.request),
-            }
-          : {}),
+        error,
+        signal: options?.signal,
+        requestTimedOut,
+        activeRequest,
+        silentRetries,
       });
       stream.push({ type: "error", reason: terminal.stopReason, error: output });
       stream.end();

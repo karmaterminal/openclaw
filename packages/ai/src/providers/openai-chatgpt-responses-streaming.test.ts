@@ -1,4 +1,3 @@
-import { zstdDecompressSync } from "node:zlib";
 import { redactIdentifier } from "@openclaw/normalization-core/node-crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { configureAiTransportHost } from "../host.js";
@@ -12,6 +11,7 @@ import { streamOpenAICodexResponses } from "./openai-chatgpt-responses.js";
 import {
   chatgptContext as context,
   createJwt,
+  decodeRequestBody,
   resetChatgptTransport,
   sseResponse,
 } from "./openai-chatgpt-responses.test-helpers.js";
@@ -91,18 +91,6 @@ function recordTransportLogs() {
     logDebug: (subsystem, build) => entries.push([subsystem, build()]),
   });
   return { logWarn, output: () => JSON.stringify(entries) };
-}
-
-function decodeRequestBody(init: RequestInit | undefined): string {
-  const body = init?.body;
-  if (typeof body === "string") {
-    return body;
-  }
-  if (!(body instanceof Uint8Array)) {
-    throw new Error("missing request body");
-  }
-  expect(new Headers(init?.headers).get("content-encoding")).toBe("zstd");
-  return zstdDecompressSync(body).toString("utf8");
 }
 
 const ONE_PIXEL_PNG =
