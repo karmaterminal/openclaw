@@ -349,6 +349,10 @@ read, the counts are left out.
   silently, first without encrypted reasoning and then without the compaction
   item.
 - `silentRetries`: how many of those retries ran before the failure surfaced.
+- `requestScope`: which body the counts below describe. `full` is the whole
+  request. `continuation-suffix` is a cached WebSocket continuation, which
+  sends only the input added since the socket's previous response, so the
+  earlier conversation is not counted.
 - `inputItems`: the number of input items.
 - `reasoningItems`: the number of replayed reasoning items. A
   `reasoning-stripped` attempt keeps these items but drops their encrypted
@@ -359,14 +363,17 @@ read, the counts are left out.
   count is logged, never the encrypted content, its length, or a hash of it.
 - `turnImages`: `input_image` parts from the last user message to the end of
   the input, which includes images returned by tools during the current turn.
-- `historyImages`: `input_image` parts across the whole input, including
-  `turnImages`.
-- `requestBytes`: the size of the attempt's JSON request body before
+- `historyImages`: `input_image` parts across the whole counted input,
+  including `turnImages`.
+- `requestBytes`: the size of the counted JSON request body before
   compression.
 
-The counts always describe the full attempt. On a cached WebSocket
-continuation, OpenClaw sends only the new part of the input, so the wire can
-carry fewer bytes and fewer encrypted reasoning items.
+The counts describe the body OpenClaw sent. Over SSE, and over a WebSocket
+request that does not continue an earlier response, that is the full attempt.
+On a cached WebSocket continuation it is only the new suffix, so the counts
+can show fewer items, bytes, and encrypted reasoning items than the full
+conversation. If the attempt failed before it was sent, the counts describe
+its full request and `requestScope` is `full`.
 
 Embedded attempts also log `Assistant attempt failed`, including the saved error
 fields, before choosing recovery. Request validation and content-policy failures
