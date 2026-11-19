@@ -892,7 +892,7 @@ describe("ChatGPT Responses cached transport", () => {
     expect(result.stopReason).toBe("error");
     expect([scripted.requests.length, sseRequests.length]).toEqual([2, 1]);
     const warnings = logWarn.mock.calls.filter(([subsystem]) => subsystem === "openai-transport");
-    expect(warnings.map(([, , data]) => data)).toMatchObject([
+    expect(warnings.map((call) => call[2])).toMatchObject([
       {
         transport: "auto",
         requestTransport: "sse",
