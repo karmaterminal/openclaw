@@ -857,11 +857,8 @@ describe("ChatGPT Responses cached transport", () => {
         requests = scripted.requests;
         vi.stubGlobal("fetch", networkGuard);
       }
-      const replay = createReplayContext("mixed");
-      const context: Context = {
-        ...replay,
-        messages: [{ role: "user", content: "earlier turn", timestamp: 0 }, ...replay.messages],
-      };
+      const context = createReplayContext("mixed");
+      context.messages.unshift({ role: "user", content: "earlier turn", timestamp: 0 });
 
       const result = await run(context, { ...baseOptions, transport });
 
