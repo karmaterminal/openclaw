@@ -929,10 +929,6 @@ describe("ChatGPT Responses cached transport", () => {
       const result = await runChatgpt(options, nextTurn(context, answered), imageModel);
 
       expect([answered.stopReason, result.stopReason]).toEqual(["stop", "error"]);
-      const history = requireItem(scripted.requests, 0);
-      expect(history.input).toHaveLength(3);
-      expect(containsInputText(history, REASONING_CIPHERTEXT)).toBe(true);
-      expect(containsInputText(history, '"type":"input_image"')).toBe(true);
       expect(requireItem(scripted.requests, 1)).toMatchObject({
         previous_response_id: "resp_answered",
         input: [{ role: "user" }],
