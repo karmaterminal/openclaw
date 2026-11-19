@@ -132,7 +132,7 @@ function capCopilotPromptImages(payload: unknown, maxImages: number): void {
   if (!Array.isArray(items)) {
     return;
   }
-  const notice = `[image omitted: GitHub Copilot accepts at most ${maxImages} images per request]`;
+  const notice = `[image omitted: GitHub Copilot accepts at most ${maxImages} image${maxImages === 1 ? "" : "s"} per request]`;
   let seen = 0;
   const capParts = (owner: Record<string, unknown>, key: string): void => {
     const parts = owner[key];
