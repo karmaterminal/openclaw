@@ -19,7 +19,6 @@ import {
   type SessionControllerSourceAdapter,
 } from "./session-controller.contracts.js";
 import { logSessionControllerSourceClaim } from "./session-controller.diagnostics.js";
-import { bindSessionControllerMailboxRestartDrain } from "./session-controller.mailbox-cleanup.js";
 import { pumpSessionControllerMailbox } from "./session-controller.mailbox-dispatch.js";
 import {
   bindSessionControllerSource,
@@ -285,7 +284,6 @@ function reserveOrJoinSessionControllerSource(
       retireSessionControllerInput(existing);
     }
   }
-  bindSessionControllerMailboxRestartDrain();
   const mailbox = getSessionControllerMailbox(key, target);
   const cancellation = new AbortController();
   const injectionOrder = createDeferredCore<boolean>();

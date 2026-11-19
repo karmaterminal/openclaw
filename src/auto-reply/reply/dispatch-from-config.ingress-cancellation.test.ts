@@ -15,6 +15,10 @@ import {
   markGatewayRestartDraining,
   resetGatewayWorkAdmission,
 } from "../../process/gateway-work-admission.js";
+import {
+  captureSessionControllerStop,
+  stopSession,
+} from "../../sessions/session-controller.stop.js";
 import { testing as controllerTesting } from "../../sessions/session-controller.test-support.js";
 import { createInboundDebouncer } from "../inbound-debounce.js";
 import type { MsgContext } from "../templating.js";
@@ -306,8 +310,8 @@ describe("queued ingress cancellation through the reply terminal path", () => {
     });
   });
 
-  it("cancels a waiting durable turn on gateway restart without charging its retry budget", async () => {
-    // Bind the mailbox restart listener to a fresh drain signal for this case.
+  it("cancels a waiting durable turn when restart shutdown commits without charging its retry budget", async () => {
+    // Start from open admission; this case begins its own restart drain.
     resetGatewayWorkAdmission();
     await withTempState(async (stateDir) => {
       const key = "agent:main:discord:direct:ingress-restart";
@@ -315,6 +319,7 @@ describe("queued ingress cancellation through the reply terminal path", () => {
       await queue.enqueue("restart-waiting", { text: "a" }, { laneKey: "lane-a" });
       const cancelled = vi.fn();
       const abandoned = vi.fn();
+      let queued: FollowupRun | undefined;
       const drain = createChannelIngressDrain({
         queue,
         retryPolicy: ONE_ATTEMPT,
@@ -336,6 +341,7 @@ describe("queued ingress cancellation through the reply terminal path", () => {
             turnAdoptionLifecycle:
               bindIngressLifecycleToReplyOptions(observed).turnAdoptionLifecycle,
           };
+          queued = run;
           expect(enqueueFollowupRun(key, run, QUEUE_SETTINGS, "message-id", undefined, false)).toBe(
             true,
           );
@@ -350,8 +356,8 @@ describe("queued ingress cancellation through the reply terminal path", () => {
           expect.objectContaining({ id: "restart-waiting", attempts: 0 }),
         ]);
 
-        // Restart relinquishes the waiting turn on purpose. With one attempt and
-        // no age floor, an abandonment here would dead-letter the row at once.
+        // Restart relinquishes the waiting turn on purpose once its shutdown commits.
+        // With one attempt and no age floor, an abandonment would dead-letter the row at once.
         const settled = Promise.race([
           observeChannelIngressQueueWrite(queue, "release", "restart-waiting").then(
             (written) => written && "release",
@@ -361,6 +367,13 @@ describe("queued ingress cancellation through the reply terminal path", () => {
           ),
         ]);
         markGatewayRestartDraining();
+        // Draining alone keeps the turn for the shutdown owner's capture.
+        expect(cancelled).not.toHaveBeenCalled();
+        expect(abandoned).not.toHaveBeenCalled();
+        await stopSession({
+          source: "restart",
+          capture: captureSessionControllerStop({ inputs: [queued!.controllerInput!] }),
+        }).completed;
         await expect(settled).resolves.toBe("release");
         expect(cancelled).toHaveBeenCalledOnce();
         expect(abandoned).not.toHaveBeenCalled();
