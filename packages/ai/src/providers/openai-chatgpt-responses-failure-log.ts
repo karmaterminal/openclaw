@@ -67,8 +67,9 @@ function describeRequestShape(body: RequestBody) {
       turnImages += turnStart !== -1 && index >= turnStart ? images : 0;
     }
     return {
-      // Only a cached WebSocket continuation carries previous_response_id; it sends just
-      // the input after that response, so its counts never describe the whole conversation.
+      // A body with previous_response_id continues that response and carries only the
+      // input after it (OpenClaw sets it on a cached WebSocket continuation), so its
+      // counts never describe the whole conversation.
       requestScope: body.previous_response_id ? "continuation-suffix" : "full",
       inputItems: input.length,
       reasoningItems,

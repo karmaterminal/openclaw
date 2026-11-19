@@ -895,21 +895,28 @@ describe("ChatGPT Responses cached transport", () => {
 
   // The socket already answered [compaction, reasoning, user + image], so the follow-up
   // continues that response with only its new user item. A replay rejection of that
-  // continuation reconnects and resends the full request on a fresh socket.
+  // continuation resends the full request on a fresh socket; a send that throws before
+  // dispatch leaves the full request counted.
   it.each([
-    ["continuation-suffix", false, 1, 0, 0, 0],
-    ["full", true, 4, 1, 1, 1],
+    ["dispatched", "continuation-suffix", 1, 0, 0, 0],
+    ["rejected and resent", "full", 4, 1, 1, 1],
+    ["unsent", "full", 4, 1, 1, 1],
   ] as const)(
-    "WebSocket logs the dispatched %s body (reconnect %s): %i items, %i reasoning, %i encrypted, %i images",
-    async (requestScope, reconnect, inputItems, reasoningItems, encrypted, historyImages) => {
+    "WebSocket logs a %s continuation as %s: %i items, %i reasoning, %i encrypted, %i images",
+    async (continuation, requestScope, inputItems, reasoningItems, encrypted, historyImages) => {
       const logWarn = vi.fn();
       configureAiTransportHost({ logWarn });
       const message =
         "Persisted response contains hosted-tool, compaction, or unverifiable hidden reasoning state that Rustponses cannot replay. Start a new response or use the Python Responses service for this continuation.";
+      const replies: Record<string, unknown>[][] = {
+        dispatched: [[unrelatedErrorEvent()]],
+        "rejected and resent": [[{ type: "error", error: { message } }], [unrelatedErrorEvent()]],
+        // With no scripted reply left, the fixture socket's send throws before dispatch.
+        unsent: [],
+      }[continuation];
       const scripted = installScriptedWebSocket([
         { events: [completion("resp_answered")] },
-        ...(reconnect ? [{ events: [{ type: "error", error: { message } }] }] : []),
-        { events: [unrelatedErrorEvent()] },
+        ...replies.map((events) => ({ events })),
       ]);
       const png =
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
@@ -933,10 +940,14 @@ describe("ChatGPT Responses cached transport", () => {
         previous_response_id: "resp_answered",
         input: [{ role: "user" }],
       });
-      expect(scripted.requests).toHaveLength(reconnect ? 3 : 2);
-      const { type: frame, ...sent } = requireItem(scripted.requests, reconnect ? 2 : 1);
+      const resent = continuation === "rejected and resent";
+      expect(scripted.requests).toHaveLength(resent ? 3 : 2);
+      const { type: frame, ...sent } = requireItem(scripted.requests, resent ? 2 : 1);
       expect(frame).toBe("response.create");
-      expect(sent.previous_response_id).toBe(reconnect ? undefined : "resp_answered");
+      expect(sent.previous_response_id).toBe(resent ? undefined : "resp_answered");
+      // An unsent body has no wire bytes to compare; its counts show the full request.
+      const wire =
+        continuation === "unsent" ? {} : { requestBytes: Buffer.byteLength(JSON.stringify(sent)) };
       const warnings = logWarn.mock.calls.filter(([subsystem]) => subsystem === "openai-transport");
       expect(warnings.map((call) => call[2])).toMatchObject([
         {
@@ -948,7 +959,7 @@ describe("ChatGPT Responses cached transport", () => {
           encryptedReasoningItems: encrypted,
           turnImages: 0,
           historyImages,
-          requestBytes: Buffer.byteLength(JSON.stringify(sent)),
+          ...wire,
         },
       ]);
       const output = JSON.stringify(logWarn.mock.calls);
