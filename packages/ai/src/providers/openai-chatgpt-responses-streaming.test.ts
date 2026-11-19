@@ -71,7 +71,11 @@ function transportWarning(logWarn: ReturnType<typeof vi.fn>) {
 function providerErrorLogs(logWarn: ReturnType<typeof vi.fn>) {
   return logWarn.mock.calls
     .filter(([category]) => category === "provider-error")
-    .map(([, message, data]) => (message === "Model request failed" ? data : message));
+    .map(([, summary, data]) => (summary === "Model request failed" ? data : summary));
+}
+
+function requestHost(input: Parameters<typeof fetch>[0]): string {
+  return new URL(input instanceof Request ? input.url : input).host;
 }
 
 /** Records every transport log channel, so a content check reads the whole log output. */
@@ -585,9 +589,7 @@ describe("OpenAI ChatGPT Responses inference streaming", () => {
 
     await streamOpenAICodexResponses(model, context, sseOptions).result();
 
-    expect(fetchMock.mock.calls.map(([url]) => new URL(String(url)).host)).toEqual([
-      "chatgpt.test",
-    ]);
+    expect(fetchMock.mock.calls.map(([input]) => requestHost(input))).toEqual(["chatgpt.test"]);
     expect(providerErrorLogs(logs.logWarn)).toEqual([
       {
         provider: "openai",
@@ -606,21 +608,15 @@ describe("OpenAI ChatGPT Responses inference streaming", () => {
     const requests: Array<{ host: string; body: string }> = [];
     vi.stubGlobal(
       "fetch",
-      vi.fn<typeof fetch>(async (url, init) => {
-        requests.push({ host: new URL(String(url)).host, body: decodeRequestBody(init) });
+      vi.fn<typeof fetch>(async (input, init) => {
+        requests.push({ host: requestHost(input), body: decodeRequestBody(init) });
         return new Response(JSON.stringify({ detail: echo }), { status: 400 });
       }),
     );
-    const socketAttempts = vi.fn();
-    vi.stubGlobal(
-      "WebSocket",
-      class {
-        constructor() {
-          socketAttempts();
-          throw new Error("unexpected WebSocket");
-        }
-      },
-    );
+    const socketAttempts = vi.fn(() => {
+      throw new Error("unexpected WebSocket");
+    });
+    vi.stubGlobal("WebSocket", socketAttempts);
     const imageModel = { ...model, input: ["text", "image"] as ("text" | "image")[] };
     const replay = { sessionId: "shape-session", authProfileId: "shape-profile" };
 
