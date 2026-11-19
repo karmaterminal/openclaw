@@ -468,7 +468,13 @@ describe("runtime placement observations", () => {
   function mockRuntimePlacementCosts() {
     // Keep spare capacity independent of growing production prices; observations supply overload.
     const costs = new Proxy<Record<string, number>>(
-      { "agentic-gateway-server-isolated": 30, "agentic-agents-core-subagents": 20 },
+      {
+        "agentic-gateway-server-isolated": 30,
+        "agentic-agents-core-subagents": 20,
+        // Continuation (karmaterminal): at the default price the fork's extra owner group
+        // fills the spare job this placement relies on.
+        "agentic-agents-continuation-forest": 20,
+      },
       {
         get: (target, key) =>
           typeof key === "string" ? (target[key] ?? 39) : Reflect.get(target, key),
