@@ -368,6 +368,9 @@ describe("queued ingress cancellation through the reply terminal path", () => {
         ]);
         markGatewayRestartDraining();
         // Draining alone keeps the turn for the shutdown owner's capture.
+        expect(await queue.listClaims()).toEqual([
+          expect.objectContaining({ id: "restart-waiting", attempts: 0 }),
+        ]);
         expect(cancelled).not.toHaveBeenCalled();
         expect(abandoned).not.toHaveBeenCalled();
         await stopSession({
