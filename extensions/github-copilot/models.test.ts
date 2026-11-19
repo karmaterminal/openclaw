@@ -1,11 +1,15 @@
 import { streamSimpleAnthropic } from "@openclaw/ai/internal/anthropic";
 import { streamSimpleOpenAIResponses } from "@openclaw/ai/internal/openai";
+import { createBoundaryAwareStreamFnForModel } from "@openclaw/ai/transports";
 import { expectDefined } from "@openclaw/normalization-core";
+import { withServer } from "openclaw/plugin-sdk/test-env";
+import { makeAgentAssistantMessage } from "openclaw/plugin-sdk/test-fixtures";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveThinkingProfile } from "./provider-policy-api.js";
 import { CopilotRuntimeAuthError } from "./runtime-auth-error.js";
 import { resolveCopilotRuntimeAuth } from "./runtime-auth.js";
 import { resolveCopilotStarterModel } from "./starter-model.js";
+import { wrapCopilotProviderStream } from "./stream.js";
 
 const catalogTransport = vi.hoisted(() => ({
   lookup: vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]),
@@ -471,6 +475,124 @@ describe("fetchCopilotModelCatalog", () => {
         "Copilot /models: malformed JSON response",
       );
     }
+  });
+
+  describe("listed per-prompt image cap on a later text turn (#1565)", () => {
+    const png =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=";
+    const photos = (count: number) =>
+      Array.from({ length: count }, () => ({
+        type: "image" as const,
+        data: png,
+        mimeType: "image/png",
+      }));
+
+    // Two photo posts and a text question: the history shape every later room turn replays.
+    async function sendWireParts(vision?: { max_prompt_images: number }) {
+      const [listed] = await fetchSelectionFixture([
+        {
+          id: "mai-code-2-flash",
+          vendor: "Microsoft",
+          supported_endpoints: ["/responses"],
+          capabilities: {
+            type: "chat",
+            limits: { max_context_window_tokens: 128_000, max_output_tokens: 16_000, vision },
+            supports: { vision: true, streaming: true, tool_calls: true },
+          },
+        },
+      ]);
+      vi.unstubAllGlobals();
+      const bodies: Array<{ input: Array<{ content?: Array<Record<string, unknown>> }> }> = [];
+      const visionHeaders: unknown[] = [];
+      await withServer(
+        (request, response) => {
+          let body = "";
+          request.setEncoding("utf8");
+          request.on("data", (chunk: string) => {
+            body += chunk;
+          });
+          request.on("end", () => {
+            bodies.push(JSON.parse(body));
+            visionHeaders.push(request.headers["copilot-vision-request"]);
+            response.writeHead(200, { "content-type": "text/event-stream" });
+            const usage = { input_tokens: 1, output_tokens: 1, total_tokens: 2 };
+            const completed = { id: "resp_1", status: "completed", output: [], usage };
+            response.end(
+              `data: ${JSON.stringify({ type: "response.completed", response: completed })}\n\n`,
+            );
+          });
+        },
+        async (baseUrl) => {
+          // The dynamic-model hook spreads each listed row into the runtime model.
+          const model = {
+            ...expectDefined(listed, "listed vision model"),
+            provider: "github-copilot",
+            api: "openai-responses" as const,
+            baseUrl,
+          };
+          const context = {
+            messages: [
+              {
+                role: "user" as const,
+                content: [{ type: "text" as const, text: "photos 1" }, ...photos(10)],
+                timestamp: 1,
+              },
+              makeAgentAssistantMessage({
+                provider: "github-copilot",
+                api: "openai-responses",
+                model: model.id,
+                content: [{ type: "text", text: "I see ten photos" }],
+                timestamp: 2,
+              }),
+              {
+                role: "user" as const,
+                content: [{ type: "text" as const, text: "photos 2" }, ...photos(5)],
+                timestamp: 3,
+              },
+              { role: "user" as const, content: "What is on the third shelf?", timestamp: 4 },
+            ],
+          };
+          const persisted = structuredClone(context.messages);
+          const stream = expectDefined(
+            wrapCopilotProviderStream({
+              streamFn: createBoundaryAwareStreamFnForModel(model),
+            } as never),
+            "Copilot stream fn",
+          );
+          const result = await (await stream(model, context, { apiKey: "copilot-token" })).result();
+          expect(result.errorMessage).toBeUndefined();
+          expect(context.messages).toEqual(persisted);
+        },
+      );
+      expect(visionHeaders).toEqual(["true"]);
+      return expectDefined(bodies[0], "captured Copilot request").input.flatMap((item) =>
+        (item.content ?? []).map((part) => (part.type === "input_image" ? "image" : part.text)),
+      );
+    }
+
+    it("keeps the first listed number of images and states each omission", async () => {
+      const omitted = "[image omitted: GitHub Copilot accepts at most 5 images per request]";
+      expect(await sendWireParts({ max_prompt_images: 5 })).toEqual([
+        "photos 1",
+        ...Array<string>(5).fill("image"),
+        ...Array<string>(5).fill(omitted),
+        "I see ten photos",
+        "photos 2",
+        ...Array<string>(5).fill(omitted),
+        "What is on the third shelf?",
+      ]);
+    });
+
+    it("sends every image when the listing has no cap", async () => {
+      expect(await sendWireParts()).toEqual([
+        "photos 1",
+        ...Array<string>(10).fill("image"),
+        "I see ten photos",
+        "photos 2",
+        ...Array<string>(5).fill("image"),
+        "What is on the third shelf?",
+      ]);
+    });
   });
 
   it.each(["copilotApiToken", "baseUrl"] as const)("rejects empty %s", async (field) => {
