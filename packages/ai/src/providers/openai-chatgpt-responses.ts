@@ -89,6 +89,7 @@ import {
 import {
   buildHookedRequestBody,
   CODEX_TOOL_CALL_PROVIDERS,
+  describeCodexRequestShape,
   type OpenAICodexResponsesOptions,
 } from "./openai-chatgpt-responses-request.js";
 import {
@@ -233,6 +234,11 @@ export const streamOpenAICodexResponses: StreamFunction<
     let requestTimeoutSignal: AbortSignal | undefined;
     let activeSignal: AbortSignal | undefined;
     let firstEventAbort: ReturnType<typeof createFirstStreamEventAbortController> | undefined;
+    // The attempt in flight when a failure surfaces, described by the failure log.
+    let activeRequest:
+      | { transport: "sse" | "websocket"; attempt: ResponsesEncryptedContentAttempt<RequestBody> }
+      | undefined;
+    let silentRetries = 0;
     const output = createResponsesAssistantOutput(model);
 
     try {
@@ -376,6 +382,7 @@ export const streamOpenAICodexResponses: StreamFunction<
         let retriedWebSocketRejection = false;
         while (true) {
           const activeAttempt = semanticAttempt;
+          activeRequest = { transport: "websocket", attempt: activeAttempt };
           const dispatch: { request?: RequestBody } = {};
           websocketStarted = false;
           try {
@@ -419,6 +426,7 @@ export const streamOpenAICodexResponses: StreamFunction<
                 : undefined;
             if (nextSemanticAttempt) {
               semanticAttempt = nextSemanticAttempt;
+              silentRetries++;
               retriedWebSocketRejection = false;
               continue;
             }
@@ -474,6 +482,7 @@ export const streamOpenAICodexResponses: StreamFunction<
       let response: Response | undefined;
       while (true) {
         const activeAttempt = semanticAttempt;
+        activeRequest = { transport: "sse", attempt: activeAttempt };
         response = undefined;
         const sseHeaders = buildSSEHeaders(
           modelHeaders,
@@ -587,6 +596,7 @@ export const streamOpenAICodexResponses: StreamFunction<
           throw terminalResponseError;
         }
         semanticAttempt = nextSemanticAttempt;
+        silentRetries++;
       }
 
       const hookedResponseStream = withProviderResponseHook({
@@ -634,10 +644,10 @@ export const streamOpenAICodexResponses: StreamFunction<
         options?.signal,
         normalizedError instanceof CodexApiError ? normalizedError.rejection : undefined,
       );
-      // Log only locally-derived facts: timing and a fixed failure category. No
-      // projected provider field (message, body, code, type, name) is logged —
-      // all of them are provider-controlled text that can carry prompt- or
-      // response-derived content.
+      // Log only locally-derived facts: timing, a fixed failure category, and the
+      // variant and counts of the request this side built. No projected provider
+      // field (message, body, code, type, name) is logged — all of them are
+      // provider-controlled text that can carry prompt- or response-derived content.
       getAiTransportHost().logWarn("openai-transport", "ChatGPT Responses stream terminated", {
         provider: model.provider,
         api: model.api,
@@ -646,6 +656,15 @@ export const streamOpenAICodexResponses: StreamFunction<
         elapsedMs: Math.max(0, Date.now() - startedAt),
         stopReason: terminal.stopReason,
         failureKind: classifyStreamFailure(error, options?.signal, requestTimedOut),
+        // A WebSocket continuation sends only the new suffix; the counts describe the full attempt.
+        ...(activeRequest
+          ? {
+              requestTransport: activeRequest.transport,
+              attemptVariant: activeRequest.attempt.kind,
+              silentRetries,
+              ...describeCodexRequestShape(activeRequest.attempt.request),
+            }
+          : {}),
       });
       stream.push({ type: "error", reason: terminal.stopReason, error: output });
       stream.end();

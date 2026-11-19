@@ -308,15 +308,59 @@ same warning also carries labels parsed from the response body, never its text:
   dropped from the logged path (`tools[].parameters`). Any other non-null
   value, including identifier-shaped tokens, is dropped and logged as
   `paramShape: "invalid"`.
-- `detailClass`: the class of a `{"detail": ...}` body: `unsupported_parameter`,
-  `invalid_tool_schema`, `invalid_input_item`, `unsupported_model`,
-  `store_must_be_false`, `context_length`, or `unknown`.
+- `detailClass`: a fixed label for the wording that opens a `{"detail": ...}`
+  body, never the detail text itself. Matching ignores case and reads only the
+  start of the detail, so a prompt echoed ahead of a known wording stays
+  `unknown`. The labels are:
+  - `unsupported_parameter`, `invalid_tool_schema`, `unsupported_model`, and
+    `store_must_be_false`.
+  - `tool_output_pairing`: a tool output without its tool call, or the reverse.
+  - `invalid_input_item`: an input item sent without an item it requires.
+  - `unsupported_input_item`: an unknown or unsupported input item type.
+  - `invalid_encrypted_content`: replayed encrypted reasoning that the backend
+    could not verify, decrypt, or parse, in either the spaced
+    (`encrypted content`) or underscored (`encrypted_content`) wording.
+  - `image_count`, `image_size`, `image_format`, and `image_url`: an image
+    rejected for the number of images, its size, its format, or its URL or
+    base64 data.
+  - `request_too_large`: the request body is too large. A tokens-per-minute
+    rate limit worded "Request too large for ..." is not this class.
+  - `context_length`: the input exceeds the context window or token limit.
+  - `unknown`: any other wording.
 - `bodyHash`: a `sha256:` digest prefix of the size-bounded body read,
   computed with the same function as `rawErrorHash` in `embedded run failover
   decision` logs (over a different input), so identical rejections correlate
   across hosts.
 
 HTTP 5xx bodies get none of these labels.
+
+Every failed OpenAI ChatGPT Responses turn also logs
+`ChatGPT Responses stream terminated` under `openai-transport`. It carries the
+configured `transport`, `elapsedMs`, `stopReason`, and a fixed `failureKind`.
+When a request attempt was built, it adds fields about the attempt in flight
+when the failure surfaced. These fields are labels and counts only. They carry
+no text, item IDs, URLs, or image data.
+
+- `requestTransport`: `sse` or `websocket`, the transport that attempt used.
+- `attemptVariant`: `initial`, `reasoning-stripped`, or `compaction-stripped`.
+  After the backend rejects replayed encrypted state, OpenClaw retries
+  silently, first without encrypted reasoning and then without the compaction
+  item.
+- `silentRetries`: how many of those retries ran before the failure surfaced.
+- `inputItems`: the number of input items.
+- `reasoningItems`: the number of replayed reasoning items. A
+  `reasoning-stripped` attempt keeps these items but drops their encrypted
+  content.
+- `turnImages`: `input_image` parts from the last user message to the end of
+  the input, which includes images returned by tools during the current turn.
+- `historyImages`: `input_image` parts across the whole input, including
+  `turnImages`.
+- `requestBytes`: the size of the attempt's JSON request body before
+  compression.
+
+The counts always describe the full attempt. On a cached WebSocket
+continuation, OpenClaw sends only the new part of the input, so the bytes on
+the wire can be fewer.
 
 Embedded attempts also log `Assistant attempt failed`, including the saved error
 fields, before choosing recovery. Request validation and content-policy failures

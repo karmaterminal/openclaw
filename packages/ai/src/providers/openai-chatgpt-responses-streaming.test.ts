@@ -1,8 +1,13 @@
+import { zstdDecompressSync } from "node:zlib";
 import { redactIdentifier } from "@openclaw/normalization-core/node-crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { configureAiTransportHost } from "../host.js";
+import { buildOpenAIResponsesReasoningReplayMetadata } from "../transports/openai-responses-compaction-replay.js";
+import { OPENAI_RESPONSES_REASONING_REPLAY_META_KEY } from "../transports/openai-responses-contracts.js";
 import { collectEventTypes } from "../transports/openai-stream-cases.test-support.js";
 import { withProviderAcceptanceObserver } from "../transports/transport-stream-shared.js";
+import type { AssistantMessage, Context, Model } from "../types.js";
+import { createZeroUsage } from "../usage.test-support.js";
 import { streamOpenAICodexResponses } from "./openai-chatgpt-responses.js";
 import {
   chatgptContext as context,
@@ -45,6 +50,15 @@ function transportMetadata(stopReason: "error" | "aborted", transport: string) {
     stopReason,
     transport,
     failureKind: stopReason === "aborted" ? "caller-abort" : "provider-failure",
+    // The single-message context's first attempt.
+    requestTransport: "websocket",
+    attemptVariant: "initial",
+    silentRetries: 0,
+    inputItems: 1,
+    reasoningItems: 0,
+    turnImages: 0,
+    historyImages: 0,
+    requestBytes: expect.any(Number),
   };
 }
 
@@ -52,6 +66,121 @@ function transportWarning(logWarn: ReturnType<typeof vi.fn>) {
   const warnings = logWarn.mock.calls.filter(([category]) => category === "openai-transport");
   expect(warnings).toHaveLength(1);
   return warnings[0]?.[2];
+}
+
+function providerErrorLogs(logWarn: ReturnType<typeof vi.fn>) {
+  return logWarn.mock.calls
+    .filter(([category]) => category === "provider-error")
+    .map(([, message, data]) => (message === "Model request failed" ? data : message));
+}
+
+/** Records every transport log channel, so a content check reads the whole log output. */
+function recordTransportLogs() {
+  const logWarn = vi.fn();
+  const entries: unknown[] = [];
+  configureAiTransportHost({
+    logWarn: (...args) => {
+      entries.push(args);
+      logWarn(...args);
+    },
+    logInfo: (...args) => entries.push(args),
+    logDebug: (subsystem, build) => entries.push([subsystem, build()]),
+  });
+  return { logWarn, output: () => JSON.stringify(entries) };
+}
+
+function decodeRequestBody(init: RequestInit | undefined): string {
+  const body = init?.body;
+  if (typeof body === "string") {
+    return body;
+  }
+  if (!(body instanceof Uint8Array)) {
+    throw new Error("missing request body");
+  }
+  expect(new Headers(init?.headers).get("content-encoding")).toBe("zstd");
+  return zstdDecompressSync(body).toString("utf8");
+}
+
+const ONE_PIXEL_PNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+
+function images(count: number) {
+  return Array.from({ length: count }, () => ({
+    type: "image" as const,
+    mimeType: "image/png",
+    data: ONE_PIXEL_PNG,
+  }));
+}
+
+/**
+ * 9 input items: 6 images in an earlier user message and 3 in its tool result, then the
+ * current turn's 4 user images and 2 more from a tool result; each tool turn replays reasoning.
+ */
+function imageHistory(
+  imageModel: Model<"openai-chatgpt-responses">,
+  replay: { sessionId: string; authProfileId: string },
+): Context {
+  const assistant = (content: AssistantMessage["content"], timestamp: number) =>
+    ({
+      role: "assistant",
+      content,
+      api: imageModel.api,
+      provider: imageModel.provider,
+      model: imageModel.id,
+      usage: createZeroUsage(),
+      stopReason: content.some((block) => block.type === "toolCall") ? "toolUse" : "stop",
+      timestamp,
+    }) satisfies AssistantMessage;
+  const toolTurn = (n: number, imageCount: number): Context["messages"] => [
+    assistant(
+      [
+        {
+          type: "thinking",
+          thinking: "synthetic reasoning",
+          thinkingSignature: JSON.stringify({
+            type: "reasoning",
+            id: `rs_shape_${n}`,
+            encrypted_content: `SHAPE-CIPHERTEXT-${n}`,
+            summary: [],
+            [OPENAI_RESPONSES_REASONING_REPLAY_META_KEY]:
+              buildOpenAIResponsesReasoningReplayMetadata(imageModel, replay),
+          }),
+        },
+        {
+          type: "toolCall",
+          id: `call_shape_${n}|fc_shape_${n}`,
+          name: "read",
+          arguments: { path: "synthetic.png" },
+        },
+      ],
+      n * 10,
+    ),
+    {
+      role: "toolResult",
+      toolCallId: `call_shape_${n}|fc_shape_${n}`,
+      toolName: "read",
+      content: [{ type: "text", text: `SHAPE-TOOL-${n}` }, ...images(imageCount)],
+      isError: false,
+      timestamp: n * 10 + 1,
+    },
+  ];
+  return {
+    messages: [
+      {
+        role: "user",
+        content: [{ type: "text", text: "SHAPE-PROMPT-1" }, ...images(6)],
+        timestamp: 1,
+      },
+      ...toolTurn(1, 3),
+      assistant([{ type: "text", text: "SHAPE-REPLY" }], 15),
+      {
+        role: "user",
+        content: [{ type: "text", text: "SHAPE-PROMPT-2" }, ...images(4)],
+        timestamp: 16,
+      },
+      ...toolTurn(2, 2),
+    ],
+  };
 }
 
 function installWebSocket(payload: object, onSend?: () => void) {
@@ -382,58 +511,13 @@ describe("OpenAI ChatGPT Responses inference streaming", () => {
       labels: { code: "x", param: "reasoning.effort" },
     },
     {
-      shape: "an unsupported-parameter detail",
-      status: 400,
-      body: { detail: `Unsupported parameter: '${echo}'` },
-      labels: { detailClass: "unsupported_parameter" },
-    },
-    {
-      shape: "a prompt-echo detail",
-      status: 400,
-      body: { detail: echo },
-      labels: { detailClass: "unknown" },
-    },
-    {
-      shape: "a tool-schema detail",
-      status: 400,
-      body: { detail: `Invalid schema for function 'lookup': ${echo}` },
-      labels: { detailClass: "invalid_tool_schema" },
-    },
-    {
-      shape: "an input-item detail",
-      status: 400,
-      body: { detail: `No tool call found for function call output with call_id c1. ${echo}` },
-      labels: { detailClass: "invalid_input_item" },
-    },
-    {
-      shape: "an unsupported-model detail",
-      status: 400,
-      body: {
-        detail: `The 'gpt-5.6-luna' model is not supported when using Codex with a ChatGPT account. ${echo}`,
-      },
-      labels: { detailClass: "unsupported_model" },
-    },
-    {
-      shape: "a context-window detail",
-      status: 400,
-      body: { detail: `Your input exceeds the context window of this model. ${echo}` },
-      labels: { detailClass: "context_length" },
-    },
-    {
-      shape: "a store detail",
-      status: 400,
-      body: { detail: `Store must be set to false. ${echo}` },
-      labels: { detailClass: "store_must_be_false" },
-    },
-    {
       shape: "a 5xx detail",
       status: 500,
       body: { detail: `Unsupported parameter: '${echo}'` },
       labels: {},
     },
   ])("logs only structured labels for $shape", async ({ status, body, labels }) => {
-    const logWarn = vi.fn();
-    configureAiTransportHost({ logWarn });
+    const logs = recordTransportLogs();
     const raw = JSON.stringify(body);
     vi.stubGlobal(
       "fetch",
@@ -444,21 +528,160 @@ describe("OpenAI ChatGPT Responses inference streaming", () => {
 
     // Only HTTP 4xx bodies are hashed, with the same digest as failover `rawErrorHash`.
     const bodyHash = status < 500 ? { bodyHash: redactIdentifier(raw, { len: 12 }) } : {};
-    expect(logWarn.mock.calls.filter(([category]) => category === "provider-error")).toEqual([
-      [
-        "provider-error",
-        "Model request failed",
-        {
-          provider: "openai",
-          model: model.id,
-          name: "CodexApiError",
-          status,
-          ...labels,
-          ...bodyHash,
-        },
-      ],
+    expect(providerErrorLogs(logs.logWarn)).toEqual([
+      {
+        provider: "openai",
+        model: model.id,
+        name: "CodexApiError",
+        status,
+        ...labels,
+        ...bodyHash,
+      },
     ]);
-    expect(JSON.stringify(logWarn.mock.calls)).not.toContain("ECHOED-PROMPT");
+    expect(logs.output()).not.toContain("ECHOED-PROMPT");
+  });
+
+  // Each wording is followed by prompt-looking text, which must never reach the log.
+  it.each([
+    ["unsupported_parameter", "Unsupported parameter: 'synthetic_field'"],
+    ["invalid_tool_schema", "Invalid schema for function 'lookup':"],
+    [
+      "invalid_input_item",
+      "Item 'fc_c1' of type 'function_call' was provided without its required",
+    ],
+    ["tool_output_pairing", "No tool call found for function call output with call_id c1."],
+    ["tool_output_pairing", "No tool output found for function call c1."],
+    ["unsupported_input_item", "Unsupported input item type: 'synthetic_item'."],
+    ["unsupported_input_item", "Invalid value: 'x'. Supported values are: 'function_call_output'."],
+    [
+      "unsupported_model",
+      "The 'gpt-5.6-luna' model is not supported when using Codex with a plan.",
+    ],
+    ["store_must_be_false", "Store must be set to false."],
+    ["invalid_encrypted_content", "The encrypted content for item rs_c1 could not be verified."],
+    [
+      "invalid_encrypted_content",
+      "The encrypted_content for rs_c1 could not be decrypted or parsed.",
+    ],
+    ["invalid_encrypted_content", "Could not decrypt the provided encrypted_content."],
+    ["image_count", "Too many images in request."],
+    ["image_size", "Image exceeds the maximum size of 20 MB."],
+    ["image_format", "The image data you provided does not represent a valid image."],
+    ["image_format", "You uploaded an unsupported image."],
+    ["image_url", "Invalid 'input[3].content[1].image_url'. Expected a base64-encoded data URL."],
+    ["image_url", "Timeout while downloading the image."],
+    ["request_too_large", "Request too large."],
+    ["request_too_large", "Request exceeds the maximum size."],
+    ["context_length", "Your input exceeds the context window of this model."],
+    ["context_length", "Input tokens exceed the configured limit of 272000 tokens."],
+    ["unknown", echo],
+    ["unknown", `${echo}: The image data you provided does not represent a valid image.`],
+    ["unknown", "Request too large for gpt-5.6-luna on tokens per min (TPM)."],
+  ])("labels a 400 detail as %s without its text: %s", async (detailClass, wording) => {
+    const logs = recordTransportLogs();
+    const raw = JSON.stringify({ detail: `${wording} ${echo}` });
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(raw, { status: 400 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await streamOpenAICodexResponses(model, context, sseOptions).result();
+
+    expect(fetchMock.mock.calls.map(([url]) => new URL(String(url)).host)).toEqual([
+      "chatgpt.test",
+    ]);
+    expect(providerErrorLogs(logs.logWarn)).toEqual([
+      {
+        provider: "openai",
+        model: model.id,
+        name: "CodexApiError",
+        status: 400,
+        detailClass,
+        bodyHash: redactIdentifier(raw, { len: 12 }),
+      },
+    ]);
+    expect(logs.output()).not.toContain("ECHOED-PROMPT");
+  });
+
+  it("logs only counts for a failed request carrying 15 images", async () => {
+    const logs = recordTransportLogs();
+    const requests: Array<{ host: string; body: string }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async (url, init) => {
+        requests.push({ host: new URL(String(url)).host, body: decodeRequestBody(init) });
+        return new Response(JSON.stringify({ detail: echo }), { status: 400 });
+      }),
+    );
+    const socketAttempts = vi.fn();
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor() {
+          socketAttempts();
+          throw new Error("unexpected WebSocket");
+        }
+      },
+    );
+    const imageModel = { ...model, input: ["text", "image"] as ("text" | "image")[] };
+    const replay = { sessionId: "shape-session", authProfileId: "shape-profile" };
+
+    const result = await streamOpenAICodexResponses(imageModel, imageHistory(imageModel, replay), {
+      ...sseOptions,
+      ...replay,
+    }).result();
+
+    expect(result.stopReason).toBe("error");
+    expect(requests.map(({ host }) => host)).toEqual(["chatgpt.test"]);
+    expect(socketAttempts).not.toHaveBeenCalled();
+    const wire = requests[0]?.body ?? "";
+    // Fixture check: all 15 images and both replayed reasoning items reached the request.
+    expect(wire.match(/"type":"input_image"/g)).toHaveLength(15);
+    expect(wire.match(/"type":"reasoning"/g)).toHaveLength(2);
+    expect(transportWarning(logs.logWarn)).toEqual({
+      ...transportMetadata("error", "sse"),
+      requestTransport: "sse",
+      inputItems: 9,
+      reasoningItems: 2,
+      turnImages: 6,
+      historyImages: 15,
+      requestBytes: Buffer.byteLength(wire),
+    });
+    const output = logs.output();
+    for (const content of [
+      ONE_PIXEL_PNG,
+      "data:image",
+      "SHAPE-",
+      "rs_shape",
+      "call_shape",
+      "ECHOED",
+    ]) {
+      expect(output).not.toContain(content);
+    }
+  });
+
+  it("still ends the stream when a hook-built request cannot serialize", async () => {
+    const logs = recordTransportLogs();
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+    const onPayload = (body: unknown) => {
+      const circular: Record<string, unknown> = { ...(body as object) };
+      circular.self = circular;
+      return circular;
+    };
+
+    const result = await streamOpenAICodexResponses(model, context, {
+      ...sseOptions,
+      onPayload,
+    }).result();
+
+    expect(result.stopReason).toBe("error");
+    expect(fetchMock).not.toHaveBeenCalled();
+    // Serialization failed, so the byte count is the one field left out.
+    const { requestBytes: _requestBytes, ...logged } = transportMetadata("error", "sse");
+    expect(transportWarning(logs.logWarn)).toEqual({
+      ...logged,
+      requestTransport: "sse",
+      failureKind: "transport",
+    });
   });
 
   it("preserves failed response identity and misalignment details over WebSocket", async () => {

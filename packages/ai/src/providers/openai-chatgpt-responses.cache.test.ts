@@ -9,7 +9,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
 import { forceFullGc } from "../../../../src/test-utils/retention.js";
 import { createApiRegistry } from "../api-registry.js";
-import { createAiTransportHost, runWithAiTransportHost } from "../host.js";
+import {
+  configureAiTransportHost,
+  createAiTransportHost,
+  runWithAiTransportHost,
+} from "../host.js";
 import { responsesPromptObserver, type ResponsesPromptObservation } from "../internal/openai.js";
 import { cleanupSessionResources } from "../session-resources.js";
 import { createNodeLlmRuntime } from "../stream.js";
@@ -833,6 +837,58 @@ describe("ChatGPT Responses cached transport", () => {
     expect(containsInputText(requireItem(scripted.requests, 2), REASONING_CIPHERTEXT)).toBe(false);
     expect(hasInputType(requireItem(scripted.requests, 3), "compaction")).toBe(true);
   });
+
+  it.each([
+    ["sse", "initial", 0],
+    ["sse", "reasoning-stripped", 1],
+    ["sse", "compaction-stripped", 2],
+    ["websocket", "compaction-stripped", 2],
+  ] as const)(
+    "%s logs the surfaced %s attempt after %i silent retries",
+    async (transport, attemptVariant, silentRetries) => {
+      const logWarn = vi.fn();
+      configureAiTransportHost({ logWarn });
+      // Each encrypted-content rejection advances one silent retry; the last one surfaces.
+      const codes = [
+        ...Array.from({ length: silentRetries }, () => "invalid_encrypted_content"),
+        "unsupported_parameter",
+      ];
+      const networkGuard = vi.fn(() => {
+        throw new Error("unexpected network transport");
+      });
+      let requests: RecordedRequest[];
+      if (transport === "sse") {
+        requests = installSseResponses(codes.map(typeOnlyErrorResponse));
+        vi.stubGlobal("WebSocket", networkGuard);
+      } else {
+        const scripted = installScriptedWebSocket(
+          codes.map((code) => ({ events: [{ type: "error", error: { code, message: code } }] })),
+        );
+        requests = scripted.requests;
+        vi.stubGlobal("fetch", networkGuard);
+      }
+      const context = createReplayContext("mixed");
+
+      const result = await run(context, { ...baseOptions, transport });
+
+      expect(result.stopReason).toBe("error");
+      expect(requests).toHaveLength(silentRetries + 1);
+      expect(networkGuard).not.toHaveBeenCalled();
+      const warnings = logWarn.mock.calls.filter(([subsystem]) => subsystem === "openai-transport");
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]?.[2]).toMatchObject({
+        transport,
+        requestTransport: transport,
+        attemptVariant,
+        silentRetries,
+      });
+      const output = JSON.stringify(logWarn.mock.calls);
+      for (const content of [REASONING_CIPHERTEXT, COMPACTION_CIPHERTEXT, FULL_HISTORY_PREFIX]) {
+        expect(output).not.toContain(content);
+      }
+      expect(output).not.toContain(context.systemPrompt);
+    },
+  );
 
   it("WebSocket does not retry encrypted rejection after response.created", async () => {
     const afterStart = installScriptedWebSocket([

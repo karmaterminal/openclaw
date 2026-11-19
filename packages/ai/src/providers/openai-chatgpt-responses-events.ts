@@ -8,16 +8,53 @@ import { parseRetryAfterSeconds, redactIdentifier } from "../transports/transpor
 import type { StreamOptions } from "../types.js";
 import { matchesContextOverflowMessage } from "../utils/overflow.js";
 
-// ChatGPT backend `{detail}` wordings; diagnostics keep only the class name.
+// ChatGPT backend `{detail}` wordings; diagnostics keep only the class name. Every pattern
+// is anchored at the start, so a prompt echoed ahead of a known wording stays `unknown`.
+// The first matching row wins.
 const CODEX_DETAIL_CLASSES = [
   ["unsupported_parameter", /^unsupported parameter\b/i],
   ["invalid_tool_schema", /^invalid schema for function\b/i],
+  ["tool_output_pairing", /^no tool call found for [a-z_ ]{0,32}call output\b/i],
+  ["tool_output_pairing", /^no tool output found for [a-z_ ]{0,32}call\b/i],
+  ["invalid_input_item", /^item '[^']+' of type '[^']+' was provided without\b/i],
   [
-    "invalid_input_item",
-    /^(?:no tool call found for function call output|item '[^']+' of type '[^']+' was provided without)\b/i,
+    "unsupported_input_item",
+    /^(?:unsupported|unknown|invalid|unrecognized) (?:input )?item type\b/i,
+  ],
+  // The Responses enum rejection whose supported values are input item types.
+  [
+    "unsupported_input_item",
+    /^invalid value: '[^']*'\. supported values are:[^.]*'function_call_output'/i,
   ],
   ["unsupported_model", /^the '[^']+' model is not supported when using codex\b/i],
   ["store_must_be_false", /^store must be set to false\b/i],
+  // The wordings `isInvalidEncryptedContentError` retries on, in spaced and underscored forms.
+  [
+    "invalid_encrypted_content",
+    /^(?:the )?encrypted[ _]content\b[^.]{0,160}\bcould not be (?:verified|decrypted|parsed)\b/i,
+  ],
+  ["invalid_encrypted_content", /^could not decrypt the provided encrypted[ _]content\b/i],
+  ["invalid_encrypted_content", /^invalid[ _]encrypted[ _]content\b/i],
+  ["image_count", /^too many images\b/i],
+  ["image_count", /^(?:the )?number of images\b[^.]{0,80}\bexceeds?\b/i],
+  ["image_size", /^(?:the )?image (?:is )?too large\b/i],
+  ["image_size", /^(?:the )?image (?:size |file size |dimensions )?exceeds?\b/i],
+  // URL and base64 rows precede the format rows, which would otherwise take "invalid image url".
+  ["image_url", /^invalid '[^']*image_url'/i],
+  ["image_url", /^invalid (?:base64 )?image[ _]url\b/i],
+  ["image_url", /^(?:timeout|error) while downloading\b/i],
+  ["image_url", /^(?:failed|unable) to download (?:the )?image\b/i],
+  // Codex maps this wording to its invalid-image error (codex-rs/codex-api/src/api_bridge.rs).
+  ["image_format", /^the image data you provided does not represent a valid image\b/i],
+  ["image_format", /^you uploaded an unsupported image\b/i],
+  ["image_format", /^(?:invalid|unsupported) image\b/i],
+  ["image_format", /^(?:could not|unable to|failed to) (?:process|decode) (?:the )?image\b/i],
+  // "Request too large for <model> ... tokens per min" is a rate limit, not a body size.
+  ["request_too_large", /^(?:request(?: entity| body)?|payload) (?:is )?too large\b(?! for )/i],
+  ["request_too_large", /^request exceeds the maximum size\b/i],
+  ["request_too_large", /^request_too_large\b/i],
+  // The canonical overflow matcher below covers the rest of `context_length`.
+  ["context_length", /^input tokens exceed the configured limit\b/i],
 ] as const;
 // A logged `param` is built only from request-schema words and short indexes, so a
 // provider-chosen value (a key, a token, prompt text) can never pass through as a "field".
@@ -77,10 +114,7 @@ function isRequestFieldPath(param: string): boolean {
   );
 }
 
-type CodexRejectionDetailClass =
-  | (typeof CODEX_DETAIL_CLASSES)[number][0]
-  | "context_length"
-  | "unknown";
+type CodexRejectionDetailClass = (typeof CODEX_DETAIL_CLASSES)[number][0] | "unknown";
 
 /** Content-free labels from an HTTP 4xx body. Provider prose never enters here. */
 type CodexHttpRejection = {
