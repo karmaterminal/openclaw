@@ -365,8 +365,8 @@ read, the counts are left out.
   compression.
 
 The counts always describe the full attempt. On a cached WebSocket
-continuation, OpenClaw sends only the new part of the input, so the bytes on
-the wire can be fewer.
+continuation, OpenClaw sends only the new part of the input, so the wire can
+carry fewer bytes and fewer encrypted reasoning items.
 
 Embedded attempts also log `Assistant attempt failed`, including the saved error
 fields, before choosing recovery. Request validation and content-policy failures
