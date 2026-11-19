@@ -893,62 +893,74 @@ describe("ChatGPT Responses cached transport", () => {
     },
   );
 
-  it("WebSocket logs a cached continuation's dispatched suffix, not its full request", async () => {
-    const logWarn = vi.fn();
-    configureAiTransportHost({ logWarn });
-    const scripted = installScriptedWebSocket([
-      { events: [completion("resp_answered")] },
-      { events: [unrelatedErrorEvent()] },
-    ]);
-    const png =
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
-    const context = createReplayContext("mixed");
-    context.messages[2] = {
-      role: "user",
-      content: [
-        { type: "text", text: "continue" },
-        { type: "image", mimeType: "image/png", data: png },
-      ],
-      timestamp: 2,
-    };
-    const imageModel = { ...model, input: ["text", "image"] as ("text" | "image")[] };
-    const options = { ...baseOptions, transport: "websocket-cached" as const };
+  // The socket already answered [compaction, reasoning, user + image], so the follow-up
+  // continues that response with only its new user item. A replay rejection of that
+  // continuation reconnects and resends the full request on a fresh socket.
+  it.each([
+    ["continuation-suffix", false, 1, 0, 0, 0],
+    ["full", true, 4, 1, 1, 1],
+  ] as const)(
+    "WebSocket logs the dispatched %s body (reconnect %s): %i items, %i reasoning, %i encrypted, %i images",
+    async (requestScope, reconnect, inputItems, reasoningItems, encrypted, historyImages) => {
+      const logWarn = vi.fn();
+      configureAiTransportHost({ logWarn });
+      const message =
+        "Persisted response contains hosted-tool, compaction, or unverifiable hidden reasoning state that Rustponses cannot replay. Start a new response or use the Python Responses service for this continuation.";
+      const scripted = installScriptedWebSocket([
+        { events: [completion("resp_answered")] },
+        ...(reconnect ? [{ events: [{ type: "error", error: { message } }] }] : []),
+        { events: [unrelatedErrorEvent()] },
+      ]);
+      const png =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+      const context = createReplayContext("mixed");
+      context.messages[2] = {
+        role: "user",
+        content: [
+          { type: "text", text: "continue" },
+          { type: "image", mimeType: "image/png", data: png },
+        ],
+        timestamp: 2,
+      };
+      const imageModel = { ...model, input: ["text", "image"] as ("text" | "image")[] };
+      const options = { ...baseOptions, transport: "websocket-cached" as const };
 
-    const answered = await runChatgpt(options, context, imageModel);
-    const result = await runChatgpt(options, nextTurn(context, answered), imageModel);
+      const answered = await runChatgpt(options, context, imageModel);
+      const result = await runChatgpt(options, nextTurn(context, answered), imageModel);
 
-    expect([answered.stopReason, result.stopReason]).toEqual(["stop", "error"]);
-    // Fixture check: the socket already holds [compaction, reasoning, user + image], so the
-    // follow-up dispatches only its new user item after that response.
-    const history = requireItem(scripted.requests, 0);
-    expect(history.input).toHaveLength(3);
-    expect(containsInputText(history, REASONING_CIPHERTEXT)).toBe(true);
-    expect(containsInputText(history, '"type":"input_image"')).toBe(true);
-    const { type: frame, ...sent } = requireItem(scripted.requests, 1);
-    expect([frame, sent.previous_response_id, sent.input]).toMatchObject([
-      "response.create",
-      "resp_answered",
-      [{ role: "user" }],
-    ]);
-    const warnings = logWarn.mock.calls.filter(([subsystem]) => subsystem === "openai-transport");
-    expect(warnings.map((call) => call[2])).toMatchObject([
-      {
-        requestTransport: "websocket",
-        attemptVariant: "initial",
-        requestScope: "continuation-suffix",
-        inputItems: 1,
-        reasoningItems: 0,
-        encryptedReasoningItems: 0,
-        turnImages: 0,
-        historyImages: 0,
-        requestBytes: Buffer.byteLength(JSON.stringify(sent)),
-      },
-    ]);
-    const output = JSON.stringify(logWarn.mock.calls);
-    for (const content of [REASONING_CIPHERTEXT, COMPACTION_CIPHERTEXT, png, "resp_answered"]) {
-      expect(output).not.toContain(content);
-    }
-  });
+      expect([answered.stopReason, result.stopReason]).toEqual(["stop", "error"]);
+      const history = requireItem(scripted.requests, 0);
+      expect(history.input).toHaveLength(3);
+      expect(containsInputText(history, REASONING_CIPHERTEXT)).toBe(true);
+      expect(containsInputText(history, '"type":"input_image"')).toBe(true);
+      expect(requireItem(scripted.requests, 1)).toMatchObject({
+        previous_response_id: "resp_answered",
+        input: [{ role: "user" }],
+      });
+      expect(scripted.requests).toHaveLength(reconnect ? 3 : 2);
+      const { type: frame, ...sent } = requireItem(scripted.requests, reconnect ? 2 : 1);
+      expect(frame).toBe("response.create");
+      expect(sent.previous_response_id).toBe(reconnect ? undefined : "resp_answered");
+      const warnings = logWarn.mock.calls.filter(([subsystem]) => subsystem === "openai-transport");
+      expect(warnings.map((call) => call[2])).toMatchObject([
+        {
+          requestTransport: "websocket",
+          attemptVariant: "initial",
+          requestScope,
+          inputItems,
+          reasoningItems,
+          encryptedReasoningItems: encrypted,
+          turnImages: 0,
+          historyImages,
+          requestBytes: Buffer.byteLength(JSON.stringify(sent)),
+        },
+      ]);
+      const output = JSON.stringify(logWarn.mock.calls);
+      for (const content of [REASONING_CIPHERTEXT, COMPACTION_CIPHERTEXT, png, "resp_answered"]) {
+        expect(output).not.toContain(content);
+      }
+    },
+  );
 
   it("auto logs the SSE fallback attempt with the WebSocket's silent retry", async () => {
     const logWarn = vi.fn();
