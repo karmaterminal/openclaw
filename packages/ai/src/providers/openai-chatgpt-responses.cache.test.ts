@@ -902,7 +902,7 @@ describe("ChatGPT Responses cached transport", () => {
     ["rejected and resent", "full", 4, 1, 1, 1],
     ["unsent", "full", 4, 1, 1, 1],
   ] as const)(
-    "WebSocket logs a %s continuation as %s: %i items, %i reasoning, %i encrypted, %i images",
+    "WebSocket logs the %s continuation as %s: %i items, %i reasoning, %i encrypted, %i images",
     async (continuation, requestScope, inputItems, reasoningItems, encrypted, historyImages) => {
       const logWarn = vi.fn();
       configureAiTransportHost({ logWarn });
