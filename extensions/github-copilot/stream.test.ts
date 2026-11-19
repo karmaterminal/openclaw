@@ -87,8 +87,14 @@ it.each([
     [
       { type: "image", source: { type: "base64", media_type: "image/png", data: "a" } },
       { type: "tool_result", tool_use_id: "call", content: [{ type: "image", source: {} }] },
+      // The transport places the breakpoint before payload hooks run.
+      { type: "image", source: {}, cache_control: { type: "ephemeral" } },
     ],
-    [{ type: "image" }, { type: "tool_result", content: [{ type: "text", text: capNotice }] }],
+    [
+      { type: "image" },
+      { type: "tool_result", content: [{ type: "text", text: capNotice }] },
+      { type: "text", text: capNotice, cache_control: { type: "ephemeral" } },
+    ],
   ],
   [
     "openai-completions",

@@ -149,7 +149,13 @@ function capCopilotPromptImages(payload: unknown, maxImages: number): void {
       const textType =
         typeof block?.type === "string" ? COPILOT_IMAGE_TEXT_TYPES.get(block.type) : undefined;
       if (textType && ++seen > maxImages) {
-        (capped ??= [...parts])[index] = { type: textType, text: notice };
+        // Anthropic places cache breakpoints before payload hooks; keep one on its stand-in.
+        const cacheControl = block?.cache_control;
+        (capped ??= [...parts])[index] = {
+          type: textType,
+          text: notice,
+          ...(cacheControl === undefined ? {} : { cache_control: cacheControl }),
+        };
       }
     });
     if (capped) {
@@ -208,7 +214,6 @@ export function wrapCopilotProviderStream(ctx: ProviderWrapStreamFnContext): Str
       maxImages === undefined
         ? patchApiPayload
         : (payload: unknown) => {
-            // Cap first: Anthropic cache markers belong on the blocks actually sent.
             capCopilotPromptImages(payload, maxImages);
             patchApiPayload?.(payload);
           };
