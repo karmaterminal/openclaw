@@ -39,6 +39,11 @@ import {
 import { createResourceLoader } from "../sessions/agent-session-loop-resource-loader.test-support.js";
 import { SessionManager } from "../sessions/session-manager.js";
 import { SettingsManager } from "../sessions/settings-manager.js";
+import { resetSovereignPromptRuntimeForTests } from "../sovereign-prompts/runtime.js";
+import {
+  sovereignAgentsConfig,
+  writeAgentGeneration,
+} from "../sovereign-prompts/sovereign-fixture.test-support.js";
 import {
   expectRecordFields,
   findMockCall,
@@ -802,6 +807,33 @@ describe("compactEmbeddedAgentSessionDirect hooks", () => {
     } finally {
       deleteSession(owned.id);
       deleteSession(other.id);
+    }
+  });
+
+  it("refuses a provider transform that alters a sovereign span before compacting (#1321)", async () => {
+    const agentDir = compactionFixture.makeTempDir("openclaw-sovereign-compaction-");
+    writeAgentGeneration(agentDir, "main");
+    const actual = await vi.importActual<typeof import("../system-prompt-config.js")>(
+      "../system-prompt-config.js",
+    );
+    buildConfiguredAgentSystemPromptMock.mockImplementation(
+      actual.buildConfiguredAgentSystemPrompt,
+    );
+    const providerRuntime = await import("../../plugins/provider-runtime.js");
+    vi.mocked(providerRuntime.transformProviderSystemPrompt).mockImplementationOnce(({ context }) =>
+      context.systemPrompt.replace("Synthetic fixture prose", "Rewritten"),
+    );
+    try {
+      const outcome = await compactDirect({
+        config: {
+          session: { store: TEST_STORE_PATH },
+          ...sovereignAgentsConfig({ main: { agentDir, mode: "enforce" } }),
+        } as OpenClawConfig,
+      }).catch((error: unknown) => error);
+      expect(JSON.stringify(outcome) + String(outcome)).toContain("transform_altered");
+      expect(createAgentSessionMock).not.toHaveBeenCalled();
+    } finally {
+      resetSovereignPromptRuntimeForTests();
     }
   });
 

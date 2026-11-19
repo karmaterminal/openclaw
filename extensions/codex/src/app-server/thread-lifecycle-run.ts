@@ -20,6 +20,7 @@ import {
   type CodexAppServerPendingSupervisionBranch,
   type CodexAppServerThreadBinding,
 } from "./session-binding.js";
+import { assertCodexAppServerPlacement } from "./sovereign-handoff.js";
 import {
   isTransientWebSearchRestriction,
   shouldRecheckRecoverablePluginBinding,
@@ -65,6 +66,10 @@ import { materializePendingSupervisionBranch } from "./thread-supervision.js";
 export async function startOrResumeThread(
   input: CodexStartOrResumeThreadParams,
 ): Promise<CodexAppServerThreadLifecycleBinding> {
+  // Every handoff below (start, supervised start, resume, reuse and their policy refreshes)
+  // carries the thread's instructions, so an enforce agent's placement is admitted first,
+  // before any read or write (openclaw#1321).
+  assertCodexAppServerPlacement(input.params, input.appServer);
   const incognito = isIncognitoSessionKey(input.params.sessionKey);
   const clientId = input.client.getInstanceId();
   let cleanupWarmBinding: (() => Promise<void>) | undefined;

@@ -8,6 +8,7 @@ import {
   listToolPromptGuidance,
   resolveMainSessionDelegationMode,
   type EmbeddedRunAttemptParamsV2 as EmbeddedRunAttemptParams,
+  type SovereignPromptSpans,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { listRegisteredPluginAgentPromptGuidance } from "openclaw/plugin-sdk/plugin-runtime";
 import { asOptionalRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
@@ -93,6 +94,7 @@ function buildCodexBaseInstructions(
     dynamicTools?: readonly CodexDynamicToolSpec[];
     nativeCodeModeEnabled?: boolean;
     nativeModelProvider?: string;
+    onRenderedSovereignSpans?: (spans: SovereignPromptSpans) => void;
   } = {},
 ): string {
   const nativeToolsEnabled = options.nativeCodeModeEnabled !== false;
@@ -116,6 +118,7 @@ function buildCodexBaseInstructions(
   return joinPresentSections(
     buildAgentHarnessBasePrompt({
       config: params.config,
+      agentId: params.agentId,
       toolNames,
       promptMode,
       promptContribution: promptPlan?.prompt.resolveSystemPromptContribution({
@@ -129,6 +132,7 @@ function buildCodexBaseInstructions(
         surface: "codex_app_server",
         includeLegacyGlobalGuidance: false,
       }),
+      onRenderedSovereignSpans: options.onRenderedSovereignSpans,
     }),
     promptMode === "none"
       ? undefined
@@ -163,11 +167,12 @@ export function resolveCodexOpenClawBaseInstructions(
     | "hostSystemAgentActive"
     | "systemPromptReplaced"
   >,
+  onRenderedSovereignSpans?: (spans: SovereignPromptSpans) => void,
 ): string | undefined {
   return options.systemPromptReplaced ||
     isCodexRingZeroThread(params, options.hostSystemAgentActive)
     ? undefined
-    : buildCodexBaseInstructions(params, options);
+    : buildCodexBaseInstructions(params, { ...options, onRenderedSovereignSpans });
 }
 
 /**
@@ -181,17 +186,25 @@ export function resolveCodexOpenClawBaseInstructions(
  * order), so an existing thread drops OpenClaw's base in place. A loaded thread ignores
  * the override; the base is part of the configuration fingerprint, so the change takes the
  * cold-resume path. An authored base stays the operator's.
+ *
+ * `onRenderedSovereignSpans` receives the spans of the render placed here, for the
+ * handoff check (sovereign-handoff.ts).
  */
 export function placeCodexBaseInstructions(
   params: CodexThreadPromptContext,
   options: CodexThreadConfigurationOptions,
   developerInstructions: string,
   ringZero: { baseInstructions?: string },
+  onRenderedSovereignSpans?: (spans: SovereignPromptSpans) => void,
 ): { baseInstructions?: string; developerInstructions: string } {
   if (isCodexRingZeroThread(params, options.hostSystemAgentActive)) {
     return { ...ringZero, developerInstructions: renderCodexThreadPolicy(developerInstructions) };
   }
-  const baseInstructions = resolveCodexOpenClawBaseInstructions(params, options);
+  const baseInstructions = resolveCodexOpenClawBaseInstructions(
+    params,
+    options,
+    onRenderedSovereignSpans,
+  );
   if (hasAuthoredCodexBaseInstructions(options)) {
     return {
       developerInstructions: renderCodexThreadPolicy(baseInstructions, developerInstructions),

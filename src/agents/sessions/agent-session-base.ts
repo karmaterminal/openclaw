@@ -112,6 +112,7 @@ export abstract class AgentSessionBase {
   protected baseSystemPrompt: string;
   protected baseSystemPromptOptions!: BuildSystemPromptOptions;
   protected systemPromptOverride: string | undefined;
+  protected readonly assertSystemPromptReplacementAllowed: (() => void) | undefined;
 
   constructor(config: AgentSessionConfig) {
     this.agent = config.agent;
@@ -129,6 +130,7 @@ export abstract class AgentSessionBase {
     this.resolveCompactionThinkingLevel = config.resolveCompactionThinkingLevel;
     this.cleanupProviderSessionResourcesOnDispose =
       config.cleanupProviderSessionResourcesOnDispose ?? true;
+    this.assertSystemPromptReplacementAllowed = config.assertSystemPromptReplacementAllowed;
   }
 
   get modelRegistry(): ModelRegistry {

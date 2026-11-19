@@ -31,6 +31,7 @@ import { buildModelToolsUnavailablePrompt } from "../../model-tool-support.js";
 import { prepareProjectMemoryBootstrap } from "../../project-memory-bootstrap.js";
 import { resolveAgentPromptSurfaceForSessionKey } from "../../prompt-surface.js";
 import { resolveAgentRuntimePrompt } from "../../runtime-prompt.js";
+import { resolveSovereignPromptSnapshot } from "../../sovereign-prompts/runtime.js";
 import { buildSubagentStandingInstructions } from "../../subagents/spawn/subagent-system-prompt.js";
 import type { buildConfiguredAgentSystemPrompt } from "../../system-prompt-config.js";
 import { buildSystemPromptReport } from "../../system-prompt-report.js";
@@ -466,6 +467,13 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
   };
   const attemptSystemPrompt = await buildAttemptSystemPrompt(promptInputs);
   assertPreparationCurrent();
+  // The spans of the render whose sections the applied prompt carries; a refresh re-renders.
+  let appliedSovereignSpans = attemptSystemPrompt.sovereignSpans;
+  // The render already refused an agent without a loaded snapshot; this reads the receipt.
+  const sovereignSnapshot = resolveSovereignPromptSnapshot({
+    config: attempt.config,
+    agentId: params.setup.sessionAgentId,
+  });
   phases.mark("attempt.system-prompt.report");
   const reportInputs: Parameters<typeof buildSystemPromptReport>[0] = {
     source: "run",
@@ -487,6 +495,8 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
     skillsPrompt: attemptSystemPrompt.skillsPrompt,
     tools: params.effectiveTools,
     catalogEntries: params.toolSearchCatalogRef?.current?.entries,
+    // The snapshot's JSON is its content-free receipt (§ 1.6).
+    ...(sovereignSnapshot ? { sovereign: sovereignSnapshot.toJSON() } : {}),
   };
   const systemPromptReport = buildSystemPromptReport(reportInputs);
   params.setup.prepStages?.mark("system-prompt");
@@ -509,6 +519,7 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
     runtimeInfo: runtimePrompt.runtimeInfo,
     systemPromptReport,
     systemPromptText: attemptSystemPrompt.systemPrompt,
+    sovereignSpans: () => appliedSovereignSpans,
     // Current run facts belong beside their turn, not ahead of all prior history.
     get runtimeContextFragments(): RuntimeContextFragment[] {
       const fragments = [
@@ -586,6 +597,7 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
             currentSystemPrompt,
             permissionNotice,
           );
+          appliedSovereignSpans = nextSystemPrompt.sovereignSpans;
           Object.assign(
             systemPromptReport,
             buildSystemPromptReport({

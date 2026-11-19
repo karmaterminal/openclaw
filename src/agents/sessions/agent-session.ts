@@ -4,6 +4,7 @@ import { isContextOverflow } from "@openclaw/ai/internal/runtime";
 import { setInternalBeforeRequest } from "../../../packages/agent-core/src/internal-hooks.js";
 import type { AssistantMessage } from "../../llm/types.js";
 import { isRetryableAssistantError } from "../../llm/utils/retry.js";
+import { redactSovereignText } from "../../logging/sovereign-redaction.js";
 import { sleep } from "../../utils/sleep.js";
 import { classifyRateLimitWindow } from "../failover/retry-evidence.js";
 import { AgentSessionCompaction } from "./agent-session-compaction.js";
@@ -243,7 +244,8 @@ export class AgentSession extends AgentSessionCompaction {
             }
           })();
         },
-        getSystemPrompt: () => this.systemPrompt,
+        // Sovereign spans reach extensions as markers (openclaw#1321).
+        getSystemPrompt: () => redactSovereignText(this.systemPrompt),
       },
       {
         registerProvider: (name, config) => {

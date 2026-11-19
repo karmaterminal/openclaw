@@ -318,6 +318,17 @@ export function registerModelCapabilityCommands(capability: Command): void {
                     prepared.model.api === "openai-chatgpt-responses"
                       ? LOCAL_MODEL_RUN_SYSTEM_PROMPT
                       : undefined;
+                  if (localModelRunSystemPrompt) {
+                    // The stock identity line would stand in for a sovereign prompt agent's
+                    // own, and this route renders none, so it refuses (openclaw#1321).
+                    const { assertSovereignPromptRoute } =
+                      await import("../../agents/sovereign-prompts/runtime.js");
+                    assertSovereignPromptRoute({
+                      config: cfg,
+                      agentId,
+                      route: "infer-model-run:local",
+                    });
+                  }
                   const result = await completeWithPreparedSimpleCompletionModel({
                     model: prepared.model,
                     auth: prepared.auth,

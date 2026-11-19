@@ -495,3 +495,21 @@ Call it for each turn, after the final tool surface is known. Pass
 is unavailable. Carry the result through the native runtime's existing
 per-turn application or developer context instead of appending it to stable
 thread instructions.
+
+### Sovereign prompt handoffs
+
+A harness that hands OpenClaw's base prompt to a native binary, which builds the
+provider request itself, checks each handoff that carries those instructions.
+`buildAgentHarnessBasePrompt` reports the sovereign spans of the render it
+produced through `onRenderedSovereignSpans`. Pass those spans, unchanged, with
+the handoff's instruction carriers to `checkSovereignPromptHandoff` from
+`openclaw/plugin-sdk/agent-harness-runtime` right before the write. It returns
+`undefined` for an agent with no sovereign text and a content-free receipt for
+the run's prompt report when the check passes. For an `enforce` agent it throws
+a content-free `SovereignPromptRefusal` when the handoff carries no spans,
+another agent's spans, or loses one; write nothing after it.
+
+A route that cannot carry an agent's sovereign text at all calls
+`assertSovereignPromptRoute` with its route name before any handoff. See
+[Sovereign prompts CLI](/cli/sovereign#what-enforce-does) for what
+the check covers and what stays unverified.

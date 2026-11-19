@@ -139,4 +139,14 @@ export const AgentEntryBaseSchema = z.strictObject({
     .optional(),
   params: z.record(z.string(), z.unknown()).optional(),
   runtime: AgentRuntimeSchema,
+  /**
+   * Sovereign prompt loading (#1321). "off" renders code text and reads no sovereign file;
+   * "enforce" renders the agent's own files and refuses the agent, never the Gateway, when
+   * they are missing or invalid. Changing it takes effect at the next Gateway start.
+   */
+  sovereignPrompts: z
+    .strictObject({
+      mode: z.enum(["off", "enforce"]).optional(),
+    })
+    .optional(),
 });

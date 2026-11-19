@@ -1,4 +1,5 @@
 import { getPreparedModelRuntimeStartupStatus } from "../../agents/prepared-model-runtime.startup-status.js";
+import { describeSovereignPromptStatus } from "../../agents/sovereign-prompts/runtime.js";
 import type { ChannelAccountSnapshot } from "../../channels/plugins/types.public.js";
 import { readChildRuntimeViability } from "../../infra/child-runtime-viability.js";
 import { formatErrorMessage as formatError } from "../../infra/errors.js";
@@ -163,6 +164,8 @@ export const healthHandlers: GatewayRequestHandlers = {
       {
         ...status,
         modelRuntime: getPreparedModelRuntimeStartupStatus(),
+        // Content-free: each sovereign agent's generation and digest, or its refusal code.
+        sovereignPrompts: describeSovereignPromptStatus(),
         ...readGatewayProcessVitals(context.getEventLoopHealth),
         workerPools,
         pid: process.pid,

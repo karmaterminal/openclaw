@@ -1,0 +1,2 @@
+# Sovereign finalizer admission and shared-server resume (#1321): the core admission's real-composition pins (built-in, other harness, latched, missing id, off control, forwarded answer) and the Codex resume refusal on each shared transport with its off control.
+303

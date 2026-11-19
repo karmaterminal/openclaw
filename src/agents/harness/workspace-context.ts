@@ -4,6 +4,10 @@ import { resolveBootstrapFilesForRun } from "../bootstrap-files.js";
 import { buildBootstrapContextForFiles } from "../embedded-agent-helpers/bootstrap.js";
 import type { EmbeddedContextFile } from "../embedded-agent-helpers/context-file.js";
 import {
+  beginSovereignPromptRender,
+  resolveSovereignPromptSnapshot,
+} from "../sovereign-prompts/runtime.js";
+import {
   PERSONAL_USER_CONTEXT_INSTRUCTIONS,
   prepareContextFilesForPrompt,
 } from "../system-prompt-context-files.js";
@@ -144,7 +148,12 @@ export async function prepareAgentWorkspaceContext(
     contextFiles,
     instructionSnapshot,
     personaFiles,
-    personaInstructions: renderPersonaInstructions(personaFiles),
+    personaInstructions: renderPersonaInstructions(
+      personaFiles,
+      personaFiles.some((file) => file.personalUser === true)
+        ? resolvePersonalUserInstructions(params)
+        : undefined,
+    ),
     sharedPersonaInstructions: renderPersonaInstructions(
       personaFiles.filter((file) => file.personalUser !== true),
     ),
@@ -157,15 +166,30 @@ export async function prepareAgentWorkspaceContext(
 
 const PERSONA_FILE_BASENAMES = new Set(["identity.md", "soul.md", "user.md"]);
 
-function renderPersonaInstructions(files: readonly EmbeddedContextFile[]): string | undefined {
+/**
+ * The personal USER.md line. A sovereign prompt agent's comes from its own
+ * `project-context-section.d/personal-user.md` (omitted when absent), as in the main prompt
+ * (openclaw#1321); the preamble around the files stays harness text until phase D.
+ */
+function resolvePersonalUserInstructions(
+  params: Pick<AgentWorkspaceContextParams, "config" | "agentId">,
+): string | undefined {
+  const snapshot = resolveSovereignPromptSnapshot(params);
+  return snapshot
+    ? beginSovereignPromptRender(snapshot).slot("project-context-section.d/personal-user.md")
+    : PERSONAL_USER_CONTEXT_INSTRUCTIONS;
+}
+
+function renderPersonaInstructions(
+  files: readonly EmbeddedContextFile[],
+  personalUserInstructions?: string,
+): string | undefined {
   if (files.length === 0) {
     return undefined;
   }
   const preamble =
     "OpenClaw loaded these workspace instruction files from the active agent workspace. They are the instructions that define who you are, how you think and work, and the human you work alongside. Internalize and follow them accordingly." +
-    (files.some((file) => file.personalUser === true)
-      ? ` ${PERSONAL_USER_CONTEXT_INSTRUCTIONS}`
-      : "");
+    (personalUserInstructions ? ` ${personalUserInstructions}` : "");
   const lines = ["## OpenClaw Agent Soul", "", preamble, "", "<AGENT_SOUL>", ""];
   for (const file of files) {
     lines.push(`### ${file.path}`, "", file.content, "");

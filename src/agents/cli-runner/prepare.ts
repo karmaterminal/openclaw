@@ -100,6 +100,7 @@ import { recordAdmittedModelRoutingDecision } from "../model-routing-decision.js
 import { resolveRuntimeChannelPromptContext } from "../runtime-capabilities.js";
 import { createUnrecordedScheduledAccountRefusal } from "../scheduled-unrecorded-account.js";
 import { waitForSessionMaintenance } from "../session-maintenance/coordinator.js";
+import { assertSovereignPromptRoute } from "../sovereign-prompts/runtime.js";
 import { buildSystemPromptReport } from "../system-prompt-report.js";
 import { normalizeToolPolicyName } from "../tool-policy.js";
 import { assertNativeCronCreatorCapabilities } from "../tools/cron-tool-creator-cap.js";
@@ -379,6 +380,9 @@ async function prepareCliRunContextWithinReadFence(
     config: params.config,
     agentId: sessionOwner,
   });
+  // The agent the prompt renders for. No test proves a CLI transport carries sovereign text,
+  // and a node-host placement would send it off the Gateway host (openclaw#1321).
+  assertSovereignPromptRoute({ config: params.config, agentId: sessionAgentId, route: "cli" });
   const agentDir = params.agentDir ?? resolveAgentDir(params.config ?? {}, sessionAgentId);
   const requestedAuthProfileId = params.authProfileId?.trim() || undefined;
   let effectiveAuthProfileId =

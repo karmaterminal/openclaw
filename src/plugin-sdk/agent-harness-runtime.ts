@@ -365,6 +365,16 @@ export {
 export { buildHarnessVisibleReplyGuidance } from "../auto-reply/source-reply-delivery-mode.js";
 export { buildCredentialSafetyPrompt } from "../agents/credential-safety-prompt.js";
 export { buildAgentHarnessBasePrompt } from "../agents/system-prompt-harness-base.js";
+// Sovereign prompts (openclaw#1321): a harness that hands the base to a binary checks each
+// handoff, and refuses an enforce agent's run on a route that cannot carry the files.
+export {
+  checkSovereignPromptHandoff,
+  type SovereignPromptHandoffReceipt,
+} from "../agents/sovereign-prompts/handoff.js";
+export {
+  assertSovereignPromptRoute,
+  type SovereignPromptSpans,
+} from "../agents/sovereign-prompts/runtime.js";
 export { buildUiPresentationPrompt } from "../agents/ui-presentation-prompt.js";
 export { normalizeQuestionTimeoutSeconds } from "../agents/tools/ask-user-tool-normalization.js";
 export { resolveAttemptFsWorkspaceOnly } from "../agents/embedded-agent-runner/run/attempt-prompt-helpers.js";

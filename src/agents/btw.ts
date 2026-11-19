@@ -60,6 +60,7 @@ import { resolveSandboxContext } from "./sandbox/context.js";
 import { resolveSessionModelRef } from "./session-model-ref.js";
 import { prepareSessionPlacementSandbox } from "./session-placement-admission.js";
 import { resolveSessionRuntimeOverrideForProvider } from "./session-runtime-compat.js";
+import { assertSovereignPromptRoute } from "./sovereign-prompts/runtime.js";
 import { hasBillableUsage, toDiagnosticUsage, type NormalizedUsage } from "./usage.js";
 
 /** Answers a side question using sanitized session context and no tool execution. */
@@ -241,6 +242,13 @@ export async function runBtwSideQuestion(
       runtime: Awaited<ReturnType<typeof resolveRuntimeModel>>,
       routeFinalized = false,
     ): Promise<BtwHarnessSideQuestionDispatch> => {
+      // A harness side question runs on the harness's own thread state (a Codex fork restores
+      // the thread's creation base), never a sovereign render, so it refuses (openclaw#1321).
+      assertSovereignPromptRoute({
+        config: params.cfg,
+        agentId: sessionAgentId,
+        route: `${selectedHarness.id}:side-question`,
+      });
       const authPreparation =
         selectedHarness.id === harness.id
           ? undefined

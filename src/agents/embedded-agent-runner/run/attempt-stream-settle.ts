@@ -25,6 +25,7 @@ import { resolveModelCallUrgency } from "../../run-trigger.js";
 import type { SandboxContext } from "../../sandbox/types.js";
 import type { AgentSession, SessionManager, SettingsManager } from "../../sessions/index.js";
 import { withSessionManagerAppend } from "../../sessions/session-manager-append-admission.js";
+import { wrapStreamFnWithSovereignRequestCheck } from "../../sovereign-prompts/provider-request.js";
 import { withPreparedSessionCapabilityRead } from "../../subagents/spawn/subagent-session-store.js";
 import { isToolExecutionAllowed } from "../../tool-policy-shared.js";
 import { hasNonzeroUsage, normalizeUsage } from "../../usage.js";
@@ -383,7 +384,8 @@ export async function settleEmbeddedAttemptStream(input: {
   };
 }
 
-export async function prepareEmbeddedAttemptTransport(input: {
+// The sovereign check reads the applied render's spans and reports its result.
+type EmbeddedAttemptTransportInput = Parameters<typeof wrapStreamFnWithSovereignRequestCheck>[1] & {
   assertCronRootCurrent?: () => void;
   attempt: EmbeddedRunAttemptParams;
   contextEngineInfo?: ContextEngineInfo;
@@ -405,7 +407,9 @@ export async function prepareEmbeddedAttemptTransport(input: {
     effectiveContextTokenBudget: number;
     recordEvent?: (type: string, data?: Record<string, unknown>) => void;
   };
-}) {
+};
+
+export async function prepareEmbeddedAttemptTransport(input: EmbeddedAttemptTransportInput) {
   const attempt = input.attempt;
   const session = input.session;
   const assertAdmittedCurrent = resolveAdmittedRunActiveAssertion(
@@ -582,6 +586,8 @@ export async function prepareEmbeddedAttemptTransport(input: {
       boundaryStreamFn(model, context, providerOptions),
     );
   };
+  // Innermost of the host wrappers: hooks, provider and config wrappers all edit first.
+  session.agent.streamFn = wrapStreamFnWithSovereignRequestCheck(session.agent.streamFn, input);
   // Install inside provider/config wrappers so their full onPayload chain runs
   // before admission hashes the request body that the built-in transport sends.
   session.agent.streamFn = wrapStreamFnWithProviderPromptState({

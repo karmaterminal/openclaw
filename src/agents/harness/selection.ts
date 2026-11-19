@@ -34,6 +34,11 @@ import {
   unwrapModelHeaderSentinelsForProviderEgress,
   unwrapSecretSentinelsForProviderEgress,
 } from "../provider-secret-egress.js";
+import {
+  assertSovereignPromptRoute,
+  assertSovereignSettledTurnFinalization,
+  resolveSovereignPromptHarnessRoute,
+} from "../sovereign-prompts/runtime.js";
 import type { SystemAgentToolOptions } from "../tools/system-agent-tool.js";
 import { copyCoreTtsAttemptResultProvenance } from "../tools/tts-tool-result-provenance.js";
 import { createOpenClawAgentHarness, isBuiltInOpenClawAgentHarness } from "./builtin-openclaw.js";
@@ -144,6 +149,14 @@ export async function runAgentHarnessSettledTurnFinalization(
   settledAttempt: EmbeddedRunAttemptResult,
   harness: AgentHarness,
 ) {
+  // Sovereign finalizer admission (openclaw#1321): every harness's finalizer generates from a
+  // code-owned prompt, so an enforce agent refuses it here, on the original attempt's agent
+  // and config, before the restricted projection or any handoff exists.
+  assertSovereignSettledTurnFinalization({
+    config: params.config,
+    agentId: params.agentId,
+    harnessId: harness.id,
+  });
   const internalParams = params as EmbeddedRunAttemptParams & {
     systemAgentTool?: SystemAgentToolOptions;
   };
@@ -252,6 +265,17 @@ export async function runAgentHarnessAttempt(
           preparedModelProvider: params.runtimePlan?.auth !== undefined,
         });
   const harness = selection.harness;
+  // Sovereign prompt route admission (openclaw#1321, design § 4.6): refuse an `enforce`
+  // agent's run on a route that does not carry its loaded text, before any preparation.
+  assertSovereignPromptRoute({
+    config: params.config,
+    agentId: params.agentId,
+    route: resolveSovereignPromptHarnessRoute({
+      harnessId: harness.id,
+      ringZero: Boolean(internalParams.systemAgentTool),
+      promptMode: params.promptMode,
+    }),
+  });
   // Capture this registration before any awaited preparation; IDs and dispatch methods
   // do not establish that an external sink understands separate question permission.
   const queueInputAdapter = selection.builtIn

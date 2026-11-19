@@ -2,10 +2,17 @@
  * Sections shared by the regular agent prompt and the thread-stable harness base prompt.
  *
  * These render from capability facts alone, so a thread-pinned harness carrier
- * and the per-attempt prompt cannot drift apart.
+ * and the per-attempt prompt cannot drift apart. For a sovereign prompt agent each body
+ * comes from its snapshot under the code-owned heading, and an absent optional body
+ * omits the whole section; nothing falls back to the text below (openclaw#1321).
  */
 import { normalizeStructuredPromptSection } from "@openclaw/ai/internal/shared";
 import { buildCredentialSafetyPrompt } from "./credential-safety-prompt.js";
+import type { SovereignPromptRender } from "./sovereign-prompts/runtime.js";
+
+function sovereignSection(heading: string, body: string | undefined, trailing = [""]): string[] {
+  return body ? [heading, body, ...trailing] : [];
+}
 
 export function normalizeProviderPromptBlock(value: unknown): string | undefined {
   if (typeof value !== "string") {
@@ -15,7 +22,10 @@ export function normalizeProviderPromptBlock(value: unknown): string | undefined
   return normalized || undefined;
 }
 
-export function buildExecutionBiasSection(): string[] {
+export function buildExecutionBiasSection(sovereign?: SovereignPromptRender): string[] {
+  if (sovereign) {
+    return sovereignSection("## Execution Bias", sovereign.slot("execution-section.md"));
+  }
   return [
     "## Execution Bias",
     "- Actionable request: act now. Explicit skill workflow gates override this bias; user instructions, prior authorization, safety, and tool policy remain authoritative.",
@@ -30,7 +40,10 @@ export function buildExecutionBiasSection(): string[] {
   ];
 }
 
-export function buildRuntimeContextSection(): string[] {
+export function buildRuntimeContextSection(sovereign?: SovereignPromptRender): string[] {
+  if (sovereign) {
+    return sovereignSection("## Runtime Context", sovereign.slot("runtime-context-section.md"), []);
+  }
   return [
     "## Runtime Context",
     "OpenClaw may attach a separate runtime-context message for the current request. Treat it as application context rather than user-authored text.",
@@ -39,7 +52,10 @@ export function buildRuntimeContextSection(): string[] {
   ];
 }
 
-export function buildToolCallStyleSection(): string[] {
+export function buildToolCallStyleSection(sovereign?: SovereignPromptRender): string[] {
+  if (sovereign) {
+    return sovereignSection("## Tool Call Style", sovereign.slot("tool-section.md"));
+  }
   return [
     "## Tool Call Style",
     "Routine low-risk: call silently.",
@@ -52,23 +68,46 @@ export function buildToolCallStyleSection(): string[] {
   ];
 }
 
-export function buildCareSection(params: { controlToolsAvailable: boolean }): string[] {
+export function buildCareSection(params: {
+  controlToolsAvailable: boolean;
+  sovereign?: SovereignPromptRender;
+}): string[] {
+  const { sovereign } = params;
+  if (sovereign) {
+    const credentials = sovereign.slot(
+      params.controlToolsAvailable
+        ? "safety-section.d/credentials.control-tools.md"
+        : "safety-section.d/credentials.no-control-tools.md",
+    );
+    return sovereignSection("## Care", sovereign.slot("safety-section.md"), [
+      ...(credentials ? [credentials] : []),
+      "",
+    ]);
+  }
   return [
     "## Care",
     "Before config/scheduler edits (crontab/systemd/nginx/shell rc/timers): inspect; preserve/merge. Whole-file replacement only explicit.",
-    buildCredentialSafetyPrompt(params),
+    buildCredentialSafetyPrompt({ controlToolsAvailable: params.controlToolsAvailable }),
     "",
   ];
 }
 
-export function buildMediaGenerationToolLines(availableTools: ReadonlySet<string>): string[] {
-  return ["image_generate", "music_generate", "video_generate"].flatMap((tool) =>
-    availableTools.has(tool)
-      ? [
-          `Do not call \`${tool}\` again for the same request while its task is queued or running.`,
-          `If the user asks for progress or whether the work is async, explain the active task state or call \`${tool}\` with \`action:"status"\` instead of starting a new generation.`,
-          `Only start a new \`${tool}\` call if the user clearly asks for different/new media.`,
-        ]
-      : [],
-  );
+export function buildMediaGenerationToolLines(
+  availableTools: ReadonlySet<string>,
+  sovereign?: SovereignPromptRender,
+): string[] {
+  return ["image_generate", "music_generate", "video_generate"].flatMap((tool) => {
+    if (!availableTools.has(tool)) {
+      return [];
+    }
+    if (sovereign) {
+      const body = sovereign.slot("tool-section.d/media-dedupe.md", { "tool:current": tool });
+      return body ? [body] : [];
+    }
+    return [
+      `Do not call \`${tool}\` again for the same request while its task is queued or running.`,
+      `If the user asks for progress or whether the work is async, explain the active task state or call \`${tool}\` with \`action:"status"\` instead of starting a new generation.`,
+      `Only start a new \`${tool}\` call if the user clearly asks for different/new media.`,
+    ];
+  });
 }

@@ -827,6 +827,33 @@ describe("capability cli", () => {
     },
   );
 
+  it("refuses a local run that would send the stock identity line for a sovereign prompt agent", async () => {
+    // The switch alone decides; the route never renders, so no generation is read (#1321).
+    mocks.loadConfig.mockReturnValue({
+      agents: {
+        entries: {
+          main: {
+            agentDir: "/openclaw-sovereign-fixture/agent",
+            sovereignPrompts: { mode: "enforce" },
+          },
+        },
+      },
+    });
+    primeChatGptModel("openai", "gpt-5.5");
+    await expect(runModelProbe("--model", "openai/gpt-5.5")).rejects.toThrow("exit 1");
+    expectRuntimeErrorContains(
+      "sovereign prompts refused: code=route_unconverted route=infer-model-run:local",
+    );
+    expect(mocks.completeWithPreparedSimpleCompletionModel).not.toHaveBeenCalled();
+    expect(mocks.releaseSimpleCompletion).toHaveBeenCalledTimes(1);
+    expect(mocks.runtime.writeJson).not.toHaveBeenCalled();
+
+    // A local run that sends no system prompt carries no stock text, so it still runs.
+    await runModelProbe();
+    expect(firstCompletionCall()?.context).not.toHaveProperty("systemPrompt");
+    expect(firstJsonOutput()?.transport).toBe("local");
+  });
+
   it("normalizes HEIF sequence images before Gateway probes", async () => {
     const fileName = "opaque.bin";
     const source = Buffer.alloc(24);

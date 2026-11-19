@@ -37,6 +37,12 @@ import { isJsonObject, type CodexThread } from "./protocol.js";
 import type { CodexAppServerThreadBinding } from "./session-binding.js";
 import { retainSharedCodexAppServerClientByInstanceId } from "./shared-client.js";
 import {
+  checkCodexThreadHandoff,
+  checkCodexUnrenderedThreadReuse,
+  isCodexThreadLoadedBy,
+  refuseUnverifiedCodexThreadReuse,
+} from "./sovereign-handoff.js";
+import {
   fingerprintCodexThreadConfig,
   fingerprintRestrictedThreadConfig,
 } from "./thread-fingerprints.js";
@@ -390,6 +396,11 @@ export async function tryReuseCodexLiveThread(
       await prepareCodexThreadFinalConfigPatch(params, options.nativeModelInputTools, binding);
       throwIfAborted();
       params.assertCurrent?.();
+      const sovereignReceipt = checkCodexUnrenderedThreadReuse(
+        params.params,
+        params.client,
+        binding.threadId,
+      );
       return {
         kind: "ready",
         binding: {
@@ -397,6 +408,7 @@ export async function tryReuseCodexLiveThread(
           // Nothing is sent to this live thread, so report the base it got at creation,
           // never a render of current inputs.
           preparedOpenClawBaseInstructions: creationPolicy?.baseInstructions,
+          ...(sovereignReceipt ? { sovereignReceipt } : {}),
           lifecycle: { action: "resumed" },
         },
       };
@@ -585,6 +597,19 @@ export async function tryReuseCodexLiveThread(
       preserveSubscription = true;
       throw new CodexIncognitoPolicyChangeError();
     }
+    // The thread keeps the instructions of the handoff that loaded it: this attempt's request
+    // must pass, and so must that handoff. A persistent thread it did not load resumes cold
+    // and is checked again; an ephemeral one has no resume source and refuses. A refusal
+    // leaves the owner as it was.
+    preserveSubscription = true;
+    const sovereign = checkCodexThreadHandoff(params.params, "live_thread_reuse", resumeParams);
+    if (sovereign && !isCodexThreadLoadedBy(params.client, binding.threadId, sovereign)) {
+      if (!incognito) {
+        return { kind: "resume", prebuiltFinalConfigPatch };
+      }
+      refuseUnverifiedCodexThreadReuse(params.params);
+    }
+    preserveSubscription = false;
     if (
       options.requireRestrictedThreadConfigFingerprint &&
       (Boolean(binding.nativeToolPolicyRestricted) !== restrictedToolSurface ||
@@ -730,6 +755,7 @@ export async function tryReuseCodexLiveThread(
         liveThreadEphemeralPolicy,
         liveThreadOwnership: retainedThread,
         preparedOpenClawBaseInstructions: options.resolveOpenClawBaseInstructions(promptBinding),
+        ...(sovereign ? { sovereignReceipt: sovereign } : {}),
         ...(!incognito && retainedThread.serviceTier && resumeParams.serviceTier === undefined
           ? { clearInheritedServiceTier: true }
           : {}),

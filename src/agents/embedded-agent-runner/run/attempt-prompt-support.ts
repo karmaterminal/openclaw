@@ -5,6 +5,7 @@ import {
   type DiagnosticTraceContext,
   freezeDiagnosticTraceContext,
 } from "../../../infra/diagnostic-trace-context.js";
+import { redactSovereignText } from "../../../logging/sovereign-redaction.js";
 import type { PluginHookLlmInputEvent } from "../../../plugins/hook-types.js";
 import type { HookRunner } from "../../../plugins/hooks.js";
 import {
@@ -341,7 +342,8 @@ export function observeEmbeddedAttemptPrompt(input: {
           sessionId: attempt.sessionId,
           provider: attempt.provider,
           model: attempt.modelId,
-          systemPrompt: input.systemPromptForHook,
+          // Plugins observe a copy whose sovereign spans are markers (openclaw#1321).
+          systemPrompt: redactSovereignText(input.systemPromptForHook),
           prompt: input.llmBoundaryPromptForPrecheck,
           /** Gives hooks an isolated message snapshot they cannot mutate in-session. */
           historyMessages: input.hookMessagesForCurrentPrompt.map((message) =>

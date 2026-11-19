@@ -45,6 +45,7 @@ import type {
 import { filterProjectScopedCuratedContextFiles } from "./project-memory-bootstrap.js";
 import { buildPromisedWorkPromptSection } from "./promised-work-prompt.js";
 import { sanitizeForPromptLiteral } from "./sanitize-for-prompt.js";
+import type { SovereignPromptRender } from "./sovereign-prompts/runtime.js";
 import {
   buildProjectContextSection,
   isBootstrapContextFile,
@@ -150,6 +151,7 @@ function formatFullAccessBlockedReason(reason?: EmbeddedFullAccessBlockedReason)
 }
 
 const MODEL_IDENTITY_PREFIX = "Current model identity:";
+const STOCK_IDENTITY_LINE = "You are a personal assistant running inside OpenClaw.";
 
 export function buildModelIdentityPromptLine(model?: string): string | undefined {
   const trimmed = model?.trim();
@@ -278,15 +280,24 @@ export function buildAgentSystemPrompt(params: {
   /** Current repository identity passed to memory prompt sections. */
   projectKey?: string;
   promptContribution?: ProviderSystemPromptContribution;
+  /**
+   * A sovereign prompt agent's snapshot for this render (openclaw#1321). Its converted
+   * slots replace the code text at their positions; provider overrides of those slots
+   * are ignored. Only `buildConfiguredAgentSystemPrompt` supplies it.
+   */
+  sovereign?: SovereignPromptRender;
 }) {
   const promptMode = params.promptMode ?? "full";
   const runtimeInfo = params.runtimeInfo;
+  const sovereign = params.sovereign;
   const modelIdentityLine = buildModelIdentityPromptLine(blindRuntime(runtimeInfo)?.model);
+  const identityLine = sovereign ? sovereign.slot("identity-section.md") : STOCK_IDENTITY_LINE;
   if (promptMode === "none") {
     params.onRenderedSkillsPrompt?.("");
-    return ["You are a personal assistant running inside OpenClaw.", modelIdentityLine]
-      .filter(Boolean)
-      .join("\n");
+    return blindSovereignPrompt(
+      [identityLine, modelIdentityLine].filter(Boolean).join("\n"),
+      params,
+    );
   }
 
   const acpEnabled = params.acpEnabled === true;
@@ -425,6 +436,7 @@ export function buildAgentSystemPrompt(params: {
     : ["## Workspace", `Working directory: ${displayWorkspaceDir}`];
   const careSection = buildCareSection({
     controlToolsAvailable: availableTools.has("openclaw") || availableTools.has("gateway"),
+    sovereign,
   });
   const { section: skillsSection, skillsPrompt: renderedSkillsPrompt } = buildSkillsSection({
     skillsPrompt,
@@ -503,29 +515,17 @@ export function buildAgentSystemPrompt(params: {
       "",
     );
   }
-  const stablePrefixCacheKey = sha256Hex(
-    JSON.stringify({
-      promptMode,
-      interactionStyle: providerSectionOverrides.interaction_style,
-      executionBias: providerSectionOverrides.execution_bias,
-      providerStablePrefix,
-      reasoningHint,
-      directorySection,
-      workspaceOnlyGuidance,
-      workspaceNotes,
-      bootstrapSystemPromptSections,
-      stableContextFiles: contextFiles,
-    }),
-  );
-  const stablePrefix = cacheStablePromptPrefix(stablePrefixCacheKey, () => {
+  const buildStablePrefix = () => {
     const lines: PromptLine[] = [
-      "You are a personal assistant running inside OpenClaw.",
+      identityLine,
       "",
       providerSectionOverrides.interaction_style,
-      providerSectionOverrides.execution_bias || (!isMinimal && buildExecutionBiasSection()),
+      sovereign
+        ? !isMinimal && buildExecutionBiasSection(sovereign)
+        : providerSectionOverrides.execution_bias || (!isMinimal && buildExecutionBiasSection()),
       ...buildPromisedWorkPromptSection(),
       providerStablePrefix,
-      ...buildRuntimeContextSection(),
+      ...buildRuntimeContextSection(sovereign),
       ...directorySection,
       workspaceOnlyGuidance,
       ...workspaceNotes,
@@ -540,11 +540,32 @@ export function buildAgentSystemPrompt(params: {
       lines.push("## Reasoning Format", reasoningHint, "");
     }
 
-    lines.push(...buildProjectContextSection(preparedContextFiles));
+    lines.push(...buildProjectContextSection(preparedContextFiles, sovereign));
 
     lines.push(SYSTEM_PROMPT_CACHE_BOUNDARY);
     return joinPromptLines(lines);
-  });
+  };
+  // The shared LRU is keyed without the agent; a sovereign prefix is rebuilt per render
+  // (still byte-stable within one generation) so no agent can wake with another's text.
+  const stablePrefix = sovereign
+    ? buildStablePrefix()
+    : cacheStablePromptPrefix(
+        sha256Hex(
+          JSON.stringify({
+            promptMode,
+            interactionStyle: providerSectionOverrides.interaction_style,
+            executionBias: providerSectionOverrides.execution_bias,
+            providerStablePrefix,
+            reasoningHint,
+            directorySection,
+            workspaceOnlyGuidance,
+            workspaceNotes,
+            bootstrapSystemPromptSections,
+            stableContextFiles: contextFiles,
+          }),
+        ),
+        buildStablePrefix,
+      );
 
   const lines: PromptLine[] = [stablePrefix];
 
@@ -605,10 +626,12 @@ export function buildAgentSystemPrompt(params: {
           : "For announcing children, wait for runtime completion events; never busy-poll."),
       "Treat subagent outputs as reports to synthesize.",
     ],
-    ...buildMediaGenerationToolLines(availableTools),
+    ...buildMediaGenerationToolLines(availableTools, sovereign),
     "",
     includeToolGuidance &&
-      (providerSectionOverrides.tool_call_style || buildToolCallStyleSection()),
+      (sovereign
+        ? buildToolCallStyleSection(sovereign)
+        : providerSectionOverrides.tool_call_style || buildToolCallStyleSection()),
     ...careSection,
     ...buildOpenClawControlSection({
       hasOpenClaw,
@@ -707,8 +730,9 @@ export function buildAgentSystemPrompt(params: {
         "",
       ],
     // Approval UI and owner identity vary by turn, so keep both below the stable prefix.
-    // A tool_call_style override owns the complete section and suppresses default guidance.
-    !providerSectionOverrides.tool_call_style &&
+    // A tool_call_style override owns the complete section and suppresses default guidance,
+    // unless the agent's sovereign tool section owns it instead.
+    (sovereign || !providerSectionOverrides.tool_call_style) &&
       hasExec &&
       buildExecApprovalPromptGuidance({
         runtimeChannel: params.runtimeInfo?.channel,
@@ -821,7 +845,18 @@ export function buildAgentSystemPrompt(params: {
     `${buildRuntimeLine(blindRuntime(runtimeInfo), runtimeChannel, runtimeCapabilities)}${SYSTEM_PROMPT_RELOCATABLE_BOUNDARY_END}`,
   );
 
-  return blindWorkspace(joinPromptLines(lines), params);
+  return blindSovereignPrompt(joinPromptLines(lines), params);
+}
+
+/** Blinds workspace paths and re-registers sovereign instances as they then ship. */
+function blindSovereignPrompt(
+  prompt: string,
+  params: Parameters<typeof blindWorkspace>[1] & { sovereign?: SovereignPromptRender },
+): string {
+  if (params.runtimeInfo?.blind) {
+    params.sovereign?.rewrite((text) => blindWorkspace(text, params));
+  }
+  return blindWorkspace(prompt, params);
 }
 
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

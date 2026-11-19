@@ -32,6 +32,7 @@ import {
   type JsonValue,
 } from "./protocol.js";
 import { isCodexResponsesOAuthRun } from "./responses-oauth.js";
+import { withCodexSovereignSpans } from "./sovereign-handoff.js";
 import type { CodexThreadConfigurationOptions } from "./thread-configuration-options.js";
 import { fingerprintJsonObject } from "./thread-fingerprints.js";
 import {
@@ -206,12 +207,16 @@ export async function buildThreadStartParams(
     modelProvider: options.modelProvider ?? resolvedModelProvider,
   });
   const configuration = buildCodexThreadConfiguration(params, options);
-  return {
+  return withCodexSovereignSpans<CodexThreadStartParams>((onSpans) => ({
     ...modelSelection,
     ...configuration,
-    ...placeCodexBaseInstructions(params, options, configuration.developerInstructions, {
-      baseInstructions: CODEX_RING_ZERO_BASE_INSTRUCTIONS,
-    }),
+    ...placeCodexBaseInstructions(
+      params,
+      options,
+      configuration.developerInstructions,
+      { baseInstructions: CODEX_RING_ZERO_BASE_INSTRUCTIONS },
+      onSpans,
+    ),
     personality: CODEX_NATIVE_PERSONALITY_NONE,
     serviceName: "OpenClaw",
     threadSource: "openclaw",
@@ -227,7 +232,7 @@ export async function buildThreadStartParams(
     // (`codex-rs/app-server-protocol/src/protocol/v2/thread.rs:108`;
     // `codex-rs/core/src/session/session.rs:599-683`, `thread_manager.rs:1157-1163`).
     ...(isIncognitoSessionKey(params.sessionKey) ? { ephemeral: true } : {}),
-  };
+  }));
 }
 
 export async function buildThreadResumeParams(
@@ -254,7 +259,7 @@ export async function buildThreadResumeParams(
         authProfileId: options.authProfileId ?? params.authProfileId,
       });
   const configuration = buildCodexThreadConfiguration(params, options);
-  return {
+  return withCodexSovereignSpans((onSpans) => ({
     threadId: options.threadId,
     // Only the latest turn id/status is needed to preserve active-turn conflict
     // handling; avoid rebuilding and validating the full persisted history.
@@ -267,9 +272,15 @@ export async function buildThreadResumeParams(
     ...modelSelection,
     ...configuration,
     // Ring-zero resumes omit the empty base pinned at creation.
-    ...placeCodexBaseInstructions(params, options, configuration.developerInstructions, {}),
+    ...placeCodexBaseInstructions(
+      params,
+      options,
+      configuration.developerInstructions,
+      {},
+      onSpans,
+    ),
     personality: CODEX_NATIVE_PERSONALITY_NONE,
-  };
+  }));
 }
 
 export function buildCodexRuntimeThreadConfig(

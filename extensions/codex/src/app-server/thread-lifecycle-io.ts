@@ -35,6 +35,11 @@ import {
 } from "./rpc-error.js";
 import type { CodexAppServerThreadBinding } from "./session-binding.js";
 import { getCurrentSharedClientEntry } from "./shared-client-lifecycle.js";
+import {
+  checkCodexPolicyRefresh,
+  checkCodexThreadHandoff,
+  recordCodexThreadLoad,
+} from "./sovereign-handoff.js";
 import { buildContextEngineBinding } from "./thread-context-engine.js";
 import {
   fingerprintCodexThreadConfig,
@@ -186,6 +191,9 @@ export async function resumeExistingCodexThread(
     const resumeParams = await lifecycleTiming.measure("thread-resume-params", () =>
       context.buildResumeParams(promptBinding, authProfileId, resumeConfig),
     );
+    // A request base outranks the rollout's (codex-rs core/src/session/mod.rs), so a cold
+    // resume runs on what this request hands; it is checked before anything is written.
+    const sovereignReceipt = checkCodexThreadHandoff(params.params, "thread/resume", resumeParams);
     if (!isRestrictedThreadConfigCompatible(params, context, resumeParams, authProfileId)) {
       stageBindingReplacement("rotating changed restricted thread configuration");
       return undefined;
@@ -292,12 +300,14 @@ export async function resumeExistingCodexThread(
       client: params.client,
       threadId: resumeBinding.threadId,
       developerInstructions: resumeParams.developerInstructions,
+      assertInstructions: (text) => checkCodexPolicyRefresh(params.params, resumeParams, text),
       timeoutMs: params.appServer.requestTimeoutMs,
       signal: params.signal,
       assertCurrent: assertHandoffCurrent,
       withCurrent: params.authority?.withCurrent,
     });
     policyOutcome = "acknowledged";
+    recordCodexThreadLoad(params.client, resumeBinding.threadId, sovereignReceipt);
     assertHandoffCurrent();
     const resumePatch = {
       // Resume moves native subscription ownership to this physical client.
@@ -373,6 +383,7 @@ export async function resumeExistingCodexThread(
         },
         params,
       ),
+      ...(sovereignReceipt ? { sovereignReceipt } : {}),
       preparedOpenClawBaseInstructions: context.resolveOpenClawBaseInstructions(promptBinding),
       lifecycle: {
         action: "resumed",
@@ -518,6 +529,8 @@ export async function startFreshCodexThread(
         restrictedToolSurfaceInheritedMcpServerNames,
       }),
   );
+  // Checked against the spans of the render that built it, before anything is written.
+  const sovereignReceipt = checkCodexThreadHandoff(params.params, "thread/start", startParams);
   const requestModelProvider =
     typeof startParams.modelProvider === "string" && startParams.modelProvider.trim()
       ? startParams.modelProvider
@@ -548,6 +561,7 @@ export async function startFreshCodexThread(
   });
   const response = assertCodexThreadStartResponse(threadStartResponse);
   recordCodexThreadForkSettings(params.client, response.thread.id, startParams);
+  recordCodexThreadLoad(params.client, response.thread.id, sovereignReceipt);
   const provisionalAppIds = pluginThreadConfig?.provisionalAppIds;
   const rejectUncommittedThread = async (cause: unknown): Promise<never> => {
     const cleanupConfirmed = await discardUnattestedCodexPluginThread({
@@ -700,6 +714,7 @@ export async function startFreshCodexThread(
     modelProvider:
       response.modelProvider ?? requestModelProvider ?? startModelProvider ?? modelProvider,
     preparedOpenClawBaseInstructions: baseInstructions,
+    ...(sovereignReceipt ? { sovereignReceipt } : {}),
     // Restricted ephemeral threads also need creation policy for fenced warm reuse.
     liveThreadEphemeralPolicy: startParams.ephemeral
       ? createCodexEphemeralThreadPolicy(
