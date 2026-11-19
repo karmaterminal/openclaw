@@ -131,7 +131,10 @@ export function createUserTurnTranscriptRecorder(
       }
     },
   );
+  // Relinquishing an accepted input drops its receipt and staging; the retained ID
+  // still means committed bytes, which a reattaching retry must match.
   const persistenceStarted = () =>
+    acceptedPendingInputId ||
     pendingInput ||
     staging ||
     selfPersistencePromise ||
