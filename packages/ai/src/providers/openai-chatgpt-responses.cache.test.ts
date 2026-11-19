@@ -826,14 +826,16 @@ describe("ChatGPT Responses cached transport", () => {
     expect(hasInputType(requireItem(scripted.requests, 3), "compaction")).toBe(true);
   });
 
+  // The compacted request sends [compaction, reasoning, user]; the rebuilt full
+  // history replaces the compaction item with both earlier user turns.
   it.each([
-    ["sse", "initial", 0],
-    ["sse", "reasoning-stripped", 1],
-    ["sse", "compaction-stripped", 2],
-    ["websocket", "compaction-stripped", 2],
+    ["sse", "initial", 0, 3],
+    ["sse", "reasoning-stripped", 1, 3],
+    ["sse", "compaction-stripped", 2, 4],
+    ["websocket", "compaction-stripped", 2, 4],
   ] as const)(
-    "%s logs the surfaced %s attempt after %i silent retries",
-    async (transport, attemptVariant, silentRetries) => {
+    "%s logs the surfaced %s attempt after %i silent retries, sent with %i input items",
+    async (transport, attemptVariant, silentRetries, inputItems) => {
       const logWarn = vi.fn();
       configureAiTransportHost({ logWarn });
       // Each encrypted-content rejection advances one silent retry; the last one surfaces.
@@ -855,7 +857,11 @@ describe("ChatGPT Responses cached transport", () => {
         requests = scripted.requests;
         vi.stubGlobal("fetch", networkGuard);
       }
-      const context = createReplayContext("mixed");
+      const replay = createReplayContext("mixed");
+      const context: Context = {
+        ...replay,
+        messages: [{ role: "user", content: "earlier turn", timestamp: 0 }, ...replay.messages],
+      };
 
       const result = await run(context, { ...baseOptions, transport });
 
@@ -864,11 +870,20 @@ describe("ChatGPT Responses cached transport", () => {
       expect(networkGuard).not.toHaveBeenCalled();
       const warnings = logWarn.mock.calls.filter(([subsystem]) => subsystem === "openai-transport");
       expect(warnings).toHaveLength(1);
+      // The counts describe the surfaced attempt as sent, after any strip, not the
+      // first attempt. WebSocket wraps the same body in a response.create frame.
+      const { type: frame, ...sent } = requireItem(requests, silentRetries);
+      expect(frame).toBe(transport === "websocket" ? "response.create" : undefined);
+      expect(sent.input).toHaveLength(inputItems);
       expect(warnings[0]?.[2]).toMatchObject({
         transport,
         requestTransport: transport,
         attemptVariant,
         silentRetries,
+        inputItems,
+        // A reasoning strip keeps the item and drops only its encrypted content.
+        reasoningItems: 1,
+        requestBytes: Buffer.byteLength(JSON.stringify(sent)),
       });
       const output = JSON.stringify(logWarn.mock.calls);
       for (const content of [REASONING_CIPHERTEXT, COMPACTION_CIPHERTEXT, FULL_HISTORY_PREFIX]) {
