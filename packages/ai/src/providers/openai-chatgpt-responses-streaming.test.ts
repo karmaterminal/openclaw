@@ -642,30 +642,47 @@ describe("OpenAI ChatGPT Responses inference streaming", () => {
     }
   });
 
-  it("still ends the stream when a hook-built request cannot serialize", async () => {
+  it.each([
+    {
+      shape: "an unserializable body",
+      onPayload: (body: object) => {
+        const circular: Record<string, unknown> = { ...body };
+        circular.self = circular;
+        return circular;
+      },
+      sent: 0,
+      failureKind: "transport",
+    },
+    {
+      shape: "a string input",
+      onPayload: (body: object) => ({ ...body, input: "synthetic string input" }),
+      sent: 1,
+      failureKind: "provider-failure",
+    },
+  ])("still ends the stream when a hook returns $shape", async (row) => {
     const logs = recordTransportLogs();
-    const fetchMock = vi.fn<typeof fetch>();
+    const fetchMock = vi.fn<typeof fetch>(
+      async () => new Response(JSON.stringify({ detail: echo }), { status: 400 }),
+    );
     vi.stubGlobal("fetch", fetchMock);
-    const onPayload = (body: unknown) => {
-      const circular: Record<string, unknown> = { ...(body as object) };
-      circular.self = circular;
-      return circular;
-    };
 
     const result = await streamOpenAICodexResponses(model, context, {
       ...sseOptions,
-      onPayload,
+      onPayload: (body) => row.onPayload(body as object),
     }).result();
 
     expect(result.stopReason).toBe("error");
-    expect(fetchMock).not.toHaveBeenCalled();
-    // Serialization failed, so the byte count is the one field left out.
-    const { requestBytes: _requestBytes, ...logged } = transportMetadata("error", "sse");
-    expect(transportWarning(logs.logWarn)).toEqual({
-      ...logged,
+    expect(fetchMock).toHaveBeenCalledTimes(row.sent);
+    const logged = transportWarning(logs.logWarn);
+    expect(logged).toMatchObject({
       requestTransport: "sse",
-      failureKind: "transport",
+      attemptVariant: "initial",
+      silentRetries: 0,
+      failureKind: row.failureKind,
     });
+    // The off-shape body is logged without counts.
+    expect(logged).not.toHaveProperty("inputItems");
+    expect(logged).not.toHaveProperty("requestBytes");
   });
 
   it("preserves failed response identity and misalignment details over WebSocket", async () => {

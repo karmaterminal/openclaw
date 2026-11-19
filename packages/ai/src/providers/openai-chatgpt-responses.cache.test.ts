@@ -878,6 +878,30 @@ describe("ChatGPT Responses cached transport", () => {
     },
   );
 
+  it("auto logs the SSE fallback attempt with the WebSocket's silent retry", async () => {
+    const logWarn = vi.fn();
+    configureAiTransportHost({ logWarn });
+    const scripted = installScriptedWebSocket([
+      { events: [invalidEncryptedEvent()] },
+      { beforeEvents: (socket) => socket.dispatchEvent(new Event("error")) },
+    ]);
+    const sseRequests = installSseResponses([typeOnlyErrorResponse("unsupported_parameter")]);
+
+    const result = await run(createReplayContext("mixed"), { ...baseOptions, transport: "auto" });
+
+    expect(result.stopReason).toBe("error");
+    expect([scripted.requests.length, sseRequests.length]).toEqual([2, 1]);
+    const warnings = logWarn.mock.calls.filter(([subsystem]) => subsystem === "openai-transport");
+    expect(warnings.map(([, , data]) => data)).toMatchObject([
+      {
+        transport: "auto",
+        requestTransport: "sse",
+        attemptVariant: "reasoning-stripped",
+        silentRetries: 1,
+      },
+    ]);
+  });
+
   it("WebSocket does not retry encrypted rejection after response.created", async () => {
     const afterStart = installScriptedWebSocket([
       {

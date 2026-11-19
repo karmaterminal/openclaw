@@ -337,9 +337,11 @@ HTTP 5xx bodies get none of these labels.
 Every failed OpenAI ChatGPT Responses turn also logs
 `ChatGPT Responses stream terminated` under `openai-transport`. It carries the
 configured `transport`, `elapsedMs`, `stopReason`, and a fixed `failureKind`.
-When a request attempt was built, it adds fields about the attempt in flight
-when the failure surfaced. These fields are labels and counts only. They carry
-no text, item IDs, URLs, or image data.
+When a request attempt was built, it adds fields about the current attempt
+when the failure surfaced, even if that attempt failed before it reached the
+provider. These fields are labels and counts only. They carry no text, item
+IDs, URLs, or image data. If a payload hook returned a body that cannot be
+read, the counts are left out.
 
 - `requestTransport`: `sse` or `websocket`, the transport that attempt used.
 - `attemptVariant`: `initial`, `reasoning-stripped`, or `compaction-stripped`.
