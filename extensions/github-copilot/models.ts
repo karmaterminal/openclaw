@@ -18,6 +18,7 @@ import {
   normalizeOptionalLowercaseString,
 } from "openclaw/plugin-sdk/string-coerce-runtime";
 import {
+  COPILOT_MAX_PROMPT_IMAGES_PARAM,
   resolveCopilotModelCompat,
   resolveCopilotThinkingLevelMap,
   resolveCopilotTransportApi,
@@ -94,6 +95,9 @@ type CopilotApiModelEntry = {
       max_context_window_tokens?: number;
       max_output_tokens?: number;
       max_prompt_tokens?: number;
+      vision?: {
+        max_prompt_images?: number;
+      };
     };
     supports?: {
       vision?: boolean;
@@ -281,6 +285,10 @@ function mapCopilotApiModelToDefinition(
     : false;
   const supportsVision = supports?.vision === true;
   const input: CopilotCatalogModel["input"] = supportsVision ? ["text", "image"] : ["text"];
+  // The request wrapper enforces this cap; replayed history re-sends every earlier image.
+  const maxPromptImages = supportsVision
+    ? asPositiveSafeInteger(limits?.vision?.max_prompt_images)
+    : undefined;
 
   const nativeContextWindow = asPositiveSafeInteger(limits?.max_context_window_tokens);
   // Catalogs retain provider facts; runtime construction supplies an estimate for omissions.
@@ -308,6 +316,10 @@ function mapCopilotApiModelToDefinition(
       : undefined;
   const thinkingLevelMap = resolveCopilotThinkingLevelMap(id, compat, api, params);
   const family = resolveCopilotModelFamily(entry, id);
+  const definitionParams =
+    maxPromptImages === undefined
+      ? params
+      : { ...params, [COPILOT_MAX_PROMPT_IMAGES_PARAM]: maxPromptImages };
 
   const definition: CopilotCatalogModel = {
     id,
@@ -322,7 +334,7 @@ function mapCopilotApiModelToDefinition(
     maxTokens,
     ...(thinkingLevelMap ? { thinkingLevelMap } : {}),
     ...(compat ? { compat } : {}),
-    ...(params ? { params } : {}),
+    ...(definitionParams ? { params: definitionParams } : {}),
   };
   copilotModelSelectionMetadata.set(definition, {
     category: normalizeOptionalLowercaseString(entry.model_picker_category),

@@ -5,8 +5,12 @@ import {
   projectCopilotRequestFacts,
   wrapProviderPayloadHook,
 } from "openclaw/plugin-sdk/provider-stream-shared";
-import { asOptionalObjectRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
+import {
+  asOptionalObjectRecord,
+  asPositiveSafeInteger,
+} from "openclaw/plugin-sdk/string-coerce-runtime";
 import { sanitizeCopilotReplayResponsePayload } from "./connection-bound-ids.js";
+import { COPILOT_MAX_PROMPT_IMAGES_PARAM } from "./model-metadata.js";
 import { stripCopilotAssistantThinkingMessages } from "./replay-policy.js";
 import { buildCopilotRuntimeHeaders } from "./runtime-identity.js";
 
@@ -111,6 +115,56 @@ function patchCopilotAnthropicPayload(payload: unknown): void {
   applyAnthropicEphemeralCacheControlMarkers(record);
 }
 
+// Image part type on each Copilot wire, and the text part that can stand in its place.
+const COPILOT_IMAGE_TEXT_TYPES = new Map([
+  ["input_image", "input_text"], // Responses message content and function_call_output output
+  ["image_url", "text"], // Chat Completions
+  ["image", "text"], // Anthropic Messages, including tool_result content
+]);
+
+// Copilot lists a per-model cap on images in one prompt, and replay re-sends every
+// earlier image. Keep the first images in wire order and give the rest a fixed notice,
+// so appending a turn never changes earlier request bytes. Once the cap is reached,
+// newer images stay omitted until compaction or a new session drops older ones (#1565).
+function capCopilotPromptImages(payload: unknown, maxImages: number): void {
+  const record = asOptionalObjectRecord(payload);
+  const items = Array.isArray(record?.input) ? record.input : record?.messages;
+  if (!Array.isArray(items)) {
+    return;
+  }
+  const notice = `[image omitted: GitHub Copilot accepts at most ${maxImages} images per request]`;
+  let seen = 0;
+  const capParts = (owner: Record<string, unknown>, key: string): void => {
+    const parts = owner[key];
+    if (!Array.isArray(parts)) {
+      return;
+    }
+    let capped: unknown[] | undefined;
+    parts.forEach((part, index) => {
+      const block = asOptionalObjectRecord(part);
+      if (block?.type === "tool_result") {
+        capParts(block, "content");
+        return;
+      }
+      const textType =
+        typeof block?.type === "string" ? COPILOT_IMAGE_TEXT_TYPES.get(block.type) : undefined;
+      if (textType && ++seen > maxImages) {
+        (capped ??= [...parts])[index] = { type: textType, text: notice };
+      }
+    });
+    if (capped) {
+      owner[key] = capped;
+    }
+  };
+  for (const item of items) {
+    const message = asOptionalObjectRecord(item);
+    if (message) {
+      capParts(message, "content");
+      capParts(message, "output");
+    }
+  }
+}
+
 /** Direct completions skip the agent wrapper but still need Copilot's request identity. */
 export function wrapCopilotSimpleCompletionStream(
   ctx: ProviderWrapStreamFnContext,
@@ -144,11 +198,20 @@ export function wrapCopilotProviderStream(ctx: ProviderWrapStreamFnContext): Str
     const facts = projectCopilotRequestFacts(context.messages, "nested");
     const anthropic = model.api === "anthropic-messages";
     const originalOnPayload = options?.onPayload;
-    const patchPayload = anthropic
+    const patchApiPayload = anthropic
       ? patchCopilotAnthropicPayload
       : model.api === "openai-responses"
         ? sanitizeCopilotReplayResponsePayload
         : undefined;
+    const maxImages = asPositiveSafeInteger(model.params?.[COPILOT_MAX_PROMPT_IMAGES_PARAM]);
+    const patchPayload =
+      maxImages === undefined
+        ? patchApiPayload
+        : (payload: unknown) => {
+            // Cap first: Anthropic cache markers belong on the blocks actually sent.
+            capCopilotPromptImages(payload, maxImages);
+            patchApiPayload?.(payload);
+          };
     return stream(model, context, {
       ...options,
       headers: buildCopilotRuntimeHeaders({

@@ -8,6 +8,8 @@ type CopilotRuntimeApi = "anthropic-messages" | "openai-completions" | "openai-r
 // Provider-owned general-purpose preference. Setup verifies it against the
 // authenticated live catalog instead of assuming every account can use it.
 export const DEFAULT_COPILOT_MODEL = "github-copilot/claude-sonnet-5";
+/** Catalog row param carrying the listing's `limits.vision.max_prompt_images`. */
+export const COPILOT_MAX_PROMPT_IMAGES_PARAM = "copilotMaxPromptImages";
 
 const COPILOT_CHAT_COMPLETIONS_COMPAT: ModelDefinitionConfig["compat"] = {
   supportsStore: false,
