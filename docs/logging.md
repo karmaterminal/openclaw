@@ -353,6 +353,10 @@ read, the counts are left out.
 - `reasoningItems`: the number of replayed reasoning items. A
   `reasoning-stripped` attempt keeps these items but drops their encrypted
   content.
+- `encryptedReasoningItems`: how many of those reasoning items still carried
+  encrypted content in the attempt as sent. It drops to `0` once a retry
+  strips encrypted reasoning, while `reasoningItems` stays the same. Only the
+  count is logged, never the encrypted content, its length, or a hash of it.
 - `turnImages`: `input_image` parts from the last user message to the end of
   the input, which includes images returned by tools during the current turn.
 - `historyImages`: `input_image` parts across the whole input, including

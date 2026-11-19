@@ -39,20 +39,26 @@ function countInputImages(parts: unknown): number {
     : 0;
 }
 
-/** Counts that describe a request body: never item ids, text, URLs or image data. */
+/** Counts that describe a request body: never item ids, text, URLs, image data or ciphertext. */
 function describeRequestShape(body: RequestBody) {
   try {
     const input = body.input ?? [];
     // The current user turn starts at its user message; later tool outputs belong to it.
     const turnStart = input.findLastIndex((item) => isRecord(item) && item.role === "user");
     let reasoningItems = 0;
+    let encryptedReasoningItems = 0;
     let turnImages = 0;
     let historyImages = 0;
     for (const [index, item] of input.entries()) {
       if (!isRecord(item)) {
         continue;
       }
-      reasoningItems += item.type === "reasoning" ? 1 : 0;
+      if (item.type === "reasoning") {
+        reasoningItems += 1;
+        // Only whether ciphertext was sent: never its value, length or a hash of it.
+        const ciphertext = item.encrypted_content;
+        encryptedReasoningItems += typeof ciphertext === "string" && ciphertext !== "" ? 1 : 0;
+      }
       // User images are message content parts; tool images are function_call_output parts.
       const images = countInputImages(item.content) + countInputImages(item.output);
       historyImages += images;
@@ -61,6 +67,7 @@ function describeRequestShape(body: RequestBody) {
     return {
       inputItems: input.length,
       reasoningItems,
+      encryptedReasoningItems,
       turnImages,
       historyImages,
       requestBytes: new TextEncoder().encode(JSON.stringify(body)).byteLength,

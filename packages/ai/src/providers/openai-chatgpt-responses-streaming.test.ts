@@ -56,6 +56,7 @@ function transportMetadata(stopReason: "error" | "aborted", transport: string) {
     silentRetries: 0,
     inputItems: 1,
     reasoningItems: 0,
+    encryptedReasoningItems: 0,
     turnImages: 0,
     historyImages: 0,
     requestBytes: expect.any(Number),
@@ -617,14 +618,16 @@ describe("OpenAI ChatGPT Responses inference streaming", () => {
     expect(requests.map(({ host }) => host)).toEqual(["chatgpt.test"]);
     expect(socketAttempts).not.toHaveBeenCalled();
     const wire = requests[0]?.body ?? "";
-    // Fixture check: all 15 images and both replayed reasoning items reached the request.
+    // Fixture check: all 15 images and both encrypted reasoning items reached the request.
     expect(wire.match(/"type":"input_image"/g)).toHaveLength(15);
     expect(wire.match(/"type":"reasoning"/g)).toHaveLength(2);
+    expect(wire.match(/"encrypted_content":"SHAPE-CIPHERTEXT-\d"/g)).toHaveLength(2);
     expect(transportWarning(logs.logWarn)).toEqual({
       ...transportMetadata("error", "sse"),
       requestTransport: "sse",
       inputItems: 9,
       reasoningItems: 2,
+      encryptedReasoningItems: 2,
       turnImages: 6,
       historyImages: 15,
       requestBytes: Buffer.byteLength(wire),

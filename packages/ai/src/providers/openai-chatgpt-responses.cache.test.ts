@@ -826,16 +826,16 @@ describe("ChatGPT Responses cached transport", () => {
     expect(hasInputType(requireItem(scripted.requests, 3), "compaction")).toBe(true);
   });
 
-  // The compacted request sends [compaction, reasoning, user]; the rebuilt full
-  // history replaces the compaction item with both earlier user turns.
+  // The compacted request sends [compaction, reasoning, user]; the rebuilt full history replaces
+  // the compaction item with both earlier user turns and keeps the earlier reasoning strip.
   it.each([
-    ["sse", "initial", 0, 3],
-    ["sse", "reasoning-stripped", 1, 3],
-    ["sse", "compaction-stripped", 2, 4],
-    ["websocket", "compaction-stripped", 2, 4],
+    ["sse", "initial", 0, 3, 1],
+    ["sse", "reasoning-stripped", 1, 3, 0],
+    ["sse", "compaction-stripped", 2, 4, 0],
+    ["websocket", "compaction-stripped", 2, 4, 0],
   ] as const)(
-    "%s logs the surfaced %s attempt after %i silent retries, sent with %i input items",
-    async (transport, attemptVariant, silentRetries, inputItems) => {
+    "%s logs the surfaced %s attempt after %i silent retries, sent with %i input items, %i encrypted",
+    async (transport, attemptVariant, silentRetries, inputItems, encryptedReasoningItems) => {
       const logWarn = vi.fn();
       configureAiTransportHost({ logWarn });
       // Each encrypted-content rejection advances one silent retry; the last one surfaces.
@@ -872,6 +872,7 @@ describe("ChatGPT Responses cached transport", () => {
       const { type: frame, ...sent } = requireItem(requests, silentRetries);
       expect(frame).toBe(transport === "websocket" ? "response.create" : undefined);
       expect(sent.input).toHaveLength(inputItems);
+      expect(containsInputText(sent, REASONING_CIPHERTEXT)).toBe(encryptedReasoningItems > 0);
       expect(warnings[0]?.[2]).toMatchObject({
         transport,
         requestTransport: transport,
@@ -880,6 +881,7 @@ describe("ChatGPT Responses cached transport", () => {
         inputItems,
         // A reasoning strip keeps the item and drops only its encrypted content.
         reasoningItems: 1,
+        encryptedReasoningItems,
         requestBytes: Buffer.byteLength(JSON.stringify(sent)),
       });
       const output = JSON.stringify(logWarn.mock.calls);
