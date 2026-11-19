@@ -341,7 +341,7 @@ When a request attempt was built, it adds fields about the current attempt
 when the failure surfaced, even if that attempt failed before it reached the
 provider. These fields are labels and counts only. They carry no text, item
 IDs, URLs, or image data. If a payload hook returned a body that cannot be
-read, the counts are left out.
+read, `requestScope` and the counts are left out.
 
 - `requestTransport`: `sse` or `websocket`, the transport that attempt used.
 - `attemptVariant`: `initial`, `reasoning-stripped`, or `compaction-stripped`.

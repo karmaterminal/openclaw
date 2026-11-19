@@ -684,7 +684,8 @@ describe("OpenAI ChatGPT Responses inference streaming", () => {
       silentRetries: 0,
       failureKind: row.failureKind,
     });
-    // The off-shape body is logged without counts.
+    // The off-shape body is logged without scope or counts.
+    expect(logged).not.toHaveProperty("requestScope");
     expect(logged).not.toHaveProperty("inputItems");
     expect(logged).not.toHaveProperty("requestBytes");
   });

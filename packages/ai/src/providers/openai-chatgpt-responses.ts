@@ -367,7 +367,6 @@ export const streamOpenAICodexResponses: StreamFunction<
             transport: "websocket",
             attemptVariant: activeAttempt.kind,
             request: activeAttempt.request,
-            requestScope: "full",
           };
           const dispatch: { request?: RequestBody } = {};
           websocketStarted = false;
@@ -396,7 +395,6 @@ export const streamOpenAICodexResponses: StreamFunction<
                   transport: "websocket",
                   attemptVariant: activeAttempt.kind,
                   request,
-                  requestScope: request.previous_response_id ? "continuation-suffix" : "full",
                 };
               },
               options?.signal,
@@ -479,7 +477,6 @@ export const streamOpenAICodexResponses: StreamFunction<
           transport: "sse",
           attemptVariant: activeAttempt.kind,
           request: activeAttempt.request,
-          requestScope: "full",
         };
         response = undefined;
         const sseHeaders = buildSSEHeaders(

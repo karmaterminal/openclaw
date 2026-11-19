@@ -13,8 +13,6 @@ export type CodexActiveRequest = {
   attemptVariant: ResponsesEncryptedContentAttempt<RequestBody>["kind"];
   /** The body dispatched, or the attempt's full request when it failed before dispatch. */
   request: RequestBody;
-  /** A WebSocket continuation dispatches only the input after the socket's last response. */
-  requestScope: "full" | "continuation-suffix";
 };
 
 type StreamFailureKind = "timeout" | "caller-abort" | "provider-failure" | "transport";
@@ -69,6 +67,9 @@ function describeRequestShape(body: RequestBody) {
       turnImages += turnStart !== -1 && index >= turnStart ? images : 0;
     }
     return {
+      // Only a cached WebSocket continuation carries previous_response_id; it sends just
+      // the input after that response, so its counts never describe the whole conversation.
+      requestScope: body.previous_response_id ? "continuation-suffix" : "full",
       inputItems: input.length,
       reasoningItems,
       encryptedReasoningItems,
@@ -79,7 +80,7 @@ function describeRequestShape(body: RequestBody) {
   } catch {
     // A payload hook can return a body off the wire shape (unserializable, or a
     // non-array input). This log runs in the stream's terminal catch, which must
-    // still end the stream, so such a request is logged without counts.
+    // still end the stream, so such a request is logged without scope or counts.
     return {};
   }
 }
@@ -111,14 +112,11 @@ export function logCodexStreamFailure(params: {
     elapsedMs: Math.max(0, Date.now() - params.startedAt),
     stopReason: params.stopReason,
     failureKind: classifyStreamFailure(params.error, params.signal, params.requestTimedOut),
-    // The counts describe the dispatched body: a WebSocket continuation's suffix is
-    // labeled, so it is never read as the whole conversation.
     ...(activeRequest
       ? {
           requestTransport: activeRequest.transport,
           attemptVariant: activeRequest.attemptVariant,
           silentRetries: params.silentRetries,
-          requestScope: activeRequest.requestScope,
           ...describeRequestShape(activeRequest.request),
         }
       : {}),
