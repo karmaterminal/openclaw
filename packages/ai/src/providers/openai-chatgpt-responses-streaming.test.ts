@@ -54,6 +54,7 @@ function transportMetadata(stopReason: "error" | "aborted", transport: string) {
     requestTransport: "websocket",
     attemptVariant: "initial",
     silentRetries: 0,
+    requestScope: "full",
     inputItems: 1,
     reasoningItems: 0,
     encryptedReasoningItems: 0,

@@ -363,7 +363,12 @@ export const streamOpenAICodexResponses: StreamFunction<
         let retriedWebSocketRejection = false;
         while (true) {
           const activeAttempt = semanticAttempt;
-          activeRequest = { transport: "websocket", attempt: activeAttempt };
+          activeRequest = {
+            transport: "websocket",
+            attemptVariant: activeAttempt.kind,
+            request: activeAttempt.request,
+            requestScope: "full",
+          };
           const dispatch: { request?: RequestBody } = {};
           websocketStarted = false;
           try {
@@ -386,6 +391,13 @@ export const streamOpenAICodexResponses: StreamFunction<
               activeAttempt.kind,
               (request) => {
                 dispatch.request = request;
+                // A cached continuation dispatches only the suffix; the log counts that body.
+                activeRequest = {
+                  transport: "websocket",
+                  attemptVariant: activeAttempt.kind,
+                  request,
+                  requestScope: request.previous_response_id ? "continuation-suffix" : "full",
+                };
               },
               options?.signal,
             );
@@ -463,7 +475,12 @@ export const streamOpenAICodexResponses: StreamFunction<
       let response: Response | undefined;
       while (true) {
         const activeAttempt = semanticAttempt;
-        activeRequest = { transport: "sse", attempt: activeAttempt };
+        activeRequest = {
+          transport: "sse",
+          attemptVariant: activeAttempt.kind,
+          request: activeAttempt.request,
+          requestScope: "full",
+        };
         response = undefined;
         const sseHeaders = buildSSEHeaders(
           modelHeaders,

@@ -10,7 +10,11 @@ import type { RequestBody } from "./openai-chatgpt-responses-websocket-state.js"
 /** The request attempt in flight when a ChatGPT Responses failure surfaces. */
 export type CodexActiveRequest = {
   transport: "sse" | "websocket";
-  attempt: ResponsesEncryptedContentAttempt<RequestBody>;
+  attemptVariant: ResponsesEncryptedContentAttempt<RequestBody>["kind"];
+  /** The body dispatched, or the attempt's full request when it failed before dispatch. */
+  request: RequestBody;
+  /** A WebSocket continuation dispatches only the input after the socket's last response. */
+  requestScope: "full" | "continuation-suffix";
 };
 
 type StreamFailureKind = "timeout" | "caller-abort" | "provider-failure" | "transport";
@@ -82,9 +86,10 @@ function describeRequestShape(body: RequestBody) {
 
 /**
  * Log a terminated stream with locally-derived facts only: timing, a fixed failure
- * category, and the variant and counts of the request this side built. No projected
- * provider field (message, body, code, type, name) is logged — all of them are
- * provider-controlled text that can carry prompt- or response-derived content.
+ * category, and the variant, scope and counts of the body this side dispatched (or
+ * built, if the failure came first). No projected provider field (message, body, code,
+ * type, name) is logged — all of them are provider-controlled text that can carry
+ * prompt- or response-derived content.
  */
 export function logCodexStreamFailure(params: {
   model: Model<"openai-chatgpt-responses">;
@@ -106,13 +111,15 @@ export function logCodexStreamFailure(params: {
     elapsedMs: Math.max(0, Date.now() - params.startedAt),
     stopReason: params.stopReason,
     failureKind: classifyStreamFailure(params.error, params.signal, params.requestTimedOut),
-    // A WebSocket continuation sends only the new suffix; the counts describe the full attempt.
+    // The counts describe the dispatched body: a WebSocket continuation's suffix is
+    // labeled, so it is never read as the whole conversation.
     ...(activeRequest
       ? {
           requestTransport: activeRequest.transport,
-          attemptVariant: activeRequest.attempt.kind,
+          attemptVariant: activeRequest.attemptVariant,
           silentRetries: params.silentRetries,
-          ...describeRequestShape(activeRequest.attempt.request),
+          requestScope: activeRequest.requestScope,
+          ...describeRequestShape(activeRequest.request),
         }
       : {}),
   });
