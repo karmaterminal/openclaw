@@ -1,0 +1,29 @@
+# ctl ref=base sha=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f file=ui/src/test-helpers/new-session-page-opener.node.test.ts run=1 mode=node26121+PLAYWRIGHT_BROWSERS_PATH start=2026-11-20T17:01:41Z
+# files: 1
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-m0zO1M/home TMPDIR=/tmp/oc-classify-m0zO1M/tmp PLAYWRIGHT_BROWSERS_PATH=/home/figs/.cache/ms-playwright
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.ui.config.ts
+include-file: /tmp/oc-classify-m0zO1M/tmp/oc-focused.2Uz4wM/include.json
+include-file-contents:
+  [
+    "ui/src/test-helpers/new-session-page-opener.node.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-m0zO1M/tmp/oc-focused.2Uz4wM/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.ui.config.ts --maxWorkers=1 ui/src/test-helpers/new-session-page-opener.node.test.ts
+logs: /tmp/oc-classify-m0zO1M/tmp/oc-focused.2Uz4wM
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - JSON import "./control-ui-i18n-config.json" without import attributes (scripts/lib/control-ui-i18n-sync-plan.ts:2:41). Add `with { type: 'json' }`
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-41bdde21
+
+ ✓ |ui| ui/src/test-helpers/new-session-page-opener.node.test.ts > captures New Session failures before closing their contexts and starting the next test 2767ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  09:01:43
+   Duration  4.73s (tests 63%, worker 16%, environment 14%, transform 4%, import 3%, setup 1%)
+
+receipt head=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f config=test/vitest/vitest.ui.config.ts files=ui/src/test-helpers/new-session-page-opener.node.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 1 passed (1)]
+# exit=0

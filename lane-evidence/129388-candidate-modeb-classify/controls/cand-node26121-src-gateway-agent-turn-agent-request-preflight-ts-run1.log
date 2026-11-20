@@ -1,0 +1,116 @@
+# ctl ref=cand sha=9476c7aaf79f8dc86d0222d2b708524a37711418 file=src/gateway/agent-turn/agent-request-preflight.test.ts run=1 mode=node26121 start=2026-11-20T16:44:58Z
+# files: 1
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-MEhvjd/home TMPDIR=/tmp/oc-classify-MEhvjd/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.gateway.config.ts
+include-file: /tmp/oc-classify-MEhvjd/tmp/oc-focused.tHSrzM/include.json
+include-file-contents:
+  [
+    "src/gateway/agent-turn/agent-request-preflight.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-MEhvjd/tmp/oc-focused.tHSrzM/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.gateway.config.ts --maxWorkers=1 src/gateway/agent-turn/agent-request-preflight.test.ts
+logs: /tmp/oc-classify-MEhvjd/tmp/oc-focused.tHSrzM
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+[vitest-workers] local cache hit after 2031ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 014f26bd3864 in 2101ms (20521 inputs, 25697 outputs)
+[vitest] still running with no output for 30000ms.
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent database admission preflight > reports pending admission with the appropriate retry contract 23ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent database admission preflight > reports failed admission with the appropriate retry contract 3ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent database admission preflight > reports mismatch admission with the appropriate retry contract 4ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > carries the admitted scheduler group and cap without trusting saved launch settings 12ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects malformed or non-object output schema {"type":"array","items":{"type":"string"}} 13ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects malformed or non-object output schema {"type":"object","properties":"invalid"} 4ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects disabled collector requests 4ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects unregistered collector requests 3ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects non-backend collector requests 3ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects declared-backend collector requests 2ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects ordinary turn collector requests 2ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects mismatched launch collector requests 3ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects terminal with a pending launch collector requests 3ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > keeps a retained collector session reserved from its persisted marker 2ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > allows exact disabled collector replay 4ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > allows exact provisional collector replay 6ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > allows exact completed collector replay 3ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > keeps completed collector sessions closed 2ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > uses the effective requester override when its session key names another agent 3ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > checks explicit bare-key ownership (ops) 2ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > checks explicit bare-key ownership (undefined) 2ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request reserved continuation run ids > rejects a continuation idempotency key from a cli caller 2ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request reserved continuation run ids > rejects a continuation idempotency key from a anonymous caller 3ms
+ × |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request reserved continuation run ids > admits a continuation key from a backend caller as the run id verbatim 4ms
+   → expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      false,
+      undefined,
+      Object {
+        "code": "INVALID_REQUEST",
+        "message": "continuation run ids are reserved for backend callers.",
+      },
+    ]
+
+
+Number of calls: 1
+
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request reserved continuation run ids > leaves ordinary keys open to non-backend callers 2ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > reserves exec completion for backend callers 9ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > reserves restart for backend callers 3ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > reserves progress refresh for backend callers 3ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > reserves prompt suppression for backend callers 3ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > reserves internal session effects for backend callers 2ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > reserves expected session for backend callers 2ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > reserves exec approval follow-up key for backend callers 3ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request reserved continuation run ids > admits a continuation key from a backend caller as the run id verbatim
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      false,
+      undefined,
+      Object {
+        "code": "INVALID_REQUEST",
+        "message": "continuation run ids are reserved for backend callers.",
+      },
+    ]
+
+
+Number of calls: 1
+
+ ❯ src/gateway/agent-turn/agent-request-preflight.test.ts:375:25
+    373|     );
+    374|
+    375|     expect(respond).not.toHaveBeenCalled();
+       |                         ^
+    376|     expect(result?.runId).toBe("continuation:record-1:1");
+    377|     expect(result?.agentDedupeKeys).toEqual(["agent:continuation:recor…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 31 passed (32)
+   Start at  08:45:00
+   Duration  37.62s (transform 86%, import 10%, worker 3%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=9476c7aaf79f8dc86d0222d2b708524a37711418 config=test/vitest/vitest.gateway.config.ts files=src/gateway/agent-turn/agent-request-preflight.test.ts
+failing-tests:
+ × |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request reserved continuation run ids > admits a continuation key from a backend caller as the run id verbatim 4ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 31 passed (32)]
+# exit=1

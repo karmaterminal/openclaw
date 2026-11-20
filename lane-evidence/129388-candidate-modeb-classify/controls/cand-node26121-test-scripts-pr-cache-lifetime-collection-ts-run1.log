@@ -1,0 +1,87 @@
+# ctl ref=cand sha=9476c7aaf79f8dc86d0222d2b708524a37711418 file=test/scripts/pr-cache-lifetime-collection.test.ts run=1 mode=node26121 start=2026-11-20T16:46:51Z
+# files: 1
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-q6xnlH/home TMPDIR=/tmp/oc-classify-q6xnlH/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.tooling.config.ts
+include-file: /tmp/oc-classify-q6xnlH/tmp/oc-focused.qPCw4g/include.json
+include-file-contents:
+  [
+    "test/scripts/pr-cache-lifetime-collection.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-q6xnlH/tmp/oc-focused.qPCw4g/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.tooling.config.ts --maxWorkers=1 test/scripts/pr-cache-lifetime-collection.test.ts
+logs: /tmp/oc-classify-q6xnlH/tmp/oc-focused.qPCw4g
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+ ✓ |tooling| test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > defers shared collection without bypassing operation ownership 2382ms
+stdout | test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > collects or safely retains an operation interrupted after lifetime intent
+Restricted procfs; asserting retained cache state: [Errno 13] Permission denied: '/proc/1/cwd'
+
+stdout | test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > collects or safely retains an operation interrupted after lifetime intent
+Restricted procfs; asserting retained cache state: [Errno 13] Permission denied: '/proc/1/cwd'
+
+ ✓ |tooling| test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > keeps a shared operation lease until every nested anchor is collected 1169ms
+stdout | test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > collects or safely retains an operation interrupted after lifetime file
+Restricted procfs; asserting retained cache state: [Errno 13] Permission denied: '/proc/1/cwd'
+
+stdout | test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > collects or safely retains an operation interrupted after lifetime file
+Restricted procfs; asserting retained cache state: [Errno 13] Permission denied: '/proc/1/cwd'
+
+ ✓ |tooling| test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > collects or safely retains an operation interrupted after lifetime intent 343ms
+ ✓ |tooling| test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > collects or safely retains an operation interrupted after lifetime file 267ms
+ ✓ |tooling| test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > collects or safely retains an operation interrupted after lifetime ready 442ms
+ ✓ |tooling| test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > protects a lazy hold reader after its creator is killed until the last child exits 673ms
+ ✓ |tooling| test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > protects a lazy zero-hold reader after its creator is killed until the last child exits 577ms
+ ✓ |tooling| test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > reclaims a SIGKILLed operation after install 536ms
+ ✓ |tooling| test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > reclaims a SIGKILLed operation after hold 540ms
+ ✓ |tooling| test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > recovers a collector killed after anchor removal but before settlement commits 619ms
+ ✓ |tooling| test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > recovers the ledger-first stage after publication renames it but its commit fails 564ms
+stdout | test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > settles old legacy holds only with a complete process census
+Restricted procfs; asserting retained cache state: [Errno 13] Permission denied: '/proc/1/cwd'
+
+stdout | test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > settles old legacy holds only with a complete process census
+Restricted procfs; asserting retained cache state: [Errno 13] Permission denied: '/proc/1/cwd'
+
+ ✓ |tooling| test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > replays committed retirement intent after filesystem detach fails 1203ms
+stdout | test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > bounds orphan collection and retains entries when the process census is restricted
+Restricted procfs; asserting retained cache state: [Errno 13] Permission denied: '/proc/1/cwd'
+
+stdout | test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > bounds orphan collection and retains entries when the process census is restricted
+Restricted procfs; asserting retained cache state: [Errno 13] Permission denied: '/proc/1/cwd'
+
+ ✓ |tooling| test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > settles old legacy holds only with a complete process census 495ms
+ ✓ |tooling| test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > bounds orphan collection and retains entries when the process census is restricted 252ms
+ ✓ |tooling| test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > verifies the bootstrap-native lease and process inspection contracts 104ms
+ ✓ |tooling| test/scripts/pr-cache-lifetime-collection.test.ts (15 tests) 10167ms
+   ✓ PR cache crash collection (15)
+     ✓ defers shared collection without bypassing operation ownership 2382ms
+     ✓ keeps a shared operation lease until every nested anchor is collected 1169ms
+     ✓ collects or safely retains an operation interrupted after lifetime intent 343ms
+     ✓ collects or safely retains an operation interrupted after lifetime ready 442ms
+     ✓ protects a lazy hold reader after its creator is killed until the last child exits 673ms
+     ✓ protects a lazy zero-hold reader after its creator is killed until the last child exits 577ms
+     ✓ reclaims a SIGKILLed operation after install 536ms
+     ✓ reclaims a SIGKILLed operation after hold 540ms
+     ✓ recovers a collector killed after anchor removal but before settlement commits 619ms
+     ✓ recovers the ledger-first stage after publication renames it but its commit fails 564ms
+     ✓ replays committed retirement intent after filesystem detach fails 1203ms
+     ✓ settles old legacy holds only with a complete process census 495ms
+
+ Test Files  1 passed (1)
+      Tests  15 passed (15)
+   Start at  08:46:52
+   Duration  11.13s (tests 94%, worker 5%, transform 1%)
+
+
+ Test Files  1 passed (1)
+      Tests  15 passed (15)
+   Start at  08:46:52
+   Duration  11.13s (tests 94%, worker 5%, transform 1%)
+
+receipt head=9476c7aaf79f8dc86d0222d2b708524a37711418 config=test/vitest/vitest.tooling.config.ts files=test/scripts/pr-cache-lifetime-collection.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 15 passed (15)]
+# exit=0

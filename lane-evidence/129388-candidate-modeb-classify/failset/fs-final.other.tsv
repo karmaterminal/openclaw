@@ -1,0 +1,4 @@
+batch	shard	kind	gate	detail
+openclaw-local-ci-batch-hosted-batch-012-9476c7aaf79f	compact-large-25	test	test shard (compact-large-25)	ui  ui/src/styles/background-invalidation.node.test.ts [ ui/src/styles/background-invalidation.node.test.ts ]
+openclaw-local-ci-batch-hosted-batch-012-9476c7aaf79f	compact-large-25	test	test shard (compact-large-25)	ui  ui/src/styles/incognito-shade.browser.test.ts [ ui/src/styles/incognito-shade.browser.test.ts ]
+openclaw-local-ci-batch-hosted-batch-013-9476c7aaf79f	compact-large-36	test	test shard (compact-large-36)	ui  ui/src/styles/session-row-tint.node.test.ts [ ui/src/styles/session-row-tint.node.test.ts ]

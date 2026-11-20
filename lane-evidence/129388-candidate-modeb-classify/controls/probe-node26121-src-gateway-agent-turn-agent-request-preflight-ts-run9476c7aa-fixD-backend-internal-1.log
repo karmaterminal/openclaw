@@ -1,0 +1,113 @@
+# ctl ref=probe sha=9476c7aaf79f8dc86d0222d2b708524a37711418 file=src/gateway/agent-turn/agent-request-preflight.test.ts run=9476c7aa-fixD-backend-internal-1 mode=node26121 start=2026-11-20T16:48:35Z
+# files: 1
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-0zP6vW/home TMPDIR=/tmp/oc-classify-0zP6vW/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.gateway.config.ts
+include-file: /tmp/oc-classify-0zP6vW/tmp/oc-focused.eqiYdB/include.json
+include-file-contents:
+  [
+    "src/gateway/agent-turn/agent-request-preflight.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-0zP6vW/tmp/oc-focused.eqiYdB/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.gateway.config.ts --maxWorkers=1 src/gateway/agent-turn/agent-request-preflight.test.ts
+logs: /tmp/oc-classify-0zP6vW/tmp/oc-focused.eqiYdB
+
+ RUN  v5.0.5 /home/figs/classify-129388/probe
+
+[vitest-workers] local cache miss after 3158ms
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js (48:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js:48:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m48 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js (11:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js:11:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m11 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js (6:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js:6:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m6 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js (9:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js:9:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m9 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js (12:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js:12:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m12 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+[vitest] still running with no output for 30000ms.
+[vitest-workers] prepared d95877d0c174 in 36394ms (20521 inputs, 25697 outputs)
+[vitest] still running with no output for 30000ms.
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent database admission preflight > reports pending admission with the appropriate retry contract 26ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent database admission preflight > reports failed admission with the appropriate retry contract 4ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent database admission preflight > reports mismatch admission with the appropriate retry contract 5ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > carries the admitted scheduler group and cap without trusting saved launch settings 12ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects malformed or non-object output schema {"type":"array","items":{"type":"string"}} 10ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects malformed or non-object output schema {"type":"object","properties":"invalid"} 4ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects disabled collector requests 5ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects unregistered collector requests 4ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects non-backend collector requests 6ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects declared-backend collector requests 5ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects ordinary turn collector requests 5ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects mismatched launch collector requests 6ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects terminal with a pending launch collector requests 6ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > keeps a retained collector session reserved from its persisted marker 6ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > allows exact disabled collector replay 8ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > allows exact provisional collector replay 6ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > allows exact completed collector replay 8ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > keeps completed collector sessions closed 5ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > uses the effective requester override when its session key names another agent 4ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > checks explicit bare-key ownership (ops) 4ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > checks explicit bare-key ownership (undefined) 5ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request reserved continuation run ids > rejects a continuation idempotency key from a cli caller 4ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request reserved continuation run ids > rejects a continuation idempotency key from a anonymous caller 3ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request reserved continuation run ids > admits a continuation key from a backend caller as the run id verbatim 10ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request reserved continuation run ids > leaves ordinary keys open to non-backend callers 2ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > reserves exec completion for backend callers 3ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > reserves restart for backend callers 2ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > reserves progress refresh for backend callers 2ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > reserves prompt suppression for backend callers 2ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > reserves internal session effects for backend callers 2ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > reserves expected session for backend callers 2ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > reserves exec approval follow-up key for backend callers 1ms
+
+ Test Files  1 passed (1)
+      Tests  32 passed (32)
+   Start at  08:48:38
+   Duration  75.60s (transform 93%, import 5%, worker 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=9476c7aaf79f8dc86d0222d2b708524a37711418 config=test/vitest/vitest.gateway.config.ts files=src/gateway/agent-turn/agent-request-preflight.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 32 passed (32)]
+# exit=0

@@ -1,0 +1,105 @@
+# ctl ref=cand sha=9476c7aaf79f8dc86d0222d2b708524a37711418 file=test/scripts/vitest-worker-shutdown.test.ts run=1 mode=node26121 start=2026-11-20T16:55:54Z
+# files: 1
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-LdxUNa/home TMPDIR=/tmp/oc-classify-LdxUNa/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.tooling.config.ts
+include-file: /tmp/oc-classify-LdxUNa/tmp/oc-focused.k6xhrP/include.json
+include-file-contents:
+  [
+    "test/scripts/vitest-worker-shutdown.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-LdxUNa/tmp/oc-focused.k6xhrP/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.tooling.config.ts --maxWorkers=1 test/scripts/vitest-worker-shutdown.test.ts
+logs: /tmp/oc-classify-LdxUNa/tmp/oc-focused.k6xhrP
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+[vitest-workers] local cache hit after 2105ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared bb58e5c3a061 in 2183ms (20521 inputs, 25697 outputs)
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins disposal work before honoring SIGINT 959ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins disposal work before honoring SIGTERM 945ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins disposal work before honoring SIGINT 1162ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins disposal work before honoring SIGTERM 1098ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins admission work before honoring SIGINT 1001ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins admission work before honoring SIGTERM 963ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins compilation work before honoring SIGINT 918ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins compilation work before honoring SIGTERM 922ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins compilation work before honoring SIGINT 1022ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins compilation work before honoring SIGTERM 1052ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins compilation work before honoring SIGINT 1374ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins compilation work before honoring SIGTERM 1363ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci-shared wrapper joins compilation work before honoring SIGINT 1296ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci-shared wrapper joins compilation work before honoring SIGTERM 1293ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins admission work before honoring SIGINT 1368ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins admission work before honoring SIGTERM 1406ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins disposal work before honoring SIGINT 1392ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins disposal work before honoring SIGTERM 1464ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci-disconnect wrapper joins admission work before honoring SIGTERM 1531ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins deletion work before honoring SIGINT 1456ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins deletion work before honoring SIGTERM 1522ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins deletion work before honoring SIGINT 935ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins deletion work before honoring SIGTERM 963ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins deletion work before honoring SIGINT 1023ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins deletion work before honoring SIGTERM 1065ms
+(node:2647) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+stderr | test/scripts/vitest-worker-shutdown.test.ts > rejects a live borrower when its owner closes during verification
+[vitest-workers] prepared 4d7111b005d7 in 5ms (3 inputs, 3 outputs)
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > rejects a live borrower when its owner closes during verification
+[vitest-workers] prepared 4d7111b005d7 in 5ms (3 inputs, 3 outputs)
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > rejects a live borrower when its owner closes during verification
+[vitest-workers] verifying completed generation before cleanup
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > rejects a live borrower when its owner closes during verification
+[vitest-workers] verifying completed generation before cleanup
+
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > rejects a live borrower when its owner closes during verification 181ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts (26 tests) 33248ms
+   ✓ direct wrapper joins disposal work before honoring SIGINT 959ms
+   ✓ direct wrapper joins disposal work before honoring SIGTERM 945ms
+   ✓ serial wrapper joins disposal work before honoring SIGINT 1162ms
+   ✓ serial wrapper joins disposal work before honoring SIGTERM 1098ms
+   ✓ direct wrapper joins admission work before honoring SIGINT 1001ms
+   ✓ direct wrapper joins admission work before honoring SIGTERM 963ms
+   ✓ direct wrapper joins compilation work before honoring SIGINT 918ms
+   ✓ direct wrapper joins compilation work before honoring SIGTERM 922ms
+   ✓ serial wrapper joins compilation work before honoring SIGINT 1022ms
+   ✓ serial wrapper joins compilation work before honoring SIGTERM 1052ms
+   ✓ ci wrapper joins compilation work before honoring SIGINT 1374ms
+   ✓ ci wrapper joins compilation work before honoring SIGTERM 1363ms
+   ✓ ci-shared wrapper joins compilation work before honoring SIGINT 1296ms
+   ✓ ci-shared wrapper joins compilation work before honoring SIGTERM 1293ms
+   ✓ ci wrapper joins admission work before honoring SIGINT 1368ms
+   ✓ ci wrapper joins admission work before honoring SIGTERM 1406ms
+   ✓ ci wrapper joins disposal work before honoring SIGINT 1392ms
+   ✓ ci wrapper joins disposal work before honoring SIGTERM 1464ms
+   ✓ ci-disconnect wrapper joins admission work before honoring SIGTERM 1531ms
+   ✓ ci wrapper joins deletion work before honoring SIGINT 1456ms
+   ✓ ci wrapper joins deletion work before honoring SIGTERM 1522ms
+   ✓ direct wrapper joins deletion work before honoring SIGINT 935ms
+   ✓ direct wrapper joins deletion work before honoring SIGTERM 963ms
+   ✓ serial wrapper joins deletion work before honoring SIGINT 1023ms
+   ✓ serial wrapper joins deletion work before honoring SIGTERM 1065ms
+
+ Test Files  1 passed (1)
+      Tests  26 passed (26)
+   Start at  08:55:56
+   Duration  37.78s (tests 89%, transform 9%, worker 1%, import 1%)
+
+
+ Test Files  1 passed (1)
+      Tests  26 passed (26)
+   Start at  08:55:56
+   Duration  37.79s (tests 89%, transform 9%, worker 1%, import 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=9476c7aaf79f8dc86d0222d2b708524a37711418 config=test/vitest/vitest.tooling.config.ts files=test/scripts/vitest-worker-shutdown.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 26 passed (26)]
+# exit=0

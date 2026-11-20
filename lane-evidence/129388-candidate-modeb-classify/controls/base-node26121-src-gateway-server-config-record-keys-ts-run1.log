@@ -1,0 +1,88 @@
+# ctl ref=base sha=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f file=src/gateway/server.config-record-keys.test.ts run=1 mode=node26121 start=2026-11-20T16:50:21Z
+# files: 1
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-Xsl77P/home TMPDIR=/tmp/oc-classify-Xsl77P/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.gateway-server.config.ts
+include-file: /tmp/oc-classify-Xsl77P/tmp/oc-focused.lRIWYb/include.json
+include-file-contents:
+  [
+    "src/gateway/server.config-record-keys.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-Xsl77P/tmp/oc-focused.lRIWYb/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.gateway-server.config.ts --maxWorkers=1 src/gateway/server.config-record-keys.test.ts
+logs: /tmp/oc-classify-Xsl77P/tmp/oc-focused.lRIWYb
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-41bdde21
+
+[vitest-workers] local cache hit after 2084ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared caf8d60ed675 in 2162ms (20344 inputs, 25418 outputs)
+[gateway] startup phase: gateway.server-start-import starting total=17797.9ms
+[gateway] startup phase: gateway.server-start-import 16034.5ms total=33832.4ms start=17797.9ms rssMb=590.5 heapUsedMb=398.2 workers=1 workerHeapSamples=1/1 workerHeapMb=30.9 workerHeapSource=cached
+[vitest] still running with no output for 30000ms.
+stderr | src/gateway/server.config-record-keys.test.ts > accepts exact numeric record keys in replacePaths
+[config-rpc-hook-phase] {"test":"accepts exact numeric record keys in replacePaths","setup":"complete","teardown":"complete"}
+
+ × |gateway-server (gateway-server-parallel)| src/gateway/server.config-record-keys.test.ts > accepts exact numeric record keys in replacePaths 62274ms
+   → gateway request timeout for config.apply
+[gateway] startup phase: gateway.server-start-import starting total=79960.6ms
+[gateway] startup phase: gateway.server-start-import 0.6ms total=79961.1ms start=79960.6ms rssMb=3785.6 heapUsedMb=943.9 workers=1 workerHeapSamples=1/1 workerHeapMb=30.6 workerHeapSource=cached
+ ✓ |gateway-server (gateway-server-parallel)| src/gateway/server.config-record-keys.test.ts > allows nested destructive array patches inside id-keyed arrays with replacePaths 6205ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.stateDomainPublication.sandbox-registry
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.devicePairSetupChanges
+[sqlite-test-lifecycle] src/gateway/server.config-record-keys.test.ts: retiring openclaw.devicePairingPublications
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |gateway-server (gateway-server-parallel)| src/gateway/server.config-record-keys.test.ts > accepts exact numeric record keys in replacePaths
+GatewayClientRequestTimeoutError: gateway request timeout for config.apply
+ ❯ Object.createRequestTimeoutError packages/gateway-client/src/client.ts:285:9
+    283|       createRequestError: (error) => new GatewayClientRequestError(err…
+    284|       createRequestTimeoutError: (method, timeoutMs, requestSent) =>
+    285|         new GatewayClientRequestTimeoutError({ method, timeoutMs, requ…
+       |         ^
+    286|       createRequestAbortError: (method) =>
+    287|         createAbortError(`gateway request aborted for ${method}`),
+ ❯ Timeout.<anonymous> packages/gateway-client/src/pending-request.ts:243:23
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 'CLIENT_TIMEOUT', method: 'config.apply', timeoutMs: 10000, requestSent: true }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+   Start at  08:50:23
+   Duration  87.85s (tests 80%, transform 17%, import 2%, worker 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f config=test/vitest/vitest.gateway-server.config.ts files=src/gateway/server.config-record-keys.test.ts
+failing-tests:
+ × |gateway-server (gateway-server-parallel)| src/gateway/server.config-record-keys.test.ts > accepts exact numeric record keys in replacePaths 62274ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 1 passed (2)]
+# exit=1

@@ -1,0 +1,102 @@
+shard	file	title	sources	subshards
+compact-large-13	src/config/sessions/session-entry-deletion.test.ts	prepares retained-window references before BEGIN and rechecks writes (false)	log+summary	core-runtime-config-hosted-7;runtime-config
+compact-large-16	src/cron/maintenance-lifecycle.test.ts	finishes retention and rearms after a notifying preparation ends during a read	log+summary	core-runtime-cron-parallel-core;cron
+compact-large-16	src/cron/maintenance-lifecycle.test.ts	keeps pending database admission private when its publisher wakes retention	log+summary	core-runtime-cron-parallel-core;cron
+compact-large-16	src/cron/maintenance-lifecycle.test.ts	retains a registry invalidation received during its read	log+summary	core-runtime-cron-parallel-core;cron
+compact-large-16	src/cron/maintenance-lifecycle.test.ts	runs healthy retention independently, pending=false, notification=none	log+summary	core-runtime-cron-parallel-core;cron
+compact-large-16	src/cron/maintenance-lifecycle.test.ts	runs healthy retention independently, pending=true, notification=agent	log+summary	core-runtime-cron-parallel-core;cron
+compact-large-16	src/cron/maintenance-lifecycle.test.ts	runs healthy retention independently, pending=true, notification=history	log+summary	core-runtime-cron-parallel-core;cron
+compact-large-16	src/cron/maintenance-lifecycle.test.ts	runs healthy retention independently, pending=true, notification=none	log+summary	core-runtime-cron-parallel-core;cron
+compact-large-16	src/cron/maintenance-lifecycle.test.ts	sleeps until the retained session deadline when history is empty	log+summary	core-runtime-cron-parallel-core;cron
+compact-large-16	src/cron/maintenance-lifecycle.test.ts	wakes for committed agent-ready changes and replaces their previous expiry without polling unrelated sessions	log+summary	core-runtime-cron-parallel-core;cron
+compact-large-16	src/cron/maintenance-lifecycle.test.ts	wakes for committed config changes and replaces their previous expiry without polling unrelated sessions	log+summary	core-runtime-cron-parallel-core;cron
+compact-large-16	src/cron/maintenance-lifecycle.test.ts	wakes for committed session changes and replaces their previous expiry without polling unrelated sessions	log+summary	core-runtime-cron-parallel-core;cron
+compact-large-16	src/cron/maintenance-lifecycle.test.ts	wakes for committed stores changes and replaces their previous expiry without polling unrelated sessions	log+summary	core-runtime-cron-parallel-core;cron
+compact-large-16	src/cron/maintenance-snapshot.test.ts	handles snapshot invalidation: after healthy target through the real maintenance scheduler	log+summary	core-runtime-cron-parallel-core;cron
+compact-large-16	src/cron/maintenance-snapshot.test.ts	handles snapshot invalidation: completed deletion through the real maintenance scheduler	log+summary	core-runtime-cron-parallel-core;cron
+compact-large-16	src/cron/maintenance-snapshot.test.ts	handles snapshot invalidation: pending deletion through the real maintenance scheduler	log+summary	core-runtime-cron-parallel-core;cron
+compact-large-16	src/cron/maintenance-snapshot.test.ts	handles snapshot invalidation: registration removal through the real maintenance scheduler	log+summary	core-runtime-cron-parallel-core;cron
+compact-large-16	src/cron/maintenance-snapshot.test.ts	handles snapshot invalidation: stop before retry through the real maintenance scheduler	log+summary	core-runtime-cron-parallel-core;cron
+compact-large-19	src/gateway/operator-approval-placement-grants.test.ts	placement standing grants > skips the second launch and re-prompts after the placement generation changes	log+summary	agentic-gateway-server-isolated-hosted-20;gateway-database-workers
+compact-large-19	src/gateway/server-methods/environments.test.ts	fails closed and redacts environments.status {"environmentId":"missing"} read failures	log+summary	agentic-gateway-methods-hosted-7;gateway-methods
+compact-large-19	src/gateway/server-methods/environments.test.ts	preserves pairing ownership for destroyed static-ssh workers bound to node-live	log+summary	agentic-gateway-methods-hosted-7;gateway-methods
+compact-large-19	src/gateway/server-methods/environments.test.ts	preserves pairing ownership for failed static-ssh workers bound to node-live	log+summary	agentic-gateway-methods-hosted-7;gateway-methods
+compact-large-19	src/gateway/server-methods/environments.test.ts	preserves pairing ownership for orphaned static-ssh workers bound to undefined	log+summary	agentic-gateway-methods-hosted-7;gateway-methods
+compact-large-19	src/gateway/server-methods/environments.test.ts	preserves pairing ownership for ready device workers bound to node-live	log+summary	agentic-gateway-methods-hosted-7;gateway-methods
+compact-large-19	src/gateway/server-methods/environments.test.ts	probes disabled host setup only when requested without advertising or granting desktop access	log+summary	agentic-gateway-methods-hosted-7;gateway-methods
+compact-large-19	src/gateway/server-methods/environments.test.ts	projects live and offline node facts consistently through list and status	log+summary	agentic-gateway-methods-hosted-7;gateway-methods
+compact-large-19	src/gateway/server-methods/environments.test.ts	rejects environments.status without a configured target	log+summary	agentic-gateway-methods-hosted-7;gateway-methods
+compact-large-20	src/infra/shell-env.test.ts	shell env fallback > uses interactive Bash login startup before nounset reads PS1	log+summary	core-runtime-infra-files-commands;infra
+compact-large-24	src/gateway/agent-turn/agent-request-preflight.test.ts	agent request reserved continuation run ids > admits a continuation key from a backend caller as the run id verbatim	log+summary	agentic-gateway-core-3;gateway-core
+compact-large-27	src/state/openclaw-database-preflight.artifacts.test.ts	falls back to the private snapshot when the last owner closes during a preserving read	log+summary	core-unit-src-security-2-hosted-2;unit-src
+compact-large-35	src/commands/doctor-session-transcript-labels.reuse.test.ts	update Doctor retained transcript scan reuse > does not scan unchanged retained history twice across update passes	log+summary	agentic-commands-doctor-sessions-cron;commands
+compact-large-35	src/infra/package-update-permission-drift.test.ts	publication permission drift > repairs a recursive named-user POSIX ACL	log+summary	core-runtime-infra-system-runtime-hosted-2;infra
+compact-large-35	src/infra/update-doctor-migration-attribution.test.ts	completes retirement after Doctor migrations and native parent bookkeeping	log+summary	core-runtime-infra-system-runtime-hosted-2;infra
+compact-large-35	src/infra/update-retained-runtime-imports.process.test.ts	keeps bun late imports on the old generation through replacement and CLI teardown	log+summary	core-runtime-infra-system-runtime-hosted-2;infra
+compact-large-35	src/infra/worker-task-pool.memory.test.ts	collects a completed large external payload while keeping the bounded worker warm	log+summary	core-unit-fast-2-hosted-2;unit-fast
+compact-large-35	test/scripts/bench-session-history.test.ts	keeps the source benchmark JSON parseable across all history readers	log+summary	core-unit-fast-2-hosted-2;unit-fast
+compact-large-36	ui/src/test-helpers/new-session-page-opener.node.test.ts	captures New Session failures before closing their contexts and starting the next test	log+summary	core-runtime-media-ui-3;ui
+compact-large-38	src/gateway/server.config-record-keys.test.ts	allows nested destructive array patches inside id-keyed arrays with replacePaths	log+summary	agentic-control-plane-runtime-state-hosted-2;gateway-server (gateway-server-parallel)
+compact-large-38	src/gateway/server.config-write-reread.test.ts	gateway config canonical rereads > config.set settles when an external edit invalidates the canonical reread	log+summary	agentic-control-plane-runtime-state-hosted-2;gateway-server (gateway-server-parallel)
+compact-large-41	src/gateway/server.plugin-reload-send-revocation.product.test.ts	runs Bob's allowed and revoked retained sends in a prebound owned process	log+summary	agentic-control-plane-http-plugin-ws;gateway-server (gateway-server-native)
+compact-small-12	test/scripts/check-extension-package-tsc-boundary.test.ts	compiles packaged roots and invalidates them when exports or inherited paths change	log+summary	core-tooling-isolated;tooling-isolated
+compact-small-14	test/scripts/package-acceptance-workflow.test.ts	package acceptance workflow > resolves broad release evidence and exact-binds every publish child	log+summary	core-tooling-2-hosted-1;tooling
+compact-small-14	test/scripts/package-acceptance-workflow.test.ts	package artifact reuse > keeps release publish artifacts and release-note ordering wired	log+summary	core-tooling-2-hosted-1;tooling
+compact-small-14	test/scripts/package-acceptance-workflow.test.ts	package artifact reuse > prepares one immutable candidate for release validation children	log+summary	core-tooling-2-hosted-1;tooling
+compact-small-14	test/scripts/package-acceptance-workflow.test.ts	package artifact reuse > wires evidence attempts into the acceptance gate	log+summary	core-tooling-2-hosted-1;tooling
+compact-small-21	test/scripts/ci-node-test-plan.test.ts	scripts/lib/ci-node-test-plan.mts > keeps the scheduled main inventory within its reserved compact capacity (github, extra group: false)	log+summary	core-tooling-9-hosted-1;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	ci wrapper joins admission work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	ci wrapper joins admission work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	ci wrapper joins compilation work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	ci wrapper joins compilation work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	ci wrapper joins deletion work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	ci wrapper joins deletion work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	ci wrapper joins disposal work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	ci wrapper joins disposal work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	ci-disconnect wrapper joins admission work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	ci-shared wrapper joins compilation work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	ci-shared wrapper joins compilation work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	direct wrapper joins admission work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	direct wrapper joins admission work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	direct wrapper joins compilation work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	direct wrapper joins compilation work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	direct wrapper joins deletion work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	direct wrapper joins deletion work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	direct wrapper joins disposal work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	direct wrapper joins disposal work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	serial wrapper joins compilation work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	serial wrapper joins compilation work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	serial wrapper joins deletion work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	serial wrapper joins deletion work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	serial wrapper joins disposal work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	serial wrapper joins disposal work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-32	test/scripts/ci-node-test-plan-hosted-tail.test.ts	bounds hosted groups (main)	log+summary	core-tooling-1-hosted-2;tooling
+compact-small-33	test/helpers/openclaw-test-instance.test.ts	openclaw test instance > keeps claimed port offset 0 unavailable while its child starts	log+summary	core-tooling-13-hosted-2;tooling
+compact-small-33	test/helpers/openclaw-test-instance.test.ts	openclaw test instance > keeps claimed port offset 1 unavailable while its child starts	log+summary	core-tooling-13-hosted-2;tooling
+compact-small-36	test/scripts/bun-standalone-codegen.test.ts	standalone fixed code generation > captures remaining static programs (//!)	log+summary	core-tooling-1-hosted-3;tooling
+compact-small-36	test/scripts/bun-standalone-codegen.test.ts	standalone fixed code generation > captures remaining static programs (//#region)	log+summary	core-tooling-1-hosted-3;tooling
+compact-small-36	test/scripts/bun-standalone-codegen.test.ts	standalone fixed code generation > captures remaining static programs (//)	log+summary	core-tooling-1-hosted-3;tooling
+compact-small-38	test/scripts/pr-cache-lifetime-collection.test.ts	PR cache crash collection > verifies the bootstrap-native lease and process inspection contracts	log+summary	core-tooling-11-hosted-3;tooling
+compact-small-40	test/scripts-update-gateway-legacy.test.ts	published source shell reaches candidate build entry: begin-abort	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts-update-gateway-legacy.test.ts	published source shell reaches candidate build entry: begin-unjoined	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts-update-gateway-legacy.test.ts	published source shell reaches candidate build entry: build-throw-restart	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts-update-gateway-legacy.test.ts	published source shell reaches candidate build entry: build-throw-settle	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts-update-gateway-legacy.test.ts	published source shell reaches candidate build entry: failure	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts-update-gateway-legacy.test.ts	published source shell reaches candidate build entry: failure-scheduled	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts-update-gateway-legacy.test.ts	published source shell reaches candidate build entry: partial-stop	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts-update-gateway-legacy.test.ts	published source shell reaches candidate build entry: partial-stop-custom	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts-update-gateway-legacy.test.ts	published source shell reaches candidate build entry: partial-stop-scheduled	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts/check-line-cap-ratchet.test.ts	preserves failed child diagnostics for 1//Cannot load oxlint native binding	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts/check-line-cap-ratchet.test.ts	preserves failed child diagnostics for 1/Invalid oxlint configuration/	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts/check-line-cap-ratchet.test.ts	preserves failed child diagnostics for 1/invalid report/Cannot load oxlint native binding	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts/check-line-cap-ratchet.test.ts	rejects bin symlink before executing the oxlint CLI	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts/check-line-cap-ratchet.test.ts	rejects bin traversal before executing the oxlint CLI	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-9	src/cli/update-cli/update-command-lease.test.ts	update orchestration lifecycle ownership > repair completes missing source artifacts before consumers and leaves an exact online retry untouched	log+summary	agentic-cli-process-hosted-5;cli-process
+compact-small-9	src/cli/update-cli/update-command-lease.test.ts	update orchestration lifecycle ownership > resume completes missing source artifacts before consumers and leaves an exact online retry untouched	log+summary	agentic-cli-process-hosted-5;cli-process
+compact-small-9	src/cli/update-cli/update-command-lease.test.ts	update orchestration lifecycle ownership > resume preserves publication failure details when staging cleanup also fails	log+summary	agentic-cli-process-hosted-5;cli-process
+extension-browser	extensions/browser/src/browser/chrome.headless-cleanup.test.ts	cleans up a one-shot darwin cache shell only when ownsProfile=false	summary	extension-browser
+extension-browser	extensions/browser/src/browser/chrome.headless-cleanup.test.ts	cleans up a one-shot darwin cache shell only when ownsProfile=true	summary	extension-browser
+extension-browser	extensions/browser/src/browser/chrome.headless-cleanup.test.ts	recovers stale cache browser with configuredHeadless=false, ownsProfile=true, code=websocket_health_command_timeout	summary	extension-browser
+extension-browser	extensions/browser/src/browser/chrome.headless-cleanup.test.ts	recovers stale cache browser with configuredHeadless=true, ownsProfile=true, code=websocket_health_command_timeout	summary	extension-browser
+extension-providers	extensions/anthropic/session-catalog-transcript.test.ts	pages deeply nested Claude content without losing text	summary	extension-providers
+extension-providers	extensions/anthropic/session-catalog-transcript.test.ts	pages deeply nested Claude metadata without losing text	summary	extension-providers

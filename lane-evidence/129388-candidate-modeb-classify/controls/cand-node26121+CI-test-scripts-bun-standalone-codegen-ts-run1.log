@@ -1,0 +1,130 @@
+# ctl ref=cand sha=9476c7aaf79f8dc86d0222d2b708524a37711418 file=test/scripts/bun-standalone-codegen.test.ts run=1 mode=node26121+CI start=2026-11-20T16:50:08Z
+# files: 1
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-JWUVyt/home TMPDIR=/tmp/oc-classify-JWUVyt/tmp CI=true
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.tooling.config.ts
+include-file: /tmp/oc-classify-JWUVyt/tmp/oc-focused.POQerm/include.json
+include-file-contents:
+  [
+    "test/scripts/bun-standalone-codegen.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-JWUVyt/tmp/oc-focused.POQerm/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.tooling.config.ts --maxWorkers=1 test/scripts/bun-standalone-codegen.test.ts
+logs: /tmp/oc-classify-JWUVyt/tmp/oc-focused.POQerm
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+ × |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > captures remaining static programs (//#region) 11ms
+   → [openclaw] CI job unknown: Bun revision verification failed: spawnSync bun ENOENT. Run .github/actions/setup-test-bun before tests.
+ × |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > captures remaining static programs (//) 5ms
+   → [openclaw] CI job unknown: Bun revision verification failed: spawnSync bun ENOENT. Run .github/actions/setup-test-bun before tests.
+ × |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > captures remaining static programs (//!) 5ms
+   → [openclaw] CI job unknown: Bun revision verification failed: spawnSync bun ENOENT. Run .github/actions/setup-test-bun before tests.
+ ✓ |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > keeps captured JavaScript outside typed callers and creates a fresh function per call 336ms
+ ✓ |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > emits an executable lexical function and respects a shadowed compiler binding 4ms
+ ✓ |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > records unsupported runtime programs instead of inventing captured behavior 2ms
+ ✓ |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > preserves JIT library behavior unless AOT is requested (false) 2ms
+ ✓ |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > preserves JIT library behavior unless AOT is requested (true) 2ms
+ ✓ |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > only disables TypeBox acceleration in AOT mode 2ms
+ ❯ |tooling| test/scripts/bun-standalone-codegen.test.ts (9 tests | 3 failed) 371ms
+   ❯ standalone fixed code generation (9)
+     × captures remaining static programs (//#region) 11ms
+     × captures remaining static programs (//) 5ms
+     × captures remaining static programs (//!) 5ms
+     ✓ keeps captured JavaScript outside typed callers and creates a fresh function per call 336ms
+     ✓ emits an executable lexical function and respects a shadowed compiler binding 4ms
+     ✓ records unsupported runtime programs instead of inventing captured behavior 2ms
+     ✓ preserves JIT library behavior unless AOT is requested (false) 2ms
+     ✓ preserves JIT library behavior unless AOT is requested (true) 2ms
+     ✓ only disables TypeBox acceleration in AOT mode 2ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > captures remaining static programs (//#region)
+ FAIL  |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > captures remaining static programs (//)
+ FAIL  |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > captures remaining static programs (//!)
+Error: [openclaw] CI job unknown: Bun revision verification failed: spawnSync bun ENOENT. Run .github/actions/setup-test-bun before tests.
+ ❯ requirePinnedBun scripts/lib/pinned-bun.mts:189:13
+    187|       }
+    188|     } catch (error) {
+    189|       throw new Error(
+       |             ^
+    190|         `[openclaw] ${ciJob}Bun revision verification failed: ${error …
+    191|         { cause: error },
+ ❯ test/scripts/bun-standalone-codegen.test.ts:82:32
+
+Caused by: Error: spawnSync bun ENOENT
+ ❯ requirePinnedBun scripts/lib/pinned-bun.mts:180:24
+ ❯ test/scripts/bun-standalone-codegen.test.ts:82:32
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { errno: -2, code: 'ENOENT', syscall: 'spawnSync bun', path: 'bun', spawnargs: [ '--revision' ], error: { stack: 'Error: spawnSync bun ENOENT
+    at Object.spawnSync (node:internal/child_process:1175:20)
+    at spawnSync (node:child_process:976:24)
+    at execFileSync (node:child_process:1019:15)
+    at requirePinnedBun (/home/figs/classify-129388/cand-9476c7aa/scripts/lib/pinned-bun.mts:180:24)
+    at /home/figs/classify-129388/cand-9476c7aa/test/scripts/bun-standalone-codegen.test.ts:82:32
+    at file:///home/figs/classify-129388/cand-9476c7aa/node_modules/.pnpm/vitest@5.0.5_patch_hash=a2a78abe9470cc2ceb0d4eeb81acfc62d6180e9990bc866a7771ba60b1320ea_75661d0a5892d48edf76140ec77ed19d/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:2886:64
+    at file:///home/figs/classify-129388/cand-9476c7aa/node_modules/.pnpm/vitest@5.0.5_patch_hash=a2a78abe9470cc2ceb0d4eeb81acfc62d6180e9990bc866a7771ba60b1320ea_75661d0a5892d48edf76140ec77ed19d/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:1632:35
+    at file:///home/figs/classify-129388/cand-9476c7aa/node_modules/.pnpm/vitest@5.0.5_patch_hash=a2a78abe9470cc2ceb0d4eeb81acfc62d6180e9990bc866a7771ba60b1320ea_75661d0a5892d48edf76140ec77ed19d/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:2801:26
+    at file:///home/figs/classify-129388/cand-9476c7aa/node_modules/.pnpm/vitest@5.0.5_patch_hash=a2a78abe9470cc2ceb0d4eeb81acfc62d6180e9990bc866a7771ba60b1320ea_75661d0a5892d48edf76140ec77ed19d/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:3338:20
+    at new Promise (<anonymous>)', message: 'spawnSync bun ENOENT', errno: -2, code: 'ENOENT', syscall: 'spawnSync bun', path: 'bun', spawnargs: [ '--revision' ], error: [Circular], status: null, signal: null, output: null, pid: 0, stdout: undefined, stderr: undefined, constructor: 'Function<Error>', name: 'Caused by: Error', toString: 'Function<toString>', stacks: [ { method: 'requirePinnedBun', file: '/home/figs/classify-129388/cand-9476c7aa/scripts/lib/pinned-bun.mts', line: 180, column: 24 }, { method: '', file: '/home/figs/classify-129388/cand-9476c7aa/test/scripts/bun-standalone-codegen.test.ts', line: 82, column: 32 } ] }, status: null, signal: null, output: null, pid: 0, stdout: undefined, stderr: undefined }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 6 passed (9)
+   Start at  08:50:10
+   Duration  1.18s (worker 45%, tests 40%, transform 7%, import 4%, setup 4%)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > captures remaining static programs (//#region)
+ FAIL  |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > captures remaining static programs (//)
+ FAIL  |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > captures remaining static programs (//!)
+Error: [openclaw] CI job unknown: Bun revision verification failed: spawnSync bun ENOENT. Run .github/actions/setup-test-bun before tests.
+ ❯ requirePinnedBun scripts/lib/pinned-bun.mts:189:13
+    187|       }
+    188|     } catch (error) {
+    189|       throw new Error(
+       |             ^
+    190|         `[openclaw] ${ciJob}Bun revision verification failed: ${error …
+    191|         { cause: error },
+ ❯ test/scripts/bun-standalone-codegen.test.ts:82:32
+
+Caused by: Caused by: Error: spawnSync bun ENOENT
+ ❯ requirePinnedBun scripts/lib/pinned-bun.mts:180:24
+ ❯ test/scripts/bun-standalone-codegen.test.ts:82:32
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { errno: -2, code: 'ENOENT', syscall: 'spawnSync bun', path: 'bun', spawnargs: [ '--revision' ], error: { stack: 'Error: spawnSync bun ENOENT
+    at Object.spawnSync (node:internal/child_process:1175:20)
+    at spawnSync (node:child_process:976:24)
+    at execFileSync (node:child_process:1019:15)
+    at requirePinnedBun (/home/figs/classify-129388/cand-9476c7aa/scripts/lib/pinned-bun.mts:180:24)
+    at /home/figs/classify-129388/cand-9476c7aa/test/scripts/bun-standalone-codegen.test.ts:82:32
+    at file:///home/figs/classify-129388/cand-9476c7aa/node_modules/.pnpm/vitest@5.0.5_patch_hash=a2a78abe9470cc2ceb0d4eeb81acfc62d6180e9990bc866a7771ba60b1320ea_75661d0a5892d48edf76140ec77ed19d/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:2886:64
+    at file:///home/figs/classify-129388/cand-9476c7aa/node_modules/.pnpm/vitest@5.0.5_patch_hash=a2a78abe9470cc2ceb0d4eeb81acfc62d6180e9990bc866a7771ba60b1320ea_75661d0a5892d48edf76140ec77ed19d/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:1632:35
+    at file:///home/figs/classify-129388/cand-9476c7aa/node_modules/.pnpm/vitest@5.0.5_patch_hash=a2a78abe9470cc2ceb0d4eeb81acfc62d6180e9990bc866a7771ba60b1320ea_75661d0a5892d48edf76140ec77ed19d/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:2801:26
+    at file:///home/figs/classify-129388/cand-9476c7aa/node_modules/.pnpm/vitest@5.0.5_patch_hash=a2a78abe9470cc2ceb0d4eeb81acfc62d6180e9990bc866a7771ba60b1320ea_75661d0a5892d48edf76140ec77ed19d/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:3338:20
+    at new Promise (<anonymous>)', message: 'spawnSync bun ENOENT', errno: -2, code: 'ENOENT', syscall: 'spawnSync bun', path: 'bun', spawnargs: [ '--revision' ], error: [Circular], status: null, signal: null, output: null, pid: 0, stdout: undefined, stderr: undefined, constructor: 'Function<Error>', name: 'Caused by: Caused by: Error', toString: 'Function<toString>', stacks: [ { method: 'requirePinnedBun', file: '/home/figs/classify-129388/cand-9476c7aa/scripts/lib/pinned-bun.mts', line: 180, column: 24 }, { method: '', file: '/home/figs/classify-129388/cand-9476c7aa/test/scripts/bun-standalone-codegen.test.ts', line: 82, column: 32 } ] }, status: null, signal: null, output: null, pid: 0, stdout: undefined, stderr: undefined }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 6 passed (9)
+   Start at  08:50:10
+   Duration  1.19s (worker 45%, tests 40%, transform 7%, import 4%, setup 4%)
+
+[test] FAILED (exit 1)
+receipt head=9476c7aaf79f8dc86d0222d2b708524a37711418 config=test/vitest/vitest.tooling.config.ts files=test/scripts/bun-standalone-codegen.test.ts
+failing-tests:
+ × |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > captures remaining static programs (//#region) 11ms
+ × |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > captures remaining static programs (//) 5ms
+ × |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > captures remaining static programs (//!) 5ms
+VERDICT RED [Test Files 1 failed (1); Tests 3 failed | 6 passed (9)]
+# exit=1

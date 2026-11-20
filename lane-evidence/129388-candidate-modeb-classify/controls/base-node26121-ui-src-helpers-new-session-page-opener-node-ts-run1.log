@@ -1,0 +1,87 @@
+# ctl ref=base sha=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f file=ui/src/test-helpers/new-session-page-opener.node.test.ts run=1 mode=node26121 start=2026-11-20T17:01:48Z
+# files: 1
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-rGnreW/home TMPDIR=/tmp/oc-classify-rGnreW/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.ui.config.ts
+include-file: /tmp/oc-classify-rGnreW/tmp/oc-focused.tbqJPl/include.json
+include-file-contents:
+  [
+    "ui/src/test-helpers/new-session-page-opener.node.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-rGnreW/tmp/oc-focused.tbqJPl/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.ui.config.ts --maxWorkers=1 ui/src/test-helpers/new-session-page-opener.node.test.ts
+logs: /tmp/oc-classify-rGnreW/tmp/oc-focused.tbqJPl
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - JSON import "./control-ui-i18n-config.json" without import attributes (scripts/lib/control-ui-i18n-sync-plan.ts:2:41). Add `with { type: 'json' }`
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-41bdde21
+
+ × |ui| ui/src/test-helpers/new-session-page-opener.node.test.ts > captures New Session failures before closing their contexts and starting the next test 1087ms
+   → expected { numTotalTestSuites: 2, …(12) } to match object { Object (numFailedTests, numPassedTests) }
+(25 matching properties omitted from actual)
+   → expected { numTotalTestSuites: 2, …(12) } to match object { Object (numFailedTests, numPassedTests) }
+(25 matching properties omitted from actual)
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |ui| ui/src/test-helpers/new-session-page-opener.node.test.ts > captures New Session failures before closing their contexts and starting the next test
+AssertionError: expected { numTotalTestSuites: 2, …(12) } to match object { Object (numFailedTests, numPassedTests) }
+(25 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "numFailedTests": 1,
+-   "numPassedTests": 1,
++   "numFailedTests": 0,
++   "numPassedTests": 0,
+  }
+
+ ❯ ui/src/test-helpers/new-session-page-opener.node.test.ts:<redacted len=6>
+    110|       expect(output.code, output.stdout + output.stderr).toBe(1);
+    111|       const report: JsonTestResults = JSON.parse(await fs.readFile(rep…
+    112|       expect(report).toMatchObject({ numFailedTests: 1, numPassedTests…
+       |                      ^
+    113|       expect(JSON.stringify(report)).toContain("private-synthetic-new-…
+    114|       expect(JSON.parse(await fs.readFile(path.join(root, "journal.jso…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  |ui| ui/src/test-helpers/new-session-page-opener.node.test.ts > captures New Session failures before closing their contexts and starting the next test
+AssertionError: expected { numTotalTestSuites: 2, …(12) } to match object { Object (numFailedTests, numPassedTests) }
+(25 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "numFailedTests": 1,
++   "numFailedTests": 0,
+-   "numPassedTests": 1,
++   "numPassedTests": 0,
+  }
+
+ ❯ ui/src/test-helpers/new-session-page-opener.node.test.ts:<redacted len=6>
+    110|       expect(output.code, output.stdout + output.stderr).toBe(1);
+    111|       const report: JsonTestResults = JSON.parse(await fs.readFile(rep…
+    112|       expect(report).toMatchObject({ numFailedTests: 1, numPassedTests…
+       |                      ^
+    113|       expect(JSON.stringify(report)).toContain("private-synthetic-new-…
+    114|       expect(JSON.parse(await fs.readFile(path.join(root, "journal.jso…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  09:01:49
+   Duration  2.42s (tests 51%, worker 25%, environment 13%, import 6%, transform 3%, setup 2%)
+
+[test] FAILED (exit 1)
+receipt head=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f config=test/vitest/vitest.ui.config.ts files=ui/src/test-helpers/new-session-page-opener.node.test.ts
+failing-tests:
+ × |ui| ui/src/test-helpers/new-session-page-opener.node.test.ts > captures New Session failures before closing their contexts and starting the next test 1087ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed (1)]
+# exit=1

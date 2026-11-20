@@ -1,0 +1,53 @@
+# ctl ref=cand sha=9476c7aaf79f8dc86d0222d2b708524a37711418 file=ui/src/styles/session-row-tint.node.test.ts run=1 mode=node26121 start=2026-11-20T17:02:12Z
+# files: 1
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-yQ3hxb/home TMPDIR=/tmp/oc-classify-yQ3hxb/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.ui.config.ts
+include-file: /tmp/oc-classify-yQ3hxb/tmp/oc-focused.7EpiDC/include.json
+include-file-contents:
+  [
+    "ui/src/styles/session-row-tint.node.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-yQ3hxb/tmp/oc-focused.7EpiDC/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.ui.config.ts --maxWorkers=1 ui/src/styles/session-row-tint.node.test.ts
+logs: /tmp/oc-classify-yQ3hxb/tmp/oc-focused.7EpiDC
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - JSON import "./control-ui-i18n-config.json" without import attributes (scripts/lib/control-ui-i18n-sync-plan.ts:2:41). Add `with { type: 'json' }`
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+ ↓ |ui| ui/src/styles/session-row-tint.node.test.ts > sidebar session row tint > preserves readable tag and selection paints in light
+ ↓ |ui| ui/src/styles/session-row-tint.node.test.ts > sidebar session row tint > preserves readable tag and selection paints in dark
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |ui| ui/src/styles/session-row-tint.node.test.ts [ ui/src/styles/session-row-tint.node.test.ts ]
+AssertionError: Chromium is required for paint proof: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ ui/src/styles/style-fixture.test-support.ts:62:65
+     60|   beforeAll(async () => {
+     61|     if (required) {
+     62|       expect(available, "Chromium is required for paint proof").toBe(t…
+       |                                                                 ^
+     63|     }
+     64|     if (available) {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 skipped (2)
+   Start at  09:02:14
+   Duration  1.57s (worker 43%, import 24%, environment 21%, transform 7%, setup 4%)
+
+[test] FAILED (exit 1)
+receipt head=9476c7aaf79f8dc86d0222d2b708524a37711418 config=test/vitest/vitest.ui.config.ts files=ui/src/styles/session-row-tint.node.test.ts
+VERDICT RUN-BROKEN [Test Files 1 failed (1); Tests 2 skipped (2)] reason=1 failed suite(s): a test file did not load or a hook threw
+# exit=1

@@ -1,0 +1,371 @@
+# ctl ref=cand sha=9476c7aaf79f8dc86d0222d2b708524a37711418 file=test/scripts/check-line-cap-ratchet.test.ts run=1 mode=node26121 start=2026-11-20T16:46:31Z
+# files: 1
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-DXBNwL/home TMPDIR=/tmp/oc-classify-DXBNwL/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.tooling.config.ts
+include-file: /tmp/oc-classify-DXBNwL/tmp/oc-focused.O7Gqcg/include.json
+include-file-contents:
+  [
+    "test/scripts/check-line-cap-ratchet.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-DXBNwL/tmp/oc-focused.O7Gqcg/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.tooling.config.ts --maxWorkers=1 test/scripts/check-line-cap-ratchet.test.ts
+logs: /tmp/oc-classify-DXBNwL/tmp/oc-focused.O7Gqcg
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+ ✓ |tooling| test/scripts/check-line-cap-ratchet.test.ts > warns for CI growth, writes the summary, and still rejects broken source 325ms
+ ✓ |tooling| test/scripts/check-line-cap-ratchet.test.ts > skips line-cap growth on release branches but not main 170ms
+ ✓ |tooling| test/scripts/check-line-cap-ratchet.test.ts > measures ignored repository-contained scratch while preserving explicit exclusions 253ms
+ ✓ |tooling| test/scripts/check-line-cap-ratchet.test.ts > ratchets error diagnostics in JetBrains terminals across renames, staged and untracked sources 701ms
+ ✓ |tooling| test/scripts/check-line-cap-ratchet.test.ts > handles repaired under-cap head without relaxing the head check 127ms
+ ✓ |tooling| test/scripts/check-line-cap-ratchet.test.ts > does not hydrate historical blobs for under-cap repairs in a partial clone 161ms
+ ✓ |tooling| test/scripts/check-line-cap-ratchet.test.ts > counts oxlint-suppressed debt without changing the source 274ms
+ ✓ |tooling| test/scripts/check-line-cap-ratchet.test.ts > uses qualified oxlint instead of a stale canonical bin in a code-only worktree 367ms
+ × |tooling| test/scripts/check-line-cap-ratchet.test.ts > preserves failed child diagnostics for 1//Cannot load oxlint native binding 206ms
+   → expected 'Error: Cannot resolve tooling depende…' to contain 'Cannot load oxlint native binding'
+ × |tooling| test/scripts/check-line-cap-ratchet.test.ts > preserves failed child diagnostics for 1/invalid report/Cannot load oxlint native binding 173ms
+   → expected 'Error: Cannot resolve tooling depende…' to contain 'Cannot load oxlint native binding'
+ × |tooling| test/scripts/check-line-cap-ratchet.test.ts > preserves failed child diagnostics for 1/Invalid oxlint configuration/ 189ms
+   → expected 'Error: Cannot resolve tooling depende…' to contain 'Invalid oxlint configuration'
+ ✓ |tooling| test/scripts/check-line-cap-ratchet.test.ts > preserves failed child diagnostics for 0/invalid report/Successful child stderr 157ms
+ × |tooling| test/scripts/check-line-cap-ratchet.test.ts > rejects bin traversal before executing the oxlint CLI 208ms
+   → expected 'Error: Cannot resolve tooling depende…' to contain 'The oxlint CLI bin must be a file ins…'
+ × |tooling| test/scripts/check-line-cap-ratchet.test.ts > rejects bin symlink before executing the oxlint CLI 233ms
+   → expected 'Error: Cannot resolve tooling depende…' to contain 'The oxlint CLI bin must be a file ins…'
+ ❯ |tooling| test/scripts/check-line-cap-ratchet.test.ts (14 tests | 5 failed) 3545ms
+   ✓ warns for CI growth, writes the summary, and still rejects broken source 325ms
+   ✓ skips line-cap growth on release branches but not main 170ms
+   ✓ measures ignored repository-contained scratch while preserving explicit exclusions 253ms
+   ✓ ratchets error diagnostics in JetBrains terminals across renames, staged and untracked sources 701ms
+   ✓ handles repaired under-cap head without relaxing the head check 127ms
+   ✓ does not hydrate historical blobs for under-cap repairs in a partial clone 161ms
+   ✓ counts oxlint-suppressed debt without changing the source 274ms
+   ✓ uses qualified oxlint instead of a stale canonical bin in a code-only worktree 367ms
+   × preserves failed child diagnostics for 1//Cannot load oxlint native binding 206ms
+   × preserves failed child diagnostics for 1/invalid report/Cannot load oxlint native binding 173ms
+   × preserves failed child diagnostics for 1/Invalid oxlint configuration/ 189ms
+   ✓ preserves failed child diagnostics for 0/invalid report/Successful child stderr 157ms
+   × rejects bin traversal before executing the oxlint CLI 208ms
+   × rejects bin symlink before executing the oxlint CLI 233ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |tooling| test/scripts/check-line-cap-ratchet.test.ts > preserves failed child diagnostics for 1//Cannot load oxlint native binding
+AssertionError: expected 'Error: Cannot resolve tooling depende…' to contain 'Cannot load oxlint native binding'
+
+- Expected
++ Received
+
+- Cannot load oxlint native binding
++ Error: Cannot resolve tooling dependencies at /tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-BfIxUa/tooling #root. Different repository. Install dependencies in this checkout or set OPENCLAW_PR_TOOLING_ROOT to an installed checkout of this repository.
++     at toolingDependencyOptions (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-BfIxUa/checkout/scripts/lib/tooling-dependencies.mjs:156:11)
++     at runTsxCliShim (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-BfIxUa/checkout/scripts/lib/tsx-cli-shim.mjs:280:23)
++     at async file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-BfIxUa/checkout/scripts/check-line-cap-ratchet.mjs:4:1 {
++   [cause]: Error: Different repository.
++       at toolingDependencyOptions (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-BfIxUa/checkout/scripts/lib/tooling-dependencies.mjs:149:15)
++       at runTsxCliShim (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-BfIxUa/checkout/scripts/lib/tsx-cli-shim.mjs:280:23)
++       at async file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-BfIxUa/checkout/scripts/check-line-cap-ratchet.mjs:4:1
++ }
++ [line-cap-ratchet] FAILED (exit 1)
++
+
+ ❯ test/scripts/check-line-cap-ratchet.test.ts:254:29
+    252|     expect(result.status, result.stderr).toBe(1);
+    253|     if (status !== 0) {
+    254|       expect(result.stderr).toContain(stderr || stdout);
+       |                             ^
+    255|     } else {
+    256|       expect(result.stderr).not.toContain(stderr);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  |tooling| test/scripts/check-line-cap-ratchet.test.ts > preserves failed child diagnostics for 1/invalid report/Cannot load oxlint native binding
+AssertionError: expected 'Error: Cannot resolve tooling depende…' to contain 'Cannot load oxlint native binding'
+
+- Expected
++ Received
+
+- Cannot load oxlint native binding
++ Error: Cannot resolve tooling dependencies at /tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-V5sUQU/tooling #root. Different repository. Install dependencies in this checkout or set OPENCLAW_PR_TOOLING_ROOT to an installed checkout of this repository.
++     at toolingDependencyOptions (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-V5sUQU/checkout/scripts/lib/tooling-dependencies.mjs:156:11)
++     at runTsxCliShim (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-V5sUQU/checkout/scripts/lib/tsx-cli-shim.mjs:280:23)
++     at async file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-V5sUQU/checkout/scripts/check-line-cap-ratchet.mjs:4:1 {
++   [cause]: Error: Different repository.
++       at toolingDependencyOptions (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-V5sUQU/checkout/scripts/lib/tooling-dependencies.mjs:149:15)
++       at runTsxCliShim (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-V5sUQU/checkout/scripts/lib/tsx-cli-shim.mjs:280:23)
++       at async file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-V5sUQU/checkout/scripts/check-line-cap-ratchet.mjs:4:1
++ }
++ [line-cap-ratchet] FAILED (exit 1)
++
+
+ ❯ test/scripts/check-line-cap-ratchet.test.ts:254:29
+    252|     expect(result.status, result.stderr).toBe(1);
+    253|     if (status !== 0) {
+    254|       expect(result.stderr).toContain(stderr || stdout);
+       |                             ^
+    255|     } else {
+    256|       expect(result.stderr).not.toContain(stderr);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  |tooling| test/scripts/check-line-cap-ratchet.test.ts > preserves failed child diagnostics for 1/Invalid oxlint configuration/
+AssertionError: expected 'Error: Cannot resolve tooling depende…' to contain 'Invalid oxlint configuration'
+
+- Expected
++ Received
+
+- Invalid oxlint configuration
++ Error: Cannot resolve tooling dependencies at /tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-ZPKNVp/tooling #root. Different repository. Install dependencies in this checkout or set OPENCLAW_PR_TOOLING_ROOT to an installed checkout of this repository.
++     at toolingDependencyOptions (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-ZPKNVp/checkout/scripts/lib/tooling-dependencies.mjs:156:11)
++     at runTsxCliShim (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-ZPKNVp/checkout/scripts/lib/tsx-cli-shim.mjs:280:23)
++     at async file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-ZPKNVp/checkout/scripts/check-line-cap-ratchet.mjs:4:1 {
++   [cause]: Error: Different repository.
++       at toolingDependencyOptions (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-ZPKNVp/checkout/scripts/lib/tooling-dependencies.mjs:149:15)
++       at runTsxCliShim (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-ZPKNVp/checkout/scripts/lib/tsx-cli-shim.mjs:280:23)
++       at async file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-ZPKNVp/checkout/scripts/check-line-cap-ratchet.mjs:4:1
++ }
++ [line-cap-ratchet] FAILED (exit 1)
++
+
+ ❯ test/scripts/check-line-cap-ratchet.test.ts:254:29
+    252|     expect(result.status, result.stderr).toBe(1);
+    253|     if (status !== 0) {
+    254|       expect(result.stderr).toContain(stderr || stdout);
+       |                             ^
+    255|     } else {
+    256|       expect(result.stderr).not.toContain(stderr);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  |tooling| test/scripts/check-line-cap-ratchet.test.ts > rejects bin traversal before executing the oxlint CLI
+AssertionError: expected 'Error: Cannot resolve tooling depende…' to contain 'The oxlint CLI bin must be a file ins…'
+
+- Expected
++ Received
+
+- The oxlint CLI bin must be a file inside its admitted package.
++ Error: Cannot resolve tooling dependencies at /tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-7cei2p/tooling #root. Different repository. Install dependencies in this checkout or set OPENCLAW_PR_TOOLING_ROOT to an installed checkout of this repository.
++     at toolingDependencyOptions (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-7cei2p/checkout/scripts/lib/tooling-dependencies.mjs:156:11)
++     at runTsxCliShim (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-7cei2p/checkout/scripts/lib/tsx-cli-shim.mjs:280:23)
++     at async file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-7cei2p/checkout/scripts/check-line-cap-ratchet.mjs:4:1 {
++   [cause]: Error: Different repository.
++       at toolingDependencyOptions (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-7cei2p/checkout/scripts/lib/tooling-dependencies.mjs:149:15)
++       at runTsxCliShim (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-7cei2p/checkout/scripts/lib/tsx-cli-shim.mjs:280:23)
++       at async file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-7cei2p/checkout/scripts/check-line-cap-ratchet.mjs:4:1
++ }
++ [line-cap-ratchet] FAILED (exit 1)
++
+
+ ❯ test/scripts/check-line-cap-ratchet.test.ts:279:27
+    277|     const result = run();
+    278|     expect(result.status, result.stderr).toBe(1);
+    279|     expect(result.stderr).toContain(
+       |                           ^
+    280|       "The oxlint CLI bin must be a file inside its admitted package.",
+    281|     );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+ FAIL  |tooling| test/scripts/check-line-cap-ratchet.test.ts > rejects bin symlink before executing the oxlint CLI
+AssertionError: expected 'Error: Cannot resolve tooling depende…' to contain 'The oxlint CLI bin must be a file ins…'
+
+- Expected
++ Received
+
+- The oxlint CLI bin must be a file inside its admitted package.
++ Error: Cannot resolve tooling dependencies at /tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-qbXswG/tooling #root. Different repository. Install dependencies in this checkout or set OPENCLAW_PR_TOOLING_ROOT to an installed checkout of this repository.
++     at toolingDependencyOptions (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-qbXswG/checkout/scripts/lib/tooling-dependencies.mjs:156:11)
++     at runTsxCliShim (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-qbXswG/checkout/scripts/lib/tsx-cli-shim.mjs:280:23)
++     at async file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-qbXswG/checkout/scripts/check-line-cap-ratchet.mjs:4:1 {
++   [cause]: Error: Different repository.
++       at toolingDependencyOptions (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-qbXswG/checkout/scripts/lib/tooling-dependencies.mjs:149:15)
++       at runTsxCliShim (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-qbXswG/checkout/scripts/lib/tsx-cli-shim.mjs:280:23)
++       at async file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-qbXswG/checkout/scripts/check-line-cap-ratchet.mjs:4:1
++ }
++ [line-cap-ratchet] FAILED (exit 1)
++
+
+ ❯ test/scripts/check-line-cap-ratchet.test.ts:279:27
+    277|     const result = run();
+    278|     expect(result.status, result.stderr).toBe(1);
+    279|     expect(result.stderr).toContain(
+       |                           ^
+    280|       "The oxlint CLI bin must be a file inside its admitted package.",
+    281|     );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  5 failed | 9 passed (14)
+   Start at  08:46:33
+   Duration  4.37s (tests 86%, worker 10%, transform 3%, setup 1%)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |tooling| test/scripts/check-line-cap-ratchet.test.ts > preserves failed child diagnostics for 1//Cannot load oxlint native binding
+AssertionError: expected 'Error: Cannot resolve tooling depende…' to contain 'Cannot load oxlint native binding'
+
+- Expected
++ Received
+
+- Cannot load oxlint native binding
++ Error: Cannot resolve tooling dependencies at /tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-BfIxUa/tooling #root. Different repository. Install dependencies in this checkout or set OPENCLAW_PR_TOOLING_ROOT to an installed checkout of this repository.
++     at toolingDependencyOptions (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-BfIxUa/checkout/scripts/lib/tooling-dependencies.mjs:156:11)
++     at runTsxCliShim (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-BfIxUa/checkout/scripts/lib/tsx-cli-shim.mjs:280:23)
++     at async file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-BfIxUa/checkout/scripts/check-line-cap-ratchet.mjs:4:1 {
++   [cause]: Error: Different repository.
++       at toolingDependencyOptions (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-BfIxUa/checkout/scripts/lib/tooling-dependencies.mjs:149:15)
++       at runTsxCliShim (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-BfIxUa/checkout/scripts/lib/tsx-cli-shim.mjs:280:23)
++       at async file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-BfIxUa/checkout/scripts/check-line-cap-ratchet.mjs:4:1
++ }
++ [line-cap-ratchet] FAILED (exit 1)
++
+
+ ❯ test/scripts/check-line-cap-ratchet.test.ts:254:29
+    252|     expect(result.status, result.stderr).toBe(1);
+    253|     if (status !== 0) {
+    254|       expect(result.stderr).toContain(stderr || stdout);
+       |                             ^
+    255|     } else {
+    256|       expect(result.stderr).not.toContain(stderr);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  |tooling| test/scripts/check-line-cap-ratchet.test.ts > preserves failed child diagnostics for 1/invalid report/Cannot load oxlint native binding
+AssertionError: expected 'Error: Cannot resolve tooling depende…' to contain 'Cannot load oxlint native binding'
+
+- Expected
++ Received
+
+- Cannot load oxlint native binding
++ Error: Cannot resolve tooling dependencies at /tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-V5sUQU/tooling #root. Different repository. Install dependencies in this checkout or set OPENCLAW_PR_TOOLING_ROOT to an installed checkout of this repository.
++     at toolingDependencyOptions (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-V5sUQU/checkout/scripts/lib/tooling-dependencies.mjs:156:11)
++     at runTsxCliShim (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-V5sUQU/checkout/scripts/lib/tsx-cli-shim.mjs:280:23)
++     at async file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-V5sUQU/checkout/scripts/check-line-cap-ratchet.mjs:4:1 {
++   [cause]: Error: Different repository.
++       at toolingDependencyOptions (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-V5sUQU/checkout/scripts/lib/tooling-dependencies.mjs:149:15)
++       at runTsxCliShim (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-V5sUQU/checkout/scripts/lib/tsx-cli-shim.mjs:280:23)
++       at async file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-V5sUQU/checkout/scripts/check-line-cap-ratchet.mjs:4:1
++ }
++ [line-cap-ratchet] FAILED (exit 1)
++
+
+ ❯ test/scripts/check-line-cap-ratchet.test.ts:254:29
+    252|     expect(result.status, result.stderr).toBe(1);
+    253|     if (status !== 0) {
+    254|       expect(result.stderr).toContain(stderr || stdout);
+       |                             ^
+    255|     } else {
+    256|       expect(result.stderr).not.toContain(stderr);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  |tooling| test/scripts/check-line-cap-ratchet.test.ts > preserves failed child diagnostics for 1/Invalid oxlint configuration/
+AssertionError: expected 'Error: Cannot resolve tooling depende…' to contain 'Invalid oxlint configuration'
+
+- Expected
++ Received
+
+- Invalid oxlint configuration
++ Error: Cannot resolve tooling dependencies at /tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-ZPKNVp/tooling #root. Different repository. Install dependencies in this checkout or set OPENCLAW_PR_TOOLING_ROOT to an installed checkout of this repository.
++     at toolingDependencyOptions (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-ZPKNVp/checkout/scripts/lib/tooling-dependencies.mjs:156:11)
++     at runTsxCliShim (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-ZPKNVp/checkout/scripts/lib/tsx-cli-shim.mjs:280:23)
++     at async file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-ZPKNVp/checkout/scripts/check-line-cap-ratchet.mjs:4:1 {
++   [cause]: Error: Different repository.
++       at toolingDependencyOptions (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-ZPKNVp/checkout/scripts/lib/tooling-dependencies.mjs:149:15)
++       at runTsxCliShim (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-ZPKNVp/checkout/scripts/lib/tsx-cli-shim.mjs:280:23)
++       at async file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-ZPKNVp/checkout/scripts/check-line-cap-ratchet.mjs:4:1
++ }
++ [line-cap-ratchet] FAILED (exit 1)
++
+
+ ❯ test/scripts/check-line-cap-ratchet.test.ts:254:29
+    252|     expect(result.status, result.stderr).toBe(1);
+    253|     if (status !== 0) {
+    254|       expect(result.stderr).toContain(stderr || stdout);
+       |                             ^
+    255|     } else {
+    256|       expect(result.stderr).not.toContain(stderr);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  |tooling| test/scripts/check-line-cap-ratchet.test.ts > rejects bin traversal before executing the oxlint CLI
+AssertionError: expected 'Error: Cannot resolve tooling depende…' to contain 'The oxlint CLI bin must be a file ins…'
+
+- Expected
++ Received
+
+- The oxlint CLI bin must be a file inside its admitted package.
++ Error: Cannot resolve tooling dependencies at /tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-7cei2p/tooling #root. Different repository. Install dependencies in this checkout or set OPENCLAW_PR_TOOLING_ROOT to an installed checkout of this repository.
++     at toolingDependencyOptions (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-7cei2p/checkout/scripts/lib/tooling-dependencies.mjs:156:11)
++     at runTsxCliShim (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-7cei2p/checkout/scripts/lib/tsx-cli-shim.mjs:280:23)
++     at async file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-7cei2p/checkout/scripts/check-line-cap-ratchet.mjs:4:1 {
++   [cause]: Error: Different repository.
++       at toolingDependencyOptions (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-7cei2p/checkout/scripts/lib/tooling-dependencies.mjs:149:15)
++       at runTsxCliShim (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-7cei2p/checkout/scripts/lib/tsx-cli-shim.mjs:280:23)
++       at async file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-7cei2p/checkout/scripts/check-line-cap-ratchet.mjs:4:1
++ }
++ [line-cap-ratchet] FAILED (exit 1)
++
+
+ ❯ test/scripts/check-line-cap-ratchet.test.ts:279:27
+    277|     const result = run();
+    278|     expect(result.status, result.stderr).toBe(1);
+    279|     expect(result.stderr).toContain(
+       |                           ^
+    280|       "The oxlint CLI bin must be a file inside its admitted package.",
+    281|     );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+ FAIL  |tooling| test/scripts/check-line-cap-ratchet.test.ts > rejects bin symlink before executing the oxlint CLI
+AssertionError: expected 'Error: Cannot resolve tooling depende…' to contain 'The oxlint CLI bin must be a file ins…'
+
+- Expected
++ Received
+
+- The oxlint CLI bin must be a file inside its admitted package.
++ Error: Cannot resolve tooling dependencies at /tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-qbXswG/tooling #root. Different repository. Install dependencies in this checkout or set OPENCLAW_PR_TOOLING_ROOT to an installed checkout of this repository.
++     at toolingDependencyOptions (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-qbXswG/checkout/scripts/lib/tooling-dependencies.mjs:156:11)
++     at runTsxCliShim (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-qbXswG/checkout/scripts/lib/tsx-cli-shim.mjs:280:23)
++     at async file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-qbXswG/checkout/scripts/check-line-cap-ratchet.mjs:4:1 {
++   [cause]: Error: Different repository.
++       at toolingDependencyOptions (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-qbXswG/checkout/scripts/lib/tooling-dependencies.mjs:149:15)
++       at runTsxCliShim (file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-qbXswG/checkout/scripts/lib/tsx-cli-shim.mjs:280:23)
++       at async file:///tmp/oc-classify-DXBNwL/tmp/oc-vt-Gy2Rs4/openclaw-line-cap-admission-qbXswG/checkout/scripts/check-line-cap-ratchet.mjs:4:1
++ }
++ [line-cap-ratchet] FAILED (exit 1)
++
+
+ ❯ test/scripts/check-line-cap-ratchet.test.ts:279:27
+    277|     const result = run();
+    278|     expect(result.status, result.stderr).toBe(1);
+    279|     expect(result.stderr).toContain(
+       |                           ^
+    280|       "The oxlint CLI bin must be a file inside its admitted package.",
+    281|     );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  5 failed | 9 passed (14)
+   Start at  08:46:33
+   Duration  4.38s (tests 86%, worker 10%, transform 3%, setup 1%)
+
+[test] FAILED (exit 1)
+receipt head=9476c7aaf79f8dc86d0222d2b708524a37711418 config=test/vitest/vitest.tooling.config.ts files=test/scripts/check-line-cap-ratchet.test.ts
+failing-tests:
+ × |tooling| test/scripts/check-line-cap-ratchet.test.ts > preserves failed child diagnostics for 1//Cannot load oxlint native binding 206ms
+ × |tooling| test/scripts/check-line-cap-ratchet.test.ts > preserves failed child diagnostics for 1/invalid report/Cannot load oxlint native binding 173ms
+ × |tooling| test/scripts/check-line-cap-ratchet.test.ts > preserves failed child diagnostics for 1/Invalid oxlint configuration/ 189ms
+ × |tooling| test/scripts/check-line-cap-ratchet.test.ts > rejects bin traversal before executing the oxlint CLI 208ms
+ × |tooling| test/scripts/check-line-cap-ratchet.test.ts > rejects bin symlink before executing the oxlint CLI 233ms
+VERDICT RED [Test Files 1 failed (1); Tests 5 failed | 9 passed (14)]
+# exit=1

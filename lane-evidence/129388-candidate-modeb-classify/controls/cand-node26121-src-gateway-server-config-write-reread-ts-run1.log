@@ -1,0 +1,88 @@
+# ctl ref=cand sha=9476c7aaf79f8dc86d0222d2b708524a37711418 file=src/gateway/server.config-write-reread.test.ts run=1 mode=node26121 start=2026-11-20T16:54:19Z
+# files: 1
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-XIFSKz/home TMPDIR=/tmp/oc-classify-XIFSKz/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.gateway-server.config.ts
+include-file: /tmp/oc-classify-XIFSKz/tmp/oc-focused.pKXkLU/include.json
+include-file-contents:
+  [
+    "src/gateway/server.config-write-reread.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-XIFSKz/tmp/oc-focused.pKXkLU/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.gateway-server.config.ts --maxWorkers=1 src/gateway/server.config-write-reread.test.ts
+logs: /tmp/oc-classify-XIFSKz/tmp/oc-focused.pKXkLU
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+[vitest-workers] local cache hit after 2120ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared f1181e1a1757 in 2204ms (20521 inputs, 25697 outputs)
+[gateway] startup phase: gateway.server-start-import starting total=8403.0ms
+[gateway] startup phase: gateway.server-start-import 4951.6ms total=13354.6ms start=8403.0ms rssMb=621.1 heapUsedMb=418.1 workers=1 workerHeapSamples=1/1 workerHeapMb=30.6 workerHeapSource=cached
+stderr | src/gateway/server.config-write-reread.test.ts > gateway config canonical rereads > config.set settles when an external edit invalidates the canonical reread
+Config (/tmp/oc-classify-XIFSKz/tmp/oc-vt-l8zzsY/openclaw-test-state-config-rpc-O6qQsF/home/.openclaw/openclaw.json): canonical reread after write was invalid; runtime keeps the written config: <root>: JSON5 parse failed: SyntaxError: JSON5: invalid character 'e' at 1:12
+
+ × |gateway-server (gateway-server-parallel)| src/gateway/server.config-write-reread.test.ts > gateway config canonical rereads > config.set settles when an external edit invalidates the canonical reread 16030ms
+   → gateway request timeout for config.apply
+stderr | src/gateway/server.config-write-reread.test.ts > gateway config canonical rereads > config.patch settles when an external edit invalidates the canonical reread
+Config (/tmp/oc-classify-XIFSKz/tmp/oc-vt-l8zzsY/openclaw-test-state-config-rpc-O6qQsF/home/.openclaw/openclaw.json): canonical reread after write was invalid; runtime keeps the written config: <root>: JSON5 parse failed: SyntaxError: JSON5: invalid character 'e' at 1:12
+
+ ✓ |gateway-server (gateway-server-parallel)| src/gateway/server.config-write-reread.test.ts > gateway config canonical rereads > config.patch settles when an external edit invalidates the canonical reread 1062ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.stateDomainPublication.sandbox-registry
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.devicePairSetupChanges
+[sqlite-test-lifecycle] src/gateway/server.config-write-reread.test.ts: retiring openclaw.devicePairingPublications
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |gateway-server (gateway-server-parallel)| src/gateway/server.config-write-reread.test.ts > gateway config canonical rereads > config.set settles when an external edit invalidates the canonical reread
+GatewayClientRequestTimeoutError: gateway request timeout for config.apply
+ ❯ Object.createRequestTimeoutError packages/gateway-client/src/client.ts:285:9
+    283|       createRequestError: (error) => new GatewayClientRequestError(err…
+    284|       createRequestTimeoutError: (method, timeoutMs, requestSent) =>
+    285|         new GatewayClientRequestTimeoutError({ method, timeoutMs, requ…
+       |         ^
+    286|       createRequestAbortError: (method) =>
+    287|         createAbortError(`gateway request aborted for ${method}`),
+ ❯ Timeout.<anonymous> packages/gateway-client/src/pending-request.ts:243:23
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 'CLIENT_TIMEOUT', method: 'config.apply', timeoutMs: 10000, requestSent: true }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+   Start at  08:54:21
+   Duration  52.38s (tests 85%, transform 12%, import 3%, worker 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=9476c7aaf79f8dc86d0222d2b708524a37711418 config=test/vitest/vitest.gateway-server.config.ts files=src/gateway/server.config-write-reread.test.ts
+failing-tests:
+ × |gateway-server (gateway-server-parallel)| src/gateway/server.config-write-reread.test.ts > gateway config canonical rereads > config.set settles when an external edit invalidates the canonical reread 16030ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 1 passed (2)]
+# exit=1

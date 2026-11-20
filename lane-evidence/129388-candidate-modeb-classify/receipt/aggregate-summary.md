@@ -1,0 +1,164 @@
+# openclaw-local-ci - FAILURE
+
+- target: `karmaterminal/openclaw@9476c7aaf79f8dc86d0222d2b708524a37711418`
+- commit: `9476c7aaf79f8dc86d0222d2b708524a37711418`
+- Mode-B workflow: `karmaterminal/openclaw-bootstrap@5ffdcf67ee61d1d1f8ad0f65ec7f0a8da28ae3f1`
+- selection: `full: 130 of 130 shards`
+- shards planned: `180` (routed: `130`)
+- routed jobs: hosted `33` / self-hosted `33` / self-hosted-dist `1`
+- receipt validation: `true` (67 / 67 routed jobs)
+- hosted lane worker pools (from receipts): `arc:oc-8cpu-32gb`
+- routing ruleset digest: `sha256:22f198a74208f77ceb08368ce400bc195be74dec5e7e968f03567247025fb37a`
+- planner digest: `sha256:e1589922229ec157ce61f81d2cecea733cabb487de2a39277fffba2b3114399c`
+- artifacts with summaries: `123`
+- routed shards with a summary: `122` / `130` routed; missing: `8`
+- run: https://github.com/karmaterminal/openclaw-bootstrap/actions/runs/44733879344
+
+## Job results
+
+## Static-failure test fanout override
+- aggregate verdict remains failed when static gates fail
+- audit reason: #129388 pure candidate 9476c7aa full Gate 3; static-gates may carry upstream/base findings (78>77 upstream-equal pin per Ronan); keep dist + tests running; re-dispatch after bootstrap#1861 pin merged 5ffdcf67
+- PASS `preflight`: success
+- PASS `custom-command`: skipped
+- FAIL `static-gates`: failure
+- PASS `routing-eligibility`: success
+- PASS `test-shard-hosted`: skipped
+- PASS `test-shard-hosted-early`: skipped
+- PASS `test-shard-hosted-arc`: skipped
+- FAIL `test-shard-hosted-arc-early`: failure
+- PASS `test-shard-local`: skipped
+- PASS `test-shard-local-early`: skipped
+- PASS `test-shard-local-dist`: skipped
+- PASS `test-shard-arc`: skipped
+- FAIL `test-shard-arc-early`: failure
+- FAIL `test-shard-arc-dist`: failure
+
+## Routing lane guards (5) - aggregate FAILS
+- 1 routed batch(es) ended with blocked/cancelled/skipped terminal receipts
+- lane hosted variant test-shard-hosted-arc-early finished failure, not success
+- lane self-hosted variant test-shard-arc-early finished failure, not success
+- lane self-hosted-dist variant test-shard-arc-dist finished failure, not success
+- 8 routed shard(s) produced no summary: hosted-batch-001/compact-small-1 (unknown: finished-rc-1-without-summary), hosted-batch-002/compact-small-7 (unknown: finished-rc-1-without-summary), hosted-batch-016/compact-small-6 (unknown: finished-rc-4-without-summary), hosted-batch-018/agentic-plugins (unknown: finished-rc-1-without-summary), hosted-batch-022/extension-database-workers (cancelled-in-flight: cancelled-at-5265s), local-batch-034/compact-large-3 (unknown: finished-rc-1-without-summary), local-batch-035/compact-large-2 (unknown: finished-rc-1-without-summary), dist-batch-067/compact-small-dist-2 (unknown: finished-rc-1-without-summary)
+
+## Missing shards (8) - routed, no summary - aggregate FAILS
+- MISSING `hosted-batch-001` (hosted) / `compact-small-1` idx 0: **unknown** (finished-rc-1-without-summary) — finished with rc=1 but wrote no summary.json
+- MISSING `hosted-batch-002` (hosted) / `compact-small-7` idx 0: **unknown** (finished-rc-1-without-summary) — finished with rc=1 but wrote no summary.json
+- MISSING `hosted-batch-016` (hosted) / `compact-small-6` idx 2: **unknown** (finished-rc-4-without-summary) — finished with rc=4 but wrote no summary.json
+- MISSING `hosted-batch-018` (hosted) / `agentic-plugins` idx 0: **unknown** (finished-rc-1-without-summary) — finished with rc=1 but wrote no summary.json
+- MISSING `hosted-batch-022` (hosted) / `extension-database-workers` idx 1: **cancelled-in-flight** (cancelled-at-5265s) — cancelled at 5265s (8785 test output lines; last reported test file extensions/memory-core/src/memory/manager-sync-ops.startup-catchup.test.ts; last config test/vitest/vitest.extension-database-workers.config.ts; in-flight output kept in gate-test-shard-extension-database-workers.in-flight.log)
+- MISSING `local-batch-034` (self-hosted) / `compact-large-3` idx 0: **unknown** (finished-rc-1-without-summary) — finished with rc=1 but wrote no summary.json
+- MISSING `local-batch-035` (self-hosted) / `compact-large-2` idx 0: **unknown** (finished-rc-1-without-summary) — finished with rc=1 but wrote no summary.json
+- MISSING `dist-batch-067` (self-hosted-dist) / `compact-small-dist-2` idx 0: **unknown** (finished-rc-1-without-summary) — finished with rc=1 but wrote no summary.json
+
+## Full-suite tally
+- passed: 247396
+- failed: 152
+- missing shards: 8
+- load-flakes greened: 0
+
+## Deterministic failures (104)
+- [compact-small-14 / test] tooling  test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > resolves broad release evidence and exact-binds every publish child
+- [compact-small-14 / test] tooling  test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > prepares one immutable candidate for release validation children
+- [compact-small-14 / test] tooling  test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > wires evidence attempts into the acceptance gate
+- [compact-small-14 / test] tooling  test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps release publish artifacts and release-note ordering wired
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins disposal work before honoring SIGINT
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins disposal work before honoring SIGTERM
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins disposal work before honoring SIGINT
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins disposal work before honoring SIGTERM
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins admission work before honoring SIGINT
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins admission work before honoring SIGTERM
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins compilation work before honoring SIGINT
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins compilation work before honoring SIGTERM
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins compilation work before honoring SIGINT
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins compilation work before honoring SIGTERM
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins compilation work before honoring SIGINT
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins compilation work before honoring SIGTERM
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > ci-shared wrapper joins compilation work before honoring SIGINT
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > ci-shared wrapper joins compilation work before honoring SIGTERM
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins admission work before honoring SIGINT
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins admission work before honoring SIGTERM
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins disposal work before honoring SIGINT
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins disposal work before honoring SIGTERM
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > ci-disconnect wrapper joins admission work before honoring SIGTERM
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins deletion work before honoring SIGINT
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins deletion work before honoring SIGTERM
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins deletion work before honoring SIGINT
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins deletion work before honoring SIGTERM
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins deletion work before honoring SIGINT
+- [compact-small-30 / test] tooling  test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins deletion work before honoring SIGTERM
+- [compact-small-32 / test] tooling  test/scripts/ci-node-test-plan-hosted-tail.test.ts > bounds hosted groups (main)
+- [compact-small-33 / test] tooling  test/helpers/openclaw-test-instance.test.ts > openclaw test instance > keeps claimed port offset 0 unavailable while its child starts
+- [compact-small-33 / test] tooling  test/helpers/openclaw-test-instance.test.ts > openclaw test instance > keeps claimed port offset 1 unavailable while its child starts
+- [compact-small-36 / test] tooling  test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > captures remaining static programs (//#region)
+- [compact-small-36 / test] tooling  test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > captures remaining static programs (//)
+- [compact-small-36 / test] tooling  test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > captures remaining static programs (//!)
+- [compact-small-38 / test] tooling  test/scripts/pr-cache-lifetime-collection.test.ts > PR cache crash collection > verifies the bootstrap-native lease and process inspection contracts
+- [compact-small-21 / test] tooling  test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > keeps the scheduled main inventory within its reserved compact capacity (github, extra group: false)
+- [compact-small-9 / test] cli-process  src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > resume completes missing source artifacts before consumers and leaves an exact online retry untouched
+- [compact-small-9 / test] cli-process  src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > repair completes missing source artifacts before consumers and leaves an exact online retry untouched
+- [compact-small-9 / test] cli-process  src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > resume preserves publication failure details when staging cleanup also fails
+- [compact-large-24 / test] gateway-core  src/gateway/agent-turn/agent-request-preflight.test.ts > agent request reserved continuation run ids > admits a continuation key from a backend caller as the run id verbatim
+- [compact-small-40 / test] tooling  test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: failure
+- [compact-small-40 / test] tooling  test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: failure-scheduled
+- [compact-small-40 / test] tooling  test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: partial-stop
+- [compact-small-40 / test] tooling  test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: partial-stop-custom
+- [compact-small-40 / test] tooling  test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: partial-stop-scheduled
+- [compact-small-40 / test] tooling  test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: begin-abort
+- [compact-small-40 / test] tooling  test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: begin-unjoined
+- [compact-small-40 / test] tooling  test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: build-throw-settle
+- [compact-small-40 / test] tooling  test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: build-throw-restart
+- [compact-small-40 / test] tooling  test/scripts/check-line-cap-ratchet.test.ts > preserves failed child diagnostics for 1//Cannot load oxlint native binding
+- [compact-small-40 / test] tooling  test/scripts/check-line-cap-ratchet.test.ts > preserves failed child diagnostics for 1/invalid report/Cannot load oxlint native binding
+- [compact-small-40 / test] tooling  test/scripts/check-line-cap-ratchet.test.ts > preserves failed child diagnostics for 1/Invalid oxlint configuration/
+- [compact-small-40 / test] tooling  test/scripts/check-line-cap-ratchet.test.ts > rejects bin traversal before executing the oxlint CLI
+- [compact-small-40 / test] tooling  test/scripts/check-line-cap-ratchet.test.ts > rejects bin symlink before executing the oxlint CLI
+- [compact-large-25 / test] ui  ui/src/styles/background-invalidation.node.test.ts [ ui/src/styles/background-invalidation.node.test.ts ]
+- [compact-large-25 / test] ui  ui/src/styles/incognito-shade.browser.test.ts [ ui/src/styles/incognito-shade.browser.test.ts ]
+- [compact-large-27 / test] unit-src  src/state/openclaw-database-preflight.artifacts.test.ts > falls back to the private snapshot when the last owner closes during a preserving read
+- [compact-large-36 / test] ui  ui/src/styles/session-row-tint.node.test.ts [ ui/src/styles/session-row-tint.node.test.ts ]
+- [compact-large-36 / test] ui  ui/src/test-helpers/new-session-page-opener.node.test.ts > captures New Session failures before closing their contexts and starting the next test
+- [compact-large-38 / test] gateway-server (gateway-server-parallel)  src/gateway/server.config-record-keys.test.ts > allows nested destructive array patches inside id-keyed arrays with replacePaths
+- [compact-large-38 / test] gateway-server (gateway-server-parallel)  src/gateway/server.config-write-reread.test.ts > gateway config canonical rereads > config.set settles when an external edit invalidates the canonical reread
+- [compact-small-12 / test] tooling-isolated  test/scripts/check-extension-package-tsc-boundary.test.ts > compiles packaged roots and invalidates them when exports or inherited paths change
+- [extension-providers / test] extension-providers  extensions/anthropic/session-catalog-transcript.test.ts > pages deeply nested Claude content without losing text
+- [extension-providers / test] extension-providers  extensions/anthropic/session-catalog-transcript.test.ts > pages deeply nested Claude metadata without losing text
+- [extension-browser / test] extension-browser  extensions/browser/src/browser/chrome.headless-cleanup.test.ts > cleans up a one-shot darwin cache shell only when ownsProfile=true
+- [extension-browser / test] extension-browser  extensions/browser/src/browser/chrome.headless-cleanup.test.ts > cleans up a one-shot darwin cache shell only when ownsProfile=false
+- [extension-browser / test] extension-browser  extensions/browser/src/browser/chrome.headless-cleanup.test.ts > recovers stale cache browser with configuredHeadless=false, ownsProfile=true, code=websocket_health_command_timeout
+- [extension-browser / test] extension-browser  extensions/browser/src/browser/chrome.headless-cleanup.test.ts > recovers stale cache browser with configuredHeadless=true, ownsProfile=true, code=websocket_health_command_timeout
+- [compact-large-13 / test] runtime-config  src/config/sessions/session-entry-deletion.test.ts > prepares retained-window references before BEGIN and rechecks writes (false)
+- [compact-large-16 / test] cron  src/cron/maintenance-lifecycle.test.ts > keeps pending database admission private when its publisher wakes retention
+- [compact-large-16 / test] cron  src/cron/maintenance-lifecycle.test.ts > finishes retention and rearms after a notifying preparation ends during a read
+- [compact-large-16 / test] cron  src/cron/maintenance-lifecycle.test.ts > runs healthy retention independently, pending=false, notification=none
+- [compact-large-16 / test] cron  src/cron/maintenance-lifecycle.test.ts > runs healthy retention independently, pending=true, notification=none
+- [compact-large-16 / test] cron  src/cron/maintenance-lifecycle.test.ts > runs healthy retention independently, pending=true, notification=agent
+- [compact-large-16 / test] cron  src/cron/maintenance-lifecycle.test.ts > runs healthy retention independently, pending=true, notification=history
+- [compact-large-16 / test] cron  src/cron/maintenance-lifecycle.test.ts > sleeps until the retained session deadline when history is empty
+- [compact-large-16 / test] cron  src/cron/maintenance-lifecycle.test.ts > wakes for committed session changes and replaces their previous expiry without polling unrelated sessions
+- [compact-large-16 / test] cron  src/cron/maintenance-lifecycle.test.ts > wakes for committed stores changes and replaces their previous expiry without polling unrelated sessions
+- [compact-large-16 / test] cron  src/cron/maintenance-lifecycle.test.ts > wakes for committed config changes and replaces their previous expiry without polling unrelated sessions
+- [compact-large-16 / test] cron  src/cron/maintenance-lifecycle.test.ts > wakes for committed agent-ready changes and replaces their previous expiry without polling unrelated sessions
+- [compact-large-16 / test] cron  src/cron/maintenance-lifecycle.test.ts > retains a registry invalidation received during its read
+- [compact-large-16 / test] cron  src/cron/maintenance-snapshot.test.ts > handles snapshot invalidation: pending deletion through the real maintenance scheduler
+- [compact-large-16 / test] cron  src/cron/maintenance-snapshot.test.ts > handles snapshot invalidation: completed deletion through the real maintenance scheduler
+- [compact-large-16 / test] cron  src/cron/maintenance-snapshot.test.ts > handles snapshot invalidation: registration removal through the real maintenance scheduler
+- [compact-large-16 / test] cron  src/cron/maintenance-snapshot.test.ts > handles snapshot invalidation: after healthy target through the real maintenance scheduler
+- [compact-large-16 / test] cron  src/cron/maintenance-snapshot.test.ts > handles snapshot invalidation: stop before retry through the real maintenance scheduler
+- [compact-large-19 / test] gateway-database-workers  src/gateway/operator-approval-placement-grants.test.ts > placement standing grants > skips the second launch and re-prompts after the placement generation changes
+- [compact-large-19 / test] gateway-methods  src/gateway/server-methods/environments.test.ts > probes disabled host setup only when requested without advertising or granting desktop access
+- [compact-large-19 / test] gateway-methods  src/gateway/server-methods/environments.test.ts > projects live and offline node facts consistently through list and status
+- [compact-large-19 / test] gateway-methods  src/gateway/server-methods/environments.test.ts > preserves pairing ownership for failed static-ssh workers bound to node-live
+- [compact-large-19 / test] gateway-methods  src/gateway/server-methods/environments.test.ts > preserves pairing ownership for orphaned static-ssh workers bound to undefined
+- [compact-large-19 / test] gateway-methods  src/gateway/server-methods/environments.test.ts > preserves pairing ownership for destroyed static-ssh workers bound to node-live
+- [compact-large-19 / test] gateway-methods  src/gateway/server-methods/environments.test.ts > preserves pairing ownership for ready device workers bound to node-live
+- [compact-large-19 / test] gateway-methods  src/gateway/server-methods/environments.test.ts > fails closed and redacts environments.status {"environmentId":"missing"} read failures
+- [compact-large-19 / test] gateway-methods  src/gateway/server-methods/environments.test.ts > rejects environments.status without a configured target
+- [compact-large-20 / test] infra  src/infra/shell-env.test.ts > shell env fallback > uses interactive Bash login startup before nounset reads PS1
+- [compact-large-35 / test] unit-fast  src/infra/worker-task-pool.memory.test.ts > collects a completed large external payload while keeping the bounded worker warm
+- [compact-large-35 / test] unit-fast  test/scripts/bench-session-history.test.ts > keeps the source benchmark JSON parseable across all history readers
+- [compact-large-35 / test] infra  src/infra/package-update-permission-drift.test.ts > publication permission drift > repairs a recursive named-user POSIX ACL
+- [compact-large-35 / test] infra  src/infra/update-doctor-migration-attribution.test.ts > completes retirement after Doctor migrations and native parent bookkeeping
+- [compact-large-35 / test] infra  src/infra/update-retained-runtime-imports.process.test.ts > keeps bun late imports on the old generation through replacement and CLI teardown
+- [compact-large-35 / test] commands  src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > does not scan unchanged retained history twice across update passes
+- [compact-large-41 / test] gateway-server (gateway-server-native)  src/gateway/server.plugin-reload-send-revocation.product.test.ts > runs Bob's allowed and revoked retained sends in a prebound owned process

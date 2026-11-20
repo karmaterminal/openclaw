@@ -1,0 +1,12 @@
+diff --git a/src/gateway/agent-turn/agent-request-preflight.test.ts b/src/gateway/agent-turn/agent-request-preflight.test.ts
+index dbbcdaafcb..0245c9f2b0 100644
+--- a/src/gateway/agent-turn/agent-request-preflight.test.ts
++++ b/src/gateway/agent-turn/agent-request-preflight.test.ts
+@@ -336,6 +336,7 @@ describe("agent request reserved continuation run ids", () => {
+   };
+   const backendClient = {
+     connect: { client: { id: "gateway-client", mode: "backend" }, scopes: ["operator.write"] },
++    internal: { localBackendClient: true },
+   };
+ 
+   async function runReservedKeyPreflight(idempotencyKey: string, client: unknown) {
