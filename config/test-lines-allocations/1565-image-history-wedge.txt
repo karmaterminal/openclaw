@@ -1,0 +1,2 @@
+# #1565 Copilot per-prompt image cap (base lane 1565-image-history-wedge, ab5a30ea..c9e6d3bb): the listed-cap catalog mapping and the stream wrapper's wire pins. Granted by frond-scribe for the (c) fleet composite; this growth predates 1565-copilot-cap-newest.
+166
