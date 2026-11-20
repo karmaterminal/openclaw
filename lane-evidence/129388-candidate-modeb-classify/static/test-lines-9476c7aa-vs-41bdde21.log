@@ -1,0 +1,3 @@
+# 9476c7aaf79f8dc86d0222d2b708524a37711418 check-test-lines-ratchet --base 41bdde2111dd7031c93b47c57d7dad2e56bb0f5f --no-merge-base 2026-11-20T15:48:04Z
+Test lines OK. Net test lines: +113498; allowance: 400; allocation credit: 113471.
+# exit=0

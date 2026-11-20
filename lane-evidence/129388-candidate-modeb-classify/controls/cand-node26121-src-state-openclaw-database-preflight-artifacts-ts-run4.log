@@ -1,0 +1,49 @@
+# ctl ref=cand sha=9476c7aaf79f8dc86d0222d2b708524a37711418 file=src/state/openclaw-database-preflight.artifacts.test.ts run=4 mode=node26121 start=2026-11-20T16:16:09Z
+# files: 1
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-b7Lu79/home TMPDIR=/tmp/oc-classify-b7Lu79/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.unit.config.ts
+include-file: /tmp/oc-classify-b7Lu79/tmp/oc-focused.XtV9Qh/include.json
+include-file-contents:
+  [
+    "src/state/openclaw-database-preflight.artifacts.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-b7Lu79/tmp/oc-focused.XtV9Qh/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.unit.config.ts --maxWorkers=1 src/state/openclaw-database-preflight.artifacts.test.ts
+logs: /tmp/oc-classify-b7Lu79/tmp/oc-focused.XtV9Qh
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+[vitest-workers] local cache hit after 2137ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared cebb652ef6e0 in 2219ms (20521 inputs, 25697 outputs)
+ ✓ |unit| src/state/openclaw-database-preflight.artifacts.test.ts > retains the source-reader lock tolerance beyond the runtime busy timeout 8307ms
+ ✓ |unit| src/state/openclaw-database-preflight.artifacts.test.ts > unions native locators and aliases without dropping distinct stores 2725ms
+ ✓ |unit| src/state/openclaw-database-preflight.artifacts.test.ts > inspects incompatible agent schemas while an independent WAL writer keeps committing 3482ms
+ ✓ |unit| src/state/openclaw-database-preflight.artifacts.test.ts > admits a live agent store's schema without a stable copy while it keeps checkpointing 1328ms
+ ✓ |unit| src/state/openclaw-database-preflight.artifacts.test.ts > refuses a newer schema committed only to an open WAL without changing a source byte 1145ms
+ ✓ |unit| src/state/openclaw-database-preflight.artifacts.test.ts > falls back to the private snapshot when the last owner closes during a preserving read 284ms
+ ✓ |unit| src/state/openclaw-database-preflight.artifacts.test.ts > ignores uncommitted writer versions without ending the owning transactions 1363ms
+ ✓ |unit| src/state/openclaw-database-preflight.artifacts.test.ts > fails closed when the state snapshot cannot be prepared 307ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/state/openclaw-database-preflight.artifacts.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/state/openclaw-database-preflight.artifacts.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/state/openclaw-database-preflight.artifacts.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/state/openclaw-database-preflight.artifacts.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/state/openclaw-database-preflight.artifacts.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/state/openclaw-database-preflight.artifacts.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/state/openclaw-database-preflight.artifacts.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/state/openclaw-database-preflight.artifacts.test.ts: retiring openclaw.agentDatabaseLifecycle
+
+ ✓ |unit| src/state/openclaw-database-preflight.artifacts.test.ts > fails closed when the main snapshot cannot be prepared 1211ms
+
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Start at  08:16:10
+   Duration  27.28s (tests 75%, transform 19%, import 4%, worker 1%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=9476c7aaf79f8dc86d0222d2b708524a37711418 config=test/vitest/vitest.unit.config.ts files=src/state/openclaw-database-preflight.artifacts.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 9 passed (9)]
+# exit=0

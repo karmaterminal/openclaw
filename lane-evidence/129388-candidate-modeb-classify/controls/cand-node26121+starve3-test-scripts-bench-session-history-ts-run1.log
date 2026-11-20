@@ -1,0 +1,37 @@
+# ctl ref=cand sha=9476c7aaf79f8dc86d0222d2b708524a37711418 file=test/scripts/bench-session-history.test.ts run=1 mode=node26121+starve3 start=2026-11-20T16:04:01Z
+# files: 1
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-KRK7BK/home TMPDIR=/tmp/oc-classify-KRK7BK/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.unit-fast.config.ts
+include-file: /tmp/oc-classify-KRK7BK/tmp/oc-focused.BTZO5C/include.json
+include-file-contents:
+  [
+    "test/scripts/bench-session-history.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-KRK7BK/tmp/oc-focused.BTZO5C/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.unit-fast.config.ts --maxWorkers=1 test/scripts/bench-session-history.test.ts
+logs: /tmp/oc-classify-KRK7BK/tmp/oc-focused.BTZO5C
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+[vitest-workers] local cache miss after 4942ms
+[vitest] still running with no output for 30000ms.
+[vitest] still running with no output for 60000ms.
+[vitest] still running with no output for 90000ms.
+[vitest] no output for 120000ms; terminating stalled Vitest process group.
+[vitest] no-output process diagnostics begin (pid=56)
+[vitest] process: pid=56 ppid=39 pgid=56 elapsed=02:03 state=Z cpu=0.8% rss_kb=0 wchan=- comm=other
+[vitest] process tree: pgid=56 members=0
+[vitest] fd summary: unavailable
+Error: Managed command aborted
+    at runManagedCommandInner (/home/figs/classify-129388/cand-9476c7aa/scripts/lib/managed-child-process.mts:1015:27)
+    at async runOwnedManagedCommand (/home/figs/classify-129388/cand-9476c7aa/scripts/lib/managed-child-process.mts:744:10)
+    at async <anonymous> (/home/figs/classify-129388/cand-9476c7aa/scripts/lib/vitest-worker-run.mts:106:20)
+    at async <anonymous> (/home/figs/classify-129388/cand-9476c7aa/scripts/lib/vitest-worker-run.mts:167:28)
+    at async <anonymous> (/home/figs/classify-129388/cand-9476c7aa/scripts/lib/vitest-worker-run.mts:208:9) {
+  code: 'ABORT_ERR'
+}
+[test] FAILED (exit 143)
+receipt head=9476c7aaf79f8dc86d0222d2b708524a37711418 config=test/vitest/vitest.unit-fast.config.ts files=test/scripts/bench-session-history.test.ts
+VERDICT RUN-BROKEN [Test Files <none>; Tests <none>] reason=exit 143 with no Vitest summary (startup crash or runner failure)
+# exit=1

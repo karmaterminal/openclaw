@@ -1,0 +1,13 @@
+# ctl ref=cand sha=9476c7aaf79f8dc86d0222d2b708524a37711418 file=src/cli/update-cli/update-command-lease.test.ts run=2 mode=node26121 start=2026-11-20T16:20:49Z
+# files: 1
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-UikvZR/home TMPDIR=/tmp/oc-classify-UikvZR/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.cli-process.config.ts
+include-file: /tmp/oc-classify-UikvZR/tmp/oc-focused.iqUGWJ/include.json
+include-file-contents:
+  [
+    "src/cli/update-cli/update-command-lease.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-UikvZR/tmp/oc-focused.iqUGWJ/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.cli-process.config.ts --maxWorkers=1 src/cli/update-cli/update-command-lease.test.ts
+logs: /tmp/oc-classify-UikvZR/tmp/oc-focused.iqUGWJ

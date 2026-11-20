@@ -30,7 +30,21 @@ if [[ -n "${CTL_HIDE_BIN:-}" ]]; then
   for b in /usr/bin/* /bin/*; do n=${b##*/}; [[ "$n" == "$CTL_HIDE_BIN" || -e "$shim/$n" ]] || ln -s "$b" "$shim/$n"; done
   PATH=$shim; mode="$mode+hide-$CTL_HIDE_BIN"
 fi
+# CTL_CPU_STARVE=N pins the run to core 19 and runs N busy loops on that core for its duration
+# (CPU starvation, the loaded-pod state); the mode names it.
+starve=()
+if [[ -n "${CTL_CPU_STARVE:-}" ]]; then
+  for _ in $(seq "$CTL_CPU_STARVE"); do taskset -c 19 sh -c 'while :; do :; done' & starve+=($!); done
+  wrap=(taskset -c 19 "${wrap[@]}"); mode="$mode+starve$CTL_CPU_STARVE"
+fi
 slug=$(printf '%s' "$file" | sed -E 's#[/.]+#-#g; s#-(test|ts)-?#-#g; s#-+$##')
+# FILE may be @LIST: run every file named in LIST (one per line, files absent at REF dropped) in one
+# oc-focused call, e.g. a CI sub-shard's file list.
+files=("$file")
+if [[ "$file" == @* ]]; then
+  files=(); while IFS= read -r f; do [[ -f "$wt/$f" ]] && files+=("$f"); done <"${file#@}"
+  slug=list-$(basename "${file#@}" .files)
+fi
 log="$here/controls/${ref}-${mode}-${slug}-run${run}.log"
 scratch=$(mktemp -d /tmp/oc-classify-XXXXXX)
 mkdir -m 0700 "$scratch/home" "$scratch/tmp"
@@ -38,12 +52,14 @@ sha=$(git -C "$wt" rev-parse HEAD)
 start=$(date -u +%FT%TZ); t0=$(date +%s)
 {
   echo "# ctl ref=$ref sha=$sha file=$file run=$run mode=$mode start=$start"
+  echo "# files: ${#files[@]}"
   echo "# env: PATH=$node26:\$PATH OPENCLAW_VITEST_RUNTIME=node HOME=$scratch/home TMPDIR=$scratch/tmp $*"
   timeout --kill-after=20 570 "${wrap[@]}" env PATH="$node26:$PATH" OPENCLAW_VITEST_RUNTIME=node \
     HOME="$scratch/home" TMPDIR="$scratch/tmp" "$@" \
-    /home/figs/.local/bin/oc-focused --worktree "$wt" "$file"
+    /home/figs/.local/bin/oc-focused --worktree "$wt" "${files[@]}"
   echo "# exit=$?"
 } >"$log" 2>&1
+((${#starve[@]})) && kill "${starve[@]}" 2>/dev/null
 rc=$(sed -nE 's/^# exit=([0-9]+)$/\1/p' "$log" | tail -n1)
 verdict=$(grep -aE '^VERDICT ' "$log" | tail -n1)
 secs=$(( $(date +%s) - t0 ))

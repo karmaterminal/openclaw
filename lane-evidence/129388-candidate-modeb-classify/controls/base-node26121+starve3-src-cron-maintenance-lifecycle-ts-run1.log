@@ -1,0 +1,57 @@
+# ctl ref=base sha=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f file=src/cron/maintenance-lifecycle.test.ts run=1 mode=node26121+starve3 start=2026-11-20T16:13:20Z
+# files: 1
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-8Rc7xl/home TMPDIR=/tmp/oc-classify-8Rc7xl/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.cron.config.ts
+include-file: /tmp/oc-classify-8Rc7xl/tmp/oc-focused.hCeLnx/include.json
+include-file-contents:
+  [
+    "src/cron/maintenance-lifecycle.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-8Rc7xl/tmp/oc-focused.hCeLnx/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.cron.config.ts --maxWorkers=1 src/cron/maintenance-lifecycle.test.ts
+logs: /tmp/oc-classify-8Rc7xl/tmp/oc-focused.hCeLnx
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-41bdde21
+
+[vitest-workers] local cache hit after 9065ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 0a5b150fa4cd in 9333ms (20344 inputs, 25418 outputs)
+ ✓ |cron| src/cron/maintenance-lifecycle.test.ts > keeps pending database admission private when its publisher wakes retention 98ms
+ ✓ |cron| src/cron/maintenance-lifecycle.test.ts > finishes retention and rearms after a notifying preparation ends during a read 12ms
+ ✓ |cron| src/cron/maintenance-lifecycle.test.ts > runs healthy retention independently, pending=false, notification=none 24ms
+ ✓ |cron| src/cron/maintenance-lifecycle.test.ts > runs healthy retention independently, pending=true, notification=none 11ms
+ ✓ |cron| src/cron/maintenance-lifecycle.test.ts > runs healthy retention independently, pending=true, notification=agent 19ms
+ ✓ |cron| src/cron/maintenance-lifecycle.test.ts > runs healthy retention independently, pending=true, notification=history 3ms
+ ✓ |cron| src/cron/maintenance-lifecycle.test.ts > sleeps until the retained session deadline when history is empty 17ms
+ ✓ |cron| src/cron/maintenance-lifecycle.test.ts > wakes for committed session changes and replaces their previous expiry without polling unrelated sessions 17ms
+ ✓ |cron| src/cron/maintenance-lifecycle.test.ts > wakes for committed stores changes and replaces their previous expiry without polling unrelated sessions 25ms
+ ✓ |cron| src/cron/maintenance-lifecycle.test.ts > wakes for committed config changes and replaces their previous expiry without polling unrelated sessions 14ms
+ ✓ |cron| src/cron/maintenance-lifecycle.test.ts > wakes for committed agent-ready changes and replaces their previous expiry without polling unrelated sessions 2ms
+ ✓ |cron| src/cron/maintenance-lifecycle.test.ts > retains a registry invalidation received during its read 12ms
+ ✓ |cron| src/cron/maintenance-lifecycle.test.ts > retains a history invalidation received during its read 8ms
+ ✓ |cron| src/cron/maintenance-lifecycle.test.ts > keeps the last completed sweep visible when missing cron facts defer the next pass 12ms
+ ✓ |cron| src/cron/maintenance-lifecycle.test.ts > does not mistake an unknown failure with the snapshot error text for an expected deferral 13ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/cron/maintenance-lifecycle.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/cron/maintenance-lifecycle.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/cron/maintenance-lifecycle.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/cron/maintenance-lifecycle.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+
+ ✓ |cron| src/cron/maintenance-lifecycle.test.ts > Cron maintenance admission diagnostics > joins scheduler shutdown while maintenance is still waiting behind suspension 15ms
+ ✓ |cron| src/cron/maintenance-lifecycle.test.ts > Cron maintenance admission diagnostics > does not report a refused sweep when restart begins after suspension=false 15ms
+ ✓ |cron| src/cron/maintenance-lifecycle.test.ts > Cron maintenance admission diagnostics > does not report a refused sweep when restart begins after suspension=true 9ms
+ ✓ |cron| src/cron/maintenance-lifecycle.test.ts > Cron maintenance admission diagnostics > reports an unexpected admission failure even during restart drain 6ms
+ ✓ |cron| src/cron/maintenance-lifecycle.test.ts > Cron maintenance admission diagnostics > reports an admitted drain failure while stop joins its sweep 11ms
+ ✓ |cron| src/cron/maintenance-lifecycle.test.ts > runs overdue history retention after sleep and leaves unrelated writes parked 6ms
+
+ Test Files  1 passed (1)
+      Tests  21 passed (21)
+   Start at  08:13:26
+   Duration  20.06s (transform 81%, worker 8%, import 7%, setup 2%, tests 2%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f config=test/vitest/vitest.cron.config.ts files=src/cron/maintenance-lifecycle.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 21 passed (21)]
+# exit=0

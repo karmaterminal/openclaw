@@ -1,0 +1,79 @@
+# ctl ref=base sha=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f file=test/scripts/bench-session-history.test.ts run=1 mode=node26121+starve3 start=2026-11-20T16:02:06Z
+# files: 1
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-7cW52e/home TMPDIR=/tmp/oc-classify-7cW52e/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.unit-fast.config.ts
+include-file: /tmp/oc-classify-7cW52e/tmp/oc-focused.1l1wVC/include.json
+include-file-contents:
+  [
+    "test/scripts/bench-session-history.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-7cW52e/tmp/oc-focused.1l1wVC/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.unit-fast.config.ts --maxWorkers=1 test/scripts/bench-session-history.test.ts
+logs: /tmp/oc-classify-7cW52e/tmp/oc-focused.1l1wVC
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-41bdde21
+
+[vitest-workers] local cache hit after 8727ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared e37abb64dc30 in 8998ms (20344 inputs, 25418 outputs)
+ ✓ |unit-fast| test/scripts/bench-session-history.test.ts > drains seeded transcript owners before fresh-process history measurements 29639ms
+[vitest] still running with no output for 30000ms.
+[vitest] still running with no output for 60000ms.
+ × |unit-fast| test/scripts/bench-session-history.test.ts > keeps the source benchmark JSON parseable across all history readers 60262ms
+   → [33m[state/agent-db][39m [36magent database clean-close receipt: written; agent=main[39m
+small/recent measured
+: expected Error: spawnSync /home/figs/.nvm/versions… { …(5) } to be undefined
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit-fast| test/scripts/bench-session-history.test.ts > keeps the source benchmark JSON parseable across all history readers
+AssertionError: [33m[state/agent-db][39m [36magent database clean-close receipt: written; agent=main[39m
+small/recent measured
+: expected Error: spawnSync /home/figs/.nvm/versions… { …(5) } to be undefined
+
+- Expected:
+undefined
+
++ Received:
+Error {
+  "message": "spawnSync /home/figs/.nvm/versions/node/v26.12.1/bin/node ETIMEDOUT",
+  "errno": -110,
+  "code": "ETIMEDOUT",
+  "syscall": "spawnSync /home/figs/.nvm/versions/node/v26.12.1/bin/node",
+  "path": "/home/figs/.nvm/versions/node/v26.12.1/bin/node",
+  "spawnargs": [
+    "--import",
+    "./scripts/tsx.mjs",
+    "scripts/bench-session-history.ts",
+    "--profile",
+    "small",
+    "--samples",
+    "1",
+  ],
+}
+
+ ❯ test/scripts/bench-session-history.test.ts:<redacted len=5>
+     69|   );
+     70|
+     71|   expect(result.error, result.stderr).toBeUndefined();
+       |                                       ^
+     72|   expect(result.status, result.stderr).toBe(0);
+     73|   const report: unknown = JSON.parse(result.stdout);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+   Start at  08:02:14
+   Duration  103.91s (tests 88%, transform 12%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f config=test/vitest/vitest.unit-fast.config.ts files=test/scripts/bench-session-history.test.ts
+failing-tests:
+ × |unit-fast| test/scripts/bench-session-history.test.ts > keeps the source benchmark JSON parseable across all history readers 60262ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 1 passed (2)]
+# exit=1

@@ -1,0 +1,4 @@
+# 41bdde2111dd7031c93b47c57d7dad2e56bb0f5f check-test-lines-ratchet --base 7ce2d10eced5f379e31a0b01a96fbcbf9741ccbe --no-merge-base 2026-11-20T15:48:01Z
+Net test lines: +21517; allowance: 400; allocation credit: 5876.
+Delete or consolidate tests to remove 15241 lines, or add a justified config/test-lines-allocations/<change>.txt record of 21117 and state the reason in the PR.
+# exit=1
