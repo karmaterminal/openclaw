@@ -123,16 +123,22 @@ const COPILOT_IMAGE_TEXT_TYPES = new Map([
 ]);
 
 // Copilot lists a per-model cap on images in one prompt, and replay re-sends every
-// earlier image. Keep the first images in wire order and give the rest a fixed notice,
-// so appending a turn never changes earlier request bytes. Once the cap is reached,
-// newer images stay omitted until compaction or a new session drops older ones (#1565).
+// earlier image. Keep the newest images (the last in wire order) so the current picture
+// always reaches the model, and put a fixed notice in place of each earlier one so the
+// model knows how many it did not see. Text turns leave the request bytes as they were;
+// a new image displaces the oldest kept one, so the prompt cache rewrites from there (#1565).
 function capCopilotPromptImages(payload: unknown, maxImages: number): void {
   const record = asOptionalObjectRecord(payload);
   const items = Array.isArray(record?.input) ? record.input : record?.messages;
   if (!Array.isArray(items)) {
     return;
   }
-  const notice = `[image omitted: GitHub Copilot accepts at most ${maxImages} image${maxImages === 1 ? "" : "s"} per request]`;
+  const notice =
+    maxImages === 1
+      ? "[image omitted: this model accepts at most 1 image per prompt, so only the newest image is shown]"
+      : `[image omitted: this model accepts at most ${maxImages} images per prompt, so only the newest ${maxImages} images are shown]`;
+  // The first walk counts the images; the second replaces all but the last maxImages.
+  let omitted = 0;
   let seen = 0;
   const capParts = (owner: Record<string, unknown>, key: string): void => {
     const parts = owner[key];
@@ -148,7 +154,7 @@ function capCopilotPromptImages(payload: unknown, maxImages: number): void {
       }
       const textType =
         typeof block?.type === "string" ? COPILOT_IMAGE_TEXT_TYPES.get(block.type) : undefined;
-      if (textType && ++seen > maxImages) {
+      if (textType && ++seen <= omitted) {
         // Anthropic places cache breakpoints before payload hooks; keep one on its stand-in.
         const cacheControl = block?.cache_control;
         (capped ??= [...parts])[index] = {
@@ -162,12 +168,20 @@ function capCopilotPromptImages(payload: unknown, maxImages: number): void {
       owner[key] = capped;
     }
   };
-  for (const item of items) {
-    const message = asOptionalObjectRecord(item);
-    if (message) {
-      capParts(message, "content");
-      capParts(message, "output");
+  const walk = (): void => {
+    seen = 0;
+    for (const item of items) {
+      const message = asOptionalObjectRecord(item);
+      if (message) {
+        capParts(message, "content");
+        capParts(message, "output");
+      }
     }
+  };
+  walk();
+  omitted = seen - maxImages;
+  if (omitted > 0) {
+    walk();
   }
 }
 
