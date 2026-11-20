@@ -1,0 +1,12 @@
+diff --git a/src/config/sessions/session-accessor.sqlite-entry-store.ts b/src/config/sessions/session-accessor.sqlite-entry-store.ts
+index d03ab1c0a3..f87ce273c2 100644
+--- a/src/config/sessions/session-accessor.sqlite-entry-store.ts
++++ b/src/config/sessions/session-accessor.sqlite-entry-store.ts
+@@ -67,7 +67,6 @@ export function deleteSessionEntryRows(
+   // Continuation: deletion is a generation edge of recipient authority. Every deletion owner
+   // advances it here, in its own transaction, so a binding captured before the deletion stays
+   // stale when the key is recreated (the authority row deliberately outlives the session).
+-  advanceSessionRecipientAuthorityInTransaction(database, sessionKey);
+   // Lifecycle deletion reuses its transaction snapshot; Doctor also supplies validated legacy rows.
+   const previousEntry =
+     options.validatedEntry ?? readExactSessionEntryRow(database, sessionKey)?.entry;
