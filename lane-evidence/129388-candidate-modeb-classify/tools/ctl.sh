@@ -18,6 +18,18 @@ iso=/home/figs/flesh_beast_best_beast/source/frond-scribe/skills/pr-drift-cure-g
 node26=/home/figs/.nvm/versions/node/v26.12.1/bin
 mode=node26121
 for kv in "$@"; do mode="$mode+${kv%%=*}"; done
+# CTL_NO_ISO=1 runs outside the user namespace (for tests that need real uid mapping, e.g. setfacl
+# on another uid). Only for tests that never touch /tmp/openclaw; the mode names it.
+wrap=("$iso" "$wt")
+if [[ "${CTL_NO_ISO:-}" == 1 ]]; then wrap=(); mode="$mode+noiso"; fi
+# CTL_MASK_PROFILE_D=1 empties /etc/profile.d first (the runner image's state); the mode names it.
+if [[ "${CTL_MASK_PROFILE_D:-}" == 1 ]]; then wrap=("$(dirname "$0")/mask-profile-d.sh" "${wrap[@]}"); mode="$mode+maskprofiled"; fi
+# CTL_HIDE_BIN=NAME runs with PATH = Node 26.12.1 + a shim of /usr/bin and /bin minus NAME; the mode names it.
+if [[ -n "${CTL_HIDE_BIN:-}" ]]; then
+  shim=$(mktemp -d /tmp/oc-classify-shim-XXXXXX)
+  for b in /usr/bin/* /bin/*; do n=${b##*/}; [[ "$n" == "$CTL_HIDE_BIN" || -e "$shim/$n" ]] || ln -s "$b" "$shim/$n"; done
+  PATH=$shim; mode="$mode+hide-$CTL_HIDE_BIN"
+fi
 slug=$(printf '%s' "$file" | sed -E 's#[/.]+#-#g; s#-(test|ts)-?#-#g; s#-+$##')
 log="$here/controls/${ref}-${mode}-${slug}-run${run}.log"
 scratch=$(mktemp -d /tmp/oc-classify-XXXXXX)
@@ -27,7 +39,7 @@ start=$(date -u +%FT%TZ); t0=$(date +%s)
 {
   echo "# ctl ref=$ref sha=$sha file=$file run=$run mode=$mode start=$start"
   echo "# env: PATH=$node26:\$PATH OPENCLAW_VITEST_RUNTIME=node HOME=$scratch/home TMPDIR=$scratch/tmp $*"
-  timeout --kill-after=20 570 "$iso" "$wt" env PATH="$node26:$PATH" OPENCLAW_VITEST_RUNTIME=node \
+  timeout --kill-after=20 570 "${wrap[@]}" env PATH="$node26:$PATH" OPENCLAW_VITEST_RUNTIME=node \
     HOME="$scratch/home" TMPDIR="$scratch/tmp" "$@" \
     /home/figs/.local/bin/oc-focused --worktree "$wt" "$file"
   echo "# exit=$?"
@@ -38,5 +50,5 @@ secs=$(( $(date +%s) - t0 ))
 dirty=$(git -C "$wt" status --porcelain | wc -l)
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%ss\t%s\t%s\n' "$start" "$ref" "${sha:0:12}" "$mode" "$file" "$run" "$rc" "$secs" \
   "${verdict:-NO-VERDICT}" "$(basename "$log")" >>"$here/controls/summary.tsv"
-rm -rf "$scratch"
+rm -rf "$scratch" ${shim:+"$shim"}
 printf '%s %s run%s rc=%s %ss %s dirty=%s\n' "$ref" "$file" "$run" "$rc" "$secs" "${verdict:-NO-VERDICT}" "$dirty"
