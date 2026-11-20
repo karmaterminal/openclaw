@@ -1,0 +1,2 @@
+# #1565 Copilot per-prompt image cap keeps the newest images: Responses wire pins with tagged photos (current turn, later text turn, newest 5 across two posts, no cap). Net growth against c9e6d3bb only.
+43
