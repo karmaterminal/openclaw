@@ -485,11 +485,11 @@ describe("fetchCopilotModelCatalog", () => {
     );
     const photoTags = (first: number, count: number) =>
       Array.from({ length: count }, (_, offset) => `photo ${first + offset}`);
-    const photoPost = (text: string, first: number, count: number, timestamp: number) => ({
+    const userTurn = (text: string, timestamp: number, firstPhoto = 1, photoCount = 0) => ({
       role: "user" as const,
       content: [
         { type: "text" as const, text },
-        ...photoTags(first, count).map((tag) => ({
+        ...photoTags(firstPhoto, photoCount).map((tag) => ({
           type: "image" as const,
           data: Buffer.concat([png, Buffer.from(tag)]).toString("base64"),
           mimeType: "image/png",
@@ -505,18 +505,13 @@ describe("fetchCopilotModelCatalog", () => {
         content: [{ type: "text", text }],
         timestamp,
       });
-    const question = (text: string, timestamp: number) => ({
-      role: "user" as const,
-      content: text,
-      timestamp,
-    });
     const photoTag = (imageUrl: unknown) =>
       Buffer.from(String(imageUrl).split(",")[1] ?? "", "base64")
         .subarray(png.length)
         .toString();
 
     async function sendWireParts(
-      turns: Array<ReturnType<typeof photoPost | typeof reply | typeof question>>,
+      turns: Array<ReturnType<typeof userTurn | typeof reply>>,
       vision?: { max_prompt_images: number },
     ) {
       const [listed] = await fetchSelectionFixture([
@@ -581,35 +576,34 @@ describe("fetchCopilotModelCatalog", () => {
       );
     }
 
-    const omittedOfOne =
-      "[image omitted: this model accepts at most 1 image per prompt, so only the newest image is shown]";
-    const sixPhotos = photoPost("six photos", 1, 6, 1);
-
-    it("sends the newest image of a multi-image turn and marks each earlier one omitted", async () => {
-      expect(await sendWireParts([sixPhotos], { max_prompt_images: 1 })).toEqual([
-        "six photos",
-        ...Array<string>(5).fill(omittedOfOne),
-        "photo 6",
-      ]);
-    });
-
-    it("keeps the newest history image on a later text turn", async () => {
-      const turns = [sixPhotos, reply("I see six photos", 2), question("Which is sharpest?", 3)];
-      expect(await sendWireParts(turns, { max_prompt_images: 1 })).toEqual([
-        "six photos",
-        ...Array<string>(5).fill(omittedOfOne),
-        "photo 6",
-        "I see six photos",
-        "Which is sharpest?",
-      ]);
-    });
+    const sixPhotos = userTurn("six photos", 1, 1, 6);
+    it.each([
+      ["a multi-image turn", [sixPhotos], []],
+      [
+        "a later text turn",
+        [sixPhotos, reply("I see six photos", 2), userTurn("Which is sharpest?", 3)],
+        ["I see six photos", "Which is sharpest?"],
+      ],
+    ])(
+      "sends only the newest image on %s and marks each earlier one omitted",
+      async (_, turns, after) => {
+        const omitted =
+          "[image omitted: this model accepts at most 1 image per prompt, so only the newest image is shown]";
+        expect(await sendWireParts(turns, { max_prompt_images: 1 })).toEqual([
+          "six photos",
+          ...Array<string>(5).fill(omitted),
+          "photo 6",
+          ...after,
+        ]);
+      },
+    );
 
     // Two photo posts and a text question: the history shape every later room turn replays.
     const twoPhotoPosts = [
-      photoPost("photos 1", 1, 10, 1),
-      reply("I see ten photos", 2),
-      photoPost("photos 2", 11, 5, 3),
-      question("What is on the third shelf?", 4),
+      userTurn("photos 1", 1, 1, 12),
+      reply("I see twelve photos", 2),
+      userTurn("photos 2", 3, 13, 3),
+      userTurn("What is on the third shelf?", 4),
     ];
 
     it("keeps the newest listed number of images across turns", async () => {
@@ -618,9 +612,11 @@ describe("fetchCopilotModelCatalog", () => {
       expect(await sendWireParts(twoPhotoPosts, { max_prompt_images: 5 })).toEqual([
         "photos 1",
         ...Array<string>(10).fill(omitted),
-        "I see ten photos",
+        "photo 11",
+        "photo 12",
+        "I see twelve photos",
         "photos 2",
-        ...photoTags(11, 5),
+        ...photoTags(13, 3),
         "What is on the third shelf?",
       ]);
     });
@@ -628,10 +624,10 @@ describe("fetchCopilotModelCatalog", () => {
     it("sends every image when the listing has no cap", async () => {
       expect(await sendWireParts(twoPhotoPosts)).toEqual([
         "photos 1",
-        ...photoTags(1, 10),
-        "I see ten photos",
+        ...photoTags(1, 12),
+        "I see twelve photos",
         "photos 2",
-        ...photoTags(11, 5),
+        ...photoTags(13, 3),
         "What is on the third shelf?",
       ]);
     });
