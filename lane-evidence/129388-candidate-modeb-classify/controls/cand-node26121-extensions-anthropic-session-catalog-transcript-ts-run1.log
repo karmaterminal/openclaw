@@ -1,0 +1,84 @@
+# ctl ref=cand sha=9476c7aaf79f8dc86d0222d2b708524a37711418 file=extensions/anthropic/session-catalog-transcript.test.ts run=1 mode=node26121 start=2026-11-20T15:12:04Z
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-QB90cl/home TMPDIR=/tmp/oc-classify-QB90cl/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.extension-providers.config.ts
+include-file: /tmp/oc-classify-QB90cl/tmp/oc-focused.9FBkeA/include.json
+include-file-contents:
+  [
+    "extensions/anthropic/session-catalog-transcript.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-QB90cl/tmp/oc-focused.9FBkeA/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.extension-providers.config.ts --maxWorkers=1 extensions/anthropic/session-catalog-transcript.test.ts
+logs: /tmp/oc-classify-QB90cl/tmp/oc-focused.9FBkeA
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+[vitest-workers] local cache hit after 4134ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared e3155f5e9824 in 4197ms (20521 inputs, 25697 outputs)
+ × |extension-providers| extensions/anthropic/session-catalog-transcript.test.ts > pages deeply nested Claude content without losing text 168ms
+   → expected { type: 'agentMessage', …(6) } to match object { type: 'agentMessage', …(4) }
+(3 matching properties omitted from actual)
+stderr | unknown test
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.sessionStateNotices
+
+ × |extension-providers| extensions/anthropic/session-catalog-transcript.test.ts > pages deeply nested Claude metadata without losing text 56ms
+   → expected { type: 'agentMessage', …(6) } to match object { type: 'agentMessage', …(4) }
+(3 matching properties omitted from actual)
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |extension-providers| extensions/anthropic/session-catalog-transcript.test.ts > pages deeply nested Claude content without losing text
+ FAIL  |extension-providers| extensions/anthropic/session-catalog-transcript.test.ts > pages deeply nested Claude metadata without losing text
+AssertionError: expected { type: 'agentMessage', …(6) } to match object { type: 'agentMessage', …(4) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "model": "fixture-model",
+    "timestamp": "2026-01-01T00:00:00Z",
+-   "truncated": true,
+    "type": "agentMessage",
+    "uuid": "latest",
+  }
+
+ ❯ extensions/anthropic/session-catalog-transcript.test.ts:<redacted len=5>
+     32|     const page = await readLocalClaudeTranscriptPage({ threadId, limit…
+     33|     const item = page.items[0];
+     34|     expect(item).toMatchObject({
+       |                  ^
+     35|       type: "agentMessage",
+     36|       uuid: "latest",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed (2)
+   Start at  07:12:06
+   Duration  27.90s (transform 84%, import 10%, worker 4%, tests 1%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=9476c7aaf79f8dc86d0222d2b708524a37711418 config=test/vitest/vitest.extension-providers.config.ts files=extensions/anthropic/session-catalog-transcript.test.ts
+failing-tests:
+ × |extension-providers| extensions/anthropic/session-catalog-transcript.test.ts > pages deeply nested Claude content without losing text 168ms
+ × |extension-providers| extensions/anthropic/session-catalog-transcript.test.ts > pages deeply nested Claude metadata without losing text 56ms
+VERDICT RED [Test Files 1 failed (1); Tests 2 failed (2)]
+# exit=1

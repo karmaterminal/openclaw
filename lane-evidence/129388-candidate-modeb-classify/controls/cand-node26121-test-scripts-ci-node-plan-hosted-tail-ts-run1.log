@@ -1,0 +1,84 @@
+# ctl ref=cand sha=9476c7aaf79f8dc86d0222d2b708524a37711418 file=test/scripts/ci-node-test-plan-hosted-tail.test.ts run=1 mode=node26121 start=2026-11-20T15:14:25Z
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-iQPak5/home TMPDIR=/tmp/oc-classify-iQPak5/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.tooling.config.ts
+include-file: /tmp/oc-classify-iQPak5/tmp/oc-focused.odq4ba/include.json
+include-file-contents:
+  [
+    "test/scripts/ci-node-test-plan-hosted-tail.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-iQPak5/tmp/oc-focused.odq4ba/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.tooling.config.ts --maxWorkers=1 test/scripts/ci-node-test-plan-hosted-tail.test.ts
+logs: /tmp/oc-classify-iQPak5/tmp/oc-focused.odq4ba
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+ ✓ |tooling| test/scripts/ci-node-test-plan-hosted-tail.test.ts > bounds hosted groups (push) 5408ms
+ × |tooling| test/scripts/ci-node-test-plan-hosted-tail.test.ts > bounds hosted groups (main) 3935ms
+   → compact github node test plan exceeds 77 jobs (78 planned)
+ ✓ |tooling| test/scripts/ci-node-test-plan-hosted-tail.test.ts > bounds hosted groups (full) 808ms
+ ❯ |tooling| test/scripts/ci-node-test-plan-hosted-tail.test.ts (3 tests | 1 failed) 10152ms
+   ✓ bounds hosted groups (push) 5408ms
+   × bounds hosted groups (main) 3935ms
+   ✓ bounds hosted groups (full) 808ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |tooling| test/scripts/ci-node-test-plan-hosted-tail.test.ts > bounds hosted groups (main)
+Error: compact github node test plan exceeds 77 jobs (78 planned)
+ ❯ createCompactNodeTestShardBundles scripts/lib/ci-node-test-plan.mts:5963:13
+    5961|       });
+    5962|     } else {
+    5963|       throw new Error(
+       |             ^
+    5964|         `compact ${options.runnerBackend ?? "blacksmith"} node test pl…
+    5965|       );
+ ❯ createCompactNodeTestShardBundles scripts/lib/ci-node-test-plan.mts:5675:14
+ ❯ createCompactNodeTestShardBundles scripts/lib/ci-node-test-plan.mts:5663:16
+ ❯ createCompactNodeTestShardBundles scripts/lib/ci-node-test-plan.mts:5634:14
+ ❯ createNodeTestShardBundles scripts/lib/ci-node-test-plan.mts:3337:7
+ ❯ test/scripts/ci-node-test-plan-hosted-tail.test.ts:54:16
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 2 passed (3)
+   Start at  07:14:27
+   Duration  11.41s (tests 91%, worker 4%, import 2%, transform 2%)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |tooling| test/scripts/ci-node-test-plan-hosted-tail.test.ts > bounds hosted groups (main)
+Error: compact github node test plan exceeds 77 jobs (78 planned)
+ ❯ createCompactNodeTestShardBundles scripts/lib/ci-node-test-plan.mts:5963:13
+    5961|       });
+    5962|     } else {
+    5963|       throw new Error(
+       |             ^
+    5964|         `compact ${options.runnerBackend ?? "blacksmith"} node test pl…
+    5965|       );
+ ❯ createCompactNodeTestShardBundles scripts/lib/ci-node-test-plan.mts:5675:14
+ ❯ createCompactNodeTestShardBundles scripts/lib/ci-node-test-plan.mts:5663:16
+ ❯ createCompactNodeTestShardBundles scripts/lib/ci-node-test-plan.mts:5634:14
+ ❯ createNodeTestShardBundles scripts/lib/ci-node-test-plan.mts:3337:7
+ ❯ test/scripts/ci-node-test-plan-hosted-tail.test.ts:54:16
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 2 passed (3)
+   Start at  07:14:27
+   Duration  11.41s (tests 91%, worker 4%, import 2%, transform 2%)
+
+[test] FAILED (exit 1)
+receipt head=9476c7aaf79f8dc86d0222d2b708524a37711418 config=test/vitest/vitest.tooling.config.ts files=test/scripts/ci-node-test-plan-hosted-tail.test.ts
+failing-tests:
+ × |tooling| test/scripts/ci-node-test-plan-hosted-tail.test.ts > bounds hosted groups (main) 3935ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 2 passed (3)]
+# exit=1

@@ -1,0 +1,1438 @@
+# ctl ref=cand sha=9476c7aaf79f8dc86d0222d2b708524a37711418 file=test/scripts/package-acceptance-workflow.test.ts run=1 mode=node26121 start=2026-11-20T15:20:38Z
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-3d9mvw/home TMPDIR=/tmp/oc-classify-3d9mvw/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.tooling.config.ts
+include-file: /tmp/oc-classify-3d9mvw/tmp/oc-focused.iyAMct/include.json
+include-file-contents:
+  [
+    "test/scripts/package-acceptance-workflow.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-3d9mvw/tmp/oc-focused.iyAMct/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.tooling.config.ts --maxWorkers=1 test/scripts/package-acceptance-workflow.test.ts
+logs: /tmp/oc-classify-3d9mvw/tmp/oc-focused.iyAMct
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > keeps admission artifacts distinct across the owned nested release callers 102ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > preserves an unused package beta baseline without a registry lookup 778ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > preserves an unused package 2026.8.1-alpha.1 baseline without a registry lookup 598ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > pins package published-upgrade-survivor baselines only after the canonical plan 2729ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > pins package update-migration baselines only after the canonical plan 2433ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > pins package root-managed-vps-upgrade baselines only after the canonical plan 2394ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > pins package update-restart-auth baselines only after the canonical plan 2373ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > blocks package published-upgrade-survivor admission when baseline lookup fails 825ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > blocks package update-migration admission when baseline lookup fails 779ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > blocks package root-managed-vps-upgrade admission when baseline lookup fails 793ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > blocks package update-restart-auth admission when baseline lookup fails 797ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > does not look up already exact selected package baselines 1286ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects a pre-June dist-tag before publishing resolved baseline admission 752ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects a pre-June inherited baseline at direct frozen preflight admission 984ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > preserves unused multiline package baselines and scope for onboard 1129ms
+stdout | test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > admits the default parent CLI within the final record byte limit
+{"case":"default parent admission","setupAndPlanMs":1537,"evaluationMs":13357,"status":0,"stderr":""}
+default parent admission: 118 evaluations, 110180 emitted bytes
+
+stdout | test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > admits the default parent CLI within the final record byte limit
+{"case":"default parent admission","setupAndPlanMs":1537,"evaluationMs":13357,"status":0,"stderr":""}
+default parent admission: 118 evaluations, 110180 emitted bytes
+
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > preserves unused multiline package baselines and scope for upgrade-survivor 1059ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > orders package planning, acquisition and final outputs around selected baseline resolution 1ms
+[vitest] still running with no output for 30000ms.
+[vitest] still running with no output for 60000ms.
+stdout | test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > bounds the complete CLI record for 256 real planner groups
+high-cardinality admission: 257 evaluations, 259325 emitted bytes
+
+stdout | test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > bounds the complete CLI record for 256 real planner groups
+high-cardinality admission: 257 evaluations, 259325 emitted bytes
+
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > admits the default parent CLI within the final record byte limit 15020ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > bounds the complete CLI record for 256 real planner groups 66183ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > bounds the complete CLI record for 64 real planner groups 16605ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects unresolved published baseline for the exact root-managed-vps-upgrade wrapper 957ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects unresolved published baseline for the exact update-restart-auth wrapper 994ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects a falsely resolved moving baseline for root-managed-vps-upgrade 478ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects a falsely resolved moving baseline for update-restart-auth 506ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > leaves unselected published baselines unresolved for onboard prepare=false 1059ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > leaves unselected published baselines unresolved for upgrade-survivor prepare=false 1099ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > leaves unselected published baselines unresolved for root-managed-vps-upgrade update-restart-auth prepare=true 1085ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > keeps shared verification evidence separate from each child's selected and tooling reads 3274ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > round-trips unselected multiline baseline outputs with prepare_only=false openclaw@2026.9.1
+openclaw@2026.7.33 1036ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > round-trips unselected multiline baseline outputs with prepare_only=true openclaw@2026.9.1
+openclaw@2026.7.33 1037ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > round-trips unselected multiline baseline outputs with prepare_only=false OPENCLAW_ADMISSION_OUTPUT
+OPENCLAW_ADMISSION_OUTPUT_
+openclaw@2026.9.1
+ 1025ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > verifies before the earliest planner command in parent: clean scripts/plan-release-workflow-matrix.mjs 664ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > verifies before the earliest planner command in parent: dirty scripts/plan-release-workflow-matrix.mjs 421ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > verifies before the earliest planner command in parent: missing scripts/plan-release-workflow-matrix.mjs 451ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > verifies before the earliest planner command in parent: dirty transitive scripts/lib/numeric-options.mjs 464ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > verifies before the earliest planner command in parent: missing transitive scripts/lib/numeric-options.mjs 555ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > verifies before the earliest planner command in reusable: clean scripts/plan-release-workflow-matrix.mjs 666ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > verifies before the earliest planner command in reusable: dirty scripts/plan-release-workflow-matrix.mjs 539ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > verifies before the earliest planner command in reusable: missing scripts/plan-release-workflow-matrix.mjs 558ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > verifies before the earliest planner command in reusable: dirty transitive scripts/lib/numeric-options.mjs 471ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > verifies before the earliest planner command in reusable: missing transitive scripts/lib/numeric-options.mjs 523ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > verifies before the earliest planner command in release: clean scripts/plan-release-workflow-matrix.mjs 1042ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > verifies before the earliest planner command in release: dirty scripts/plan-release-workflow-matrix.mjs 346ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > verifies before the earliest planner command in release: missing scripts/plan-release-workflow-matrix.mjs 440ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > verifies before the earliest planner command in release: dirty transitive scripts/lib/numeric-options.mjs 354ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > verifies before the earliest planner command in release: missing transitive scripts/lib/numeric-options.mjs 415ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > verifies before the earliest planner command in package: clean scripts/plan-release-workflow-matrix.mjs 1062ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > verifies before the earliest planner command in package: dirty scripts/plan-release-workflow-matrix.mjs 386ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > verifies before the earliest planner command in package: missing scripts/plan-release-workflow-matrix.mjs 475ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > verifies before the earliest planner command in package: dirty transitive scripts/lib/numeric-options.mjs 436ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > verifies before the earliest planner command in package: missing transitive scripts/lib/numeric-options.mjs 469ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > verifies tooling without selected identity, objects, dependencies or admission output 471ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > fulfills evaluations before emitting .github/workflows/full-release-validation.yml resolve_target known-source admission 1998ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > fulfills evaluations before emitting .github/workflows/openclaw-release-checks.yml resolve_target known-source admission 1959ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > fulfills evaluations before emitting .github/workflows/openclaw-live-and-e2e-checks-reusable.yml validate_selected_ref known-source admission 3046ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > fulfills evaluations before emitting .github/workflows/package-acceptance.yml resolve_package known-source admission 3074ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > fulfills evaluations before emitting .github/workflows/package-acceptance.yml resolve_package resolved-package admission 2864ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > admits the current bundle contract from the parent's sparse tooling checkout 1800ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > plans without selected objects and rejects admission before acquisition 2152ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > stops on a later Docker rejection before success output 1758ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > accepts pretty-printed workflow inputs at the actual .github/workflows/full-release-validation.yml CLI boundary 683ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > accepts pretty-printed workflow inputs at the actual .github/workflows/openclaw-release-checks.yml CLI boundary 632ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > accepts pretty-printed workflow inputs at the actual .github/workflows/openclaw-live-and-e2e-checks-reusable.yml CLI boundary 650ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > accepts pretty-printed workflow inputs at the actual .github/workflows/package-acceptance.yml CLI boundary 657ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > bounds raw workflow JSON separately from scalar input validation 1692ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > preserves multiline Docker lane lists through actual workflow admission 2946ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > preserves multiline survivor baseline and scenario inventor… through actual workflow admission 3669ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > preserves multiline Telegram scenario lists through actual workflow admission 2814ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > pins package tooling after main advances for queued/rerun attempt 1 289ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > pins package tooling after main advances for queued/rerun attempt 2 119ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > validates exact package tooling before reusing its sole dependency installation 102ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > accepts package tooling assertion main for captured refs/heads/main 96ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > accepts package tooling assertion refs/heads/main for captured refs/heads/main 110ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > accepts package tooling assertion release/candidate for captured refs/heads/release/candidate 85ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > accepts package tooling assertion refs/heads/release/candidate for captured refs/heads/release/candidate 96ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > accepts package tooling assertion release-candidate for captured refs/tags/release-candidate 109ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > accepts package tooling assertion refs/tags/release-candidate for captured refs/tags/release-candidate 106ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > accepts package tooling assertion captured-sha for captured refs/heads/main 110ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > accepts package tooling assertion captured-sha for captured captured-sha 93ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects package tooling assertion "advanced-sha" for captured refs/heads/main before checkout 33ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects package tooling assertion "alias" for captured refs/heads/main before checkout 45ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects package tooling assertion "refs/heads/alias" for captured refs/heads/main before checkout 46ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects package tooling assertion "release-candidate" for captured refs/heads/main before checkout 43ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects package tooling assertion "main" for captured refs/heads/release/candidate before checkout 42ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects package tooling assertion " main" for captured refs/heads/main before checkout 42ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects package tooling assertion "" for captured refs/heads/main before checkout 45ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects package tooling assertion "refs/heads/main\n" for captured refs/heads/main before checkout 43ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects malformed package tooling identity: repository 44ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects malformed package tooling identity: missing repository 40ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects malformed package tooling identity: missing SHA 30ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects malformed package tooling identity: short SHA 41ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects malformed package tooling identity: uppercase SHA 39ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects malformed package tooling identity: newline SHA 45ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects malformed package tooling identity: non-string SHA 29ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects malformed package tooling identity: wrong file 43ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects malformed package tooling identity: wrong path owner 33ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects malformed package tooling identity: missing ref 31ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects malformed package tooling identity: non-string ref 27ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects malformed package tooling identity: short captured ref 40ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects malformed package tooling identity: empty branch 28ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects malformed package tooling identity: invalid branch 39ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects malformed package tooling identity: newline ref 28ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects inconsistent package tooling repository before checkout 40ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects inconsistent package tooling SHA ref before checkout 41ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > dominates every execution job after failed admission in .github/workflows/full-release-validation.yml 29ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > dominates every execution job after failed admission in .github/workflows/openclaw-release-checks.yml 28ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > dominates every execution job after failed admission in .github/workflows/openclaw-live-and-e2e-checks-reusable.yml 10ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > dominates every execution job after failed admission in .github/workflows/package-acceptance.yml 4ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > captures a moving baseline once and carries the exact version through published-upgrade-survivor evaluation 2500ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > captures a moving baseline once and carries the exact version through root-managed-vps-upgrade evaluation 2502ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > captures a moving baseline once and carries the exact version through update-restart-auth evaluation 2491ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > acquires the selected provider catalog before legacy-operator-state admission 2909ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > acquires selected upgrade metadata before expanded published-upgrade-survivor admission 7694ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > acquires selected upgrade metadata before expanded update-migration admission 7669ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > acquires the sparse selected first-hop inventory before admission with guarded Git=false 2625ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > acquires the sparse selected first-hop inventory before admission with guarded Git=true 16962ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > acquires a sparse selected typed-onboarding assertion helper before admission 4104ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > blocks a known package source before packing and admits a different exact acquired package source 2988ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > initializes Node before planning and fails selected parser installation in .github/workflows/full-release-validation.yml 11ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > initializes Node before planning and fails selected parser installation in .github/workflows/openclaw-release-checks.yml 9ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > initializes Node before planning and fails selected parser installation in .github/workflows/openclaw-live-and-e2e-checks-reusable.yml 13ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > runs the actual June workflow request and shared parser before producers 1652ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > runs the actual July workflow request and shared parser before producers 1913ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects unresolved survivor baselines at the reusable execution barrier 1006ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > requires the resolved package identity at the final package barrier 205ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > records a parser-free unselected workflow without implying execution coverage 2831ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects unsupported selected source before producers in .github/workflows/full-release-validation.yml 678ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects unsupported selected source before producers in .github/workflows/openclaw-release-checks.yml 649ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects unsupported selected source before producers in .github/workflows/openclaw-live-and-e2e-checks-reusable.yml 690ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > frozen admission workflow barriers > rejects unsupported selected source before producers in .github/workflows/package-acceptance.yml 598ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > keeps manual frozen-target adaptation explicit and forwards the reusable contract 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > forwards sealed publication inputs through the canonical publish dispatch 18ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects a lightweight release tag before publication 14ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects a unverified release tag before publication 27ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > admits a verified signed release tag 28ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > keeps publication bound to the verified signed tag object 38ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > pins the verified tag object in publish_android 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > pins the verified tag object in finalize_github_release 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > pins the verified tag object in dispatch_linux_mirror 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > pins the verified tag object in publish_linux 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > pins the verified tag object in publish_windows 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > requires selected plugin names or complete immutable evidence for broad publication 71ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects main before publishing children (scope=all-publishable, core=true) 12ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects main before publishing children (scope=all-publishable, core=false) 14ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects main before publishing children (scope=selected, core=false) 13ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects retired alpha publication inputs {"RELEASE_TAG":"v2026.9.1-alpha.1","RELEASE_NPM_DIST_TAG":"alpha"} 11ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects retired alpha publication inputs {"RELEASE_TAG":"v2026.9.1-alpha.1"} 12ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects retired alpha publication inputs {"RELEASE_NPM_DIST_TAG":"alpha"} 12ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects retired alpha publication inputs {"WORKFLOW_REF":"refs/heads/tideclaw/alpha/2026-09-03-1200Z"} 13ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > admits early GitHub activation only for direct core publication: true/ 14ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > admits early GitHub activation only for direct core publication: false/ 12ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > admits early GitHub activation only for direct core publication: true/{"npm":{},"clawhub":{}} 14ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > allows Docker-only recovery for beta, stable, and extended-stable releases 170ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > accepts only main-reachable protected SHA-pinned release publish tags 38ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > keeps publish children on the parent's protected tag and rejects Tideclaw 34ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > prevents a ClawHub dispatch from queuing behind requested (otherRef=undefined) 236ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > prevents a ClawHub dispatch from queuing behind action_required (otherRef=undefined) 236ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > prevents a ClawHub dispatch from queuing behind waiting (otherRef=undefined) 253ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > prevents a ClawHub dispatch from queuing behind pending (otherRef=undefined) 231ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > prevents a ClawHub dispatch from queuing behind queued (otherRef=undefined) 228ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > prevents a ClawHub dispatch from queuing behind in_progress (otherRef=undefined) 232ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > prevents a ClawHub dispatch from queuing behind completed (otherRef=undefined) 323ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > prevents a ClawHub dispatch from queuing behind waiting (otherRef=true) 404ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > prevents a ClawHub dispatch from queuing behind unavailable (otherRef=undefined) 50ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > allows protected SHA-pinned tooling tags through the core npm publish guard 62ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > keeps staged ClawHub publications out of the source publish roster 117ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > keeps staged ClawHub publications out of the prepared publish roster 100ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > keeps staged ClawHub publications out of the dry-run publish roster 92ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > keeps plugin freshness warnings visible without blocking .github/workflows/plugin-npm-release.yml 46ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > keeps plugin freshness warnings visible without blocking .github/workflows/plugin-clawhub-release.yml 107ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > keeps plugin freshness warnings visible without blocking .github/workflows/openclaw-release-publish.yml 20ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > keeps plugin freshness warnings visible without blocking .github/workflows/plugin-clawhub-new.yml 141ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > initializes independent plugin tooling before .github/workflows/plugin-npm-release.yml/preview_plugins_npm 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > initializes independent plugin tooling before .github/workflows/plugin-npm-release.yml/preview_plugin_pack 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > initializes independent plugin tooling before .github/workflows/plugin-clawhub-releas…/preview_plugins_clawhub 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > initializes independent plugin tooling before .github/workflows/plugin-clawhub-new.yml/resolve_bootstrap_plan 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > initializes independent plugin tooling before .github/workflows/plugin-clawhub-new.yml/pack_bootstrap_plugins 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > runs plugin npm preflight trust from the exact workflow tooling checkout 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > accepts only the live exact lightweight protected tag for plugin npm preflight 242ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > binds aggregate historical artifact acquisition to independent producer provenance 2669ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects a protected tooling tag moved after request validation and environment approval 273ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > resolves only the exact selected FRV producer for aggregate artifact acquisition 874ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > resolves only the exact selected FRV producer for aggregate with independent producer artifact acquisition 936ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > reuses exact core and SDK archives while preserving historical preflight names 337ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > accepts the readable SDK diff summary but still requires both JSON proofs (FRV) 1042ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > accepts the readable SDK diff summary but still requires both JSON proofs (historical NPM) 863ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > never retries permanent core download failures or switches to a historical alias 267ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects historical protected-tag preflight without P admission at the core npm boundary 301ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects direct FRV preflight without P admission at the core npm boundary 324ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects independent FRV preflight on the extend… without P admission at the core npm boundary 282ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > carries the standalone FRV artifact owner without replacing publication authority 631ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > carries the direct FRV artifact owner without replacing publication authority 657ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > carries the historical NPM artifact owner without replacing publication authority 427ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > uses the canonical tooling identity verifier for token-bootstrap evidence 1ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > revalidates protected tooling immediately before every core and plugin npm publish 1ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > binds release evidence validation to the exact trusted workflow ref 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > finishes npm plugins before starting core without waiting for ClawHub 686ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > keeps core evidence independent of failed ClawHub authorization and publication 656ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > settles independent ClawHub success without collecting core 19ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > settles independent ClawHub receipt preparation without collecting core 19ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > settles independent ClawHub receipt upload without collecting core 19ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > settles independent ClawHub bootstrap publication without collecting core 24ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > settles independent ClawHub normal publication without collecting core 23ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > records a single detached same-workflow dispatch (uncertain=false) 688ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > records a single detached same-workflow dispatch (uncertain=true) 673ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > collects failed plugin npm publication without repeating approval 686ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > collects failed core npm publication without repeating approval 727ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > preserves detached ClawHub and npm resume=false 677ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > preserves detached ClawHub and npm resume=true 664ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > keeps verifier success separate from postpublish success completion 2493ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > keeps verifier success separate from postpublish binding completion 1638ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > keeps verifier success separate from postpublish assets completion 2364ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > retains cancelled or skipped verification without authorizing recovery 1158ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > selects diagnostics separately without accepting them as successful evidence 345ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > fetches release diagnostics only for completed failed jobs 25ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > observes child publication with only bootstrap approvals: queued 91ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > observes child publication with only bootstrap approvals: started 59ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > observes child publication with only bootstrap approvals: duplicate 47ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > observes child publication with only bootstrap approvals: wrong-sha 28ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > observes child publication with only bootstrap approvals: changed-sha-after-start 92ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > observes child publication with only bootstrap approvals: terminal 90ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > observes child publication with only bootstrap approvals: bootstrap-lagged 182ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > observes child publication with only bootstrap approvals: bootstrap-approval-failed 83ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects an Android pin that is not an exact version before writing outputs ("2026.9.1\nsha=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") 18ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects an Android pin that is not an exact version before writing outputs ("") 17ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects an Android pin that is not an exact version before writing outputs ("v2026.9.1") 14ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects an Android pin that is not an exact version before writing outputs ("2026.13.1") 15ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects an Android pin that is not an exact version before writing outputs ("2026.9") 16ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > admits Android only when v2026.9.1 pins its native train (null) 623ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > admits Android only when v2026.9.1 pins its native train (2026.7.4) 638ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > admits Android only when v2026.9.1 pins its native train (2026.9.1) 23ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > admits Android only when v2026.9.1-1 pins its native train (2026.9.1) 20ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > admits Android only when v2026.9.1-1 pins its native train (2026.7.4) 656ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > admits Android only when v2026.9.1-beta.1 pins its native train (2026.9.1) 17ms
+ × |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > resolves broad release evidence and exact-binds every publish child 15ms
+   → Expected workflow step Download full release validation manifest
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > dispatches qualified Android without awaiting it (dispatch failure: false, existing assets: false) 12ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > dispatches qualified Android without awaiting it (dispatch failure: true, existing assets: false) 13ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > dispatches qualified Android without awaiting it (dispatch failure: false, existing assets: true) 11ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > binds native qualification through Android approval and dispatch: success 647ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > binds native qualification through Android approval and dispatch: rerun-before-approval 454ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > binds native qualification through Android approval and dispatch: rerun-at-dispatch 612ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > binds native qualification through Android approval and dispatch: moved-protected-tag 68ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > binds native qualification through Android approval and dispatch: failed 343ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > binds native qualification through Android approval and dispatch: rerun 446ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > binds native qualification through Android approval and dispatch: other-source 423ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > binds native qualification through Android approval and dispatch: other-ref 388ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > binds native qualification through Android approval and dispatch: other-workflow 362ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > binds native qualification through Android approval and dispatch: other-repository 434ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > binds native qualification through Android approval and dispatch: other-tooling 171ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > requires native-bound approval support only for Android qualification 147ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > compares dependency evidence zip contents independently of archive timestamps 284ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > checks current Docker publication for failed-parent closeout without app evidence 107ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > checks historical Docker publication for failed-parent closeout without app evidence 93ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > checks failed Docker publication for failed-parent closeout without app evidence 95ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > checks missing Docker publication for failed-parent closeout without app evidence 87ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > checks ambiguous Docker publication for failed-parent closeout without app evidence 81ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > checks missing npm publication for failed-parent closeout without app evidence 76ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > publishes approved bootstrap tarballs with verified tooling identity 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > verifies immutable postpublish evidence before stable closeout reads it 25ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > keeps pnpm version selection sourced from packageManager 80ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > runs trusted npm preflight pnpm commands from the tooling checkout 128ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > keeps Crabbox hydration compatible with local Actions replay 9ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > resolves candidate package sources before reusing Docker E2E lanes 1ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > checks the installed package tree budget immediately after npm 12 installation 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > exports the complete npm 12 installed tree without following links or disclosing contents 46ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > uploads only a complete npm 12 inventory after an unchanged failing budget gate 41ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > binds npm 12 installation to the supplied prerelease dependency artifact 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > keeps ref packaging independent of workflow-checkout dependencies 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > offers bounded product profiles and can run Telegram against the resolved artifact 1148ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > normalizes a direct closed prerelease registry tuple before child workflows 17ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > normalizes a candidate closed prerelease registry tuple before child workflows 17ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > normalizes a identical closed prerelease registry tuple before child workflows 20ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > accepts a candidate artifact without an optional prerelease registry tuple 16ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects a nonempty input without exactly one JSON document 14ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects a nonempty input without exactly one JSON document 12ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects a nonempty input without exactly one JSON document 15ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects partial, malformed, or ambiguous prerelease registry tuples before child workflows 51ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > generates a Telegram-only registry only for direct ref or artifact candidates 93ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > derives the default baseline from resolved candidate 2026.8.1, not a moving latest tag 313ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > derives the default baseline from resolved candidate 2026.6.35, not a moving latest tag 71ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > reuses a propagated artifact baseline without resolving npm metadata again 64ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > reuses a supplied registry and keeps generated artifact names distinct from Docker 12ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > schedules updater first-hop compatibility in the product acceptance profile 366ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > selects only packaged older-runtime recovery in custom acceptance 373ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > selects one normalized Telegram scenario without enabling broad acceptance lanes 396ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects an invalid Telegram-only profile: telegram_mode must not be none 360ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects an invalid Telegram-only profile: telegram_scenarios must contain exactly one scenario 371ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects an invalid Telegram-only profile: telegram_scenarios must contain exactly one scenario 376ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > requires full release child workflows to run at the parent workflow SHA 4ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > reports beta performance regressions while blocking selected execution failures 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > routes publication controls through the trusted shared gate 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > dispatches exact child identities without owning child completion 6ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > adopts and validates the exact normal_ci run without waiting for terminal status 46ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > adopts and validates the exact plugin_prerelease_independent run without waiting for terminal status 43ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > adopts and validates the exact release_checks_independent run without waiting for terminal status 39ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > adopts and validates the exact npm_telegram run without waiting for terminal status 40ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > adopts and validates the exact performance run without waiting for terminal status 38ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > adopts and validates the exact prepare_npm_package run without waiting for terminal status 41ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > adopts and validates the exact prepare_docker_release run without waiting for terminal status 38ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > adopts and validates the exact candidate_acquisition run without waiting for terminal status 46ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > adopts a returned child whose title converges inside the former window 54ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > adopts a returned child whose title converges after the former window 180ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects child title convergence without reposting 698ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects child startup failure without reposting 37ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > rejects child immutable mismatch without reposting 36ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > dispatches full CI scope for target=v2026.8.1 context= 54ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > dispatches npm-beta CI scope for target=refs/tags/v2026.8.1-beta.3 context= 50ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > dispatches npm-stable CI scope for target=v2026.8.1 context= 52ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > dispatches npm-stable CI scope for target=main context=release/2026.8.1-1 50ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > dispatches full CI scope for target=main context=release/2026.8.1 57ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > dispatches full CI scope for target=main context=release/2026.8.1-1 51ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > dispatches npm-beta CI scope for target=main context=refs/heads/release/2026.8.1 51ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > dispatches full CI scope for target=main context=v2026.8.1 48ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > dispatches full CI scope for target=main context=v2026.8.1-1 50ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > dispatches npm-beta CI scope for target=main context=refs/tags/v2026.8.1-beta.3 51ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > requires successful request validation before every npm preflight consumer 36ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > routes npm preflight runners per dispatch (hosted=true) through declared artifact inputs 66ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > routes npm preflight runners per dispatch (hosted=false) through declared artifact inputs 68ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > recovers one ambiguous dispatch by exact name without reposting 57ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > keeps dispatch provenance failures separate from cancellation policy 50ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > runs Release Decision and Diagnostic Drain in parallel from exact child tuples 1ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > builds a rerun-all manifest from sealed plan A instead of retry-B job outputs 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > pins every Full Release Validation artifact download to the canonical action 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > runs secretless weekly supported-line migration with optional manual historical replays 1ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > binds package acceptance input artifacts to the complete producer tuple 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > lets reusable Docker E2E consume an already resolved package artifact 47ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > reuses a content-addressed bare image for prepared E2E images 1ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > qualifies prepared publication bytes without serializing source, package, and Docker preparation 314ms
+ × |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > prepares one immutable candidate for release validation children 7ms
+   → expected undefined to be 'scripts' // Object.is equality
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > resolves and admits a fresh candidate without a second job 94ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > resolves and admits a reused candidate without a second job 82ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps candidate acquisition unavailable after discovery failure 24ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps candidate acquisition unavailable after unavailable discovery 22ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps candidate acquisition unavailable after prepare failure 28ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps candidate acquisition unavailable after prepare cancellation 28ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps candidate acquisition unavailable after checkout failure 22ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps candidate acquisition unavailable after resolution failure 21ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps candidate acquisition unavailable after resolution cancellation 19ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps candidate acquisition unavailable after cancellation after resolution 21ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps candidate acquisition unavailable after missing resolution 15ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects malformed candidate resolution and missing terminal output 87ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > separates daily live checks from the secretless weekly upgrade survivors 3ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > reconstructs packagePublished=false in the produced candidate request 45ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > reconstructs packagePublished=true in the produced candidate request 57ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > accepts every runnable focused live suite for the beta profile 614ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > accepts every runnable focused live suite for the minimum profile 636ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > accepts every runnable focused live suite for the stable profile 2704ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > accepts every runnable focused live suite for the full profile 5181ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > fails focused live suite validation when Docker matrix planning fails 38ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects unavailable focused suite native-live-src-gateway-profiles-openco… with undefined 85ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects unavailable focused suite native-live-extensions-media-video-e with undefined 83ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects unavailable focused suite unknown-live-suite with undefined 94ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects unavailable focused suite native-live-src-gateway-profiles-openco… with { RELEASE_TEST_PROFILE: 'stable' } 88ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects unavailable focused suite native-live-extensions-media-video-a with { RELEASE_TEST_PROFILE: 'beta' } 87ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects unavailable focused suite native-live-src-gateway-profiles-openco… with { INCLUDE_LIVE_SUITES: 'false' } 13ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects unavailable focused suite native-live-extensions-media-video-a with { LIVE_MODELS_ONLY: 'true' } 12ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects unavailable focused suite openshell-e2e with { INCLUDE_REPO_E2E: 'false' } 88ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects unavailable focused suite docker-live-models with { INCLUDE_LIVE_SUITES: 'false' } 13ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > uploads native live reports and sanitized owned evidence after failures 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > shards broad native live tests instead of one serial live-all job 139ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > pins DeepSeek live profiles to routes reachable from their release workspaces 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > pins live provider lanes to current Kimi and OpenRouter capabilities 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > pins OpenCode Go MiMo live profiles to both current V2.5 model refs 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > retains the full OpenAI Ultra model coverage independently of the fresh default 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > runs Docker live harnesses from trusted helper scripts 3ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > fails Droid ACP Docker live proof when Factory auth is missing 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > plumbs live credentials through planned Docker E2E live lanes 28ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > finalizes dispatched Testbox delegation even when setup or the remote command fails 4ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > allows the Telegram lane to run from reusable package acceptance artifacts 7ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > forwards optional RTT scenario selection from manual and reusable Telegram inputs 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > requires explicit approval for historical package destructive actions 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects Package Acceptance Telegram deferral for direct stable release checks 313ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects Package Acceptance Telegram deferral for direct full release checks 315ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects Package Acceptance Telegram deferral for umbrella stable validation 12ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects Package Acceptance Telegram deferral for umbrella full validation 14ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > allows Package Acceptance Telegram deferral only for beta validation 473ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > resolves canonical beta qualification scope before dispatch 111ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > resolves explicit all-OS beta qualification scope before dispatch 105ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > resolves beta soak qualification scope before dispatch 81ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > resolves focused beta CI qualification scope before dispatch 75ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > resolves stable profile qualification scope before dispatch 78ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > resolves stable version qualification scope before dispatch 99ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > resolves main beta profile qualification scope before dispatch 88ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > resolves canonical stable with explicit suites qualification scope before dispatch 104ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > resolves stable correction qualification scope before dispatch 95ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > resolves extended stable qualification scope before dispatch 87ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > resolves full stable qualification scope before dispatch 93ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > resolves main stable qualification scope before dispatch 78ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects beta qualification when the cross-OS selection omits Linux coverage 94ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects stable qualification when the cross-OS selection omits Linux coverage 99ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > accepts direct Full Release Validation identity release/2026.8.1 at package 2026.8.1 96ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > accepts direct Full Release Validation identity release/2026.8.1 at package 2026.8.1-beta.3 90ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > accepts direct Full Release Validation identity extended-stable/2026.7.33 at package 2026.7.33 114ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > accepts direct Full Release Validation identity extended-stable/2026.7.33 at package 2026.7.35 90ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > accepts direct Full Release Validation identity v2026.8.1 at package 2026.8.1 90ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > accepts direct Full Release Validation identity v2026.8.1-beta.3 at package 2026.8.1-beta.3 82ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects direct Full Release Validation identity release/2026.8.1 at package 2026.8.2 32ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects direct Full Release Validation identity release/2026.8.1 at package 2026.8.1-alpha.2 14ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects direct Full Release Validation identity extended-stable/2026.7.33 at package 2026.7.32 35ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects direct Full Release Validation identity extended-stable/2026.7.33 at package 2026.8.35 32ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects direct Full Release Validation identity extended-stable/2026.7.33 at package 2026.7.35-beta.1 42ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects direct Full Release Validation identity v2026.8.1 at package 2026.8.1-beta.1 31ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects direct Full Release Validation identity v2026.8.1-alpha.2 at package 2026.8.1-alpha.3 14ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects an alpha Full Release Validation candidate at v2026.8.1-alpha.2 14ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects an alpha Full Release Validation candidate at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 12ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > validates an exact-SHA helper target against its canonical release context 112ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > validates branch head through authenticated refs when anonymous Git is unavailable 111ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > validates branch ancestor through authenticated refs when anonymous Git is unavailable 82ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > validates release tag commit through authenticated refs when anonymous Git is unavailable 105ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > validates correction base commit through authenticated refs when anonymous Git is unavailable 90ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > fails closed on a context API error 56ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > fails closed on a comparison API error 61ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > fails closed on a base API error 61ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects the wrong release context namespace refs/tags/release/2026.8.1 before ref lookup 46ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects the wrong release context namespace refs/heads/v2026.8.1 before ref lookup 43ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects the wrong release context namespace release-ci/2026.8.1 before ref lookup 45ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > validates an exact-SHA extended-stable successor against its canonical branch 91ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > preserves the correction publication tag for release/2026.8.1-1 with package 2026.8.1 88ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > preserves the correction publication tag for refs/heads/release/2026.8.1-1 with package 2026.8.1-1 90ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > preserves the correction publication tag for v2026.8.1-1 with package 2026.8.1 90ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects a correction with unproven base source  55ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects a correction with unproven base source bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 51ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > records the npm publication channel for refs/heads/extended-stable/2026.6.33 127ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > records the npm publication channel for refs/tags/v2026.6.35 123ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > records the npm publication channel for refs/heads/release/2026.8.1 117ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > records the npm publication channel for v2026.8.1 123ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects exact-SHA release contexts outside the named branch or tag 122ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > preserves normal stable validation when Telegram deferral is false 512ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > preserves normal full validation when Telegram deferral is false 461ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > declares isolated release-check phases in dispatch and concurrency 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > routes only the all release-check phase 379ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > routes only the independent release-check phase 371ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > routes only the candidate release-check phase 385ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > fails closed when a candidate phase would rebuild an FRV artifact 2093ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > uses a candidate for release lanes with a separate Package Acceptance override 441ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > preserves published provenance when an immutable candidate is reused 419ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > normalizes QA-live scheduling for profile=beta group=all soak=false 410ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > normalizes QA-live scheduling for profile=beta group=all soak=true 399ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > normalizes QA-live scheduling for profile=stable group=all soak=false 398ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > normalizes QA-live scheduling for profile=full group=all soak=false 396ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > normalizes QA-live scheduling for profile=beta group=qa soak=false 417ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > normalizes QA-live scheduling for profile=beta group=qa-live soak=false 418ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > schedules only the selected QA-live lane for a QA-group filter 526ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps a focused repo-live filter within the live-E2E group 866ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > summarizes Telegram package outcome for deferred Package Acceptance 24ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > summarizes Telegram package outcome for unrelated CI group 19ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > summarizes Telegram package outcome for selected Package Acceptance 32ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > summarizes Telegram package outcome for focused Telegram without a package 111ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > summarizes Telegram package outcome for published package from RELEASE_PACKAGE_… 41ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > summarizes Telegram package outcome for published package from NPM_TELEGRAM_PAC… 35ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > selects the candidate-compatible upgrade survivor profile for current source (soak=false) 111ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > selects the candidate-compatible upgrade survivor profile for current source (soak=true) 114ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps the candidate-compatible upgrade survivor predecessor for frozen June published candidate 125ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps the candidate-compatible upgrade survivor predecessor for historical source candidate 71ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps the candidate-compatible upgrade survivor predecessor for older published candidate on the curren… 62ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps the candidate-compatible upgrade survivor predecessor for npm package override 48ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps the candidate-compatible upgrade survivor predecessor for source before the new scenario 73ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps the candidate-compatible upgrade survivor predecessor for frozen source with the new scenario 48ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps the candidate-compatible upgrade survivor predecessor for frozen source branch without separate c… 49ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > does not send recovery scenarios to a current-line source without the recovery harness 107ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > preserves the historical candidate-compatible upgrade survivor soak inventory without the new scenario 37ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps published candidate-compatible upgrade survivor fixtures on the predecessor (soak=false) 35ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps published candidate-compatible upgrade survivor fixtures on the predecessor (soak=true) 49ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > fails candidate-compatible upgrade survivor source qualification when metadata cannot be read 80ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > includes package acceptance in release checks 1317ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > prefers fresh Claude OAuth credentials for direct Anthropic live provider lanes 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > binds Windows-node release and main E2E calls to immutable source tuples 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > selects Windows-node release channels by canonical tag convention 94ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps stable coverage when only throwaway prereleases exist 59ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps stable coverage when the newest alpha is superseded 56ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps stable coverage when the current alpha has no hashed uploade… 53ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > classifies selected Windows-node STABLE skipped with exit 1 17ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > classifies selected Windows-node STABLE failure with exit 1 12ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > classifies selected Windows-node PRERELEASE skipped with exit 0 16ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > classifies selected Windows-node PRERELEASE failure with exit 0 18ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > classifies selected Windows-node MAIN failure with exit 0 16ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > classifies selected Windows-node MAIN cancelled with exit 0 16ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > routes release Matrix through the QA Lab selector 12ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > preserves the first failed discord release QA attempt 14ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > preserves the first failed whatsapp release QA attempt 13ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > preserves the first failed slack release QA attempt 15ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > routes release Buzz through the QA Lab selector 1ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > runs QA-live on soak or explicit QA groups, not beta all by default 1ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > runs live transport lanes nightly while release checks stay gated 1ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > requires QA live evidence artifacts when lanes run 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > preserves the primary runtime token-efficiency failure 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > overlays only trusted Anthropic mock tooling for frozen-target QA parity 584ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > runs the core gateway restart pair on its pinned live model 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > requires release-check QA evidence artifacts when lanes run 15ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > runs canonical runtime-pair lanes in parallel and preserves one gate 7ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > requires live proof evidence artifacts when proof jobs run 14ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > pins Mantis worktree ownership and candidate dependency installation 2ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > sets up plugin-owned Crabbox before candidate execution in run_status_reactions 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > sets up plugin-owned Crabbox before candidate execution in run_thread_attachment 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > sets up plugin-owned Crabbox before candidate execution in run_slack_desktop 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > sets up plugin-owned Crabbox before candidate execution in run_telegram_proof 3ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > maps every supported Slack approval checkpoint scenario family 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > fails Docker E2E release lanes when summary artifacts are missing 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > isolates Open WebUI release coverage with lean runtime setup 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > accepts Telegram result success when enabled=true 14ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > accepts Telegram result skipped when enabled=false 11ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects a skipped Telegram lane when package acceptance enabled it 13ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects package acceptance when no Docker transport ran 13ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects a failed npm 12 installer acceptance lane 12ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > accepts Telegram-only profile when broad lanes skip and Telegram succeeds 11ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects Telegram-only profile when npm 12 acceptance runs 12ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects Telegram-only profile when a Docker transport runs 12ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps Telegram and Docker package acceptance failures blocking 26ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > reports a package Telegram failure even when no suite report exists 15ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > reports a package Telegram skipped even when no suite report exists 13ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > gives release build steps enough Node heap 1ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > runs full release children from the trusted workflow ref 56ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > lets npm Telegram consume current-run or release-run package artifacts 1ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > validates artifacts from active 29ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > validates artifacts from queued 29ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > validates artifacts from pending 27ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > validates artifacts from successful prior-attempt producer 43ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > validates artifacts from failed prior-attempt producer 37ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > validates artifacts from queued with conclusion 37ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > validates artifacts from successful external producer 32ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects partial npm Telegram artifact identity instead of falling back to npm 12ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > accepts direct package artifacts and validates an optional registry tuple 65ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects prerelease plugin registry inputs without a package artifact 11ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > uses bounded Convex lease waits instead of GitHub concurrency for CI Telegram consumers 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps release QA and repo E2E lanes off scarce 32-core runners 1ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > release check artifact resolver > selects the current producer attempt 28ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > release check artifact resolver > carries attempt 1 into consumer attempt 2 29ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > release check artifact resolver > orders producer attempts numerically 32ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > release check artifact resolver > excludes future producer attempts 28ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > release check artifact resolver > selects candidate and baseline attempts independently 38ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > release check artifact resolver > fails when the latest producer attempt has no complete pair 40ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > release check artifact resolver > fails on duplicate artifacts at the latest producer attempt 33ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > release check artifact resolver > does not fall back past malformed newer evidence 27ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > release check artifact resolver > does not fall back past expired newer evidence 26ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > release check artifact resolver > rejects duplicate status fields 89ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > release check artifact resolver > rejects malformed status metadata 84ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > release check artifact resolver > sets runtime parity ready=false for validated non-success evidence 109ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps release QA status artifacts blocking in the verifier 2ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > accepts a successful dispatched Telegra… 43ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects a cancelled selected Telegram c… 28ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects a failure selected Telegram chi… 19ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects a skipped selected Telegram chi… 19ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > accepts a skipped unselected Telegram d… 18ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects an unverified Telegram child id… 21ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps package failures blocking alongsi… 45ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps target resolution blocking before… 33ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects a cancelled Telegram child for … 25ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > does not mask a later cancelled advisory status with an older successful job result 43ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > does not mask a later failure advisory status with an older successful job result 25ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > validates only jobs owned by the selected release-check phase 51ms
+ × |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > wires evidence attempts into the acceptance gate 1ms
+   → Expected workflow step Download full release validation manifest
+ × |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps release publish artifacts and release-note ordering wired 2ms
+   → Expected workflow step Download full release validation manifest
+Note: switching to 'b685a1fdf914858afac8c648a04089612c7cc64f'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > loads the strict release validator from the isolated trusted tooling bundle 351ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > validates frozen npm release ancestry for a separately versioned correction on it… 425ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > validates frozen npm release ancestry for a same-source correction with only the … 292ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > validates frozen npm release ancestry for a beta on its frozen release branch 307ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > validates frozen npm release ancestry for a stable version on its frozen release … 388ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps optional Windows promotion downstream of published npm and GitHub releases 3ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > retains the successful Windows validation artifact when only the writer is retried 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > records Windows validation failure when the writer is skipped 46ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > dispatches optional Windows promotion without waiting: omitted 15ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > dispatches optional Windows promotion without waiting: selected 14ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > dispatches optional Windows promotion without waiting: dispatch failure 23ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > dispatches optional Windows promotion without waiting: missing digests 17ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > dispatches optional Windows promotion without waiting: extended-stable 17ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > validates Windows signatures and pinned digests in the promotion owner 1ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps the signed Android APK contract independent of core publication 5ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects malformed Windows checksum manifest lines before using entries 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > rejects unsafe direct Windows recovery before uploading assets 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > publish requires the credentialed authorization path 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps release publication ownership and artifact boundaries wired 13ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > bounds the npm registry tarball download used for release resume 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > fails closed when approval mutation fails 46ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > fails closed when approval child SHA mismatches 56ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > fails closed when waiting child SHA mismatches 33ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps known bounded dominant child paths below the centralized drain owner 131ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > bounds every direct job in nested release workflows 5ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > documents checked extended-stable dispatch instead of a raw-SHA workflow ref 48ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > executes shared release candidate identity validation with its JSON input 265ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > normalizes fresh and reused release package candidate identity 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps release history checks blobless 1ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > provisions the trusted parser before packing a frozen npm candidate 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > validates the macOS release handoff before the GitHub release page exists 2ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > classifies fast pretag Control UI output as a release artifact 0ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps every tracked repository skill visible to Git-aware syncs 36ms
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > does not track generated node_modules entries 28ms
+Note: switching to '4e139712f9f047fc9c855d729323de7ac5e6fc52'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+Note: switching to '5abf88f0504a17dd7b19260ebc0764b11c03b196'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+Note: switching to '4e139712f9f047fc9c855d729323de7ac5e6fc52'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ ✓ |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps tracked sync metadata and QA Mantis sources visible to remote full syncs 77ms
+ ❯ |tooling| test/scripts/package-acceptance-workflow.test.ts (587 tests | 4 failed) 313278ms
+   ✓ frozen admission workflow barriers (130)
+     ✓ keeps admission artifacts distinct across the owned nested release callers 102ms
+     ✓ preserves an unused package beta baseline without a registry lookup 778ms
+     ✓ preserves an unused package 2026.8.1-alpha.1 baseline without a registry lookup 598ms
+     ✓ pins package published-upgrade-survivor baselines only after the canonical plan 2729ms
+     ✓ pins package update-migration baselines only after the canonical plan 2433ms
+     ✓ pins package root-managed-vps-upgrade baselines only after the canonical plan 2394ms
+     ✓ pins package update-restart-auth baselines only after the canonical plan 2373ms
+     ✓ blocks package published-upgrade-survivor admission when baseline lookup fails 825ms
+     ✓ blocks package update-migration admission when baseline lookup fails 779ms
+     ✓ blocks package root-managed-vps-upgrade admission when baseline lookup fails 793ms
+     ✓ blocks package update-restart-auth admission when baseline lookup fails 797ms
+     ✓ does not look up already exact selected package baselines 1286ms
+     ✓ rejects a pre-June dist-tag before publishing resolved baseline admission 752ms
+     ✓ rejects a pre-June inherited baseline at direct frozen preflight admission 984ms
+     ✓ preserves unused multiline package baselines and scope for onboard 1129ms
+     ✓ preserves unused multiline package baselines and scope for upgrade-survivor 1059ms
+     ✓ orders package planning, acquisition and final outputs around selected baseline resolution 1ms
+     ✓ admits the default parent CLI within the final record byte limit 15020ms
+     ✓ bounds the complete CLI record for 256 real planner groups 66183ms
+     ✓ bounds the complete CLI record for 64 real planner groups 16605ms
+     ✓ rejects unresolved published baseline for the exact root-managed-vps-upgrade wrapper 957ms
+     ✓ rejects unresolved published baseline for the exact update-restart-auth wrapper 994ms
+     ✓ rejects a falsely resolved moving baseline for root-managed-vps-upgrade 478ms
+     ✓ rejects a falsely resolved moving baseline for update-restart-auth 506ms
+     ✓ leaves unselected published baselines unresolved for onboard prepare=false 1059ms
+     ✓ leaves unselected published baselines unresolved for upgrade-survivor prepare=false 1099ms
+     ✓ leaves unselected published baselines unresolved for root-managed-vps-upgrade update-restart-auth prepare=true 1085ms
+     ✓ keeps shared verification evidence separate from each child's selected and tooling reads 3274ms
+     ✓ round-trips unselected multiline baseline outputs with prepare_only=false openclaw@2026.9.1
+openclaw@2026.7.33 1036ms
+     ✓ round-trips unselected multiline baseline outputs with prepare_only=true openclaw@2026.9.1
+openclaw@2026.7.33 1037ms
+     ✓ round-trips unselected multiline baseline outputs with prepare_only=false OPENCLAW_ADMISSION_OUTPUT
+OPENCLAW_ADMISSION_OUTPUT_
+openclaw@2026.9.1
+ 1025ms
+     ✓ verifies before the earliest planner command in parent: clean scripts/plan-release-workflow-matrix.mjs 664ms
+     ✓ verifies before the earliest planner command in parent: dirty scripts/plan-release-workflow-matrix.mjs 421ms
+     ✓ verifies before the earliest planner command in parent: missing scripts/plan-release-workflow-matrix.mjs 451ms
+     ✓ verifies before the earliest planner command in parent: dirty transitive scripts/lib/numeric-options.mjs 464ms
+     ✓ verifies before the earliest planner command in parent: missing transitive scripts/lib/numeric-options.mjs 555ms
+     ✓ verifies before the earliest planner command in reusable: clean scripts/plan-release-workflow-matrix.mjs 666ms
+     ✓ verifies before the earliest planner command in reusable: dirty scripts/plan-release-workflow-matrix.mjs 539ms
+     ✓ verifies before the earliest planner command in reusable: missing scripts/plan-release-workflow-matrix.mjs 558ms
+     ✓ verifies before the earliest planner command in reusable: dirty transitive scripts/lib/numeric-options.mjs 471ms
+     ✓ verifies before the earliest planner command in reusable: missing transitive scripts/lib/numeric-options.mjs 523ms
+     ✓ verifies before the earliest planner command in release: clean scripts/plan-release-workflow-matrix.mjs 1042ms
+     ✓ verifies before the earliest planner command in release: dirty scripts/plan-release-workflow-matrix.mjs 346ms
+     ✓ verifies before the earliest planner command in release: missing scripts/plan-release-workflow-matrix.mjs 440ms
+     ✓ verifies before the earliest planner command in release: dirty transitive scripts/lib/numeric-options.mjs 354ms
+     ✓ verifies before the earliest planner command in release: missing transitive scripts/lib/numeric-options.mjs 415ms
+     ✓ verifies before the earliest planner command in package: clean scripts/plan-release-workflow-matrix.mjs 1062ms
+     ✓ verifies before the earliest planner command in package: dirty scripts/plan-release-workflow-matrix.mjs 386ms
+     ✓ verifies before the earliest planner command in package: missing scripts/plan-release-workflow-matrix.mjs 475ms
+     ✓ verifies before the earliest planner command in package: dirty transitive scripts/lib/numeric-options.mjs 436ms
+     ✓ verifies before the earliest planner command in package: missing transitive scripts/lib/numeric-options.mjs 469ms
+     ✓ verifies tooling without selected identity, objects, dependencies or admission output 471ms
+     ✓ fulfills evaluations before emitting .github/workflows/full-release-validation.yml resolve_target known-source admission 1998ms
+     ✓ fulfills evaluations before emitting .github/workflows/openclaw-release-checks.yml resolve_target known-source admission 1959ms
+     ✓ fulfills evaluations before emitting .github/workflows/openclaw-live-and-e2e-checks-reusable.yml validate_selected_ref known-source admission 3046ms
+     ✓ fulfills evaluations before emitting .github/workflows/package-acceptance.yml resolve_package known-source admission 3074ms
+     ✓ fulfills evaluations before emitting .github/workflows/package-acceptance.yml resolve_package resolved-package admission 2864ms
+     ✓ admits the current bundle contract from the parent's sparse tooling checkout 1800ms
+     ✓ plans without selected objects and rejects admission before acquisition 2152ms
+     ✓ stops on a later Docker rejection before success output 1758ms
+     ✓ accepts pretty-printed workflow inputs at the actual .github/workflows/full-release-validation.yml CLI boundary 683ms
+     ✓ accepts pretty-printed workflow inputs at the actual .github/workflows/openclaw-release-checks.yml CLI boundary 632ms
+     ✓ accepts pretty-printed workflow inputs at the actual .github/workflows/openclaw-live-and-e2e-checks-reusable.yml CLI boundary 650ms
+     ✓ accepts pretty-printed workflow inputs at the actual .github/workflows/package-acceptance.yml CLI boundary 657ms
+     ✓ bounds raw workflow JSON separately from scalar input validation 1692ms
+     ✓ preserves multiline Docker lane lists through actual workflow admission 2946ms
+     ✓ preserves multiline survivor baseline and scenario inventor… through actual workflow admission 3669ms
+     ✓ preserves multiline Telegram scenario lists through actual workflow admission 2814ms
+     ✓ pins package tooling after main advances for queued/rerun attempt 1 289ms
+     ✓ pins package tooling after main advances for queued/rerun attempt 2 119ms
+     ✓ validates exact package tooling before reusing its sole dependency installation 102ms
+     ✓ accepts package tooling assertion main for captured refs/heads/main 96ms
+     ✓ accepts package tooling assertion refs/heads/main for captured refs/heads/main 110ms
+     ✓ accepts package tooling assertion release/candidate for captured refs/heads/release/candidate 85ms
+     ✓ accepts package tooling assertion refs/heads/release/candidate for captured refs/heads/release/candidate 96ms
+     ✓ accepts package tooling assertion release-candidate for captured refs/tags/release-candidate 109ms
+     ✓ accepts package tooling assertion refs/tags/release-candidate for captured refs/tags/release-candidate 106ms
+     ✓ accepts package tooling assertion captured-sha for captured refs/heads/main 110ms
+     ✓ accepts package tooling assertion captured-sha for captured captured-sha 93ms
+     ✓ rejects package tooling assertion "advanced-sha" for captured refs/heads/main before checkout 33ms
+     ✓ rejects package tooling assertion "alias" for captured refs/heads/main before checkout 45ms
+     ✓ rejects package tooling assertion "refs/heads/alias" for captured refs/heads/main before checkout 46ms
+     ✓ rejects package tooling assertion "release-candidate" for captured refs/heads/main before checkout 43ms
+     ✓ rejects package tooling assertion "main" for captured refs/heads/release/candidate before checkout 42ms
+     ✓ rejects package tooling assertion " main" for captured refs/heads/main before checkout 42ms
+     ✓ rejects package tooling assertion "" for captured refs/heads/main before checkout 45ms
+     ✓ rejects package tooling assertion "refs/heads/main\n" for captured refs/heads/main before checkout 43ms
+     ✓ rejects malformed package tooling identity: repository 44ms
+     ✓ rejects malformed package tooling identity: missing repository 40ms
+     ✓ rejects malformed package tooling identity: missing SHA 30ms
+     ✓ rejects malformed package tooling identity: short SHA 41ms
+     ✓ rejects malformed package tooling identity: uppercase SHA 39ms
+     ✓ rejects malformed package tooling identity: newline SHA 45ms
+     ✓ rejects malformed package tooling identity: non-string SHA 29ms
+     ✓ rejects malformed package tooling identity: wrong file 43ms
+     ✓ rejects malformed package tooling identity: wrong path owner 33ms
+     ✓ rejects malformed package tooling identity: missing ref 31ms
+     ✓ rejects malformed package tooling identity: non-string ref 27ms
+     ✓ rejects malformed package tooling identity: short captured ref 40ms
+     ✓ rejects malformed package tooling identity: empty branch 28ms
+     ✓ rejects malformed package tooling identity: invalid branch 39ms
+     ✓ rejects malformed package tooling identity: newline ref 28ms
+     ✓ rejects inconsistent package tooling repository before checkout 40ms
+     ✓ rejects inconsistent package tooling SHA ref before checkout 41ms
+     ✓ dominates every execution job after failed admission in .github/workflows/full-release-validation.yml 29ms
+     ✓ dominates every execution job after failed admission in .github/workflows/openclaw-release-checks.yml 28ms
+     ✓ dominates every execution job after failed admission in .github/workflows/openclaw-live-and-e2e-checks-reusable.yml 10ms
+     ✓ dominates every execution job after failed admission in .github/workflows/package-acceptance.yml 4ms
+     ✓ captures a moving baseline once and carries the exact version through published-upgrade-survivor evaluation 2500ms
+     ✓ captures a moving baseline once and carries the exact version through root-managed-vps-upgrade evaluation 2502ms
+     ✓ captures a moving baseline once and carries the exact version through update-restart-auth evaluation 2491ms
+     ✓ acquires the selected provider catalog before legacy-operator-state admission 2909ms
+     ✓ acquires selected upgrade metadata before expanded published-upgrade-survivor admission 7694ms
+     ✓ acquires selected upgrade metadata before expanded update-migration admission 7669ms
+     ✓ acquires the sparse selected first-hop inventory before admission with guarded Git=false 2625ms
+     ✓ acquires the sparse selected first-hop inventory before admission with guarded Git=true 16962ms
+     ✓ acquires a sparse selected typed-onboarding assertion helper before admission 4104ms
+     ✓ blocks a known package source before packing and admits a different exact acquired package source 2988ms
+     ✓ initializes Node before planning and fails selected parser installation in .github/workflows/full-release-validation.yml 11ms
+     ✓ initializes Node before planning and fails selected parser installation in .github/workflows/openclaw-release-checks.yml 9ms
+     ✓ initializes Node before planning and fails selected parser installation in .github/workflows/openclaw-live-and-e2e-checks-reusable.yml 13ms
+     ✓ runs the actual June workflow request and shared parser before producers 1652ms
+     ✓ runs the actual July workflow request and shared parser before producers 1913ms
+     ✓ rejects unresolved survivor baselines at the reusable execution barrier 1006ms
+     ✓ requires the resolved package identity at the final package barrier 205ms
+     ✓ records a parser-free unselected workflow without implying execution coverage 2831ms
+     ✓ rejects unsupported selected source before producers in .github/workflows/full-release-validation.yml 678ms
+     ✓ rejects unsupported selected source before producers in .github/workflows/openclaw-release-checks.yml 649ms
+     ✓ rejects unsupported selected source before producers in .github/workflows/openclaw-live-and-e2e-checks-reusable.yml 690ms
+     ✓ rejects unsupported selected source before producers in .github/workflows/package-acceptance.yml 598ms
+   ❯ package acceptance workflow (194)
+     ✓ keeps manual frozen-target adaptation explicit and forwards the reusable contract 0ms
+     ✓ forwards sealed publication inputs through the canonical publish dispatch 18ms
+     ✓ rejects a lightweight release tag before publication 14ms
+     ✓ rejects a unverified release tag before publication 27ms
+     ✓ admits a verified signed release tag 28ms
+     ✓ keeps publication bound to the verified signed tag object 38ms
+     ✓ pins the verified tag object in publish_android 0ms
+     ✓ pins the verified tag object in finalize_github_release 0ms
+     ✓ pins the verified tag object in dispatch_linux_mirror 0ms
+     ✓ pins the verified tag object in publish_linux 0ms
+     ✓ pins the verified tag object in publish_windows 0ms
+     ✓ requires selected plugin names or complete immutable evidence for broad publication 71ms
+     ✓ rejects main before publishing children (scope=all-publishable, core=true) 12ms
+     ✓ rejects main before publishing children (scope=all-publishable, core=false) 14ms
+     ✓ rejects main before publishing children (scope=selected, core=false) 13ms
+     ✓ rejects retired alpha publication inputs {"RELEASE_TAG":"v2026.9.1-alpha.1","RELEASE_NPM_DIST_TAG":"alpha"} 11ms
+     ✓ rejects retired alpha publication inputs {"RELEASE_TAG":"v2026.9.1-alpha.1"} 12ms
+     ✓ rejects retired alpha publication inputs {"RELEASE_NPM_DIST_TAG":"alpha"} 12ms
+     ✓ rejects retired alpha publication inputs {"WORKFLOW_REF":"refs/heads/tideclaw/alpha/2026-09-03-1200Z"} 13ms
+     ✓ admits early GitHub activation only for direct core publication: true/ 14ms
+     ✓ admits early GitHub activation only for direct core publication: false/ 12ms
+     ✓ admits early GitHub activation only for direct core publication: true/{"npm":{},"clawhub":{}} 14ms
+     ✓ allows Docker-only recovery for beta, stable, and extended-stable releases 170ms
+     ✓ accepts only main-reachable protected SHA-pinned release publish tags 38ms
+     ✓ keeps publish children on the parent's protected tag and rejects Tideclaw 34ms
+     ✓ prevents a ClawHub dispatch from queuing behind requested (otherRef=undefined) 236ms
+     ✓ prevents a ClawHub dispatch from queuing behind action_required (otherRef=undefined) 236ms
+     ✓ prevents a ClawHub dispatch from queuing behind waiting (otherRef=undefined) 253ms
+     ✓ prevents a ClawHub dispatch from queuing behind pending (otherRef=undefined) 231ms
+     ✓ prevents a ClawHub dispatch from queuing behind queued (otherRef=undefined) 228ms
+     ✓ prevents a ClawHub dispatch from queuing behind in_progress (otherRef=undefined) 232ms
+     ✓ prevents a ClawHub dispatch from queuing behind completed (otherRef=undefined) 323ms
+     ✓ prevents a ClawHub dispatch from queuing behind waiting (otherRef=true) 404ms
+     ✓ prevents a ClawHub dispatch from queuing behind unavailable (otherRef=undefined) 50ms
+     ✓ allows protected SHA-pinned tooling tags through the core npm publish guard 62ms
+     ✓ keeps staged ClawHub publications out of the source publish roster 117ms
+     ✓ keeps staged ClawHub publications out of the prepared publish roster 100ms
+     ✓ keeps staged ClawHub publications out of the dry-run publish roster 92ms
+     ✓ keeps plugin freshness warnings visible without blocking .github/workflows/plugin-npm-release.yml 46ms
+     ✓ keeps plugin freshness warnings visible without blocking .github/workflows/plugin-clawhub-release.yml 107ms
+     ✓ keeps plugin freshness warnings visible without blocking .github/workflows/openclaw-release-publish.yml 20ms
+     ✓ keeps plugin freshness warnings visible without blocking .github/workflows/plugin-clawhub-new.yml 141ms
+     ✓ initializes independent plugin tooling before .github/workflows/plugin-npm-release.yml/preview_plugins_npm 0ms
+     ✓ initializes independent plugin tooling before .github/workflows/plugin-npm-release.yml/preview_plugin_pack 0ms
+     ✓ initializes independent plugin tooling before .github/workflows/plugin-clawhub-releas…/preview_plugins_clawhub 0ms
+     ✓ initializes independent plugin tooling before .github/workflows/plugin-clawhub-new.yml/resolve_bootstrap_plan 0ms
+     ✓ initializes independent plugin tooling before .github/workflows/plugin-clawhub-new.yml/pack_bootstrap_plugins 0ms
+     ✓ runs plugin npm preflight trust from the exact workflow tooling checkout 0ms
+     ✓ accepts only the live exact lightweight protected tag for plugin npm preflight 242ms
+     ✓ binds aggregate historical artifact acquisition to independent producer provenance 2669ms
+     ✓ rejects a protected tooling tag moved after request validation and environment approval 273ms
+     ✓ resolves only the exact selected FRV producer for aggregate artifact acquisition 874ms
+     ✓ resolves only the exact selected FRV producer for aggregate with independent producer artifact acquisition 936ms
+     ✓ reuses exact core and SDK archives while preserving historical preflight names 337ms
+     ✓ accepts the readable SDK diff summary but still requires both JSON proofs (FRV) 1042ms
+     ✓ accepts the readable SDK diff summary but still requires both JSON proofs (historical NPM) 863ms
+     ✓ never retries permanent core download failures or switches to a historical alias 267ms
+     ✓ rejects historical protected-tag preflight without P admission at the core npm boundary 301ms
+     ✓ rejects direct FRV preflight without P admission at the core npm boundary 324ms
+     ✓ rejects independent FRV preflight on the extend… without P admission at the core npm boundary 282ms
+     ✓ carries the standalone FRV artifact owner without replacing publication authority 631ms
+     ✓ carries the direct FRV artifact owner without replacing publication authority 657ms
+     ✓ carries the historical NPM artifact owner without replacing publication authority 427ms
+     ✓ uses the canonical tooling identity verifier for token-bootstrap evidence 1ms
+     ✓ revalidates protected tooling immediately before every core and plugin npm publish 1ms
+     ✓ binds release evidence validation to the exact trusted workflow ref 0ms
+     ✓ finishes npm plugins before starting core without waiting for ClawHub 686ms
+     ✓ keeps core evidence independent of failed ClawHub authorization and publication 656ms
+     ✓ settles independent ClawHub success without collecting core 19ms
+     ✓ settles independent ClawHub receipt preparation without collecting core 19ms
+     ✓ settles independent ClawHub receipt upload without collecting core 19ms
+     ✓ settles independent ClawHub bootstrap publication without collecting core 24ms
+     ✓ settles independent ClawHub normal publication without collecting core 23ms
+     ✓ records a single detached same-workflow dispatch (uncertain=false) 688ms
+     ✓ records a single detached same-workflow dispatch (uncertain=true) 673ms
+     ✓ collects failed plugin npm publication without repeating approval 686ms
+     ✓ collects failed core npm publication without repeating approval 727ms
+     ✓ preserves detached ClawHub and npm resume=false 677ms
+     ✓ preserves detached ClawHub and npm resume=true 664ms
+     ✓ keeps verifier success separate from postpublish success completion 2493ms
+     ✓ keeps verifier success separate from postpublish binding completion 1638ms
+     ✓ keeps verifier success separate from postpublish assets completion 2364ms
+     ✓ retains cancelled or skipped verification without authorizing recovery 1158ms
+     ✓ selects diagnostics separately without accepting them as successful evidence 345ms
+     ✓ fetches release diagnostics only for completed failed jobs 25ms
+     ✓ observes child publication with only bootstrap approvals: queued 91ms
+     ✓ observes child publication with only bootstrap approvals: started 59ms
+     ✓ observes child publication with only bootstrap approvals: duplicate 47ms
+     ✓ observes child publication with only bootstrap approvals: wrong-sha 28ms
+     ✓ observes child publication with only bootstrap approvals: changed-sha-after-start 92ms
+     ✓ observes child publication with only bootstrap approvals: terminal 90ms
+     ✓ observes child publication with only bootstrap approvals: bootstrap-lagged 182ms
+     ✓ observes child publication with only bootstrap approvals: bootstrap-approval-failed 83ms
+     ✓ rejects an Android pin that is not an exact version before writing outputs ("2026.9.1\nsha=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") 18ms
+     ✓ rejects an Android pin that is not an exact version before writing outputs ("") 17ms
+     ✓ rejects an Android pin that is not an exact version before writing outputs ("v2026.9.1") 14ms
+     ✓ rejects an Android pin that is not an exact version before writing outputs ("2026.13.1") 15ms
+     ✓ rejects an Android pin that is not an exact version before writing outputs ("2026.9") 16ms
+     ✓ admits Android only when v2026.9.1 pins its native train (null) 623ms
+     ✓ admits Android only when v2026.9.1 pins its native train (2026.7.4) 638ms
+     ✓ admits Android only when v2026.9.1 pins its native train (2026.9.1) 23ms
+     ✓ admits Android only when v2026.9.1-1 pins its native train (2026.9.1) 20ms
+     ✓ admits Android only when v2026.9.1-1 pins its native train (2026.7.4) 656ms
+     ✓ admits Android only when v2026.9.1-beta.1 pins its native train (2026.9.1) 17ms
+     × resolves broad release evidence and exact-binds every publish child 15ms
+     ✓ dispatches qualified Android without awaiting it (dispatch failure: false, existing assets: false) 12ms
+     ✓ dispatches qualified Android without awaiting it (dispatch failure: true, existing assets: false) 13ms
+     ✓ dispatches qualified Android without awaiting it (dispatch failure: false, existing assets: true) 11ms
+     ✓ binds native qualification through Android approval and dispatch: success 647ms
+     ✓ binds native qualification through Android approval and dispatch: rerun-before-approval 454ms
+     ✓ binds native qualification through Android approval and dispatch: rerun-at-dispatch 612ms
+     ✓ binds native qualification through Android approval and dispatch: moved-protected-tag 68ms
+     ✓ binds native qualification through Android approval and dispatch: failed 343ms
+     ✓ binds native qualification through Android approval and dispatch: rerun 446ms
+     ✓ binds native qualification through Android approval and dispatch: other-source 423ms
+     ✓ binds native qualification through Android approval and dispatch: other-ref 388ms
+     ✓ binds native qualification through Android approval and dispatch: other-workflow 362ms
+     ✓ binds native qualification through Android approval and dispatch: other-repository 434ms
+     ✓ binds native qualification through Android approval and dispatch: other-tooling 171ms
+     ✓ requires native-bound approval support only for Android qualification 147ms
+     ✓ compares dependency evidence zip contents independently of archive timestamps 284ms
+     ✓ checks current Docker publication for failed-parent closeout without app evidence 107ms
+     ✓ checks historical Docker publication for failed-parent closeout without app evidence 93ms
+     ✓ checks failed Docker publication for failed-parent closeout without app evidence 95ms
+     ✓ checks missing Docker publication for failed-parent closeout without app evidence 87ms
+     ✓ checks ambiguous Docker publication for failed-parent closeout without app evidence 81ms
+     ✓ checks missing npm publication for failed-parent closeout without app evidence 76ms
+     ✓ publishes approved bootstrap tarballs with verified tooling identity 0ms
+     ✓ verifies immutable postpublish evidence before stable closeout reads it 25ms
+     ✓ keeps pnpm version selection sourced from packageManager 80ms
+     ✓ runs trusted npm preflight pnpm commands from the tooling checkout 128ms
+     ✓ keeps Crabbox hydration compatible with local Actions replay 9ms
+     ✓ resolves candidate package sources before reusing Docker E2E lanes 1ms
+     ✓ checks the installed package tree budget immediately after npm 12 installation 0ms
+     ✓ exports the complete npm 12 installed tree without following links or disclosing contents 46ms
+     ✓ uploads only a complete npm 12 inventory after an unchanged failing budget gate 41ms
+     ✓ binds npm 12 installation to the supplied prerelease dependency artifact 0ms
+     ✓ keeps ref packaging independent of workflow-checkout dependencies 0ms
+     ✓ offers bounded product profiles and can run Telegram against the resolved artifact 1148ms
+     ✓ normalizes a direct closed prerelease registry tuple before child workflows 17ms
+     ✓ normalizes a candidate closed prerelease registry tuple before child workflows 17ms
+     ✓ normalizes a identical closed prerelease registry tuple before child workflows 20ms
+     ✓ accepts a candidate artifact without an optional prerelease registry tuple 16ms
+     ✓ rejects a nonempty input without exactly one JSON document 14ms
+     ✓ rejects a nonempty input without exactly one JSON document 12ms
+     ✓ rejects a nonempty input without exactly one JSON document 15ms
+     ✓ rejects partial, malformed, or ambiguous prerelease registry tuples before child workflows 51ms
+     ✓ generates a Telegram-only registry only for direct ref or artifact candidates 93ms
+     ✓ derives the default baseline from resolved candidate 2026.8.1, not a moving latest tag 313ms
+     ✓ derives the default baseline from resolved candidate 2026.6.35, not a moving latest tag 71ms
+     ✓ reuses a propagated artifact baseline without resolving npm metadata again 64ms
+     ✓ reuses a supplied registry and keeps generated artifact names distinct from Docker 12ms
+     ✓ schedules updater first-hop compatibility in the product acceptance profile 366ms
+     ✓ selects only packaged older-runtime recovery in custom acceptance 373ms
+     ✓ selects one normalized Telegram scenario without enabling broad acceptance lanes 396ms
+     ✓ rejects an invalid Telegram-only profile: telegram_mode must not be none 360ms
+     ✓ rejects an invalid Telegram-only profile: telegram_scenarios must contain exactly one scenario 371ms
+     ✓ rejects an invalid Telegram-only profile: telegram_scenarios must contain exactly one scenario 376ms
+     ✓ requires full release child workflows to run at the parent workflow SHA 4ms
+     ✓ reports beta performance regressions while blocking selected execution failures 0ms
+     ✓ routes publication controls through the trusted shared gate 0ms
+     ✓ dispatches exact child identities without owning child completion 6ms
+     ✓ adopts and validates the exact normal_ci run without waiting for terminal status 46ms
+     ✓ adopts and validates the exact plugin_prerelease_independent run without waiting for terminal status 43ms
+     ✓ adopts and validates the exact release_checks_independent run without waiting for terminal status 39ms
+     ✓ adopts and validates the exact npm_telegram run without waiting for terminal status 40ms
+     ✓ adopts and validates the exact performance run without waiting for terminal status 38ms
+     ✓ adopts and validates the exact prepare_npm_package run without waiting for terminal status 41ms
+     ✓ adopts and validates the exact prepare_docker_release run without waiting for terminal status 38ms
+     ✓ adopts and validates the exact candidate_acquisition run without waiting for terminal status 46ms
+     ✓ adopts a returned child whose title converges inside the former window 54ms
+     ✓ adopts a returned child whose title converges after the former window 180ms
+     ✓ rejects child title convergence without reposting 698ms
+     ✓ rejects child startup failure without reposting 37ms
+     ✓ rejects child immutable mismatch without reposting 36ms
+     ✓ dispatches full CI scope for target=v2026.8.1 context= 54ms
+     ✓ dispatches npm-beta CI scope for target=refs/tags/v2026.8.1-beta.3 context= 50ms
+     ✓ dispatches npm-stable CI scope for target=v2026.8.1 context= 52ms
+     ✓ dispatches npm-stable CI scope for target=main context=release/2026.8.1-1 50ms
+     ✓ dispatches full CI scope for target=main context=release/2026.8.1 57ms
+     ✓ dispatches full CI scope for target=main context=release/2026.8.1-1 51ms
+     ✓ dispatches npm-beta CI scope for target=main context=refs/heads/release/2026.8.1 51ms
+     ✓ dispatches full CI scope for target=main context=v2026.8.1 48ms
+     ✓ dispatches full CI scope for target=main context=v2026.8.1-1 50ms
+     ✓ dispatches npm-beta CI scope for target=main context=refs/tags/v2026.8.1-beta.3 51ms
+     ✓ requires successful request validation before every npm preflight consumer 36ms
+     ✓ routes npm preflight runners per dispatch (hosted=true) through declared artifact inputs 66ms
+     ✓ routes npm preflight runners per dispatch (hosted=false) through declared artifact inputs 68ms
+     ✓ recovers one ambiguous dispatch by exact name without reposting 57ms
+     ✓ keeps dispatch provenance failures separate from cancellation policy 50ms
+     ✓ runs Release Decision and Diagnostic Drain in parallel from exact child tuples 1ms
+     ✓ builds a rerun-all manifest from sealed plan A instead of retry-B job outputs 0ms
+     ✓ pins every Full Release Validation artifact download to the canonical action 0ms
+     ✓ runs secretless weekly supported-line migration with optional manual historical replays 1ms
+   ❯ package artifact reuse (263)
+     ✓ binds package acceptance input artifacts to the complete producer tuple 0ms
+     ✓ lets reusable Docker E2E consume an already resolved package artifact 47ms
+     ✓ reuses a content-addressed bare image for prepared E2E images 1ms
+     ✓ qualifies prepared publication bytes without serializing source, package, and Docker preparation 314ms
+     × prepares one immutable candidate for release validation children 7ms
+     ✓ resolves and admits a fresh candidate without a second job 94ms
+     ✓ resolves and admits a reused candidate without a second job 82ms
+     ✓ keeps candidate acquisition unavailable after discovery failure 24ms
+     ✓ keeps candidate acquisition unavailable after unavailable discovery 22ms
+     ✓ keeps candidate acquisition unavailable after prepare failure 28ms
+     ✓ keeps candidate acquisition unavailable after prepare cancellation 28ms
+     ✓ keeps candidate acquisition unavailable after checkout failure 22ms
+     ✓ keeps candidate acquisition unavailable after resolution failure 21ms
+     ✓ keeps candidate acquisition unavailable after resolution cancellation 19ms
+     ✓ keeps candidate acquisition unavailable after cancellation after resolution 21ms
+     ✓ keeps candidate acquisition unavailable after missing resolution 15ms
+     ✓ rejects malformed candidate resolution and missing terminal output 87ms
+     ✓ separates daily live checks from the secretless weekly upgrade survivors 3ms
+     ✓ reconstructs packagePublished=false in the produced candidate request 45ms
+     ✓ reconstructs packagePublished=true in the produced candidate request 57ms
+     ✓ accepts every runnable focused live suite for the beta profile 614ms
+     ✓ accepts every runnable focused live suite for the minimum profile 636ms
+     ✓ accepts every runnable focused live suite for the stable profile 2704ms
+     ✓ accepts every runnable focused live suite for the full profile 5181ms
+     ✓ fails focused live suite validation when Docker matrix planning fails 38ms
+     ✓ rejects unavailable focused suite native-live-src-gateway-profiles-openco… with undefined 85ms
+     ✓ rejects unavailable focused suite native-live-extensions-media-video-e with undefined 83ms
+     ✓ rejects unavailable focused suite unknown-live-suite with undefined 94ms
+     ✓ rejects unavailable focused suite native-live-src-gateway-profiles-openco… with { RELEASE_TEST_PROFILE: 'stable' } 88ms
+     ✓ rejects unavailable focused suite native-live-extensions-media-video-a with { RELEASE_TEST_PROFILE: 'beta' } 87ms
+     ✓ rejects unavailable focused suite native-live-src-gateway-profiles-openco… with { INCLUDE_LIVE_SUITES: 'false' } 13ms
+     ✓ rejects unavailable focused suite native-live-extensions-media-video-a with { LIVE_MODELS_ONLY: 'true' } 12ms
+     ✓ rejects unavailable focused suite openshell-e2e with { INCLUDE_REPO_E2E: 'false' } 88ms
+     ✓ rejects unavailable focused suite docker-live-models with { INCLUDE_LIVE_SUITES: 'false' } 13ms
+     ✓ uploads native live reports and sanitized owned evidence after failures 0ms
+     ✓ shards broad native live tests instead of one serial live-all job 139ms
+     ✓ pins DeepSeek live profiles to routes reachable from their release workspaces 0ms
+     ✓ pins live provider lanes to current Kimi and OpenRouter capabilities 0ms
+     ✓ pins OpenCode Go MiMo live profiles to both current V2.5 model refs 0ms
+     ✓ retains the full OpenAI Ultra model coverage independently of the fresh default 0ms
+     ✓ runs Docker live harnesses from trusted helper scripts 3ms
+     ✓ fails Droid ACP Docker live proof when Factory auth is missing 0ms
+     ✓ plumbs live credentials through planned Docker E2E live lanes 28ms
+     ✓ finalizes dispatched Testbox delegation even when setup or the remote command fails 4ms
+     ✓ allows the Telegram lane to run from reusable package acceptance artifacts 7ms
+     ✓ forwards optional RTT scenario selection from manual and reusable Telegram inputs 0ms
+     ✓ requires explicit approval for historical package destructive actions 0ms
+     ✓ rejects Package Acceptance Telegram deferral for direct stable release checks 313ms
+     ✓ rejects Package Acceptance Telegram deferral for direct full release checks 315ms
+     ✓ rejects Package Acceptance Telegram deferral for umbrella stable validation 12ms
+     ✓ rejects Package Acceptance Telegram deferral for umbrella full validation 14ms
+     ✓ allows Package Acceptance Telegram deferral only for beta validation 473ms
+     ✓ resolves canonical beta qualification scope before dispatch 111ms
+     ✓ resolves explicit all-OS beta qualification scope before dispatch 105ms
+     ✓ resolves beta soak qualification scope before dispatch 81ms
+     ✓ resolves focused beta CI qualification scope before dispatch 75ms
+     ✓ resolves stable profile qualification scope before dispatch 78ms
+     ✓ resolves stable version qualification scope before dispatch 99ms
+     ✓ resolves main beta profile qualification scope before dispatch 88ms
+     ✓ resolves canonical stable with explicit suites qualification scope before dispatch 104ms
+     ✓ resolves stable correction qualification scope before dispatch 95ms
+     ✓ resolves extended stable qualification scope before dispatch 87ms
+     ✓ resolves full stable qualification scope before dispatch 93ms
+     ✓ resolves main stable qualification scope before dispatch 78ms
+     ✓ rejects beta qualification when the cross-OS selection omits Linux coverage 94ms
+     ✓ rejects stable qualification when the cross-OS selection omits Linux coverage 99ms
+     ✓ accepts direct Full Release Validation identity release/2026.8.1 at package 2026.8.1 96ms
+     ✓ accepts direct Full Release Validation identity release/2026.8.1 at package 2026.8.1-beta.3 90ms
+     ✓ accepts direct Full Release Validation identity extended-stable/2026.7.33 at package 2026.7.33 114ms
+     ✓ accepts direct Full Release Validation identity extended-stable/2026.7.33 at package 2026.7.35 90ms
+     ✓ accepts direct Full Release Validation identity v2026.8.1 at package 2026.8.1 90ms
+     ✓ accepts direct Full Release Validation identity v2026.8.1-beta.3 at package 2026.8.1-beta.3 82ms
+     ✓ rejects direct Full Release Validation identity release/2026.8.1 at package 2026.8.2 32ms
+     ✓ rejects direct Full Release Validation identity release/2026.8.1 at package 2026.8.1-alpha.2 14ms
+     ✓ rejects direct Full Release Validation identity extended-stable/2026.7.33 at package 2026.7.32 35ms
+     ✓ rejects direct Full Release Validation identity extended-stable/2026.7.33 at package 2026.8.35 32ms
+     ✓ rejects direct Full Release Validation identity extended-stable/2026.7.33 at package 2026.7.35-beta.1 42ms
+     ✓ rejects direct Full Release Validation identity v2026.8.1 at package 2026.8.1-beta.1 31ms
+     ✓ rejects direct Full Release Validation identity v2026.8.1-alpha.2 at package 2026.8.1-alpha.3 14ms
+     ✓ rejects an alpha Full Release Validation candidate at v2026.8.1-alpha.2 14ms
+     ✓ rejects an alpha Full Release Validation candidate at aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 12ms
+     ✓ validates an exact-SHA helper target against its canonical release context 112ms
+     ✓ validates branch head through authenticated refs when anonymous Git is unavailable 111ms
+     ✓ validates branch ancestor through authenticated refs when anonymous Git is unavailable 82ms
+     ✓ validates release tag commit through authenticated refs when anonymous Git is unavailable 105ms
+     ✓ validates correction base commit through authenticated refs when anonymous Git is unavailable 90ms
+     ✓ fails closed on a context API error 56ms
+     ✓ fails closed on a comparison API error 61ms
+     ✓ fails closed on a base API error 61ms
+     ✓ rejects the wrong release context namespace refs/tags/release/2026.8.1 before ref lookup 46ms
+     ✓ rejects the wrong release context namespace refs/heads/v2026.8.1 before ref lookup 43ms
+     ✓ rejects the wrong release context namespace release-ci/2026.8.1 before ref lookup 45ms
+     ✓ validates an exact-SHA extended-stable successor against its canonical branch 91ms
+     ✓ preserves the correction publication tag for release/2026.8.1-1 with package 2026.8.1 88ms
+     ✓ preserves the correction publication tag for refs/heads/release/2026.8.1-1 with package 2026.8.1-1 90ms
+     ✓ preserves the correction publication tag for v2026.8.1-1 with package 2026.8.1 90ms
+     ✓ rejects a correction with unproven base source  55ms
+     ✓ rejects a correction with unproven base source bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 51ms
+     ✓ records the npm publication channel for refs/heads/extended-stable/2026.6.33 127ms
+     ✓ records the npm publication channel for refs/tags/v2026.6.35 123ms
+     ✓ records the npm publication channel for refs/heads/release/2026.8.1 117ms
+     ✓ records the npm publication channel for v2026.8.1 123ms
+     ✓ rejects exact-SHA release contexts outside the named branch or tag 122ms
+     ✓ preserves normal stable validation when Telegram deferral is false 512ms
+     ✓ preserves normal full validation when Telegram deferral is false 461ms
+     ✓ declares isolated release-check phases in dispatch and concurrency 0ms
+     ✓ routes only the all release-check phase 379ms
+     ✓ routes only the independent release-check phase 371ms
+     ✓ routes only the candidate release-check phase 385ms
+     ✓ fails closed when a candidate phase would rebuild an FRV artifact 2093ms
+     ✓ uses a candidate for release lanes with a separate Package Acceptance override 441ms
+     ✓ preserves published provenance when an immutable candidate is reused 419ms
+     ✓ normalizes QA-live scheduling for profile=beta group=all soak=false 410ms
+     ✓ normalizes QA-live scheduling for profile=beta group=all soak=true 399ms
+     ✓ normalizes QA-live scheduling for profile=stable group=all soak=false 398ms
+     ✓ normalizes QA-live scheduling for profile=full group=all soak=false 396ms
+     ✓ normalizes QA-live scheduling for profile=beta group=qa soak=false 417ms
+     ✓ normalizes QA-live scheduling for profile=beta group=qa-live soak=false 418ms
+     ✓ schedules only the selected QA-live lane for a QA-group filter 526ms
+     ✓ keeps a focused repo-live filter within the live-E2E group 866ms
+     ✓ summarizes Telegram package outcome for deferred Package Acceptance 24ms
+     ✓ summarizes Telegram package outcome for unrelated CI group 19ms
+     ✓ summarizes Telegram package outcome for selected Package Acceptance 32ms
+     ✓ summarizes Telegram package outcome for focused Telegram without a package 111ms
+     ✓ summarizes Telegram package outcome for published package from RELEASE_PACKAGE_… 41ms
+     ✓ summarizes Telegram package outcome for published package from NPM_TELEGRAM_PAC… 35ms
+     ✓ selects the candidate-compatible upgrade survivor profile for current source (soak=false) 111ms
+     ✓ selects the candidate-compatible upgrade survivor profile for current source (soak=true) 114ms
+     ✓ keeps the candidate-compatible upgrade survivor predecessor for frozen June published candidate 125ms
+     ✓ keeps the candidate-compatible upgrade survivor predecessor for historical source candidate 71ms
+     ✓ keeps the candidate-compatible upgrade survivor predecessor for older published candidate on the curren… 62ms
+     ✓ keeps the candidate-compatible upgrade survivor predecessor for npm package override 48ms
+     ✓ keeps the candidate-compatible upgrade survivor predecessor for source before the new scenario 73ms
+     ✓ keeps the candidate-compatible upgrade survivor predecessor for frozen source with the new scenario 48ms
+     ✓ keeps the candidate-compatible upgrade survivor predecessor for frozen source branch without separate c… 49ms
+     ✓ does not send recovery scenarios to a current-line source without the recovery harness 107ms
+     ✓ preserves the historical candidate-compatible upgrade survivor soak inventory without the new scenario 37ms
+     ✓ keeps published candidate-compatible upgrade survivor fixtures on the predecessor (soak=false) 35ms
+     ✓ keeps published candidate-compatible upgrade survivor fixtures on the predecessor (soak=true) 49ms
+     ✓ fails candidate-compatible upgrade survivor source qualification when metadata cannot be read 80ms
+     ✓ includes package acceptance in release checks 1317ms
+     ✓ prefers fresh Claude OAuth credentials for direct Anthropic live provider lanes 0ms
+     ✓ binds Windows-node release and main E2E calls to immutable source tuples 0ms
+     ✓ selects Windows-node release channels by canonical tag convention 94ms
+     ✓ keeps stable coverage when only throwaway prereleases exist 59ms
+     ✓ keeps stable coverage when the newest alpha is superseded 56ms
+     ✓ keeps stable coverage when the current alpha has no hashed uploade… 53ms
+     ✓ classifies selected Windows-node STABLE skipped with exit 1 17ms
+     ✓ classifies selected Windows-node STABLE failure with exit 1 12ms
+     ✓ classifies selected Windows-node PRERELEASE skipped with exit 0 16ms
+     ✓ classifies selected Windows-node PRERELEASE failure with exit 0 18ms
+     ✓ classifies selected Windows-node MAIN failure with exit 0 16ms
+     ✓ classifies selected Windows-node MAIN cancelled with exit 0 16ms
+     ✓ routes release Matrix through the QA Lab selector 12ms
+     ✓ preserves the first failed discord release QA attempt 14ms
+     ✓ preserves the first failed whatsapp release QA attempt 13ms
+     ✓ preserves the first failed slack release QA attempt 15ms
+     ✓ routes release Buzz through the QA Lab selector 1ms
+     ✓ runs QA-live on soak or explicit QA groups, not beta all by default 1ms
+     ✓ runs live transport lanes nightly while release checks stay gated 1ms
+     ✓ requires QA live evidence artifacts when lanes run 0ms
+     ✓ preserves the primary runtime token-efficiency failure 0ms
+     ✓ overlays only trusted Anthropic mock tooling for frozen-target QA parity 584ms
+     ✓ runs the core gateway restart pair on its pinned live model 0ms
+     ✓ requires release-check QA evidence artifacts when lanes run 15ms
+     ✓ runs canonical runtime-pair lanes in parallel and preserves one gate 7ms
+     ✓ requires live proof evidence artifacts when proof jobs run 14ms
+     ✓ pins Mantis worktree ownership and candidate dependency installation 2ms
+     ✓ sets up plugin-owned Crabbox before candidate execution in run_status_reactions 0ms
+     ✓ sets up plugin-owned Crabbox before candidate execution in run_thread_attachment 0ms
+     ✓ sets up plugin-owned Crabbox before candidate execution in run_slack_desktop 0ms
+     ✓ sets up plugin-owned Crabbox before candidate execution in run_telegram_proof 3ms
+     ✓ maps every supported Slack approval checkpoint scenario family 0ms
+     ✓ fails Docker E2E release lanes when summary artifacts are missing 0ms
+     ✓ isolates Open WebUI release coverage with lean runtime setup 0ms
+     ✓ accepts Telegram result success when enabled=true 14ms
+     ✓ accepts Telegram result skipped when enabled=false 11ms
+     ✓ rejects a skipped Telegram lane when package acceptance enabled it 13ms
+     ✓ rejects package acceptance when no Docker transport ran 13ms
+     ✓ rejects a failed npm 12 installer acceptance lane 12ms
+     ✓ accepts Telegram-only profile when broad lanes skip and Telegram succeeds 11ms
+     ✓ rejects Telegram-only profile when npm 12 acceptance runs 12ms
+     ✓ rejects Telegram-only profile when a Docker transport runs 12ms
+     ✓ keeps Telegram and Docker package acceptance failures blocking 26ms
+     ✓ reports a package Telegram failure even when no suite report exists 15ms
+     ✓ reports a package Telegram skipped even when no suite report exists 13ms
+     ✓ gives release build steps enough Node heap 1ms
+     ✓ runs full release children from the trusted workflow ref 56ms
+     ✓ lets npm Telegram consume current-run or release-run package artifacts 1ms
+     ✓ validates artifacts from active 29ms
+     ✓ validates artifacts from queued 29ms
+     ✓ validates artifacts from pending 27ms
+     ✓ validates artifacts from successful prior-attempt producer 43ms
+     ✓ validates artifacts from failed prior-attempt producer 37ms
+     ✓ validates artifacts from queued with conclusion 37ms
+     ✓ validates artifacts from successful external producer 32ms
+     ✓ rejects partial npm Telegram artifact identity instead of falling back to npm 12ms
+     ✓ accepts direct package artifacts and validates an optional registry tuple 65ms
+     ✓ rejects prerelease plugin registry inputs without a package artifact 11ms
+     ✓ uses bounded Convex lease waits instead of GitHub concurrency for CI Telegram consumers 0ms
+     ✓ keeps release QA and repo E2E lanes off scarce 32-core runners 1ms
+     ✓ release check artifact resolver (12)
+       ✓ selects the current producer attempt 28ms
+       ✓ carries attempt 1 into consumer attempt 2 29ms
+       ✓ orders producer attempts numerically 32ms
+       ✓ excludes future producer attempts 28ms
+       ✓ selects candidate and baseline attempts independently 38ms
+       ✓ fails when the latest producer attempt has no complete pair 40ms
+       ✓ fails on duplicate artifacts at the latest producer attempt 33ms
+       ✓ does not fall back past malformed newer evidence 27ms
+       ✓ does not fall back past expired newer evidence 26ms
+       ✓ rejects duplicate status fields 89ms
+       ✓ rejects malformed status metadata 84ms
+       ✓ sets runtime parity ready=false for validated non-success evidence 109ms
+     ✓ keeps release QA status artifacts blocking in the verifier 2ms
+     ✓ accepts a successful dispatched Telegra… 43ms
+     ✓ rejects a cancelled selected Telegram c… 28ms
+     ✓ rejects a failure selected Telegram chi… 19ms
+     ✓ rejects a skipped selected Telegram chi… 19ms
+     ✓ accepts a skipped unselected Telegram d… 18ms
+     ✓ rejects an unverified Telegram child id… 21ms
+     ✓ keeps package failures blocking alongsi… 45ms
+     ✓ keeps target resolution blocking before… 33ms
+     ✓ rejects a cancelled Telegram child for … 25ms
+     ✓ does not mask a later cancelled advisory status with an older successful job result 43ms
+     ✓ does not mask a later failure advisory status with an older successful job result 25ms
+     ✓ validates only jobs owned by the selected release-check phase 51ms
+     × wires evidence attempts into the acceptance gate 1ms
+     × keeps release publish artifacts and release-note ordering wired 2ms
+     ✓ loads the strict release validator from the isolated trusted tooling bundle 351ms
+     ✓ validates frozen npm release ancestry for a separately versioned correction on it… 425ms
+     ✓ validates frozen npm release ancestry for a same-source correction with only the … 292ms
+     ✓ validates frozen npm release ancestry for a beta on its frozen release branch 307ms
+     ✓ validates frozen npm release ancestry for a stable version on its frozen release … 388ms
+     ✓ keeps optional Windows promotion downstream of published npm and GitHub releases 3ms
+     ✓ retains the successful Windows validation artifact when only the writer is retried 0ms
+     ✓ records Windows validation failure when the writer is skipped 46ms
+     ✓ dispatches optional Windows promotion without waiting: omitted 15ms
+     ✓ dispatches optional Windows promotion without waiting: selected 14ms
+     ✓ dispatches optional Windows promotion without waiting: dispatch failure 23ms
+     ✓ dispatches optional Windows promotion without waiting: missing digests 17ms
+     ✓ dispatches optional Windows promotion without waiting: extended-stable 17ms
+     ✓ validates Windows signatures and pinned digests in the promotion owner 1ms
+     ✓ keeps the signed Android APK contract independent of core publication 5ms
+     ✓ rejects malformed Windows checksum manifest lines before using entries 0ms
+     ✓ rejects unsafe direct Windows recovery before uploading assets 0ms
+     ✓ publish requires the credentialed authorization path 0ms
+     ✓ keeps release publication ownership and artifact boundaries wired 13ms
+     ✓ bounds the npm registry tarball download used for release resume 0ms
+     ✓ fails closed when approval mutation fails 46ms
+     ✓ fails closed when approval child SHA mismatches 56ms
+     ✓ fails closed when waiting child SHA mismatches 33ms
+     ✓ keeps known bounded dominant child paths below the centralized drain owner 131ms
+     ✓ bounds every direct job in nested release workflows 5ms
+     ✓ documents checked extended-stable dispatch instead of a raw-SHA workflow ref 48ms
+     ✓ executes shared release candidate identity validation with its JSON input 265ms
+     ✓ normalizes fresh and reused release package candidate identity 0ms
+     ✓ keeps release history checks blobless 1ms
+     ✓ provisions the trusted parser before packing a frozen npm candidate 0ms
+     ✓ validates the macOS release handoff before the GitHub release page exists 2ms
+     ✓ classifies fast pretag Control UI output as a release artifact 0ms
+     ✓ keeps every tracked repository skill visible to Git-aware syncs 36ms
+     ✓ does not track generated node_modules entries 28ms
+     ✓ keeps tracked sync metadata and QA Mantis sources visible to remote full syncs 77ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > resolves broad release evidence and exact-binds every publish child
+Error: Expected workflow step Download full release validation manifest
+ ❯ workflowStep test/scripts/package-acceptance-workflow.test.ts:2882:11
+    2880|   const step = job.steps?.find((candidate) => candidate.name === stepN…
+    2881|   if (!step) {
+    2882|     throw new Error(`Expected workflow step ${stepName}`);
+       |           ^
+    2883|   }
+    2884|   return step;
+ ❯ test/scripts/package-acceptance-workflow.test.ts:7326:14
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > prepares one immutable candidate for release validation children
+AssertionError: expected undefined to be 'scripts' // Object.is equality
+
+- Expected:
+"scripts"
+
++ Received:
+undefined
+
+ ❯ test/scripts/package-acceptance-workflow.test.ts:10269:50
+    10267|       workflowStep(summary, "Checkout release state verifier"),
+    10268|     ]) {
+    10269|       expect(checkout.with?.["sparse-checkout"]).toBe("scripts");
+       |                                                  ^
+    10270|     }
+    10271|     expect(discovery.outputs?.state).toBe("${{ steps.discover.outputs.…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > wires evidence attempts into the acceptance gate
+Error: Expected workflow step Download full release validation manifest
+ ❯ workflowStep test/scripts/package-acceptance-workflow.test.ts:2882:11
+    2880|   const step = job.steps?.find((candidate) => candidate.name === stepN…
+    2881|   if (!step) {
+    2882|     throw new Error(`Expected workflow step ${stepName}`);
+       |           ^
+    2883|   }
+    2884|   return step;
+ ❯ test/scripts/package-acceptance-workflow.test.ts:15040:29
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps release publish artifacts and release-note ordering wired
+Error: Expected workflow step Download full release validation manifest
+ ❯ workflowStep test/scripts/package-acceptance-workflow.test.ts:2882:11
+    2880|   const step = job.steps?.find((candidate) => candidate.name === stepN…
+    2881|   if (!step) {
+    2882|     throw new Error(`Expected workflow step ${stepName}`);
+       |           ^
+    2883|   }
+    2884|   return step;
+ ❯ test/scripts/package-acceptance-workflow.test.ts:15083:29
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 583 passed (587)
+   Start at  07:20:40
+   Duration  314.94s (tests 100%)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > resolves broad release evidence and exact-binds every publish child
+Error: Expected workflow step Download full release validation manifest
+ ❯ workflowStep test/scripts/package-acceptance-workflow.test.ts:2882:11
+    2880|   const step = job.steps?.find((candidate) => candidate.name === stepN…
+    2881|   if (!step) {
+    2882|     throw new Error(`Expected workflow step ${stepName}`);
+       |           ^
+    2883|   }
+    2884|   return step;
+ ❯ test/scripts/package-acceptance-workflow.test.ts:7326:14
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > prepares one immutable candidate for release validation children
+AssertionError: expected undefined to be 'scripts' // Object.is equality
+
+- Expected:
+"scripts"
+
++ Received:
+undefined
+
+ ❯ test/scripts/package-acceptance-workflow.test.ts:10269:50
+    10267|       workflowStep(summary, "Checkout release state verifier"),
+    10268|     ]) {
+    10269|       expect(checkout.with?.["sparse-checkout"]).toBe("scripts");
+       |                                                  ^
+    10270|     }
+    10271|     expect(discovery.outputs?.state).toBe("${{ steps.discover.outputs.…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > wires evidence attempts into the acceptance gate
+Error: Expected workflow step Download full release validation manifest
+ ❯ workflowStep test/scripts/package-acceptance-workflow.test.ts:2882:11
+    2880|   const step = job.steps?.find((candidate) => candidate.name === stepN…
+    2881|   if (!step) {
+    2882|     throw new Error(`Expected workflow step ${stepName}`);
+       |           ^
+    2883|   }
+    2884|   return step;
+ ❯ test/scripts/package-acceptance-workflow.test.ts:15040:29
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps release publish artifacts and release-note ordering wired
+Error: Expected workflow step Download full release validation manifest
+ ❯ workflowStep test/scripts/package-acceptance-workflow.test.ts:2882:11
+    2880|   const step = job.steps?.find((candidate) => candidate.name === stepN…
+    2881|   if (!step) {
+    2882|     throw new Error(`Expected workflow step ${stepName}`);
+       |           ^
+    2883|   }
+    2884|   return step;
+ ❯ test/scripts/package-acceptance-workflow.test.ts:15083:29
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 583 passed (587)
+   Start at  07:20:40
+   Duration  314.97s (tests 100%)
+
+[test] FAILED (exit 1)
+receipt head=9476c7aaf79f8dc86d0222d2b708524a37711418 config=test/vitest/vitest.tooling.config.ts files=test/scripts/package-acceptance-workflow.test.ts
+failing-tests:
+ × |tooling| test/scripts/package-acceptance-workflow.test.ts > package acceptance workflow > resolves broad release evidence and exact-binds every publish child 15ms
+ × |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > prepares one immutable candidate for release validation children 7ms
+ × |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > wires evidence attempts into the acceptance gate 1ms
+ × |tooling| test/scripts/package-acceptance-workflow.test.ts > package artifact reuse > keeps release publish artifacts and release-note ordering wired 2ms
+VERDICT RED [Test Files 1 failed (1); Tests 4 failed | 583 passed (587)]
+# exit=1

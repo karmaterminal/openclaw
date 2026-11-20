@@ -1,0 +1,53 @@
+# ctl ref=cand sha=9476c7aaf79f8dc86d0222d2b708524a37711418 file=src/cron/maintenance-snapshot.test.ts run=1 mode=node26121 start=2026-11-20T15:04:22Z
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-gD7aAu/home TMPDIR=/tmp/oc-classify-gD7aAu/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.cron.config.ts
+include-file: /tmp/oc-classify-gD7aAu/tmp/oc-focused.zXdoXv/include.json
+include-file-contents:
+  [
+    "src/cron/maintenance-snapshot.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-gD7aAu/tmp/oc-focused.zXdoXv/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.cron.config.ts --maxWorkers=1 src/cron/maintenance-snapshot.test.ts
+logs: /tmp/oc-classify-gD7aAu/tmp/oc-focused.zXdoXv
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+[vitest-workers] local cache hit after 2194ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared fd256ad2af65 in 2262ms (20521 inputs, 25697 outputs)
+ ✓ |cron| src/cron/maintenance-snapshot.test.ts > handles snapshot invalidation: pending deletion through the real maintenance scheduler 3696ms
+ ✓ |cron| src/cron/maintenance-snapshot.test.ts > handles snapshot invalidation: completed deletion through the real maintenance scheduler 3700ms
+ ✓ |cron| src/cron/maintenance-snapshot.test.ts > handles snapshot invalidation: registration removal through the real maintenance scheduler 4041ms
+ ✓ |cron| src/cron/maintenance-snapshot.test.ts > handles snapshot invalidation: after healthy target through the real maintenance scheduler 3556ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/cron/maintenance-snapshot.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/cron/maintenance-snapshot.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/cron/maintenance-snapshot.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/cron/maintenance-snapshot.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/cron/maintenance-snapshot.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/cron/maintenance-snapshot.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/cron/maintenance-snapshot.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/cron/maintenance-snapshot.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/cron/maintenance-snapshot.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/cron/maintenance-snapshot.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/cron/maintenance-snapshot.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/cron/maintenance-snapshot.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/cron/maintenance-snapshot.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/cron/maintenance-snapshot.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/cron/maintenance-snapshot.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/cron/maintenance-snapshot.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/cron/maintenance-snapshot.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+
+ ✓ |cron| src/cron/maintenance-snapshot.test.ts > handles snapshot invalidation: stop before retry through the real maintenance scheduler 2627ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  07:04:25
+   Duration  37.23s (tests 48%, transform 44%, import 6%, worker 2%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=9476c7aaf79f8dc86d0222d2b708524a37711418 config=test/vitest/vitest.cron.config.ts files=src/cron/maintenance-snapshot.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 5 passed (5)]
+# exit=0

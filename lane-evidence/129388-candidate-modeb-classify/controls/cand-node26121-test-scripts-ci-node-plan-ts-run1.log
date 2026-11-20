@@ -1,0 +1,433 @@
+# ctl ref=cand sha=9476c7aaf79f8dc86d0222d2b708524a37711418 file=test/scripts/ci-node-test-plan.test.ts run=1 mode=node26121 start=2026-11-20T15:01:32Z
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-gRyImv/home TMPDIR=/tmp/oc-classify-gRyImv/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.tooling.config.ts
+include-file: /tmp/oc-classify-gRyImv/tmp/oc-focused.kGDJWH/include.json
+include-file-contents:
+  [
+    "test/scripts/ci-node-test-plan.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-gRyImv/tmp/oc-focused.kGDJWH/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.tooling.config.ts --maxWorkers=1 test/scripts/ci-node-test-plan.test.ts
+logs: /tmp/oc-classify-gRyImv/tmp/oc-focused.kGDJWH
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > Control UI release-only inventories > balances serial and qualified real-Gateway work around desktop proof 5ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > Control UI release-only inventories > prices disabled proofs without removing selected opt-in files 1ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > Control UI release-only inventories > prices empty steering variant without removing selected opt-in files 1ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > Control UI release-only inventories > prices enabled steering without removing selected opt-in files 1ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > Control UI release-only inventories > prices invalid nonempty steering variant without removing selected opt-in files 1ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > Control UI release-only inventories > prices disabled DeepSeek flag without removing selected opt-in files 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > Control UI release-only inventories > prices enabled DeepSeek without preflight cred… without removing selected opt-in files 1ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > Control UI release-only inventories > retains PR exemptions and direct edits in automatic selection 129ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > Control UI release-only inventories > retains PR exemptions and direct edits in full automatic selection 89ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > Control UI release-only inventories > retains PR exemptions and direct edits in directly edited release matrices 84ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > Control UI release-only inventories > retains PR exemptions and direct edits in full selection with one edited release … 85ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > Control UI release-only inventories > leaves the complete canonical config inventories in full release validation 41ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > startup corpus coverage > certifies only the selected tier and directly edited startup cells 1ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > startup corpus coverage > does not certify unknown full config 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > startup corpus coverage > does not certify different config 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > startup corpus coverage > does not certify native shard 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > startup corpus coverage > does not certify target precedence 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > startup corpus coverage > does not certify non-admitted dist row 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > keeps the scheduled main inventory within its reserved compact capacity (hybrid, extra group: false) 1824ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > keeps the scheduled main inventory within its reserved compact capacity (hybrid, extra group: true) 588ms
+ × |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > keeps the scheduled main inventory within its reserved compact capacity (github, extra group: false) 2991ms
+   → compact github node test plan exceeds 77 jobs (78 planned)
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > keeps the scheduled main inventory within its reserved compact capacity (github, extra group: true) 2066ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > fits 83 small compatible bundles under the capacity ceiling without losing or duplicating files 11ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > refuses over-cap bundles that cannot merge within the existing runner policy 1ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > refuses over-cap bundles that cannot merge within the existing build policy 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > refuses over-cap bundles that cannot merge within the existing workers policy 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > refuses over-cap bundles that cannot merge within the existing environment policy 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > refuses over-cap bundles that cannot merge within the existing time budget policy 1ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > refuses over-cap bundles that cannot merge within the existing group budget policy 6ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retries hybrid Gateway-first packing only when the completed plan exceeds its cap 2ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > rejects parallel bins whose ordered queue exceeds the test budget 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains the two-worker ceiling when compaction leaves a singleton 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > freezes settled serial Gateway rows when compacting neighboring parallel jobs 1ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains child policies while routing RunsOn from measured hybrid pull-request plans 1355ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > packs within 300 test seconds while retaining indivisible native-wall outliers 1ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > packs native tooling within its 420-second test budget 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > packs main-validation tooling within its 420-second test budget 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > packs main-validation tooling within its 150-second test budget 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > packs hosted hourly tooling only with complete supplied prices and ignores native tails 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > preserves hosted runner anchors and the serial budget with a 460-second blacksmith-8vcpu-ubuntu-2404 tail 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > preserves hosted runner anchors and the serial budget with a 461-second blacksmith-8vcpu-ubuntu-2404 tail 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > preserves hosted runner anchors and the serial budget with a 460-second blacksmith-4vcpu-ubuntu-2404 tail 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > splits observed pair measured-cli-tail with its child prices and runtime preparation 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > splits observed pair compact-small-32 with its child prices and runtime preparation 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > splits observed pair compact-small-34 with its child prices and runtime preparation 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > does not spend serial tooling observations after the runner contract changes 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > does not spend serial tooling observations after the workers contract changes 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > does not spend serial tooling observations after the concurrency contract changes 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > reprices changed selectors without spending their expired native observation 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > splits expensive tooling pairs without discounting prices (expired: false) 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > splits expensive tooling pairs without discounting prices (expired: true) 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > does not pack an unmeasured file using the canonical fallback as a wall observation 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > preserves distinct job deadlines when considering measured tooling packing 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > does not replace a higher job price with a faster measured tooling wall 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > does not replace a higher file price with a faster measured tooling wall 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > counts every placement stage against the compact cap 867ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > keeps precise RunsOn targets and their canonical child policies 868ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > discovers only tooling files for a cold precise tooling plan 648ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices parallel agent files once across blacksmith timing refits (53 s fallback) 1ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices parallel agent files once across github timing refits (80 s fallback) 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices agents-core serial history with two file workers on hybrid without discounting parallel samples 75ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices agents-core serial history with two file workers on github without discounting parallel samples 42ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains isolated Gateway timing history (previous workers=undefined) 8ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains isolated Gateway timing history (previous workers=8) 7ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > bounds Gateway method files and workers without losing coverage (hybrid/push) 34ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > bounds Gateway method files and workers without losing coverage (github/push) 16ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > bounds Gateway method files and workers without losing coverage (github/pull-request) 16ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains complete agentic-gateway-core-2 timing floors and ignores partial generations 13ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices auto-reply-reply-state-routing on blacksmith at two workers without discounting new measurements 3ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices auto-reply-reply-state-routing on hybrid at two workers without discounting new measurements 4ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices auto-reply-reply-dispatch-core on blacksmith at two workers without discounting new measurements 1ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains each singleton auto-reply stripe's full cost when splitting a parallel parent 3ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices serial Gateway server measurements at two workers and preserves parallel samples (github) 24ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > charges native fixture spans before discounting concurrent Gateway work 39ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > keeps parallel singleton measurements separate from the legacy serial floor 39ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > keeps oversized sparse groups nonempty on github 829ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > bounds github child groups by the slower github path 18ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > bounds hybrid child groups by the slower github path 17ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > bounds hybrid child groups by the slower blacksmith path 15ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > selects the core root budget guard alongside changed messaging test owners 1261ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > limits provisioning to copied inputs while retaining source closure guards 9514ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > runs Telegram skill script changes, including test-only edits, through the skill wrapper 1563ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > matches policy owners with literal and native glob semantics 342ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > keeps full-dispatch Gateway chunks off neighboring hosted rows 878ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > bounds Gateway cache collections without dropping or repeating owner files 7ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > bounds the hybrid hosted seed to real consumer configs without runtime builds 9ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > creates split shards without walking test roots 1806ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > keeps reduced Gateway coverage under distinct complete timing parts 113ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prefers github measurements while retaining unmeasured hints and defaults 1631ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prefers hybrid measurements while retaining unmeasured hints and defaults 502ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > preserves unmeasured Gateway stripes when another cohort's measurement changes 44ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > uses exact github child timings across sibling generations without changing partitions 23ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > uses exact hybrid child timings across sibling generations without changing partitions 19ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices storage work without changing placement (companion: false) 49ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices storage work without changing placement (companion: true) 40ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > applies native solo prices without changing placement or hosted prices 51ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > preserves the measured worker policy when splitting core-runtime-config 54ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > preserves the measured worker policy when splitting agentic-agents-support 46ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > partitions whole-config runtime consumers from ordinary serial CLI work 13ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > shares the serial CLI budget between complete regular CLI children 1ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > spends the hybrid CLI budget only on complete affordable non-build bins 131ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > keeps full locale finalizer proof in manual plans and fast locale contracts in PR plans 65ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains recovery and feature transport contracts in their main, PR, and manual Node tiers 936ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > defers exactly the runtime release inventory from automatic plans on github 2231ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > keeps noncompact reduced runtime bundles separate from release timing history 56ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices fully measured tooling selections without discarded siblings on undefined 3ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices fully measured tooling selections without discarded siblings on blacksmith 3ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices fully measured tooling selections without discarded siblings on hybrid 7ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > keeps precise tooling selection through hosted overflow refusal 536ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains agentic-gateway-core-2 worker fallback in precise github plans 2759ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains agentic-cli worker fallback in precise github plans 608ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains agentic-gateway-core-2 worker fallback in precise hybrid plans 1310ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains agentic-cli worker fallback in precise hybrid plans 460ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > preserves qualified database selection capacity on blacksmith for src/gateway/board-store.test.ts 468ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > preserves qualified database selection capacity on hybrid for src/gateway/board-store.test.ts 458ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > preserves qualified database selection capacity on hybrid for src/gateway/board-http.test.ts 459ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > shares one prepared runtime across affordable github groups 132ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains indivisible-file costs when canonical measurements are stale-low 141ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > allocates sparse selections without reserving their full-suite rows 48ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > serializes a selected singleton without expanding its worker allowance 59ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains parallel capacity and ordered wall budgets for selected blacksmith files 201ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains parallel capacity and ordered wall budgets for selected hybrid files 62ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices implicit reduced tooling with scaled Blacksmith fallback 44ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices implicit reduced tooling with direct GitHub timing 45ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices implicit reduced tooling with startup floor 43ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices implicit reduced tooling with unknown retained file 45ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices implicit reduced tooling with nonbinding retained cost 50ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices implicit reduced tooling with unchanged selection 42ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices implicit reduced tooling with Blacksmith parent floor 46ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices implicit reduced tooling with hybrid parent floor 41ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices implicit reduced tooling with pull-request parent floor 50ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > preserves compiler/artifact capacity (undefined) 46ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > preserves compiler/artifact capacity (blacksmith) 43ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > exchanges hosted anchors before opening another pull-request job 41ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices parallel tooling files without dividing the slowest file in blacksmith 130ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices parallel tooling files without dividing the slowest file in github 138ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > shares a small hosted tooling tail without lowering its runner owner 57ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > keeps hosted tooling within the GitHub job cap when its inventory grows 948ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains Gateway database consumers in the canonical worker plan 95ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains host-owned database consumers in the canonical infra plan 284ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prices parallel cron from serial work until github has direct measurements 1ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > keeps the changed Gateway catalog runtime build on hybrid 1734ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > keeps the complete tooling family in manual plans and omits it from product plans 4ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains the complete tooling family when owner test/scripts/vitest-report-owner.test.ts changes 2ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains the complete tooling family when owner scripts/lib/vitest-report-owner.mts changes 3ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains the complete tooling family when owner src/scripts/example.ts changes 2ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains the complete tooling family when owner config/ci-budget.md changes 2ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains the complete tooling family when owner test/vitest/vitest.tooling.config.ts changes 2ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains the complete tooling family when owner package.json changes 2ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains the complete tooling family when owner patches/vitest@5.0.5.patch changes 2ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains the complete tooling family when owner .github/workflows/ci.yml changes 3ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains the complete tooling family when owner apps/ios/fastlane/Fastfile changes 2ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains the complete tooling family when owner extensions/matrix/scripts/build.mjs changes 2ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > preserves product coverage and canonical tooling owners across the github release tier 1561ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > keeps changed native browser tests in UI jobs 1324ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > prepares the provider runtime for selected extension target extensions/telegram/src/bot.create-telegram-bot.native-pipeline.test.ts 1297ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains the changed host plugin test in a bounded hub plan beside store aliases 8974ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > retains only exact changed plugin-owner tests in deterministic order 11ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > does not widen plugin coverage for deleted tests, sources, docs, or directories 3ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > covers every infra test exactly once across split shards 116ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > covers every cron test exactly once across split shards 35ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > covers every executable auto-reply reply test exactly once across split shards 13ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > CI changed Node test plan > selects UI performance for ui/src/main.ts: true 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > CI changed Node test plan > selects UI performance for src/gateway/control-ui-route-preloads.ts: true 67ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > CI changed Node test plan > selects UI performance for ui/src/pages/chat/chat-gateway.test.ts: false 0ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > CI changed Node test plan > selects UI performance for packages/gateway-client/src/index.ts: false 87ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > CI changed Node test plan > selects UI performance for packages/gateway-client/src/browser.ts: true 61ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > CI changed Node test plan > classifies prompt-snapshot impact by surface and generator import graph 1ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > CI changed Node test plan > classifies SQLite session lifecycle impact by owner and import graph 481ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > CI changed Node test plan > keeps compact packing policy and runtime inputs bounded 2747ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > CI changed Node test plan > keeps measured packing ownership bounded on RunsOn 1757ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > CI changed Node test plan > fails safe for raw Git paths that resemble normalized script paths 2677ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > CI changed Node test plan > keeps the complete budgeted corpus plan beside a documentation page 3221ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > CI changed Node test plan > retains the mapped prompt Markdown owner beside documentation 2953ms
+ ✓ |tooling| test/scripts/ci-node-test-plan.test.ts > auto-reply reply config shard ownership > schedules every tracked file the reply subtree include collects 20ms
+ ❯ |tooling| test/scripts/ci-node-test-plan.test.ts (175 tests | 1 failed) 75376ms
+   ✓ Control UI release-only inventories (12)
+     ✓ balances serial and qualified real-Gateway work around desktop proof 5ms
+     ✓ prices disabled proofs without removing selected opt-in files 1ms
+     ✓ prices empty steering variant without removing selected opt-in files 1ms
+     ✓ prices enabled steering without removing selected opt-in files 1ms
+     ✓ prices invalid nonempty steering variant without removing selected opt-in files 1ms
+     ✓ prices disabled DeepSeek flag without removing selected opt-in files 0ms
+     ✓ prices enabled DeepSeek without preflight cred… without removing selected opt-in files 1ms
+     ✓ retains PR exemptions and direct edits in automatic selection 129ms
+     ✓ retains PR exemptions and direct edits in full automatic selection 89ms
+     ✓ retains PR exemptions and direct edits in directly edited release matrices 84ms
+     ✓ retains PR exemptions and direct edits in full selection with one edited release … 85ms
+     ✓ leaves the complete canonical config inventories in full release validation 41ms
+   ✓ startup corpus coverage (6)
+     ✓ certifies only the selected tier and directly edited startup cells 1ms
+     ✓ does not certify unknown full config 0ms
+     ✓ does not certify different config 0ms
+     ✓ does not certify native shard 0ms
+     ✓ does not certify target precedence 0ms
+     ✓ does not certify non-admitted dist row 0ms
+   ❯ scripts/lib/ci-node-test-plan.mts (144)
+     ✓ keeps the scheduled main inventory within its reserved compact capacity (hybrid, extra group: false) 1824ms
+     ✓ keeps the scheduled main inventory within its reserved compact capacity (hybrid, extra group: true) 588ms
+     × keeps the scheduled main inventory within its reserved compact capacity (github, extra group: false) 2991ms
+     ✓ keeps the scheduled main inventory within its reserved compact capacity (github, extra group: true) 2066ms
+     ✓ fits 83 small compatible bundles under the capacity ceiling without losing or duplicating files 11ms
+     ✓ refuses over-cap bundles that cannot merge within the existing runner policy 1ms
+     ✓ refuses over-cap bundles that cannot merge within the existing build policy 0ms
+     ✓ refuses over-cap bundles that cannot merge within the existing workers policy 0ms
+     ✓ refuses over-cap bundles that cannot merge within the existing environment policy 0ms
+     ✓ refuses over-cap bundles that cannot merge within the existing time budget policy 1ms
+     ✓ refuses over-cap bundles that cannot merge within the existing group budget policy 6ms
+     ✓ retries hybrid Gateway-first packing only when the completed plan exceeds its cap 2ms
+     ✓ rejects parallel bins whose ordered queue exceeds the test budget 0ms
+     ✓ retains the two-worker ceiling when compaction leaves a singleton 0ms
+     ✓ freezes settled serial Gateway rows when compacting neighboring parallel jobs 1ms
+     ✓ retains child policies while routing RunsOn from measured hybrid pull-request plans 1355ms
+     ✓ packs within 300 test seconds while retaining indivisible native-wall outliers 1ms
+     ✓ packs native tooling within its 420-second test budget 0ms
+     ✓ packs main-validation tooling within its 420-second test budget 0ms
+     ✓ packs main-validation tooling within its 150-second test budget 0ms
+     ✓ packs hosted hourly tooling only with complete supplied prices and ignores native tails 0ms
+     ✓ preserves hosted runner anchors and the serial budget with a 460-second blacksmith-8vcpu-ubuntu-2404 tail 0ms
+     ✓ preserves hosted runner anchors and the serial budget with a 461-second blacksmith-8vcpu-ubuntu-2404 tail 0ms
+     ✓ preserves hosted runner anchors and the serial budget with a 460-second blacksmith-4vcpu-ubuntu-2404 tail 0ms
+     ✓ splits observed pair measured-cli-tail with its child prices and runtime preparation 0ms
+     ✓ splits observed pair compact-small-32 with its child prices and runtime preparation 0ms
+     ✓ splits observed pair compact-small-34 with its child prices and runtime preparation 0ms
+     ✓ does not spend serial tooling observations after the runner contract changes 0ms
+     ✓ does not spend serial tooling observations after the workers contract changes 0ms
+     ✓ does not spend serial tooling observations after the concurrency contract changes 0ms
+     ✓ reprices changed selectors without spending their expired native observation 0ms
+     ✓ splits expensive tooling pairs without discounting prices (expired: false) 0ms
+     ✓ splits expensive tooling pairs without discounting prices (expired: true) 0ms
+     ✓ does not pack an unmeasured file using the canonical fallback as a wall observation 0ms
+     ✓ preserves distinct job deadlines when considering measured tooling packing 0ms
+     ✓ does not replace a higher job price with a faster measured tooling wall 0ms
+     ✓ does not replace a higher file price with a faster measured tooling wall 0ms
+     ✓ counts every placement stage against the compact cap 867ms
+     ✓ keeps precise RunsOn targets and their canonical child policies 868ms
+     ✓ discovers only tooling files for a cold precise tooling plan 648ms
+     ✓ prices parallel agent files once across blacksmith timing refits (53 s fallback) 1ms
+     ✓ prices parallel agent files once across github timing refits (80 s fallback) 0ms
+     ✓ prices agents-core serial history with two file workers on hybrid without discounting parallel samples 75ms
+     ✓ prices agents-core serial history with two file workers on github without discounting parallel samples 42ms
+     ✓ retains isolated Gateway timing history (previous workers=undefined) 8ms
+     ✓ retains isolated Gateway timing history (previous workers=8) 7ms
+     ✓ bounds Gateway method files and workers without losing coverage (hybrid/push) 34ms
+     ✓ bounds Gateway method files and workers without losing coverage (github/push) 16ms
+     ✓ bounds Gateway method files and workers without losing coverage (github/pull-request) 16ms
+     ✓ retains complete agentic-gateway-core-2 timing floors and ignores partial generations 13ms
+     ✓ prices auto-reply-reply-state-routing on blacksmith at two workers without discounting new measurements 3ms
+     ✓ prices auto-reply-reply-state-routing on hybrid at two workers without discounting new measurements 4ms
+     ✓ prices auto-reply-reply-dispatch-core on blacksmith at two workers without discounting new measurements 1ms
+     ✓ retains each singleton auto-reply stripe's full cost when splitting a parallel parent 3ms
+     ✓ prices serial Gateway server measurements at two workers and preserves parallel samples (github) 24ms
+     ✓ charges native fixture spans before discounting concurrent Gateway work 39ms
+     ✓ keeps parallel singleton measurements separate from the legacy serial floor 39ms
+     ✓ keeps oversized sparse groups nonempty on github 829ms
+     ✓ bounds github child groups by the slower github path 18ms
+     ✓ bounds hybrid child groups by the slower github path 17ms
+     ✓ bounds hybrid child groups by the slower blacksmith path 15ms
+     ✓ selects the core root budget guard alongside changed messaging test owners 1261ms
+     ✓ limits provisioning to copied inputs while retaining source closure guards 9514ms
+     ✓ runs Telegram skill script changes, including test-only edits, through the skill wrapper 1563ms
+     ✓ matches policy owners with literal and native glob semantics 342ms
+     ✓ keeps full-dispatch Gateway chunks off neighboring hosted rows 878ms
+     ✓ bounds Gateway cache collections without dropping or repeating owner files 7ms
+     ✓ bounds the hybrid hosted seed to real consumer configs without runtime builds 9ms
+     ✓ creates split shards without walking test roots 1806ms
+     ✓ keeps reduced Gateway coverage under distinct complete timing parts 113ms
+     ✓ prefers github measurements while retaining unmeasured hints and defaults 1631ms
+     ✓ prefers hybrid measurements while retaining unmeasured hints and defaults 502ms
+     ✓ preserves unmeasured Gateway stripes when another cohort's measurement changes 44ms
+     ✓ uses exact github child timings across sibling generations without changing partitions 23ms
+     ✓ uses exact hybrid child timings across sibling generations without changing partitions 19ms
+     ✓ prices storage work without changing placement (companion: false) 49ms
+     ✓ prices storage work without changing placement (companion: true) 40ms
+     ✓ applies native solo prices without changing placement or hosted prices 51ms
+     ✓ preserves the measured worker policy when splitting core-runtime-config 54ms
+     ✓ preserves the measured worker policy when splitting agentic-agents-support 46ms
+     ✓ partitions whole-config runtime consumers from ordinary serial CLI work 13ms
+     ✓ shares the serial CLI budget between complete regular CLI children 1ms
+     ✓ spends the hybrid CLI budget only on complete affordable non-build bins 131ms
+     ✓ keeps full locale finalizer proof in manual plans and fast locale contracts in PR plans 65ms
+     ✓ retains recovery and feature transport contracts in their main, PR, and manual Node tiers 936ms
+     ✓ defers exactly the runtime release inventory from automatic plans on github 2231ms
+     ✓ keeps noncompact reduced runtime bundles separate from release timing history 56ms
+     ✓ prices fully measured tooling selections without discarded siblings on undefined 3ms
+     ✓ prices fully measured tooling selections without discarded siblings on blacksmith 3ms
+     ✓ prices fully measured tooling selections without discarded siblings on hybrid 7ms
+     ✓ keeps precise tooling selection through hosted overflow refusal 536ms
+     ✓ retains agentic-gateway-core-2 worker fallback in precise github plans 2759ms
+     ✓ retains agentic-cli worker fallback in precise github plans 608ms
+     ✓ retains agentic-gateway-core-2 worker fallback in precise hybrid plans 1310ms
+     ✓ retains agentic-cli worker fallback in precise hybrid plans 460ms
+     ✓ preserves qualified database selection capacity on blacksmith for src/gateway/board-store.test.ts 468ms
+     ✓ preserves qualified database selection capacity on hybrid for src/gateway/board-store.test.ts 458ms
+     ✓ preserves qualified database selection capacity on hybrid for src/gateway/board-http.test.ts 459ms
+     ✓ shares one prepared runtime across affordable github groups 132ms
+     ✓ retains indivisible-file costs when canonical measurements are stale-low 141ms
+     ✓ allocates sparse selections without reserving their full-suite rows 48ms
+     ✓ serializes a selected singleton without expanding its worker allowance 59ms
+     ✓ retains parallel capacity and ordered wall budgets for selected blacksmith files 201ms
+     ✓ retains parallel capacity and ordered wall budgets for selected hybrid files 62ms
+     ✓ prices implicit reduced tooling with scaled Blacksmith fallback 44ms
+     ✓ prices implicit reduced tooling with direct GitHub timing 45ms
+     ✓ prices implicit reduced tooling with startup floor 43ms
+     ✓ prices implicit reduced tooling with unknown retained file 45ms
+     ✓ prices implicit reduced tooling with nonbinding retained cost 50ms
+     ✓ prices implicit reduced tooling with unchanged selection 42ms
+     ✓ prices implicit reduced tooling with Blacksmith parent floor 46ms
+     ✓ prices implicit reduced tooling with hybrid parent floor 41ms
+     ✓ prices implicit reduced tooling with pull-request parent floor 50ms
+     ✓ preserves compiler/artifact capacity (undefined) 46ms
+     ✓ preserves compiler/artifact capacity (blacksmith) 43ms
+     ✓ exchanges hosted anchors before opening another pull-request job 41ms
+     ✓ prices parallel tooling files without dividing the slowest file in blacksmith 130ms
+     ✓ prices parallel tooling files without dividing the slowest file in github 138ms
+     ✓ shares a small hosted tooling tail without lowering its runner owner 57ms
+     ✓ keeps hosted tooling within the GitHub job cap when its inventory grows 948ms
+     ✓ retains Gateway database consumers in the canonical worker plan 95ms
+     ✓ retains host-owned database consumers in the canonical infra plan 284ms
+     ✓ prices parallel cron from serial work until github has direct measurements 1ms
+     ✓ keeps the changed Gateway catalog runtime build on hybrid 1734ms
+     ✓ keeps the complete tooling family in manual plans and omits it from product plans 4ms
+     ✓ retains the complete tooling family when owner test/scripts/vitest-report-owner.test.ts changes 2ms
+     ✓ retains the complete tooling family when owner scripts/lib/vitest-report-owner.mts changes 3ms
+     ✓ retains the complete tooling family when owner src/scripts/example.ts changes 2ms
+     ✓ retains the complete tooling family when owner config/ci-budget.md changes 2ms
+     ✓ retains the complete tooling family when owner test/vitest/vitest.tooling.config.ts changes 2ms
+     ✓ retains the complete tooling family when owner package.json changes 2ms
+     ✓ retains the complete tooling family when owner patches/vitest@5.0.5.patch changes 2ms
+     ✓ retains the complete tooling family when owner .github/workflows/ci.yml changes 3ms
+     ✓ retains the complete tooling family when owner apps/ios/fastlane/Fastfile changes 2ms
+     ✓ retains the complete tooling family when owner extensions/matrix/scripts/build.mjs changes 2ms
+     ✓ preserves product coverage and canonical tooling owners across the github release tier 1561ms
+     ✓ keeps changed native browser tests in UI jobs 1324ms
+     ✓ prepares the provider runtime for selected extension target extensions/telegram/src/bot.create-telegram-bot.native-pipeline.test.ts 1297ms
+     ✓ retains the changed host plugin test in a bounded hub plan beside store aliases 8974ms
+     ✓ retains only exact changed plugin-owner tests in deterministic order 11ms
+     ✓ does not widen plugin coverage for deleted tests, sources, docs, or directories 3ms
+     ✓ covers every infra test exactly once across split shards 116ms
+     ✓ covers every cron test exactly once across split shards 35ms
+     ✓ covers every executable auto-reply reply test exactly once across split shards 13ms
+   ✓ CI changed Node test plan (12)
+     ✓ selects UI performance for ui/src/main.ts: true 0ms
+     ✓ selects UI performance for src/gateway/control-ui-route-preloads.ts: true 67ms
+     ✓ selects UI performance for ui/src/pages/chat/chat-gateway.test.ts: false 0ms
+     ✓ selects UI performance for packages/gateway-client/src/index.ts: false 87ms
+     ✓ selects UI performance for packages/gateway-client/src/browser.ts: true 61ms
+     ✓ classifies prompt-snapshot impact by surface and generator import graph 1ms
+     ✓ classifies SQLite session lifecycle impact by owner and import graph 481ms
+     ✓ keeps compact packing policy and runtime inputs bounded 2747ms
+     ✓ keeps measured packing ownership bounded on RunsOn 1757ms
+     ✓ fails safe for raw Git paths that resemble normalized script paths 2677ms
+     ✓ keeps the complete budgeted corpus plan beside a documentation page 3221ms
+     ✓ retains the mapped prompt Markdown owner beside documentation 2953ms
+   ✓ auto-reply reply config shard ownership (1)
+     ✓ schedules every tracked file the reply subtree include collects 20ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > keeps the scheduled main inventory within its reserved compact capacity (github, extra group: false)
+Error: compact github node test plan exceeds 77 jobs (78 planned)
+ ❯ createCompactNodeTestShardBundles scripts/lib/ci-node-test-plan.mts:5963:13
+    5961|       });
+    5962|     } else {
+    5963|       throw new Error(
+       |             ^
+    5964|         `compact ${options.runnerBackend ?? "blacksmith"} node test pl…
+    5965|       );
+ ❯ createCompactNodeTestShardBundles scripts/lib/ci-node-test-plan.mts:5675:14
+ ❯ createCompactNodeTestShardBundles scripts/lib/ci-node-test-plan.mts:5663:16
+ ❯ createCompactNodeTestShardBundles scripts/lib/ci-node-test-plan.mts:5634:14
+ ❯ Module.createNodeTestShardBundles scripts/lib/ci-node-test-plan.mts:3337:7
+ ❯ test/scripts/ci-node-test-plan.test.ts:657:29
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 174 passed (175)
+   Start at  07:01:33
+   Duration  78.69s (tests 96%, transform 1%, worker 1%, import 1%)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > keeps the scheduled main inventory within its reserved compact capacity (github, extra group: false)
+Error: compact github node test plan exceeds 77 jobs (78 planned)
+ ❯ createCompactNodeTestShardBundles scripts/lib/ci-node-test-plan.mts:5963:13
+    5961|       });
+    5962|     } else {
+    5963|       throw new Error(
+       |             ^
+    5964|         `compact ${options.runnerBackend ?? "blacksmith"} node test pl…
+    5965|       );
+ ❯ createCompactNodeTestShardBundles scripts/lib/ci-node-test-plan.mts:5675:14
+ ❯ createCompactNodeTestShardBundles scripts/lib/ci-node-test-plan.mts:5663:16
+ ❯ createCompactNodeTestShardBundles scripts/lib/ci-node-test-plan.mts:5634:14
+ ❯ Module.createNodeTestShardBundles scripts/lib/ci-node-test-plan.mts:3337:7
+ ❯ test/scripts/ci-node-test-plan.test.ts:657:29
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 174 passed (175)
+   Start at  07:01:33
+   Duration  78.70s (tests 96%, transform 1%, worker 1%, import 1%)
+
+[test] FAILED (exit 1)
+receipt head=9476c7aaf79f8dc86d0222d2b708524a37711418 config=test/vitest/vitest.tooling.config.ts files=test/scripts/ci-node-test-plan.test.ts
+failing-tests:
+ × |tooling| test/scripts/ci-node-test-plan.test.ts > scripts/lib/ci-node-test-plan.mts > keeps the scheduled main inventory within its reserved compact capacity (github, extra group: false) 2991ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 174 passed (175)]
+# exit=1
