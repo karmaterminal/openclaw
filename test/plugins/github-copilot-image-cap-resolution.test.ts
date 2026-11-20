@@ -13,8 +13,8 @@ import { registerSingleProviderPlugin } from "../../src/test-utils/plugin-regist
 
 const capture = vi.hoisted(() => ({ origin: "" }));
 
-// mock-isolation: Only the catalog destination changes. The guarded fetch and the physical
-// HTTP request stay real, so /models discovery reaches the local capture server.
+// The guarded fetch and the physical HTTP request stay real; only the catalog destination and
+// its policy change, so /models discovery reaches the local capture server.
 vi.mock("openclaw/plugin-sdk/ssrf-runtime", async (importOriginal) => {
   const actual = await importOriginal<typeof import("openclaw/plugin-sdk/ssrf-runtime")>();
   return {
@@ -35,7 +35,9 @@ beforeEach(async () => {
   state = await createOpenClawTestState({ label: "github-copilot-image-cap" });
   clearLiveCatalogCacheForTests();
   vi.stubEnv("COPILOT_GITHUB_TOKEN", "synthetic-github-token");
-  // The account lookup answers with Copilot's public endpoint; anything else off-host fails.
+  // A host tenant override would move the account lookup off public github.com.
+  vi.stubEnv("COPILOT_GITHUB_DOMAIN", "");
+  // The account lookup answers with Copilot's public endpoint; any other off-host request throws.
   const realFetch = globalThis.fetch;
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : input);
@@ -147,6 +149,7 @@ it("carries the listed per-prompt image cap through core model resolution to the
         config: {},
         provider: "github-copilot",
         modelId: model.id,
+        model,
         streamFn: createBoundaryAwareStreamFnForModel(model),
       });
       assert(stream, "Copilot stream wrapper missing");
