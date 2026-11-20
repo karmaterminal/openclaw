@@ -516,7 +516,7 @@ describe("fetchCopilotModelCatalog", () => {
         .toString();
 
     async function sendWireParts(
-      messages: Array<ReturnType<typeof photoPost | typeof reply | typeof question>>,
+      turns: Array<ReturnType<typeof photoPost | typeof reply | typeof question>>,
       vision?: { max_prompt_images: number },
     ) {
       const [listed] = await fetchSelectionFixture([
@@ -560,8 +560,8 @@ describe("fetchCopilotModelCatalog", () => {
             api: "openai-responses" as const,
             baseUrl,
           };
-          const context = { messages };
-          const persisted = structuredClone(messages);
+          const context = { messages: turns };
+          const persisted = structuredClone(turns);
           const stream = expectDefined(
             wrapCopilotProviderStream({
               streamFn: createBoundaryAwareStreamFnForModel(model),
@@ -570,7 +570,7 @@ describe("fetchCopilotModelCatalog", () => {
           );
           const result = await (await stream(model, context, { apiKey: "copilot-token" })).result();
           expect(result.errorMessage).toBeUndefined();
-          expect(messages).toEqual(persisted);
+          expect(turns).toEqual(persisted);
         },
       );
       expect(visionHeaders).toEqual(["true"]);
