@@ -1,0 +1,133 @@
+# ctl ref=probe sha=ddd0ec7a7a3241f0e6bb46e59cd8751d1d54ae78 file=src/config/sessions/session-entry-deletion.test.ts run=ddd0ec7a7a-1 mode=node26121 start=2026-11-20T14:26:48Z
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-sMTHO2/home TMPDIR=/tmp/oc-classify-sMTHO2/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.runtime-config.config.ts
+include-file: /tmp/oc-classify-sMTHO2/tmp/oc-focused.WWlEUk/include.json
+include-file-contents:
+  [
+    "src/config/sessions/session-entry-deletion.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-sMTHO2/tmp/oc-focused.WWlEUk/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.runtime-config.config.ts --maxWorkers=1 src/config/sessions/session-entry-deletion.test.ts
+logs: /tmp/oc-classify-sMTHO2/tmp/oc-focused.WWlEUk
+
+ RUN  v5.0.5 /home/figs/classify-129388/probe
+
+[vitest-workers] local cache miss after 1169ms
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js (48:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js:48:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m48 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js (6:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js:6:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m6 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js (11:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js:11:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m11 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js (9:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js:9:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m9 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js (12:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js:12:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m12 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+[vitest] still running with no output for 30000ms.
+[vitest-workers] prepared 4966ec7f610b in 33383ms (20521 inputs, 25696 outputs)
+ ✓ |runtime-config| src/config/sessions/session-entry-deletion.test.ts > deletes a completed main alias without losing shared history 2992ms
+ ✓ |runtime-config| src/config/sessions/session-entry-deletion.test.ts > deletes a completed other alias without losing shared history 1657ms
+ ✓ |runtime-config| src/config/sessions/session-entry-deletion.test.ts > preserves a captured entry after a metadata write 1456ms
+ ✓ |runtime-config| src/config/sessions/session-entry-deletion.test.ts > preserves a captured entry after a identity write 1436ms
+ ✓ |runtime-config| src/config/sessions/session-entry-deletion.test.ts > rolls back deletion when cleanup authority is lost at native commit 1400ms
+ ✓ |runtime-config| src/config/sessions/session-entry-deletion.test.ts > deletes empty transcripts without starting an archive worker 1392ms
+ × |runtime-config| src/config/sessions/session-entry-deletion.test.ts > prepares retained-window references before BEGIN and rechecks writes (false) 746ms
+   → expected [ false, true ] to deeply equal [ false ]
+stderr | unknown test
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+
+ ✓ |runtime-config| src/config/sessions/session-entry-deletion.test.ts > prepares retained-window references before BEGIN and rechecks writes (true) 1469ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |runtime-config| src/config/sessions/session-entry-deletion.test.ts > prepares retained-window references before BEGIN and rechecks writes (false)
+AssertionError: expected [ false, true ] to deeply equal [ false ]
+
+- Expected
++ Received
+
+  [
+    false,
++   true,
+  ]
+
+ ❯ src/config/sessions/session-entry-deletion.test.ts:<redacted len=6>
+    251|       statements.unsubscribe(observe);
+    252|     }
+    253|     expect(scans).toEqual(changed ? [false, true] : [false]);
+       |                   ^
+    254|     expect(
+    255|       database.db
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 7 passed (8)
+   Start at  06:26:50
+   Duration  62.44s (transform 75%, tests 20%, import 3%, worker 2%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=ddd0ec7a7a3241f0e6bb46e59cd8751d1d54ae78 config=test/vitest/vitest.runtime-config.config.ts files=src/config/sessions/session-entry-deletion.test.ts
+failing-tests:
+ × |runtime-config| src/config/sessions/session-entry-deletion.test.ts > prepares retained-window references before BEGIN and rechecks writes (false) 746ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 7 passed (8)]
+# exit=1

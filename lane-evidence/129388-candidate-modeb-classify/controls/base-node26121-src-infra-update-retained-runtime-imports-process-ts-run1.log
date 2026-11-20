@@ -1,0 +1,34 @@
+# ctl ref=base sha=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f file=src/infra/update-retained-runtime-imports.process.test.ts run=1 mode=node26121 start=2026-11-20T14:45:33Z
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-Cq1tda/home TMPDIR=/tmp/oc-classify-Cq1tda/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.infra.config.ts
+include-file: /tmp/oc-classify-Cq1tda/tmp/oc-focused.eoDk4C/include.json
+include-file-contents:
+  [
+    "src/infra/update-retained-runtime-imports.process.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-Cq1tda/tmp/oc-focused.eoDk4C/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.infra.config.ts --maxWorkers=1 src/infra/update-retained-runtime-imports.process.test.ts
+logs: /tmp/oc-classify-Cq1tda/tmp/oc-focused.eoDk4C
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-41bdde21
+
+[vitest-workers] local cache hit after 2059ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 0dec8f4d1be3 in 2142ms (20344 inputs, 25418 outputs)
+stderr | src/infra/update-retained-runtime-imports.process.test.ts > keeps bun late imports on the old generation through replacement and CLI teardown
+[openclaw] Staging pinned Bun fork openclaw-v1.4.4-20261026-191755ec11-webkit-b82bc917e9 (one-time download)…
+
+ ✓ |infra| src/infra/update-retained-runtime-imports.process.test.ts > keeps node late imports on the old generation through replacement and CLI teardown 2923ms
+ ✓ |infra| src/infra/update-retained-runtime-imports.process.test.ts > keeps bun late imports on the old generation through replacement and CLI teardown 4222ms
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  06:45:35
+   Duration  11.31s (tests 65%, transform 31%, setup 3%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f config=test/vitest/vitest.infra.config.ts files=src/infra/update-retained-runtime-imports.process.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 2 passed (2)]
+# exit=0

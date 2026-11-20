@@ -1,0 +1,31 @@
+# ctl ref=cand sha=9476c7aaf79f8dc86d0222d2b708524a37711418 file=test/scripts/bench-session-history.test.ts run=1 mode=node26121 start=2026-11-20T14:54:44Z
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-lTXdog/home TMPDIR=/tmp/oc-classify-lTXdog/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.unit-fast.config.ts
+include-file: /tmp/oc-classify-lTXdog/tmp/oc-focused.rANNN2/include.json
+include-file-contents:
+  [
+    "test/scripts/bench-session-history.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-lTXdog/tmp/oc-focused.rANNN2/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.unit-fast.config.ts --maxWorkers=1 test/scripts/bench-session-history.test.ts
+logs: /tmp/oc-classify-lTXdog/tmp/oc-focused.rANNN2
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+[vitest-workers] local cache hit after 2185ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 62512fdab6d9 in 2259ms (20521 inputs, 25697 outputs)
+ ✓ |unit-fast| test/scripts/bench-session-history.test.ts > drains seeded transcript owners before fresh-process history measurements 7833ms
+ ✓ |unit-fast| test/scripts/bench-session-history.test.ts > keeps the source benchmark JSON parseable across all history readers 29495ms
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  06:54:45
+   Duration  41.00s (tests 92%, transform 8%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=9476c7aaf79f8dc86d0222d2b708524a37711418 config=test/vitest/vitest.unit-fast.config.ts files=test/scripts/bench-session-history.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 2 passed (2)]
+# exit=0

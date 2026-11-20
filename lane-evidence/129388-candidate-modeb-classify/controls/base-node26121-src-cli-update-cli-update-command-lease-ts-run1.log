@@ -1,0 +1,430 @@
+# ctl ref=base sha=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f file=src/cli/update-cli/update-command-lease.test.ts run=1 mode=node26121 start=2026-11-20T14:11:18Z
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-BddjnJ/home TMPDIR=/tmp/oc-classify-BddjnJ/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.cli-process.config.ts
+include-file: /tmp/oc-classify-BddjnJ/tmp/oc-focused.I9U0J4/include.json
+include-file-contents:
+  [
+    "src/cli/update-cli/update-command-lease.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-BddjnJ/tmp/oc-focused.I9U0J4/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.cli-process.config.ts --maxWorkers=1 src/cli/update-cli/update-command-lease.test.ts
+logs: /tmp/oc-classify-BddjnJ/tmp/oc-focused.I9U0J4
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-41bdde21
+
+[vitest-workers] local cache hit after 2184ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared a289396ec298 in 2252ms (20344 inputs, 25418 outputs)
+[update finalize] finalize:preflight: in_progress
+[update finalize] finalize:preflight: completed
+[update finalize] finalize:targetConfigValidation: in_progress
+[update finalize] finalize:targetConfigValidation: completed
+[update finalize] finalize:configSnapshot: in_progress
+[update finalize] finalize:configSnapshot: completed
+[update finalize] finalize:doctor: in_progress
+[update finalize] pre-plugin doctor: completed
+[update finalize] finalize:doctor: completed
+[update finalize] finalize:plugins: in_progress
+[update finalize] finalize:plugins: completed
+[update finalize] finalize:targetConfigConvergence: in_progress
+[update finalize] post-plugin doctor: completed
+[update finalize] finalize:targetConfigConvergence: completed
+[update finalize] finalize:completionCache: in_progress
+[update finalize] finalize:completionCache: completed
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > passes standalone repair ownership to both fresh Doctor phases through the public command 7366ms
+[update finalize] finalize:preflight: in_progress
+[update finalize] finalize:preflight: completed
+[update finalize] finalize:targetConfigValidation: in_progress
+[update finalize] finalize:targetConfigValidation: completed
+[update finalize] finalize:configSnapshot: in_progress
+[update finalize] finalize:configSnapshot: completed
+[update finalize] finalize:doctor: in_progress
+[update finalize] pre-plugin doctor: completed
+[update finalize] finalize:doctor: completed
+[update finalize] finalize:plugins: in_progress
+[update finalize] finalize:plugins: completed
+[update finalize] finalize:targetConfigConvergence: in_progress
+[update finalize] post-plugin doctor: completed
+[update finalize] finalize:targetConfigConvergence: completed
+[update finalize] finalize:completionCache: in_progress
+[update finalize] finalize:completionCache: completed
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > the finalize parent restores its managed service (Doctor failure=undefined, restart failure=false) 8871ms
+[update finalize] finalize:preflight: in_progress
+[update finalize] finalize:preflight: completed
+[update finalize] finalize:targetConfigValidation: in_progress
+[update finalize] finalize:targetConfigValidation: completed
+[update finalize] finalize:configSnapshot: in_progress
+[update finalize] finalize:configSnapshot: completed
+[update finalize] finalize:doctor: in_progress
+[update finalize] pre-plugin doctor: completed
+[update finalize] finalize:doctor: completed
+[update finalize] finalize:plugins: in_progress
+[update finalize] finalize:plugins: completed
+[update finalize] finalize:targetConfigConvergence: in_progress
+[update finalize] post-plugin doctor: completed
+[update finalize] finalize:targetConfigConvergence: completed
+[update finalize] finalize:completionCache: in_progress
+[update finalize] finalize:completionCache: completed
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > the repair parent restores its managed service (Doctor failure=undefined, restart failure=false) 10725ms
+[update finalize] finalize:preflight: in_progress
+[update finalize] finalize:preflight: completed
+[update finalize] finalize:targetConfigValidation: in_progress
+[update finalize] finalize:targetConfigValidation: completed
+[update finalize] finalize:configSnapshot: in_progress
+[update finalize] finalize:configSnapshot: completed
+[update finalize] finalize:doctor: in_progress
+[update finalize] doctor process settlement: completed
+[update finalize] warning:doctor process settlement: completed: Doctor did not finish normally, but every tracked process group stopped. Preserving migrated state; run `openclaw update repair` to finish deferred maintenance.
+[update finalize] pre-plugin doctor: failed: Exit code: 1
+[update finalize] finalize:doctor: failed: Updated pre-plugin Doctor failed:
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > the repair parent restores its managed service (Doctor failure=pre, restart failure=false) 6067ms
+[update finalize] finalize:preflight: in_progress
+[update finalize] finalize:preflight: completed
+[update finalize] finalize:targetConfigValidation: in_progress
+[update finalize] finalize:targetConfigValidation: completed
+[update finalize] finalize:configSnapshot: in_progress
+[update finalize] finalize:configSnapshot: completed
+[update finalize] finalize:doctor: in_progress
+[update finalize] pre-plugin doctor: completed
+[update finalize] finalize:doctor: completed
+[update finalize] finalize:plugins: in_progress
+[update finalize] finalize:plugins: completed
+[update finalize] finalize:targetConfigConvergence: in_progress
+[update finalize] post-plugin doctor: completed
+[update finalize] finalize:targetConfigConvergence: failed: Doctor gateway-restoration failed. The managed Gateway could not be restored after Doctor maintenance: Error: fixture service manager restart failed Run openclaw gateway status --deep; resolve the rep
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > the repair parent restores its managed service (Doctor failure=undefined, restart failure=true) 9527ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > converges target-owned source completion contracts: legacy-mjs 2807ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > converges target-owned source completion contracts: legacy-mts 1475ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > converges target-owned source completion contracts: malformed-prepare 909ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > converges target-owned source completion contracts: missing-dependency 917ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > converges target-owned source completion contracts: missing-ownership 968ms
+[update finalize] finalize:preflight: in_progress
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > resume completes missing source artifacts before consumers and leaves an exact online retry untouched 4563ms
+[update finalize] finalize:preflight: completed
+[update finalize] finalize:targetConfigValidation: in_progress
+[update finalize] finalize:targetConfigValidation: completed
+[update finalize] finalize:configSnapshot: in_progress
+[update finalize] finalize:configSnapshot: completed
+[update finalize] finalize:doctor: in_progress
+[update finalize] pre-plugin doctor: completed
+[update finalize] finalize:doctor: completed
+[update finalize] finalize:plugins: in_progress
+[update finalize] finalize:plugins: completed
+[update finalize] finalize:targetConfigConvergence: in_progress
+[update finalize] post-plugin doctor: completed
+[update finalize] finalize:targetConfigConvergence: completed
+[update finalize] finalize:completionCache: in_progress
+[update finalize] finalize:completionCache: skipped
+[update finalize] finalize:preflight: in_progress
+[update finalize] finalize:preflight: completed
+[update finalize] finalize:targetConfigValidation: in_progress
+[update finalize] finalize:targetConfigValidation: completed
+[update finalize] finalize:configSnapshot: in_progress
+[update finalize] finalize:configSnapshot: completed
+[update finalize] finalize:doctor: in_progress
+[update finalize] pre-plugin doctor: completed
+[update finalize] finalize:doctor: completed
+[update finalize] finalize:plugins: in_progress
+[update finalize] finalize:plugins: completed
+[update finalize] finalize:targetConfigConvergence: in_progress
+[update finalize] post-plugin doctor: completed
+[update finalize] finalize:targetConfigConvergence: completed
+[update finalize] finalize:completionCache: in_progress
+[update finalize] finalize:completionCache: skipped
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > repair completes missing source artifacts before consumers and leaves an exact online retry untouched 14759ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > resume preserves publication failure details when staging cleanup also fails 1294ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > fresh-process releases plugin ownership for fresh doctor without delegating Gateway activation 9889ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > current-process releases plugin ownership for fresh doctor without delegating Gateway activation 9527ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > candidate-runtime releases plugin ownership for fresh doctor without delegating Gateway activation 16024ms
+[update finalize] finalize:preflight: in_progress
+[update finalize] finalize:preflight: completed
+[update finalize] finalize:targetConfigValidation: in_progress
+[update finalize] finalize:targetConfigValidation: completed
+[update finalize] finalize:configSnapshot: in_progress
+[update finalize] finalize:configSnapshot: completed
+[update finalize] finalize:doctor: in_progress
+[update finalize] pre-plugin doctor: completed
+[update finalize] finalize:doctor: completed
+[update finalize] finalize:plugins: in_progress
+[update finalize] finalize:plugins: completed
+[update finalize] finalize:targetConfigConvergence: in_progress
+[update finalize] post-plugin doctor: completed
+[update finalize] finalize:targetConfigConvergence: completed
+[update finalize] finalize:completionCache: in_progress
+[update finalize] finalize:completionCache: skipped
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > repair releases plugin ownership for fresh doctor without delegating Gateway activation 11388ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > current-process reloads config and records after a competing writer commits 10136ms
+[update finalize] finalize:preflight: in_progress
+[update finalize] finalize:preflight: completed
+[update finalize] finalize:targetConfigValidation: in_progress
+[update finalize] finalize:targetConfigValidation: completed
+[update finalize] finalize:configSnapshot: in_progress
+[update finalize] finalize:configSnapshot: completed
+[update finalize] finalize:doctor: in_progress
+[update finalize] pre-plugin doctor: completed
+[update finalize] finalize:doctor: completed
+[update finalize] finalize:plugins: in_progress
+[update finalize] finalize:plugins: completed
+[update finalize] finalize:targetConfigConvergence: in_progress
+[update finalize] post-plugin doctor: completed
+[update finalize] finalize:targetConfigConvergence: completed
+[update finalize] finalize:completionCache: in_progress
+[update finalize] finalize:completionCache: skipped
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > repair reloads config and records after a competing writer commits 10231ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > legacy resume settles Doctor warnings before unchanged plugin convergence 4510ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > legacy resume settles Doctor warnings before changed plugin convergence 6283ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > legacy resume settles Doctor warnings before failed plugin convergence 4080ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > resume reads the parent migration owner's committed generation (empty=false) 3428ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > resume reads the parent migration owner's committed generation (empty=true) 3404ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > candidate-runtime reads the parent migration owner's committed generation (empty=false) 11176ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > candidate-runtime reads the parent migration owner's committed generation (empty=true) 11373ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > uses forwarded records when candidate convergence has no persisted index 10140ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > fresh-process does not run a final doctor when no plugins changed 6992ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > current-process does not run a final doctor when no plugins changed 5579ms
+[update finalize] finalize:preflight: in_progress
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > candidate-runtime does not run a final doctor when no plugins changed 6435ms
+[update finalize] finalize:preflight: completed
+[update finalize] finalize:targetConfigValidation: in_progress
+[update finalize] finalize:targetConfigValidation: completed
+[update finalize] finalize:configSnapshot: in_progress
+[update finalize] finalize:configSnapshot: completed
+[update finalize] finalize:doctor: in_progress
+[update finalize] pre-plugin doctor: completed
+[update finalize] finalize:doctor: completed
+[update finalize] finalize:plugins: in_progress
+[update finalize] finalize:plugins: completed
+[update finalize] finalize:targetConfigConvergence: in_progress
+[update finalize] finalize:targetConfigConvergence: completed
+[update finalize] finalize:completionCache: in_progress
+[update finalize] finalize:completionCache: skipped
+[update finalize] finalize:preflight: in_progress
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > repair does not run a final doctor when no plugins changed 4634ms
+[update finalize] finalize:preflight: completed
+[update finalize] finalize:targetConfigValidation: in_progress
+[update finalize] finalize:targetConfigValidation: completed
+[update finalize] finalize:configSnapshot: in_progress
+[update finalize] finalize:configSnapshot: completed
+[update finalize] finalize:doctor: in_progress
+[update finalize] pre-plugin doctor: completed
+[update finalize] finalize:doctor: completed
+[update finalize] finalize:plugins: in_progress
+[update finalize] finalize:plugins: completed
+[update finalize] finalize:targetConfigConvergence: in_progress
+[update finalize] post-plugin doctor: completed
+[update finalize] finalize:targetConfigConvergence: completed
+[update finalize] finalize:completionCache: in_progress
+[update finalize] finalize:completionCache: skipped
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > repair persists a requested channel before its fresh doctor and retains timings 8099ms
+[update finalize] finalize:preflight: in_progress
+[update finalize] finalize:preflight: completed
+[update finalize] finalize:targetConfigValidation: in_progress
+[update finalize] finalize:targetConfigValidation: completed
+[update finalize] finalize:configSnapshot: in_progress
+[update finalize] finalize:configSnapshot: completed
+[update finalize] finalize:doctor: in_progress
+[update finalize] doctor process settlement: completed
+[update finalize] warning:doctor process settlement: completed: Doctor did not finish normally, but every tracked process group stopped. Preserving migrated state; run `openclaw update repair` to finish deferred maintenance.
+[update finalize] pre-plugin doctor: failed: Exit code: 1
+[update finalize] finalize:doctor: failed: Updated pre-plugin Doctor failed:
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > repair propagates its pre-plugin doctor failure before mutation 4066ms
+[update finalize] finalize:preflight: in_progress
+[update finalize] finalize:preflight: completed
+[update finalize] finalize:targetConfigValidation: in_progress
+[update finalize] finalize:targetConfigValidation: completed
+[update finalize] finalize:configSnapshot: in_progress
+[update finalize] finalize:configSnapshot: completed
+[update finalize] finalize:doctor: in_progress
+[update finalize] pre-plugin doctor: completed
+[update finalize] finalize:doctor: completed
+[update finalize] finalize:plugins: in_progress
+[update finalize] finalize:plugins: completed
+[update finalize] finalize:targetConfigConvergence: in_progress
+[update finalize] finalize:targetConfigConvergence: completed
+[update finalize] finalize:completionCache: in_progress
+[update finalize] finalize:completionCache: skipped
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > repair reconciles captured runs before publishing successful convergence with warnings 5658ms
+[update finalize] finalize:preflight: in_progress
+[update finalize] finalize:preflight: completed
+[update finalize] finalize:targetConfigValidation: in_progress
+[update finalize] finalize:targetConfigValidation: completed
+[update finalize] finalize:configSnapshot: in_progress
+[update finalize] finalize:configSnapshot: completed
+[update finalize] finalize:doctor: in_progress
+[update finalize] pre-plugin doctor: completed
+[update finalize] finalize:doctor: completed
+[update finalize] finalize:plugins: in_progress
+[update finalize] finalize:plugins: completed
+[update finalize] finalize:targetConfigConvergence: in_progress
+[update finalize] finalize:targetConfigConvergence: completed
+[update finalize] finalize:completionCache: in_progress
+[update finalize] finalize:completionCache: skipped
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > repair withholds success when a captured updater advances during convergence 5944ms
+[update finalize] finalize:preflight: in_progress
+[update finalize] finalize:preflight: completed
+[update finalize] finalize:targetConfigValidation: in_progress
+[update finalize] finalize:targetConfigValidation: completed
+[update finalize] finalize:configSnapshot: in_progress
+[update finalize] finalize:configSnapshot: completed
+[update finalize] finalize:doctor: in_progress
+[update finalize] pre-plugin doctor: completed
+[update finalize] finalize:doctor: completed
+[update finalize] finalize:plugins: in_progress
+[update finalize] finalize:plugins: completed
+[update finalize] finalize:targetConfigConvergence: in_progress
+[update finalize] post-plugin doctor: completed
+[update finalize] finalize:targetConfigConvergence: completed
+[update finalize] finalize:completionCache: in_progress
+[update finalize] finalize:completionCache: skipped
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > repair reports unverified recorded ownership for a captured old-host run 8315ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > fresh-process preserves a readiness finding outcome 7296ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > fresh-process preserves a readiness execution outcome 9006ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > current-process preserves a readiness finding outcome 6319ms
+[update finalize] finalize:preflight: in_progress
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > current-process preserves a readiness execution outcome 7784ms
+[update finalize] finalize:preflight: completed
+[update finalize] finalize:targetConfigValidation: in_progress
+[update finalize] finalize:targetConfigValidation: completed
+[update finalize] finalize:configSnapshot: in_progress
+[update finalize] finalize:configSnapshot: completed
+[update finalize] finalize:doctor: in_progress
+[update finalize] pre-plugin doctor: completed
+[update finalize] finalize:doctor: completed
+[update finalize] finalize:plugins: in_progress
+[update finalize] finalize:plugins: completed
+[update finalize] finalize:targetConfigConvergence: in_progress
+[update finalize] post-plugin doctor: completed
+[update finalize] finalize:targetConfigConvergence: failed
+[update finalize] finalize:completionCache: in_progress
+[update finalize] finalize:completionCache: skipped
+[update finalize] finalize:preflight: in_progress
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > repair preserves a readiness finding outcome 6434ms
+[update finalize] finalize:preflight: completed
+[update finalize] finalize:targetConfigValidation: in_progress
+[update finalize] finalize:targetConfigValidation: completed
+[update finalize] finalize:configSnapshot: in_progress
+[update finalize] finalize:configSnapshot: completed
+[update finalize] finalize:doctor: in_progress
+[update finalize] pre-plugin doctor: completed
+[update finalize] finalize:doctor: completed
+[update finalize] finalize:plugins: in_progress
+[update finalize] finalize:plugins: completed
+[update finalize] finalize:targetConfigConvergence: in_progress
+[update finalize] post-plugin doctor: completed
+[update finalize] finalize:targetConfigConvergence: completed
+[update finalize] warning:finalize:plugins:0: completed: Updated plugin readiness checks could not be completed before restart. Post-plugin Doctor readiness failed (code=1, termination=exit)
+stderr: [openclaw] The CLI command failed.
+[openclaw] Reason: readiness fixture failure
+[openclaw] Try: openclaw doctor
+[openclaw] Help: openclaw --help
+[update finalize] finalize:completionCache: in_progress
+[update finalize] finalize:completionCache: skipped
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > repair preserves a readiness execution outcome 5994ms
+stderr | src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > resume validates downgrade config (valid=true, Doctor fails=true)
+Your OpenClaw config was written by version 2099.1.1, but this command is running 2026.11.5.
+Check: `openclaw --version`, `which openclaw`, and `openclaw gateway status --deep`.
+If unexpected, update PATH so `openclaw` points to the version you want, or reinstall the Gateway service from that same OpenClaw install.
+
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > resume validates downgrade config (valid=true, Doctor fails=true) 3396ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > resume validates downgrade config (valid=false, Doctor fails=true) 2350ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > fresh-process validates downgrade config (valid=true, Doctor fails=true) 10001ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > fresh-process validates downgrade config (valid=false, Doctor fails=true) 5899ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > candidate-runtime validates downgrade config (valid=true, Doctor fails=true) 11053ms
+[update finalize] finalize:preflight: in_progress
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > candidate-runtime validates downgrade config (valid=false, Doctor fails=true) 8278ms
+[update finalize] finalize:preflight: completed
+[update finalize] finalize:targetConfigValidation: in_progress
+[update finalize] finalize:targetConfigValidation: completed
+[update finalize] finalize:configSnapshot: in_progress
+[update finalize] finalize:configSnapshot: completed
+[update finalize] finalize:doctor: in_progress
+[update finalize] pre-plugin doctor: completed
+[update finalize] finalize:doctor: completed
+[update finalize] finalize:plugins: in_progress
+[update finalize] finalize:plugins: completed
+[update finalize] finalize:targetConfigConvergence: in_progress
+[update finalize] doctor process settlement: completed
+[update finalize] warning:doctor process settlement: completed: Doctor did not finish normally, but every tracked process group stopped. Preserving migrated state; run `openclaw update repair` to finish deferred maintenance.
+[update finalize] post-plugin doctor: completed: Post-update plugin Doctor did not complete (exit 1). Run `openclaw update repair` to retry post-update plugin repair.
+Updated post-plugin Doctor failed:
+stderr: doctor fixture diagnostic
+doctor fixture failure
+stdout: doctor fixture output
+[update finalize] warning:post-plugin doctor: completed: Post-update plugin Doctor did not complete (exit 1). Run `openclaw update repair` to retry post-update plugin repair.
+Updated post-plugin Doctor failed:
+stderr: doctor fixture diagnostic
+doctor fixture failure
+stdout: doctor fixture output
+[update finalize] finalize:targetConfigConvergence: completed
+[update finalize] warning:finalize:plugins:0: completed: Post-update plugin Doctor did not complete (exit 1). Run `openclaw update repair` to retry post-update plugin repair.
+Updated post-plugin Doctor failed:
+stderr: doctor fixture diagnostic
+doctor fixture failure
+stdout: doctor fixture output
+[update finalize] finalize:completionCache: in_progress
+[update finalize] finalize:completionCache: skipped
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > repair validates downgrade config (valid=true, Doctor fails=true) 7675ms
+[update finalize] finalize:preflight: in_progress
+[update finalize] finalize:preflight: completed
+[update finalize] finalize:targetConfigValidation: in_progress
+[update finalize] finalize:targetConfigValidation: completed
+[update finalize] finalize:configSnapshot: in_progress
+[update finalize] finalize:configSnapshot: completed
+[update finalize] finalize:doctor: in_progress
+[update finalize] pre-plugin doctor: completed
+[update finalize] finalize:doctor: completed
+[update finalize] finalize:plugins: in_progress
+[update finalize] finalize:plugins: completed
+[update finalize] finalize:targetConfigConvergence: in_progress
+[update finalize] doctor process settlement: completed
+[update finalize] warning:doctor process settlement: completed: Doctor did not finish normally, but every tracked process group stopped. Preserving migrated state; run `openclaw update repair` to finish deferred maintenance.
+[update finalize] post-plugin doctor: completed: Post-update plugin Doctor did not complete (exit 1). Run `openclaw update repair` to retry post-update plugin repair.
+Updated post-plugin Doctor failed:
+stderr: doctor fixture diagnostic
+doctor fixture failure
+stdout: doctor fixture output
+[update finalize] warning:post-plugin doctor: completed: Post-update plugin Doctor did not complete (exit 1). Run `openclaw update repair` to retry post-update plugin repair.
+Updated post-plugin Doctor failed:
+stderr: doctor fixture diagnostic
+doctor fixture failure
+stdout: doctor fixture output
+[update finalize] finalize:targetConfigConvergence: failed
+[update finalize] warning:finalize:plugins:0: completed: Post-update plugin Doctor did not complete (exit 1). Run `openclaw update repair` to retry post-update plugin repair.
+Updated post-plugin Doctor failed:
+stderr: doctor fixture diagnostic
+doctor fixture failure
+stdout: doctor fixture output
+[update finalize] finalize:completionCache: in_progress
+[update finalize] finalize:completionCache: skipped
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > repair validates downgrade config (valid=false, Doctor fails=true) 8801ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > fresh-process validates downgrade config (valid=false, Doctor fails=false) 6079ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > current-process validates downgrade config (valid=false, Doctor fails=false) 6289ms
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > candidate-runtime validates downgrade config (valid=false, Doctor fails=false) 8554ms
+[update finalize] finalize:preflight: in_progress
+[update finalize] finalize:preflight: completed
+[update finalize] finalize:targetConfigValidation: in_progress
+[update finalize] finalize:targetConfigValidation: completed
+[update finalize] finalize:configSnapshot: in_progress
+[update finalize] finalize:configSnapshot: completed
+[update finalize] finalize:doctor: in_progress
+[update finalize] pre-plugin doctor: completed
+[update finalize] finalize:doctor: completed
+[update finalize] finalize:plugins: in_progress
+[update finalize] finalize:plugins: completed
+[update finalize] finalize:targetConfigConvergence: in_progress
+[update finalize] post-plugin doctor: completed
+[update finalize] finalize:targetConfigConvergence: failed
+[update finalize] finalize:completionCache: in_progress
+[update finalize] finalize:completionCache: skipped
+ ✓ |cli-process| src/cli/update-cli/update-command-lease.test.ts > update orchestration lifecycle ownership > repair validates downgrade config (valid=false, Doctor fails=false) 7972ms
+
+ Test Files  1 passed (1)
+      Tests  54 passed (54)
+   Start at  06:11:19
+   Duration  402.48s (tests 94%, transform 5%, import 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f config=test/vitest/vitest.cli-process.config.ts files=src/cli/update-cli/update-command-lease.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 54 passed (54)]
+# exit=0

@@ -1,0 +1,73 @@
+# ctl ref=cand sha=9476c7aaf79f8dc86d0222d2b708524a37711418 file=src/infra/package-update-permission-drift.test.ts run=2 mode=node26121 start=2026-11-20T14:41:07Z
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-JG8tX2/home TMPDIR=/tmp/oc-classify-JG8tX2/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.infra.config.ts
+include-file: /tmp/oc-classify-JG8tX2/tmp/oc-focused.cmmFNN/include.json
+include-file-contents:
+  [
+    "src/infra/package-update-permission-drift.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-JG8tX2/tmp/oc-focused.cmmFNN/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.infra.config.ts --maxWorkers=1 src/infra/package-update-permission-drift.test.ts
+logs: /tmp/oc-classify-JG8tX2/tmp/oc-focused.cmmFNN
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+[vitest-workers] local cache hit after 2083ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 978dd4fac99e in 2165ms (20521 inputs, 25697 outputs)
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > clears write drift once without removing read access (shared inode=false) 84ms
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > clears write drift once without removing read access (shared inode=true) 21ms
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > does not repair a tree with changed bytes 30ms
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > does not repair a tree with changed owner-mode 20ms
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > does not repair a tree with changed inode 18ms
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > does not repair a tree with changed target 18ms
+setfacl: /tmp/oc-classify-JG8tX2/tmp/oc-vt-c1x6v4/publication-permission-drift-dBYoBW: Invalid argument
+setfacl: /tmp/oc-classify-JG8tX2/tmp/oc-vt-c1x6v4/publication-permission-drift-dBYoBW/dist: Invalid argument
+setfacl: /tmp/oc-classify-JG8tX2/tmp/oc-vt-c1x6v4/publication-permission-drift-dBYoBW/dist/index.js: Invalid argument
+setfacl: /tmp/oc-classify-JG8tX2/tmp/oc-vt-c1x6v4/publication-permission-drift-dBYoBW/package.json: Invalid argument
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > keeps old public-mode receipts valid across recovery attempts 35ms
+ × |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > repairs a recursive named-user POSIX ACL 16ms
+   → Command failed: setfacl -R -m u:65534:rwX /tmp/oc-classify-JG8tX2/tmp/oc-vt-c1x6v4/publication-permission-drift-dBYoBW
+setfacl: /tmp/oc-classify-JG8tX2/tmp/oc-vt-c1x6v4/publication-permission-drift-dBYoBW: Invalid argument
+setfacl: /tmp/oc-classify-JG8tX2/tmp/oc-vt-c1x6v4/publication-permission-drift-dBYoBW/dist: Invalid argument
+setfacl: /tmp/oc-classify-JG8tX2/tmp/oc-vt-c1x6v4/publication-permission-drift-dBYoBW/dist/index.js: Invalid argument
+setfacl: /tmp/oc-classify-JG8tX2/tmp/oc-vt-c1x6v4/publication-permission-drift-dBYoBW/package.json: Invalid argument
+
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > warns and continues when verified permissions cannot be tightened 32ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > repairs a recursive named-user POSIX ACL
+Error: Command failed: setfacl -R -m u:65534:rwX /tmp/oc-classify-JG8tX2/tmp/oc-vt-c1x6v4/publication-permission-drift-dBYoBW
+setfacl: /tmp/oc-classify-JG8tX2/tmp/oc-vt-c1x6v4/publication-permission-drift-dBYoBW: Invalid argument
+setfacl: /tmp/oc-classify-JG8tX2/tmp/oc-vt-c1x6v4/publication-permission-drift-dBYoBW/dist: Invalid argument
+setfacl: /tmp/oc-classify-JG8tX2/tmp/oc-vt-c1x6v4/publication-permission-drift-dBYoBW/dist/index.js: Invalid argument
+setfacl: /tmp/oc-classify-JG8tX2/tmp/oc-vt-c1x6v4/publication-permission-drift-dBYoBW/package.json: Invalid argument
+
+ ❯ src/infra/package-update-permission-drift.test.ts:124:5
+    122|   it.skipIf(process.platform !== "linux")("repairs a recursive named-u…
+    123|     const f = fixture();
+    124|     execFileSync("setfacl", ["-R", "-m", "u:65534:rwX", f.root]);
+       |     ^
+    125|     expect(fs.statSync(f.payload).mode & 0o022).not.toBe(0);
+    126|     await expect(f.matches()).resolves.toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { status: 1, signal: null, output: [ null, '<Buffer(0) ...>', '<Buffer(448) ...>' ], pid: 223, stdout: '<Buffer(0) ...>', stderr: '<Buffer(448) ...>' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 passed (9)
+   Start at  06:41:09
+   Duration  4.99s (transform 81%, setup 8%, tests 6%, import 5%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=9476c7aaf79f8dc86d0222d2b708524a37711418 config=test/vitest/vitest.infra.config.ts files=src/infra/package-update-permission-drift.test.ts
+failing-tests:
+ × |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > repairs a recursive named-user POSIX ACL 16ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 8 passed (9)]
+# exit=1

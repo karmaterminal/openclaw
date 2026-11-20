@@ -1,0 +1,91 @@
+# ctl ref=cand sha=9476c7aaf79f8dc86d0222d2b708524a37711418 file=src/gateway/operator-approval-placement-grants.test.ts run=1 mode=node26121 start=2026-11-20T14:07:51Z
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-nrBCIq/home TMPDIR=/tmp/oc-classify-nrBCIq/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.gateway-database-workers.config.ts
+include-file: /tmp/oc-classify-nrBCIq/tmp/oc-focused.Q8YLQu/include.json
+include-file-contents:
+  [
+    "src/gateway/operator-approval-placement-grants.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-nrBCIq/tmp/oc-focused.Q8YLQu/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.gateway-database-workers.config.ts --maxWorkers=1 src/gateway/operator-approval-placement-grants.test.ts
+logs: /tmp/oc-classify-nrBCIq/tmp/oc-focused.Q8YLQu
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+[vitest-workers] local cache hit after 2310ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 6122f83a8549 in 2382ms (20521 inputs, 25697 outputs)
+ ✓ |gateway-database-workers| src/gateway/operator-approval-placement-grants.test.ts > placement standing grants > accepts the released synchronous SDK runtime at the node approval boundary 926ms
+ ✓ |gateway-database-workers| src/gateway/operator-approval-placement-grants.test.ts > placement standing grants > retains each session's parent while selecting the current placement 642ms
+ ✓ |gateway-database-workers| src/gateway/operator-approval-placement-grants.test.ts > placement standing grants > prepares without host SQL and rejects a parent revoked before transport handoff 602ms
+ ✓ |gateway-database-workers| src/gateway/operator-approval-placement-grants.test.ts > placement standing grants > rejects terminal metadata on an active placement before authorizing its grant 628ms
+ ✓ |gateway-database-workers| src/gateway/operator-approval-placement-grants.test.ts > placement standing grants > retains the exact binding only for the current Gateway runtime 596ms
+ ✓ |gateway-database-workers| src/gateway/operator-approval-placement-grants.test.ts > placement standing grants > does not retain a grant before the parent allow-always decision 610ms
+ ✓ |gateway-database-workers| src/gateway/operator-approval-placement-grants.test.ts > placement standing grants > keeps operation families isolated 711ms
+ ✓ |gateway-database-workers| src/gateway/operator-approval-placement-grants.test.ts > placement standing grants > fails closed after node substitution 625ms
+ ✓ |gateway-database-workers| src/gateway/operator-approval-placement-grants.test.ts > placement standing grants > fails closed after device re-pair 621ms
+ ✓ |gateway-database-workers| src/gateway/operator-approval-placement-grants.test.ts > placement standing grants > fails closed after placement generation bump 660ms
+ ✓ |gateway-database-workers| src/gateway/operator-approval-placement-grants.test.ts > placement standing grants > fails closed after gateway owner-epoch rotation 605ms
+ ✓ |gateway-database-workers| src/gateway/operator-approval-placement-grants.test.ts > placement standing grants > fails closed after placement drain 629ms
+ ✓ |gateway-database-workers| src/gateway/operator-approval-placement-grants.test.ts > placement standing grants > fails closed after expiry, parent removal, or placement removal 1919ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/gateway/operator-approval-placement-grants.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/gateway/operator-approval-placement-grants.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/operator-approval-placement-grants.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/gateway/operator-approval-placement-grants.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/gateway/operator-approval-placement-grants.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/gateway/operator-approval-placement-grants.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/gateway/operator-approval-placement-grants.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/gateway/operator-approval-placement-grants.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/gateway/operator-approval-placement-grants.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/gateway/operator-approval-placement-grants.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/gateway/operator-approval-placement-grants.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/gateway/operator-approval-placement-grants.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/operator-approval-placement-grants.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/gateway/operator-approval-placement-grants.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/gateway/operator-approval-placement-grants.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/gateway/operator-approval-placement-grants.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/gateway/operator-approval-placement-grants.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/gateway/operator-approval-placement-grants.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/gateway/operator-approval-placement-grants.test.ts: retiring openclaw.sessionGroupCatalog
+
+ × |gateway-database-workers| src/gateway/operator-approval-placement-grants.test.ts > placement standing grants > skips the second launch and re-prompts after the placement generation changes 649ms
+   → expected true to be false // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |gateway-database-workers| src/gateway/operator-approval-placement-grants.test.ts > placement standing grants > skips the second launch and re-prompts after the placement generation changes
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ src/gateway/operator-approval-placement-grants.test.ts:512:71
+    510|       const { record: staleApproval, pending: staleLaunch } = await re…
+    511|       placementAuthorityActive = false;
+    512|       expect(await manager.resolve(staleApproval.id, "allow-always")).…
+       |                                                                       ^
+    513|       await expect(staleLaunch).resolves.toMatchObject({ ok: false, co…
+    514|       placementAuthorityActive = true;
+ ❯ src/gateway/exec-approval-manager.test-support.ts:135:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 13 passed (14)
+   Start at  06:07:53
+   Duration  36.46s (transform 59%, tests 29%, import 8%, worker 3%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=9476c7aaf79f8dc86d0222d2b708524a37711418 config=test/vitest/vitest.gateway-database-workers.config.ts files=src/gateway/operator-approval-placement-grants.test.ts
+failing-tests:
+ × |gateway-database-workers| src/gateway/operator-approval-placement-grants.test.ts > placement standing grants > skips the second launch and re-prompts after the placement generation changes 649ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 13 passed (14)]
+# exit=1

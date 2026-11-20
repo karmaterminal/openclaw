@@ -1,0 +1,113 @@
+# ctl ref=base sha=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f file=src/infra/shell-env.test.ts run=1 mode=node26121 start=2026-11-20T14:03:10Z
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-EEXga5/home TMPDIR=/tmp/oc-classify-EEXga5/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.infra.config.ts
+include-file: /tmp/oc-classify-EEXga5/tmp/oc-focused.pMR0Mo/include.json
+include-file-contents:
+  [
+    "src/infra/shell-env.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-EEXga5/tmp/oc-focused.pMR0Mo/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.infra.config.ts --maxWorkers=1 src/infra/shell-env.test.ts
+logs: /tmp/oc-classify-EEXga5/tmp/oc-focused.pMR0Mo
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-41bdde21
+
+[vitest-workers] local cache miss after 2177ms
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js (48:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js:48:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m48 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js (11:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js:11:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m11 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js (6:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js:6:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m6 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js (9:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js:9:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m9 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js (12:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js:12:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m12 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+[vitest] still running with no output for 30000ms.
+[vitest-workers] prepared ef3c0aa98114 in 36197ms (20344 inputs, 25418 outputs)
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > shares an in-flight probe and makes later synchronous resolution immediate 161ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > preserves a synchronous result published during preparation 34ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > retries spawn error without caching the failed preparation 27ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > retries timeout without caching the failed preparation 26ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > retries stdout overflow without caching the failed preparation 25ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > retries combined output overflow without caching the failed preparation 28ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > caches a null async PATH on linux for "\u0000PATH= \u0000" 28ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > caches a null async PATH on linux for "unframed PATH=/shell/bin" 27ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > caches a null async PATH on win32 for "\u0000PATH=/usr/local/bin:/usr/bin\u0000HOME=/tmp\u0000" 23ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > caches a null sync PATH on linux for "\u0000PATH=   \u0000HOME=/tmp\u0000" 20ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > caches a null sync PATH on win32 for "\u0000PATH=/usr/local/bin:/usr/bin\u0000HOME=/tmp\u0000" 25ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > keeps the deadline until output closes (shell exited: false) 27ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > keeps the deadline until output closes (shell exited: true) 27ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > keeps timeout and startup environment semantics and separates in-flight keys 23ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > parses the opt-in OPENCLAW_LOAD_SHELL_ENV flag 23ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > parses the opt-in OPENCLAW_DEFER_SHELL_ENV_FALLBACK flag 18ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > resolves timeout from env with default fallback 19ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > imports missing expected keys even when another expected key already exists 19ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > treats explicitly empty env vars as intentional overrides 22ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > retries failed environment probes and caches recovery 20ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > retries failed PATH probes and caches recovery 18ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > tracks and selectively clears applied keys across success, skip, and failure 18ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > selects a trusted shell for relative SHELL 19ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > selects a trusted shell for unregistered SHELL 19ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > selects a trusted shell for registered SHELL 19ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > skips shell env fallback on win32 without probing /bin/sh 20ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > sanitizes environment startup and caps its exec timeout 21ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > sanitizes PATH startup and caps its exec timeout 23ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > uses interactive Bash login startup before nounset reads PS1 43ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > runs the login-shell probe in its own session 40ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > keeps Bash PATH discovery noninteractive and cached separately from env imports 25ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > resolves an executable with daemon hit 20ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > resolves an executable with daemon miss 17ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > resolves an executable with prefer shell 17ms
+
+ Test Files  1 passed (1)
+      Tests  34 passed (34)
+   Start at  06:03:12
+   Duration  41.22s (transform 96%, tests 2%, setup 2%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f config=test/vitest/vitest.infra.config.ts files=src/infra/shell-env.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 34 passed (34)]
+# exit=0

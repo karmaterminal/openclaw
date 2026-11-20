@@ -1,0 +1,63 @@
+# ctl ref=base sha=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f file=src/commands/doctor-session-transcript-labels.reuse.test.ts run=1 mode=node26121 start=2026-11-20T14:51:57Z
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-sIkaBF/home TMPDIR=/tmp/oc-classify-sIkaBF/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.commands.config.ts
+include-file: /tmp/oc-classify-sIkaBF/tmp/oc-focused.o1y27H/include.json
+include-file-contents:
+  [
+    "src/commands/doctor-session-transcript-labels.reuse.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-sIkaBF/tmp/oc-focused.o1y27H/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.commands.config.ts --maxWorkers=1 src/commands/doctor-session-transcript-labels.reuse.test.ts
+logs: /tmp/oc-classify-sIkaBF/tmp/oc-focused.o1y27H
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-41bdde21
+
+[vitest-workers] local cache hit after 2114ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 970a4a8fc706 in 2194ms (20344 inputs, 25418 outputs)
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > does not scan unchanged retained history twice across update passes 772ms
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > reuses canonical admitted generations through a symlinked state directory 600ms
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > rescans when the state alias is retargeted after admission 654ms
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > scans the admitted owner when a state alias is retargeted away and back at open 611ms
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > does not certify a scan when the state alias changes during it 665ms
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > quietly rescans a routine post-plugin miss: older driver 631ms
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > quietly rescans a routine post-plugin miss: empty receipt 652ms
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > quietly rescans a routine post-plugin miss: stale receipt 638ms
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > quietly rescans a routine post-plugin miss: incomplete generation 685ms
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > drops an optional receipt rather than exceeding the child environment budget 649ms
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > rescans after a retained-history append 660ms
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > rescans after a retained-history rewrite 639ms
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > rescans after a retained-history delete 685ms
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > rescans after a retained-history schema change 716ms
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > rescans writes after admission, even before the scan starts 663ms
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > rescans a child-process rewrite after admission 713ms
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > rescans a malformed optional receipt without inventing a finding 664ms
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > rescans a oversized optional receipt without inventing a finding 676ms
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > rescans a empty optional receipt without inventing a finding 683ms
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > does not certify incomplete generations or writes after the scan 691ms
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > keeps warnings visible and does not certify a failed scan 663ms
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > does not suppress repeated legacy-label findings 746ms
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > separates profiles and repair modes 648ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/commands/doctor-session-transcript-labels.reuse.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/commands/doctor-session-transcript-labels.reuse.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/commands/doctor-session-transcript-labels.reuse.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/commands/doctor-session-transcript-labels.reuse.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/commands/doctor-session-transcript-labels.reuse.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/commands/doctor-session-transcript-labels.reuse.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/commands/doctor-session-transcript-labels.reuse.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/commands/doctor-session-transcript-labels.reuse.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+
+ ✓ |commands| src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > does not lend a clean receipt to a replacement database 707ms
+
+ Test Files  1 passed (1)
+      Tests  24 passed (24)
+   Start at  06:51:59
+   Duration  29.81s (tests 55%, transform 36%, import 4%, worker 4%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f config=test/vitest/vitest.commands.config.ts files=src/commands/doctor-session-transcript-labels.reuse.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 24 passed (24)]
+# exit=0

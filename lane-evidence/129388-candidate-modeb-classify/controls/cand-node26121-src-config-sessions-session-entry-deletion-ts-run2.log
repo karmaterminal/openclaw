@@ -1,0 +1,83 @@
+# ctl ref=cand sha=9476c7aaf79f8dc86d0222d2b708524a37711418 file=src/config/sessions/session-entry-deletion.test.ts run=2 mode=node26121 start=2026-11-20T14:06:48Z
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-Ghh1IA/home TMPDIR=/tmp/oc-classify-Ghh1IA/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.runtime-config.config.ts
+include-file: /tmp/oc-classify-Ghh1IA/tmp/oc-focused.6KBqbS/include.json
+include-file-contents:
+  [
+    "src/config/sessions/session-entry-deletion.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-Ghh1IA/tmp/oc-focused.6KBqbS/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.runtime-config.config.ts --maxWorkers=1 src/config/sessions/session-entry-deletion.test.ts
+logs: /tmp/oc-classify-Ghh1IA/tmp/oc-focused.6KBqbS
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+[vitest-workers] local cache hit after 2313ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 06e22754d97e in 2401ms (20521 inputs, 25697 outputs)
+ ✓ |runtime-config| src/config/sessions/session-entry-deletion.test.ts > deletes a completed main alias without losing shared history 2897ms
+ ✓ |runtime-config| src/config/sessions/session-entry-deletion.test.ts > deletes a completed other alias without losing shared history 1719ms
+ ✓ |runtime-config| src/config/sessions/session-entry-deletion.test.ts > preserves a captured entry after a metadata write 1520ms
+ ✓ |runtime-config| src/config/sessions/session-entry-deletion.test.ts > preserves a captured entry after a identity write 1464ms
+ ✓ |runtime-config| src/config/sessions/session-entry-deletion.test.ts > rolls back deletion when cleanup authority is lost at native commit 1465ms
+ ✓ |runtime-config| src/config/sessions/session-entry-deletion.test.ts > deletes empty transcripts without starting an archive worker 1497ms
+ × |runtime-config| src/config/sessions/session-entry-deletion.test.ts > prepares retained-window references before BEGIN and rechecks writes (false) 755ms
+   → expected [ false, true ] to deeply equal [ false ]
+ ✓ |runtime-config| src/config/sessions/session-entry-deletion.test.ts > prepares retained-window references before BEGIN and rechecks writes (true) 1483ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/config/sessions/session-entry-deletion.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |runtime-config| src/config/sessions/session-entry-deletion.test.ts > prepares retained-window references before BEGIN and rechecks writes (false)
+AssertionError: expected [ false, true ] to deeply equal [ false ]
+
+- Expected
++ Received
+
+  [
+    false,
++   true,
+  ]
+
+ ❯ src/config/sessions/session-entry-deletion.test.ts:<redacted len=6>
+    251|       statements.unsubscribe(observe);
+    252|     }
+    253|     expect(scans).toEqual(changed ? [false, true] : [false]);
+       |                   ^
+    254|     expect(
+    255|       database.db
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 7 passed (8)
+   Start at  06:06:50
+   Duration  21.77s (tests 60%, transform 29%, import 9%, worker 2%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=9476c7aaf79f8dc86d0222d2b708524a37711418 config=test/vitest/vitest.runtime-config.config.ts files=src/config/sessions/session-entry-deletion.test.ts
+failing-tests:
+ × |runtime-config| src/config/sessions/session-entry-deletion.test.ts > prepares retained-window references before BEGIN and rechecks writes (false) 755ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 7 passed (8)]
+# exit=1

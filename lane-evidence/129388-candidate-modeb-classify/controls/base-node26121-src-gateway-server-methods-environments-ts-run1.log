@@ -1,0 +1,87 @@
+# ctl ref=base sha=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f file=src/gateway/server-methods/environments.test.ts run=1 mode=node26121 start=2026-11-20T14:09:31Z
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-FTXDW2/home TMPDIR=/tmp/oc-classify-FTXDW2/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.gateway.config.ts
+include-file: /tmp/oc-classify-FTXDW2/tmp/oc-focused.XD9v99/include.json
+include-file-contents:
+  [
+    "src/gateway/server-methods/environments.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-FTXDW2/tmp/oc-focused.XD9v99/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.gateway.config.ts --maxWorkers=1 src/gateway/server-methods/environments.test.ts
+logs: /tmp/oc-classify-FTXDW2/tmp/oc-focused.XD9v99
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-41bdde21
+
+[vitest-workers] local cache hit after 2198ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared c49093505c35 in 2287ms (20344 inputs, 25418 outputs)
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > projects only validated device inference without leaking settings or hiding other profiles 32ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > advertises a named worker-inference device profile using the core provider without allocating 1106ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > probes disabled host setup only when requested without advertising or granting desktop access 239ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > projects live and offline node facts consistently through list and status 6ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > discovers profile catalogs independently of inventories and preserves provider identity 4ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > preserves pairing ownership for failed static-ssh workers bound to node-live 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > preserves pairing ownership for orphaned static-ssh workers bound to undefined 6ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > preserves pairing ownership for destroyed static-ssh workers bound to node-live 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > preserves pairing ownership for ready device workers bound to node-live 6ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > fails closed and redacts environments.list {} read failures 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > fails closed and redacts environments.status {"environmentId":"node:node-live"} read failures 4ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > fails closed and redacts environments.status {"environmentId":"missing"} read failures 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > projects trust from recorded worker isolation without guessing unknown leases 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > rejects environments.status without a configured target 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > rejects environments.create without a configured target 6ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > creates a worker from a configured profile 6ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > hides provider failure details when worker creation fails 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > worker.desktop.launch launches only a closed advertised desktop app and returns readiness 7ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > desktop.launch launches only a closed advertised desktop app and returns readiness 6ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > maps desktop observe invalid_state errors without exposing runtime details 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > maps desktop observe provider_failure errors without exposing runtime details 4ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/gateway/server-methods/environments.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/gateway/server-methods/environments.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/environments.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/gateway/server-methods/environments.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/environments.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/gateway/server-methods/environments.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/gateway/server-methods/environments.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/gateway/server-methods/environments.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/environments.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/environments.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/environments.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/gateway/server-methods/environments.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/gateway/server-methods/environments.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/environments.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/gateway/server-methods/environments.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/gateway/server-methods/environments.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/gateway/server-methods/environments.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/gateway/server-methods/environments.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/environments.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/gateway/server-methods/environments.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/gateway/server-methods/environments.test.ts: retiring openclaw.devicePairSetupChanges
+[sqlite-test-lifecycle] src/gateway/server-methods/environments.test.ts: retiring openclaw.pluginStateNamespaceOwner
+
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > maps desktop launch desktop_app_not_found errors without exposing runtime details 4ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > maps desktop launch unsupported_platform errors without exposing runtime details 7ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > maps desktop launch launcher_failure errors without exposing runtime details 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > maps desktop launch provider_failure errors without exposing runtime details 7ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > rejects raw destruction of a session-attached worker 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > logs best-effort forced teardown errors without failing the call 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > preserves destroyed worker success when placement reconciliation fails 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > rejects invalid params before preparation 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > returns the admitted preparation 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > preserves actionable profile_not_found errors 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > preserves actionable invalid_profile errors 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > preserves actionable invalid_project errors 4ms
+ ✓ |gateway-methods| src/gateway/server-methods/environments.test.ts > preserves actionable capacity errors 5ms
+
+ Test Files  1 passed (1)
+      Tests  34 passed (34)
+   Start at  06:09:34
+   Duration  32.03s (transform 80%, import 10%, tests 5%, worker 4%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f config=test/vitest/vitest.gateway.config.ts files=src/gateway/server-methods/environments.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 34 passed (34)]
+# exit=0

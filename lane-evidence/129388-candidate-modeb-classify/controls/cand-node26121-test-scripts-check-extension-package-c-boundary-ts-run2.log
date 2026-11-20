@@ -1,0 +1,108 @@
+# ctl ref=cand sha=9476c7aaf79f8dc86d0222d2b708524a37711418 file=test/scripts/check-extension-package-tsc-boundary.test.ts run=2 mode=node26121 start=2026-11-20T14:40:25Z
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-TP1QrP/home TMPDIR=/tmp/oc-classify-TP1QrP/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.tooling-isolated.config.ts
+include-file: /tmp/oc-classify-TP1QrP/tmp/oc-focused.gNWsma/include.json
+include-file-contents:
+  [
+    "test/scripts/check-extension-package-tsc-boundary.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-TP1QrP/tmp/oc-focused.gNWsma/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.tooling-isolated.config.ts --maxWorkers=1 test/scripts/check-extension-package-tsc-boundary.test.ts
+logs: /tmp/oc-classify-TP1QrP/tmp/oc-focused.gNWsma
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+[vitest-workers] local cache hit after 2120ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared fa822b43bec7 in 2186ms (20521 inputs, 25697 outputs)
+ × |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > compiles packaged roots and invalidates them when exports or inherited paths change 370ms
+   → node:internal/modules/esm/resolve:241
+    throw new ERR_MODULE_NOT_FOUND(
+          ^
+
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/tmp/oc-classify-TP1QrP/tmp/oc-vt-OfiOOn/openclaw-boundary-canary-XmXtia/node-runtime-env.mjs' imported from /tmp/oc-classify-TP1QrP/tmp/oc-vt-OfiOOn/openclaw-boundary-canary-XmXtia/scripts/lib/dist-artifact-ownership.mts
+    at finalizeResolution (node:internal/modules/esm/resolve:241:11)
+    at moduleResolve (node:internal/modules/esm/resolve:846:10)
+    at defaultResolve (node:internal/modules/esm/resolve:973:11)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:708:20)
+    at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:728:38)
+    at ModuleLoader.resolveSync (node:internal/modules/esm/loader:766:56)
+    at #resolve (node:internal/modules/esm/loader:690:17)
+    at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:610:35)
+    at ModuleJob.syncLink (node:internal/modules/esm/module_job:277:33)
+    at ModuleJob.link (node:internal/modules/esm/module_job:389:17) {
+  code: 'ERR_MODULE_NOT_FOUND',
+  url: 'file:///tmp/oc-classify-TP1QrP/tmp/oc-vt-OfiOOn/openclaw-boundary-canary-XmXtia/node-runtime-env.mjs'
+}
+
+Node.js v26.12.1
+: expected 1 to be +0 // Object.is equality
+ ✓ |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > cleans stale artifacts for every extension id passed to the cleanup hook 6ms
+ ✓ |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > parses extension boundary compile concurrency strictly 4ms
+ ✓ |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > formats a success summary with counts and elapsed time 2ms
+ ✓ |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > formats skipped compile progress concisely 3ms
+ ✓ |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > formats the slowest plugin compiles in descending order 4ms
+ ✓ |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > keeps full failure output on the thrown error for canary detection 58ms
+ ✓ |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > keeps async node step failure output bounded 64ms
+ ✓ |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > waits for async node step descendants after timeout 5136ms
+ ✓ |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > waits for async node step descendants after sibling abort 115ms
+ ✓ |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > cleans active async node step descendants before forwarding parent SIGTERM 3341ms
+ ✓ |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > clamps oversized step timers and passes successful output and timing to onSuccess 51ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > compiles packaged roots and invalidates them when exports or inherited paths change
+AssertionError: node:internal/modules/esm/resolve:241
+    throw new ERR_MODULE_NOT_FOUND(
+          ^
+
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/tmp/oc-classify-TP1QrP/tmp/oc-vt-OfiOOn/openclaw-boundary-canary-XmXtia/node-runtime-env.mjs' imported from /tmp/oc-classify-TP1QrP/tmp/oc-vt-OfiOOn/openclaw-boundary-canary-XmXtia/scripts/lib/dist-artifact-ownership.mts
+    at finalizeResolution (node:internal/modules/esm/resolve:241:11)
+    at moduleResolve (node:internal/modules/esm/resolve:846:10)
+    at defaultResolve (node:internal/modules/esm/resolve:973:11)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:708:20)
+    at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:728:38)
+    at ModuleLoader.resolveSync (node:internal/modules/esm/loader:766:56)
+    at #resolve (node:internal/modules/esm/loader:690:17)
+    at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:610:35)
+    at ModuleJob.syncLink (node:internal/modules/esm/module_job:277:33)
+    at ModuleJob.link (node:internal/modules/esm/module_job:389:17) {
+  code: 'ERR_MODULE_NOT_FOUND',
+  url: 'file:///tmp/oc-classify-TP1QrP/tmp/oc-vt-OfiOOn/openclaw-boundary-canary-XmXtia/node-runtime-env.mjs'
+}
+
+Node.js v26.12.1
+: expected 1 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ expectCompile test/scripts/check-extension-package-tsc-boundary.test.ts:68:56
+     66|
+     67| function expectCompile(result: SpawnSyncReturns<string>, status: numbe…
+     68|   expect(result.status, result.stdout + result.stderr).toBe(status);
+       |                                                        ^
+     69|   for (const text of output) {
+     70|     expect(status === 0 ? result.stdout : result.stderr).toContain(tex…
+ ❯ test/scripts/check-extension-package-tsc-boundary.test.ts:243:3
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 11 passed (12)
+   Start at  06:40:26
+   Duration  13.53s (tests 69%, transform 27%, setup 3%, import 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=9476c7aaf79f8dc86d0222d2b708524a37711418 config=test/vitest/vitest.tooling-isolated.config.ts files=test/scripts/check-extension-package-tsc-boundary.test.ts
+failing-tests:
+ × |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > compiles packaged roots and invalidates them when exports or inherited paths change 370ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 11 passed (12)]
+# exit=1

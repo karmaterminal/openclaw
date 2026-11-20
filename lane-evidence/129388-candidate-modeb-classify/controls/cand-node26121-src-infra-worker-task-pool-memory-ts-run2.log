@@ -1,0 +1,53 @@
+# ctl ref=cand sha=9476c7aaf79f8dc86d0222d2b708524a37711418 file=src/infra/worker-task-pool.memory.test.ts run=2 mode=node26121 start=2026-11-20T14:45:23Z
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-sSJYYQ/home TMPDIR=/tmp/oc-classify-sSJYYQ/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.unit-fast.config.ts
+include-file: /tmp/oc-classify-sSJYYQ/tmp/oc-focused.dLnIOC/include.json
+include-file-contents:
+  [
+    "src/infra/worker-task-pool.memory.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-sSJYYQ/tmp/oc-focused.dLnIOC/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.unit-fast.config.ts --maxWorkers=1 src/infra/worker-task-pool.memory.test.ts
+logs: /tmp/oc-classify-sSJYYQ/tmp/oc-focused.dLnIOC
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+[vitest-workers] local cache hit after 2061ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 7a81c6fb5bfa in 2146ms (20521 inputs, 25697 outputs)
+stdout | src/infra/worker-task-pool.memory.test.ts > collects a completed large heap payload while keeping the bounded worker warm
+{"memoryKind":"heap","warm":9369336,"startup":147705144,"allocated":143635888,"idle":9370280}
+
+ ✓ |unit-fast| src/infra/worker-task-pool.memory.test.ts > collects a completed large heap payload while keeping the bounded worker warm 3237ms
+ × |unit-fast| src/infra/worker-task-pool.memory.test.ts > collects a completed large external payload while keeping the bounded worker warm 565ms
+   → expected 71084839 to be less than 37661643
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit-fast| src/infra/worker-task-pool.memory.test.ts > collects a completed large external payload while keeping the bounded worker warm
+AssertionError: expected 71084839 to be less than 37661643
+ ❯ src/infra/worker-task-pool.memory.test.ts:45:29
+     43|       const allocationBytes = memoryKind === "heap" ? 100 * 1024 * 102…
+     44|       expect(allocated[counter]).toBeGreaterThan(warm[counter] + alloc…
+     45|       expect(idle[counter]).toBeLessThan(warm[counter] + 32 * 1024 * 1…
+       |                             ^
+     46|       expect(cachedDataVersionTag()).toBe(cacheVersion);
+     47|       const reused = await pool.run({}, {});
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+   Start at  06:45:25
+   Duration  7.62s (tests 52%, transform 44%, import 4%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=9476c7aaf79f8dc86d0222d2b708524a37711418 config=test/vitest/vitest.unit-fast.config.ts files=src/infra/worker-task-pool.memory.test.ts
+failing-tests:
+ × |unit-fast| src/infra/worker-task-pool.memory.test.ts > collects a completed large external payload while keeping the bounded worker warm 565ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 1 passed (2)]
+# exit=1
