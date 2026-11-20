@@ -11,24 +11,44 @@ import type { ProviderRuntimeHooks } from "../../src/agents/embedded-agent-runne
 import { createOpenClawTestState } from "../../src/test-utils/openclaw-test-state.js";
 import { registerSingleProviderPlugin } from "../../src/test-utils/plugin-registration.js";
 
-const account = vi.hoisted(() => ({ baseUrl: "" }));
+const capture = vi.hoisted(() => ({ origin: "" }));
 
-// mock-isolation: The account lookup trusts only Copilot hosts, so the synthetic lookup sends
-// the real /models discovery and the inference request to the local capture server.
-vi.mock("../../extensions/github-copilot/register.runtime.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../extensions/github-copilot/register.runtime.js")>()),
-  resolveCopilotRuntimeAuth: async () => ({ apiKey: "copilot-token", baseUrl: account.baseUrl }),
-}));
+// mock-isolation: Only the catalog destination changes. The guarded fetch and the physical
+// HTTP request stay real, so /models discovery reaches the local capture server.
+vi.mock("openclaw/plugin-sdk/ssrf-runtime", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("openclaw/plugin-sdk/ssrf-runtime")>();
+  return {
+    ...actual,
+    fetchWithSsrFGuard: (params: Parameters<typeof actual.fetchWithSsrFGuard>[0]) =>
+      actual.fetchWithSsrFGuard({
+        ...params,
+        url: `${capture.origin}${new URL(params.url).pathname}`,
+        policy: { allowPrivateNetwork: true },
+      }),
+  };
+});
 
+const COPILOT_API = "https://api.individual.githubcopilot.com";
 let state: Awaited<ReturnType<typeof createOpenClawTestState>>;
 
 beforeEach(async () => {
   state = await createOpenClawTestState({ label: "github-copilot-image-cap" });
   clearLiveCatalogCacheForTests();
   vi.stubEnv("COPILOT_GITHUB_TOKEN", "synthetic-github-token");
+  // The account lookup answers with Copilot's public endpoint; anything else off-host fails.
+  const realFetch = globalThis.fetch;
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    if (url.href === "https://api.github.com/copilot_internal/user") {
+      return Response.json({ endpoints: { api: COPILOT_API } });
+    }
+    assert(url.hostname === "127.0.0.1", `unexpected network request to ${url.href}`);
+    return await realFetch(input, init);
+  });
 });
 
 afterEach(async () => {
+  vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   clearLiveCatalogCacheForTests();
   await state.cleanup();
@@ -73,10 +93,12 @@ it("carries the listed per-prompt image cap through core model resolution to the
       supports: { vision: true, streaming: true, tool_calls: true },
     },
   };
+  const requests: string[] = [];
   const bodies: Array<{ input: Array<{ content?: Array<Record<string, unknown>> }> }> = [];
   await withServer(
     (request, response) => {
-      if (request.method === "GET" && request.url === "/models") {
+      requests.push(`${request.method} ${request.url}`);
+      if (request.url === "/models") {
         response.writeHead(200, { "content-type": "application/json" });
         response.end(JSON.stringify({ data: [listing] }));
         return;
@@ -96,8 +118,8 @@ it("carries the listed per-prompt image cap through core model resolution to the
         );
       });
     },
-    async (baseUrl) => {
-      account.baseUrl = baseUrl;
+    async (origin) => {
+      capture.origin = origin;
       const resolved = await resolveModelAsync(
         "github-copilot",
         "mai-code-2-flash",
@@ -116,14 +138,16 @@ it("carries the listed per-prompt image cap through core model resolution to the
       expect(resolved.model).toMatchObject({
         id: "mai-code-2-flash",
         api: "openai-responses",
-        baseUrl,
+        baseUrl: COPILOT_API,
         params: { copilotMaxPromptImages: 1 },
       });
+      // Only the destination changes; the resolved params reach the wrapper untouched.
+      const model = { ...resolved.model, baseUrl: origin };
       const stream = provider.wrapStreamFn?.({
         config: {},
         provider: "github-copilot",
-        modelId: resolved.model.id,
-        streamFn: createBoundaryAwareStreamFnForModel(resolved.model),
+        modelId: model.id,
+        streamFn: createBoundaryAwareStreamFnForModel(model),
       });
       assert(stream, "Copilot stream wrapper missing");
       const turn = {
@@ -132,11 +156,12 @@ it("carries the listed per-prompt image cap through core model resolution to the
         timestamp: 1,
       };
       const result = await (
-        await stream(resolved.model, { messages: [turn] }, { apiKey: "copilot-token" })
+        await stream(model, { messages: [turn] }, { apiKey: "copilot-token" })
       ).result();
       expect(result.errorMessage).toBeUndefined();
     },
   );
+  expect(requests).toEqual(["GET /models", "POST /responses"]);
   const omitted =
     "[image omitted: this model accepts at most 1 image per prompt, so only the newest image is shown]";
   const parts = bodies[0]?.input.flatMap((item) => item.content ?? []);
