@@ -80,20 +80,21 @@ it("preserves a single configured integration identity through completions strea
   ]);
 });
 
-const capNotice = "[image omitted: GitHub Copilot accepts at most 1 image per request]";
+const capNotice =
+  "[image omitted: this model accepts at most 1 image per prompt, so only the newest image is shown]";
 it.each([
   [
     "anthropic-messages",
     [
-      { type: "image", source: { type: "base64", media_type: "image/png", data: "a" } },
-      { type: "tool_result", tool_use_id: "call", content: [{ type: "image", source: {} }] },
       // The transport places the breakpoint before payload hooks run.
-      { type: "image", source: {}, cache_control: { type: "ephemeral" } },
+      { type: "image", source: { data: "a" }, cache_control: { type: "ephemeral" } },
+      { type: "tool_result", tool_use_id: "call", content: [{ type: "image", source: {} }] },
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "c" } },
     ],
     [
-      { type: "image" },
-      { type: "tool_result", content: [{ type: "text", text: capNotice }] },
       { type: "text", text: capNotice, cache_control: { type: "ephemeral" } },
+      { type: "tool_result", content: [{ type: "text", text: capNotice }] },
+      { type: "image", source: { data: "c" } },
     ],
   ],
   [
@@ -102,18 +103,22 @@ it.each([
       { type: "image_url", image_url: { url: "data:image/png;base64,a" } },
       { type: "image_url", image_url: { url: "data:image/png;base64,b" } },
     ],
-    [{ type: "image_url" }, { type: "text", text: capNotice }],
+    [
+      { type: "text", text: capNotice },
+      { type: "image_url", image_url: { url: "data:image/png;base64,b" } },
+    ],
   ],
-] as const)("caps listed per-prompt images on the %s wire (#1565)", (api, content, expected) => {
+] as const)("keeps the newest listed images on the %s wire (#1565)", (api, content, expected) => {
   const sent = { messages: [{ role: "user", content: structuredClone(content) }] };
   const model = { provider: "github-copilot", api, id: "m", params: { copilotMaxPromptImages: 1 } };
   void wrapCopilotTestStream(payloadStream(sent))(model as never, { messages: [] } as never, {});
   expect(sent).toMatchObject({ messages: [{ content: expected }] });
 });
 
-it("caps listed per-prompt images in Responses tool output (#1565)", () => {
-  const image = { type: "input_image", image_url: "data:image/png;base64,a" };
-  const sent = { input: [{ type: "function_call_output", call_id: "c", output: [image, image] }] };
+it("keeps the newest listed images in Responses tool output (#1565)", () => {
+  const older = { type: "input_image", image_url: "data:image/png;base64,a" };
+  const newer = { type: "input_image", image_url: "data:image/png;base64,b" };
+  const sent = { input: [{ type: "function_call_output", call_id: "c", output: [older, newer] }] };
   const model = {
     provider: "github-copilot",
     api: "openai-responses",
@@ -121,7 +126,7 @@ it("caps listed per-prompt images in Responses tool output (#1565)", () => {
     params: { copilotMaxPromptImages: 1 },
   };
   void wrapCopilotTestStream(payloadStream(sent))(model as never, { messages: [] } as never, {});
-  expect(sent.input[0]?.output).toEqual([image, { type: "input_text", text: capNotice }]);
+  expect(sent.input[0]?.output).toEqual([{ type: "input_text", text: capNotice }, newer]);
 });
 
 describe("wrapCopilotAnthropicStream", () => {

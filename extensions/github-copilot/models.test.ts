@@ -477,18 +477,48 @@ describe("fetchCopilotModelCatalog", () => {
     }
   });
 
-  describe("listed per-prompt image cap on a later text turn (#1565)", () => {
-    const png =
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=";
-    const photos = (count: number) =>
-      Array.from({ length: count }, () => ({
-        type: "image" as const,
-        data: png,
-        mimeType: "image/png",
-      }));
+  describe("listed per-prompt image cap on the Responses wire (#1565)", () => {
+    // A real PNG signature passes the transport's image sanitizer; the trailing tag names the photo.
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
+      "base64",
+    );
+    const photoTags = (first: number, count: number) =>
+      Array.from({ length: count }, (_, offset) => `photo ${first + offset}`);
+    const photoPost = (text: string, first: number, count: number, timestamp: number) => ({
+      role: "user" as const,
+      content: [
+        { type: "text" as const, text },
+        ...photoTags(first, count).map((tag) => ({
+          type: "image" as const,
+          data: Buffer.concat([png, Buffer.from(tag)]).toString("base64"),
+          mimeType: "image/png",
+        })),
+      ],
+      timestamp,
+    });
+    const reply = (text: string, timestamp: number) =>
+      makeAgentAssistantMessage({
+        provider: "github-copilot",
+        api: "openai-responses",
+        model: "mai-code-2-flash",
+        content: [{ type: "text", text }],
+        timestamp,
+      });
+    const question = (text: string, timestamp: number) => ({
+      role: "user" as const,
+      content: text,
+      timestamp,
+    });
+    const photoTag = (imageUrl: unknown) =>
+      Buffer.from(String(imageUrl).split(",")[1] ?? "", "base64")
+        .subarray(png.length)
+        .toString();
 
-    // Two photo posts and a text question: the history shape every later room turn replays.
-    async function sendWireParts(vision?: { max_prompt_images: number }) {
+    async function sendWireParts(
+      messages: Array<ReturnType<typeof photoPost | typeof reply | typeof question>>,
+      vision?: { max_prompt_images: number },
+    ) {
       const [listed] = await fetchSelectionFixture([
         {
           id: "mai-code-2-flash",
@@ -530,29 +560,8 @@ describe("fetchCopilotModelCatalog", () => {
             api: "openai-responses" as const,
             baseUrl,
           };
-          const context = {
-            messages: [
-              {
-                role: "user" as const,
-                content: [{ type: "text" as const, text: "photos 1" }, ...photos(10)],
-                timestamp: 1,
-              },
-              makeAgentAssistantMessage({
-                provider: "github-copilot",
-                api: "openai-responses",
-                model: model.id,
-                content: [{ type: "text", text: "I see ten photos" }],
-                timestamp: 2,
-              }),
-              {
-                role: "user" as const,
-                content: [{ type: "text" as const, text: "photos 2" }, ...photos(5)],
-                timestamp: 3,
-              },
-              { role: "user" as const, content: "What is on the third shelf?", timestamp: 4 },
-            ],
-          };
-          const persisted = structuredClone(context.messages);
+          const context = { messages };
+          const persisted = structuredClone(messages);
           const stream = expectDefined(
             wrapCopilotProviderStream({
               streamFn: createBoundaryAwareStreamFnForModel(model),
@@ -561,35 +570,68 @@ describe("fetchCopilotModelCatalog", () => {
           );
           const result = await (await stream(model, context, { apiKey: "copilot-token" })).result();
           expect(result.errorMessage).toBeUndefined();
-          expect(context.messages).toEqual(persisted);
+          expect(messages).toEqual(persisted);
         },
       );
       expect(visionHeaders).toEqual(["true"]);
       return expectDefined(bodies[0], "captured Copilot request").input.flatMap((item) =>
-        (item.content ?? []).map((part) => (part.type === "input_image" ? "image" : part.text)),
+        (item.content ?? []).map((part) =>
+          part.type === "input_image" ? photoTag(part.image_url) : part.text,
+        ),
       );
     }
 
-    it("keeps the first listed number of images and states each omission", async () => {
-      const omitted = "[image omitted: GitHub Copilot accepts at most 5 images per request]";
-      expect(await sendWireParts({ max_prompt_images: 5 })).toEqual([
+    const omittedOfOne =
+      "[image omitted: this model accepts at most 1 image per prompt, so only the newest image is shown]";
+    const sixPhotos = photoPost("six photos", 1, 6, 1);
+
+    it("sends the newest image of a multi-image turn and marks each earlier one omitted", async () => {
+      expect(await sendWireParts([sixPhotos], { max_prompt_images: 1 })).toEqual([
+        "six photos",
+        ...Array<string>(5).fill(omittedOfOne),
+        "photo 6",
+      ]);
+    });
+
+    it("keeps the newest history image on a later text turn", async () => {
+      const turns = [sixPhotos, reply("I see six photos", 2), question("Which is sharpest?", 3)];
+      expect(await sendWireParts(turns, { max_prompt_images: 1 })).toEqual([
+        "six photos",
+        ...Array<string>(5).fill(omittedOfOne),
+        "photo 6",
+        "I see six photos",
+        "Which is sharpest?",
+      ]);
+    });
+
+    // Two photo posts and a text question: the history shape every later room turn replays.
+    const twoPhotoPosts = [
+      photoPost("photos 1", 1, 10, 1),
+      reply("I see ten photos", 2),
+      photoPost("photos 2", 11, 5, 3),
+      question("What is on the third shelf?", 4),
+    ];
+
+    it("keeps the newest listed number of images across turns", async () => {
+      const omitted =
+        "[image omitted: this model accepts at most 5 images per prompt, so only the newest 5 images are shown]";
+      expect(await sendWireParts(twoPhotoPosts, { max_prompt_images: 5 })).toEqual([
         "photos 1",
-        ...Array<string>(5).fill("image"),
-        ...Array<string>(5).fill(omitted),
+        ...Array<string>(10).fill(omitted),
         "I see ten photos",
         "photos 2",
-        ...Array<string>(5).fill(omitted),
+        ...photoTags(11, 5),
         "What is on the third shelf?",
       ]);
     });
 
     it("sends every image when the listing has no cap", async () => {
-      expect(await sendWireParts()).toEqual([
+      expect(await sendWireParts(twoPhotoPosts)).toEqual([
         "photos 1",
-        ...Array<string>(10).fill("image"),
+        ...photoTags(1, 10),
         "I see ten photos",
         "photos 2",
-        ...Array<string>(5).fill("image"),
+        ...photoTags(11, 5),
         "What is on the third shelf?",
       ]);
     });
