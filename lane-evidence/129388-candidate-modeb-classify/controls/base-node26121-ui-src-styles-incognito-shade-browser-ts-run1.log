@@ -1,0 +1,52 @@
+# ctl ref=base sha=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f file=ui/src/styles/incognito-shade.browser.test.ts run=1 mode=node26121 start=2026-11-20T15:30:12Z
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-upAGvT/home TMPDIR=/tmp/oc-classify-upAGvT/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.ui.config.ts
+include-file: /tmp/oc-classify-upAGvT/tmp/oc-focused.vYvcYM/include.json
+include-file-contents:
+  [
+    "ui/src/styles/incognito-shade.browser.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-upAGvT/tmp/oc-focused.vYvcYM/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.ui.config.ts --maxWorkers=1 ui/src/styles/incognito-shade.browser.test.ts
+logs: /tmp/oc-classify-upAGvT/tmp/oc-focused.vYvcYM
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - JSON import "./control-ui-i18n-config.json" without import attributes (scripts/lib/control-ui-i18n-sync-plan.ts:2:41). Add `with { type: 'json' }`
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-41bdde21
+
+ ↓ |ui| ui/src/styles/incognito-shade.browser.test.ts > Incognito pane shade > follows the visible pane, not retained sessions (light)
+ ↓ |ui| ui/src/styles/incognito-shade.browser.test.ts > Incognito pane shade > follows the visible pane, not retained sessions (dark)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |ui| ui/src/styles/incognito-shade.browser.test.ts [ ui/src/styles/incognito-shade.browser.test.ts ]
+AssertionError: Chromium is required for paint proof: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ ui/src/styles/style-fixture.test-support.ts:62:65
+     60|   beforeAll(async () => {
+     61|     if (required) {
+     62|       expect(available, "Chromium is required for paint proof").toBe(t…
+       |                                                                 ^
+     63|     }
+     64|     if (available) {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 skipped (2)
+   Start at  07:30:14
+   Duration  1.73s (worker 42%, import 27%, environment 20%, transform 5%, setup 4%, tests 1%)
+
+[test] FAILED (exit 1)
+receipt head=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f config=test/vitest/vitest.ui.config.ts files=ui/src/styles/incognito-shade.browser.test.ts
+VERDICT RUN-BROKEN [Test Files 1 failed (1); Tests 2 skipped (2)] reason=1 failed suite(s): a test file did not load or a hook threw
+# exit=1

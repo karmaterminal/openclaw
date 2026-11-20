@@ -1,0 +1,116 @@
+# ctl ref=base sha=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f file=src/infra/update-doctor-migration-attribution.test.ts run=1 mode=node26121 start=2026-11-20T15:30:41Z
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-w4M2GB/home TMPDIR=/tmp/oc-classify-w4M2GB/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.infra.config.ts
+include-file: /tmp/oc-classify-w4M2GB/tmp/oc-focused.wGG2Nw/include.json
+include-file-contents:
+  [
+    "src/infra/update-doctor-migration-attribution.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-w4M2GB/tmp/oc-focused.wGG2Nw/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.infra.config.ts --maxWorkers=1 src/infra/update-doctor-migration-attribution.test.ts
+logs: /tmp/oc-classify-w4M2GB/tmp/oc-focused.wGG2Nw
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-41bdde21
+
+[vitest-workers] local cache hit after 3940ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 73a0b0cc29da in 4003ms (20344 inputs, 25418 outputs)
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > attributes successful boot writes and preserves preexisting-write rollback refusal: false 1564ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > attributes successful boot writes and preserves preexisting-write rollback refusal: true 1154ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > refuses a changed companion the session never opened 1098ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > migrates a captured WAL database when its read-only reader opens without writing 837ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > migrates a captured WAL database when its last writable reader closes without writing 813ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > migrates a captured WAL database when its read-only reader opens before admission without writing 852ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > settles awaited native migration observations (complete) 1164ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > settles awaited native migration observations (cancel before mutation) 955ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > settles awaited native migration observations (lose authority before mutation) 921ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > settles awaited native migration observations (cancel after commit) 1175ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > keeps native custody when a migration is already exclusive without probing on close 1820ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > keeps native custody when a migration is retain exclusive without probing on close 1636ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > rejects a captured WAL database after an outside commit with different content 677ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > rejects a captured WAL database after an outside commit with same content 671ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > migrates after a credential write while the parent's restore stays refused 907ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > migrates after a WAL index rebuild while the parent's restore stays refused 1026ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > verifies a 2026.9.34 inventory through migration and native close: unchanged 865ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > verifies a 2026.9.34 inventory through migration and native close: changed data 907ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > verifies a 2026.9.34 inventory through migration and native close: same-content commit 971ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > verifies a 2026.9.34 inventory through migration and native close: replaced file 877ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > answers the unmarked 2026.9.33 parent in its original format 1096ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > answers the unmarked 2026.9.34 parent in its original format 1013ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > captures doctor phases before migrating legacy approvals (clean) 6733ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > captures doctor phases before migrating legacy approvals (retained WAL) 7474ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > captures doctor phases before migrating legacy approvals (retained journal) 7749ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > captures doctor phases before migrating legacy approvals (wrong mode) 6818ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > captures version phases before migrating legacy approvals (clean) 6630ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > captures version phases before migrating legacy approvals (retained WAL) 7515ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > captures version phases before migrating legacy approvals (retained journal) 7679ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > captures version phases before migrating legacy approvals (wrong mode) 6919ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > captures readability phases before migrating legacy approvals (clean) 5110ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > captures readability phases before migrating legacy approvals (retained WAL) 5989ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > captures readability phases before migrating legacy approvals (retained journal) 6119ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > captures readability phases before migrating legacy approvals (wrong mode) 5240ms
+[vitest] still running with no output for 30000ms.
+│
+◇  Doctor changes ─────────────────────────────────────────────────────────╮
+│                                                                          │
+│  Migrated legacy config keys in the active openclaw.json:                │
+│  - Moved session.idleMinutes → session.reset.idleMinutes.                │
+│  - Applied tier-eval tranche retirements; current settings and built-in  │
+│    defaults now apply.                                                   │
+│  - Retired heartbeat configuration after ordinary automation data was    │
+│    verified.                                                             │
+│                                                                          │
+├──────────────────────────────────────────────────────────────────────────╯
+│
+◇  Auth profile SQLite migration ─────────────────────────────────────────╮
+│                                                                         │
+│  - $OPENCLAW_HOME/.openclaw/alias/agents/main/agent/auth-profiles.json  │
+│    / $OPENCLAW_HOME/.openclaw/alias/agents/main/agent/auth-state.json   │
+│    (affected providers: openai)                                         │
+│  - openclaw doctor --fix imports legacy auth profile JSON into SQLite,  │
+│    verifies it, records a receipt, and archives the original bytes.     │
+│                                                                         │
+├─────────────────────────────────────────────────────────────────────────╯
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > completes retirement after Doctor migrations and native parent bookkeeping 47491ms
+│
+◇  Doctor changes ─────────────────────────────────────────────────────────╮
+│                                                                          │
+│  Migrated legacy config keys in the active openclaw.json:                │
+│  - Moved session.idleMinutes → session.reset.idleMinutes.                │
+│  - Applied tier-eval tranche retirements; current settings and built-in  │
+│    defaults now apply.                                                   │
+│  - Retired heartbeat configuration after ordinary automation data was    │
+│    verified.                                                             │
+│                                                                          │
+├──────────────────────────────────────────────────────────────────────────╯
+│
+◇  Auth profile SQLite migration ─────────────────────────────────────────╮
+│                                                                         │
+│  - $OPENCLAW_HOME/.openclaw/alias/agents/main/agent/auth-profiles.json  │
+│    / $OPENCLAW_HOME/.openclaw/alias/agents/main/agent/auth-state.json   │
+│    (affected providers: openai)                                         │
+│  - openclaw doctor --fix imports legacy auth profile JSON into SQLite,  │
+│    verifies it, records a receipt, and archives the original bytes.     │
+│                                                                         │
+├─────────────────────────────────────────────────────────────────────────╯
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > completes retirement after Doctor migrations and worker parent bookkeeping 29967ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > retires a refused cold Doctor writer before admitting its successor (source observation) 3073ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > retires a refused cold Doctor writer before admitting its successor (returned acquisition) 3862ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > retires a refused cold Doctor writer before admitting its successor (revoked authority) 3874ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > attributes a captured absent shared store and its new credential companion during bootstrap (SDK sync) 1334ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > attributes a captured absent shared store and its new credential companion during bootstrap (Doctor async) 2165ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > backs up only an uncaptured relocated source (captured-generation) 5ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > backs up only an uncaptured relocated source (null) 3ms
+ ✓ |infra| src/infra/update-doctor-migration-attribution.test.ts > backs up only an uncaptured relocated source (undefined) 4ms
+
+ Test Files  1 passed (1)
+      Tests  44 passed (44)
+   Start at  07:30:43
+   Duration  219.62s (tests 89%, transform 10%, import 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f config=test/vitest/vitest.infra.config.ts files=src/infra/update-doctor-migration-attribution.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 44 passed (44)]
+# exit=0

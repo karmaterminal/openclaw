@@ -1,0 +1,28 @@
+# ctl ref=base sha=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f file=ui/src/styles/background-invalidation.node.test.ts run=1 mode=node26121+PLAYWRIGHT_BROWSERS_PATH start=2026-11-20T15:29:45Z
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-yT5iHU/home TMPDIR=/tmp/oc-classify-yT5iHU/tmp PLAYWRIGHT_BROWSERS_PATH=/home/figs/.cache/ms-playwright
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.ui.config.ts
+include-file: /tmp/oc-classify-yT5iHU/tmp/oc-focused.aaLTDc/include.json
+include-file-contents:
+  [
+    "ui/src/styles/background-invalidation.node.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-yT5iHU/tmp/oc-focused.aaLTDc/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.ui.config.ts --maxWorkers=1 ui/src/styles/background-invalidation.node.test.ts
+logs: /tmp/oc-classify-yT5iHU/tmp/oc-focused.aaLTDc
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - JSON import "./control-ui-i18n-config.json" without import attributes (scripts/lib/control-ui-i18n-sync-plan.ts:2:41). Add `with { type: 'json' }`
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-41bdde21
+
+ ✓ |ui| ui/src/styles/background-invalidation.node.test.ts > personal background style scope > keeps background-style updates scoped away from the sidebar 445ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  07:29:49
+   Duration  6.72s (worker 40%, tests 31%, environment 14%, transform 7%, import 7%, setup 1%)
+
+receipt head=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f config=test/vitest/vitest.ui.config.ts files=ui/src/styles/background-invalidation.node.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 1 passed (1)]
+# exit=0

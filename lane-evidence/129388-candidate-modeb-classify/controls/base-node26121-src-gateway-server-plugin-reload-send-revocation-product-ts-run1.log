@@ -1,0 +1,65 @@
+# ctl ref=base sha=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f file=src/gateway/server.plugin-reload-send-revocation.product.test.ts run=1 mode=node26121 start=2026-11-20T15:39:32Z
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-aXlDeL/home TMPDIR=/tmp/oc-classify-aXlDeL/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.gateway-server.config.ts
+include-file: /tmp/oc-classify-aXlDeL/tmp/oc-focused.NDMO0Z/include.json
+include-file-contents:
+  [
+    "src/gateway/server.plugin-reload-send-revocation.product.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-aXlDeL/tmp/oc-focused.NDMO0Z/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.gateway-server.config.ts --maxWorkers=1 src/gateway/server.plugin-reload-send-revocation.product.test.ts
+logs: /tmp/oc-classify-aXlDeL/tmp/oc-focused.NDMO0Z
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-41bdde21
+
+[vitest-workers] local cache miss after 2198ms
+[vitest-workers] prepared 9b2c71d74a82 in 26523ms (16457 inputs, 8043 outputs)
+[vitest-workers] local cache miss after 1194ms
+stderr | src/gateway/server.plugin-reload-send-revocation.product.test.ts
+[vitest-workers] prepared c391bfc7a5d3 in 29814ms (16457 inputs, 8043 outputs)
+
+[vitest] still running with no output for 30000ms.
+[vitest] still running with no output for 60000ms.
+[vitest] still running with no output for 90000ms.
+[vitest] still running with no output for 120000ms.
+ × |gateway-server (gateway-server-native)| src/gateway/server.plugin-reload-send-revocation.product.test.ts > runs Bob's allowed and revoked retained sends in a prebound owned process 120058ms
+   → Test timed out in 120000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+stderr | src/gateway/server.plugin-reload-send-revocation.product.test.ts
+[vitest-workers] verifying completed generation before cleanup
+
+stderr | src/gateway/server.plugin-reload-send-revocation.product.test.ts
+[vitest-workers] retained completed compiler outputs for reuse
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |gateway-server (gateway-server-native)| src/gateway/server.plugin-reload-send-revocation.product.test.ts > runs Bob's allowed and revoked retained sends in a prebound owned process
+Error: Test timed out in 120000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ definePluginReloadProductTest src/gateway/server.plugin-reload-product-fixture.test-support.ts:139:3
+    137|     throw error;
+    138|   }
+    139|   it(options.name, async ({ signal }) =>
+       |   ^
+    140|     lifetime.run(async () => {
+    141|       const root = lifetime.createTempDir(options.prefix);
+ ❯ src/gateway/server.plugin-reload-send-revocation.product.test.ts:6:1
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  07:39:34
+   Duration  183.74s (tests 66%, import 17%, transform 16%, worker 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f config=test/vitest/vitest.gateway-server.config.ts files=src/gateway/server.plugin-reload-send-revocation.product.test.ts
+failing-tests:
+ × |gateway-server (gateway-server-native)| src/gateway/server.plugin-reload-send-revocation.product.test.ts > runs Bob's allowed and revoked retained sends in a prebound owned process 120058ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed (1)]
+# exit=1

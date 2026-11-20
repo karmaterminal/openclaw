@@ -1,0 +1,436 @@
+# ctlcfg ref=cand sha=9476c7aaf79f8dc86d0222d2b708524a37711418 config=test/vitest/vitest.cron.config.ts run=1 start=2026-11-20T15:39:15Z
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-NuRxN6/home TMPDIR=/tmp/oc-classify-NuRxN6/tmp umask=0022 
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-9476c7aa
+
+[vitest-workers] local cache hit after 3542ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 630b48e087eb in 3604ms (20521 inputs, 25697 outputs)
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > publishes a persistent session final once with notification=false 9724ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > publishes a persistent session final once with notification=true 119ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > does not publish quiet or already visible error output for a persistent session 5ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > publishes one settled transcript result for normalized execution destination 9ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > publishes one settled transcript result for different destination thread 8ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > suppresses incomplete descendant output while settlement is queued 4ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > records identityless transport after an earlier suppression as unknown 10ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > records text emptied by TTS as a delivery failure 5ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > settles failed one-shot cleanup with bestEffort=false 6ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > settles failed one-shot cleanup with bestEffort=true 11ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > normalizes textless direct payloads 7ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > normalizes metadata-only direct payloads 9ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > normalizes literal metadata text direct payloads 5ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > preserves the completed parent synthesis over settled children with bestEffort=true 4ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > preserves the completed parent synthesis over settled children with bestEffort=false 4ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > does not infer interim status from visible final prose with bestEffort=true 4ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > does not infer interim status from visible final prose with bestEffort=false 5ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > delivers a settled child's task-failure prose unchanged 6ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > delivers active threaded best-effort accepted child results without parent text 5ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > delivers completed direct accepted child results without parent text 4ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > fails an accepted spawn-only handoff when active child times out 3ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > fails an accepted spawn-only handoff when completed child has no output 3ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > spawn-only handoff settlement > records a settled none / visible child 13ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > spawn-only handoff settlement > records a settled none / silent child 4ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > spawn-only handoff settlement > records a settled announce / silent child 5ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > spawn-only handoff settlement > fails and keeps the transcript when the child never settles 9ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > spawn-only handoff settlement > fails and keeps the transcript when the child ends without output 4ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > spawn-only handoff settlement > leaves webhook jobs on their own completion policy 9ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > preserves abort precedence when an accepted child handoff is interrupted 3ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > keeps a no-spawn parent silent when deliveryRequested=true 3ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > keeps a no-spawn parent silent when deliveryRequested=false 4ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > uses the run-scoped session key for isolated cron descendant fallback delivery 4ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > applies TTS before sending the notification 3ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > preserves a literal trailing-token caption and its notification media 3ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > suppresses a late cron start without deleting its session 4ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > preserves run cleanup when its outcome is retired 5ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > preserves run cleanup when its outcome is survived 4ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > preserves run cleanup when its outcome is archived 5ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > skips deleteAfterRun cleanup for non-cron sessions 3ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > cleans up the direct cron session when refused delivery is best-effort (deleteAfterRun) 5ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > does not retry a permanent recipient error 4ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > does not retry after an earlier payload returned no identity 4ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > settles a competing cron delivery whose pending owner is live 255ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > settles a competing cron delivery whose pending owner is stale 5ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > handles a receipt-store outage with bestEffort=true 6ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > handles a receipt-store outage with bestEffort=false 4ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > keeps regenerated signed media URLs on the same durable cron intent 6ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > keeps colon-bearing account and recipient tuples on distinct durable intents 7ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > does not retry a partial notification with bestEffort=true (#112710) 6ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > does not retry a partial notification with bestEffort=false (#112710) 6ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > refuses a current-target completion with archived=false 4ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > refuses a current-target completion with archived=true 3ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > only commits current-session output without an external route (channel=undefined) 4ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > only commits current-session output without an external route (channel=telegram) 4ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > hands the finalized current-target media projection to outbound with descendant=false 6ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > hands the finalized current-target media projection to outbound with descendant=true 4ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > avoids duplicate isolated delivery after a verified message-tool send 2ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > avoids duplicate current delivery after a verified message-tool send 2ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > keeps unresolved message-tool delivery out of delivered status 2ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > normalizes literal skip token delivery (#64976) 4ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > normalizes literal silent token delivery (#64976) 4ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > normalizes trailing text reply delivery (#64976) 4ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > normalizes non-trailing mention delivery (#64976) 3ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > real outbound retry outcomes > suppresses all notification payloads vetoed by the channel adapter 22ms
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > real outbound retry outcomes > reports best-effort retry from actual adapter outcomes 4190ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.stateDomainPublication.sandbox-registry
+[sqlite-test-lifecycle] src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts: retiring openclaw.devicePairSetupChanges
+
+ ✓ |cron| src/cron/isolated-agent/delivery-dispatch.double-announce.test.ts > dispatchCronDelivery > real outbound retry outcomes > reports required partial send without retry from actual adapter outcomes 2040ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > leases the creator's account through settlement and releases it after the turn 3298ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > executes a reloaded native-owned job without resolving its irrelevant host profile 947ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > runs a native Claude CLI job without adopting an unrelated host account 1527ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > keeps cron CLI fallback on its account boundary (#144047) 972ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > keeps event CLI fallback on its account boundary (#144047) 981ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > handles a legacy bound job whose default moves for cron with cli=true (#144047) 2585ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > handles a legacy bound job whose default moves for event with cli=true (#144047) 2421ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > handles a legacy bound job whose default moves for cron with cli=false (#144047) 2440ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > keeps a bound job on its recorded runtime when config moves its model to a CLI 2299ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > records and runs the stored account a Claude CLI runtime forwards (model=undefined) 2117ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > records and runs the stored account a Claude CLI runtime forwards (model=anthropic/claude-opus-4-6@anthropic:def…) 2283ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > preserves a CLI account migration failure after acquiring scheduled authorization 2501ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > preserves a CLI account unreadable failure after acquiring scheduled authorization 2204ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > preserves a CLI account abort failure after acquiring scheduled authorization 2566ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > preserves a CLI account terminal failure after acquiring scheduled authorization 2597ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > keeps account adoption advice for a missing CLI profile 2508ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > keeps account adoption advice for a incompatible CLI profile 3060ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > rejects a removed account during CLI preparation before credential use 2755ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > rejects a reconnected account during CLI preparation before credential use 2488ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > leaves a native Claude CLI login unbound and rejects a missing explicit account 940ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > adopts a stored Claude account and explicitly switches to native-only CLI execution 2296ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > honors payload account selection without a credential store (profile=anthropic:missing, runtime=claude-cli) 202ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > honors session account selection without a credential store (profile=anthropic:missing, runtime=claude-cli) 176ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > honors payload account selection without a credential store (profile=undefined, runtime=claude-cli) 163ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > honors session account selection without a credential store (profile=undefined, runtime=claude-cli) 165ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > honors session account selection without a credential store (profile=anthropic:claude-cli, runtime=claude-cli) 183ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > honors session account selection without a credential store (profile=anthropic:claude-cli, runtime=openclaw) 201ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > keeps the recorded runtime when an edit selects a different account 2419ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > keeps a session account pin above a configured unavailable stored profile 1044ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > keeps a session account pin above a configured native login default 1212ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > rejects an account edit that would move the job off its unavailable recorded runtime 2307ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > binds the account a claude-cli creator's job always paid with and records claude-cli 2111ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > resolves a binding recorded without a runtime exactly as before 2388ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > records the forwarded account with its claude-cli runtime and runs on that runtime 1927ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > runs a bound job on its captured runtime, not the runtime its cron session copied 1979ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > refuses a bound job whose captured runtime the config no longer allows 1921ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > keeps a current job on its captured model and runtime after its conversation switches to another model 2010ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > keeps a current job on its captured model and runtime after its conversation switches to another provider 2030ms
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > fails a embedded job whose stored account was removed with one message naming account and runtime 2021ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.stateDomainPublication.sandbox-registry
+[sqlite-test-lifecycle] src/cron/isolated-agent.auth-profile-propagation.test.ts: retiring openclaw.devicePairSetupChanges
+
+ ✓ |cron| src/cron/isolated-agent.auth-profile-propagation.test.ts > runCronIsolatedAgentTurn auth profile propagation (#20624, #90991) > fails a cli job whose stored account was removed with one message naming account and runtime 2179ms
+[vitest] still running with no output for 30000ms.
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the operator boundary 21959ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the write-scoped operator boundary 3608ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the cron-scoped operator boundary 3510ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the self removal boundary 3681ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the self removal then role revoked during merge boundary 3497ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the self removal then session replaced during merge boundary 3338ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the paused force run boundary 3456ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the restart boundary 3919ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the principal reload boundary 3593ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the principal allowlist allowed boundary 3450ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the principal allowlist removed before restore boundary 2643ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the principal allowlist removed before effect boundary 3471ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the principal auth mode disabled before restore boundary 2570ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the principal auth mode disabled before effect boundary 3446ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the principal owner unavailable boundary 3506ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the principal store unavailable boundary 3505ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the restart before scheduling boundary 3591ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the restart before scheduling revoked ingress boundary 1827ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the restart before scheduling without source boundary 1711ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the principal ingress revoked boundary 2570ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the principal ingress replaced boundary 2758ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the principal role revoked boundary 3914ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the principal access revoked boundary 3825ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the guest boundary 2310ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the legacy attribution boundary 4003ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the foreign target boundary 3561ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the current tool deny boundary 3432ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the role revoked boundary 2646ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the role revoked during merge boundary 3610ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the session edited boundary 3363ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the session replaced boundary 3540ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the queued owner payload edit boundary 4844ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the queued manager rename boundary 4280ms
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the owner capture races manager payload boundary 4232ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.stateDomainPublication.sandbox-registry
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.operator-continuation.test.ts: retiring openclaw.devicePairSetupChanges
+
+ ✓ |cron| src/cron/isolated-agent/run.operator-continuation.test.ts > scheduled continuation preserves the recurring trigger reload boundary 3949ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > charges only an activated launch, retires on the final charge, and never refunds recovery 215ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > retires deadline before spending a run and never wakes it again 253ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > retires exhausted before spending a run and never wakes it again 32ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > retires missing-count before spending a run and never wakes it again 46ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > retires negative-count before spending a run and never wakes it again 33ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > retires missing-envelope before spending a run and never wakes it again 39ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > re-arms a restartable schedule onto the matching loaded plugin inside its claim 113ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > an occurrence interrupted by a restart is not replayed once its command may have started 30ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > an occurrence interrupted by a restart is retried once when it never reached its command 28ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > bounds active command schedules per plugin and parent; retired schedules do not count 105ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > counts schedules a restart can re-arm; schedules that can never run do not hold the cap 77ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > keeps a schedule accepted without captured plugin source bound to its Gateway process 18ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > keeps an identical declaration and consumed counter unchanged; refuses rewrites and rearming 56ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > rejects caller-authored run accounting on ordinary add and update paths 15ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > an older reader ignores restart continuity and ends the schedule; upgrading never revives it 616ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > a schedule an older reader never reached is re-armed after upgrading again 680ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > a reader without bundled build identities ends a core-bundled schedule; the same build never revives it 72ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > keeps the first execution link across binding retries without changing the run claim 795ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > returns durable receipt handles across queued edits and records disabled requests under their public ID 70ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > holds scheduled requests while paused and activates an explicit request behind them 26ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > launches explicit force on a disabled job and retains a consumed exit event through rearming 41ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > recovers a timed request without replaying active work or reconstructing a lost manual payload 181ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > recovers a committed request after losing its worker reply without replay 583ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > recovers a committed cancellation after losing its worker reply without replay 545ms
+ ✓ |cron| src/cron/store/plugin-command-schedule.worker.test.ts > cancels a removed queued job and rejects a plan made before its definition changed 82ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/cron/store/plugin-command-schedule.worker.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/cron/store/plugin-command-schedule.worker.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/cron/store/plugin-command-schedule.worker.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/cron/store/plugin-command-schedule.worker.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/cron/store/plugin-command-schedule.worker.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/cron/store/plugin-command-schedule.worker.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/cron/store/plugin-command-schedule.worker.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/cron/store/plugin-command-schedule.worker.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/cron/store/plugin-command-schedule.worker.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/cron/store/plugin-command-schedule.worker.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/cron/store/plugin-command-schedule.worker.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+
+ ✓ |cron| src/cron/isolated-agent/run.session-lifecycle.test.ts > runCronIsolatedAgentTurn session lifecycle > persists current-session CLI prompt provenance in the detached transcript 2610ms
+ ✓ |cron| src/cron/isolated-agent/run.session-lifecycle.test.ts > runCronIsolatedAgentTurn session lifecycle > seals only accepted CLI continuity at base settlement 907ms
+ ✓ |cron| src/cron/isolated-agent/run.session-lifecycle.test.ts > runCronIsolatedAgentTurn session lifecycle > seals only accepted CLI continuity at continuation settlement 305ms
+ ✓ |cron| src/cron/isolated-agent/run.session-lifecycle.test.ts > runCronIsolatedAgentTurn session lifecycle > seals only accepted CLI continuity at interrupted clear settlement 222ms
+ ✓ |cron| src/cron/isolated-agent/run.session-lifecycle.test.ts > runCronIsolatedAgentTurn session lifecycle > protects the isolated cron session throughout async model preparation 87ms
+ ✓ |cron| src/cron/isolated-agent/run.session-lifecycle.test.ts > runCronIsolatedAgentTurn session lifecycle > interrupts persistent cron work and waits for its lifecycle lease to release 75ms
+ ✓ |cron| src/cron/isolated-agent/run.session-lifecycle.test.ts > runCronIsolatedAgentTurn session lifecycle > releases admission when final lifecycle marking fails 107ms
+ ✓ |cron| src/cron/isolated-agent/run.session-lifecycle.test.ts > runCronIsolatedAgentTurn session lifecycle > settles isolated silent cleanup after releasing its lease 59ms
+ ✓ |cron| src/cron/isolated-agent/run.session-lifecycle.test.ts > runCronIsolatedAgentTurn session lifecycle > settles isolated best-effort cleanup after releasing its lease 52ms
+ ✓ |cron| src/cron/isolated-agent/run.session-lifecycle.test.ts > runCronIsolatedAgentTurn session lifecycle > settles isolated execution error cleanup after releasing its lease 55ms
+ ✓ |cron| src/cron/isolated-agent/run.session-lifecycle.test.ts > runCronIsolatedAgentTurn session lifecycle > settles isolated presentation warning cleanup after releasing its lease 51ms
+ ✓ |cron| src/cron/isolated-agent/run.session-lifecycle.test.ts > runCronIsolatedAgentTurn terminal lifecycle > keeps a cron fallback active until outer cancelled settlement 2569ms
+ ✓ |cron| src/cron/isolated-agent/run.session-lifecycle.test.ts > runCronIsolatedAgentTurn terminal lifecycle > keeps a cron fallback active until outer cli-exhausted-result settlement 329ms
+ ✓ |cron| src/cron/isolated-agent/run.session-lifecycle.test.ts > runCronIsolatedAgentTurn terminal lifecycle > keeps a cron fallback active until outer post-execution-abort settlement 416ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.stateDomainPublication.sandbox-registry
+[sqlite-test-lifecycle] src/cron/isolated-agent/run.session-lifecycle.test.ts: retiring openclaw.devicePairSetupChanges
+
+ ✓ |cron| src/cron/isolated-agent/run.session-lifecycle.test.ts > runCronIsolatedAgentTurn terminal lifecycle > keeps a cron fallback active until outer retry-preflight-failure settlement 277ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron trigger evaluation > cancels a pending main condition on remove before it can fire 736ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron trigger evaluation > cancels a pending isolated condition on disable before it can fire 48ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron trigger evaluation > persists quiet evaluations and fires replacement triggers with fresh state 79ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron trigger evaluation > appends the fired trigger message to the main payload and history 35ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron trigger evaluation > backs off evaluator errors without reporting webhook delivery or publishing private failure details 46ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron trigger evaluation > keeps a once trigger armed after malformed evaluator output 37ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron trigger evaluation > recovers the once lifecycle after a failed state edit 86ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron trigger evaluation > preserves a replacement made after a legacy terminal result 83ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron trigger evaluation > preserves a replaced-then-restored trigger against obsolete completion 92ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron trigger evaluation > preserves a replaced-then-restored state against obsolete completion 55ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron trigger evaluation > preserves a replaced-then-restored script against obsolete completion 95ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron trigger evaluation > preserves a replacement committed during a suspended quiet evaluation 50ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron trigger evaluation > reports a missing evaluator as an execution error 42ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron trigger startup > evaluates a condition added before the scheduler starts instead of deferring it as missed work 34ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron webhook optional output > does not deliver an admission deferral after a trigger fires 41ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron webhook optional output > delivers ok after a trigger fires 48ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron webhook optional output > delivers error after a trigger fires 50ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron webhook optional output > does not deliver a skip before execution as output 359ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron webhook optional output > records ok with empty output without false delivery 40ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron webhook optional output > records error with empty output without false delivery 39ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron trigger cadence > does not replay a quiet occurrence after an earlier fired payload 58ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron trigger cadence > preserves the quiet immediate-wake occurrence's scheduling ownership 70ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron trigger cadence > preserves the fired occurrence's scheduling ownership 67ms
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron trigger cadence > defers an expired quiet immediate-wake occurrence without reevaluating it at startup 23ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/cron/service.trigger-eval.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/cron/service.trigger-eval.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/cron/service.trigger-eval.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/cron/service.trigger-eval.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/cron/service.trigger-eval.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/cron/service.trigger-eval.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/cron/service.trigger-eval.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/cron/service.trigger-eval.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/cron/service.trigger-eval.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/cron/service.trigger-eval.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/cron/service.trigger-eval.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/cron/service.trigger-eval.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/cron/service.trigger-eval.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/cron/service.trigger-eval.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/cron/service.trigger-eval.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/cron/service.trigger-eval.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/cron/service.trigger-eval.test.ts: retiring openclaw.pluginStateNamespaceOwner
+
+ ✓ |cron| src/cron/service.trigger-eval.test.ts > cron trigger cadence > catches up an old occurrence whose future slot has no recent evaluation 22ms
+ ✓ |cron| src/cron/service.pr-automation.test.ts > native read-only edit retains the linked-account refusal for a source-less scheduled bound PR 4854ms
+ ✓ |cron| src/cron/service.pr-automation.test.ts > direct UI enable retains authority after reload (source-less legacy=false) 3937ms
+ ✓ |cron| src/cron/service.pr-automation.test.ts > direct UI enable retains authority after reload (source-less legacy=true) 3690ms
+ ✓ |cron| src/cron/service.pr-automation.test.ts > removes only the exact current job for a closed PR, retrying a no-op cleanup 2838ms
+ ✓ |cron| src/cron/service.pr-automation.test.ts > removes only the exact current job for a merged PR, retrying a no-op cleanup 2844ms
+(node:138) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: createOpenClawCodingTools is deprecated; use await createOpenClawCodingToolsAsync() instead. The legacy contract remains supported during its deprecation period. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:138) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: ensureAuthProfileStoreWithoutExternalProfiles is deprecated; use ensureAuthProfileStoreWithoutExternalProfilesAsync instead. The legacy contract remains supported during its deprecation period. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+(node:138) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: resolveSandboxRuntimeStatus is deprecated; use resolveSandboxRuntimeStatusAsync instead. The legacy contract remains supported during its deprecation period. Removal requires an announced ordinary stable release window.
+ ✓ |cron| src/cron/service.pr-automation.test.ts > cancellation during the native read starts no model and commits no observation 2855ms
+ ✓ |cron| src/cron/service.pr-automation.test.ts > keeps autoMerge on its independently authorized model route 3671ms
+ ✓ |cron| src/cron/service.pr-automation.test.ts > transports direct UI autoFix for only the selected PR across session replacement and disables future effects 4607ms
+ ✓ |cron| src/cron/service.pr-automation.test.ts > existing archive API checks the scheduled recipe's exact identity (replaced=false) 2838ms
+ ✓ |cron| src/cron/service.pr-automation.test.ts > existing archive API checks the scheduled recipe's exact identity (replaced=true) 2630ms
+(node:138) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: get is deprecated; use getAsync instead. Synchronous reads use committed in-process receipts; cold or inventory reads require the async replacement. Removal requires an announced ordinary stable release window.
+ ✓ |cron| src/cron/service.pr-automation.test.ts > addressed-unresolved: native publication and Cron observation lifecycle 9999ms
+ ✓ |cron| src/cron/service.pr-automation.test.ts > reopened-thread: native publication and Cron observation lifecycle 10069ms
+ ✓ |cron| src/cron/service.pr-automation.test.ts > own-publication: native publication and Cron observation lifecycle 10253ms
+ ✓ |cron| src/cron/service.pr-automation.test.ts > pending-publication: native publication and Cron observation lifecycle 7795ms
+ ✓ |cron| src/cron/service.pr-automation.test.ts > direct-pending-publication: native publication and Cron observation lifecycle 7456ms
+ ✓ |cron| src/cron/service.pr-automation.test.ts > direct-inline-device: native publication and Cron observation lifecycle 6852ms
+ ✓ |cron| src/cron/service.pr-automation.test.ts > direct-inline-role: native publication and Cron observation lifecycle 6401ms
+ ✓ |cron| src/cron/service.pr-automation.test.ts > direct-pending-reset: native publication and Cron observation lifecycle 4316ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.stateDomainPublication.sandbox-registry
+[sqlite-test-lifecycle] src/cron/service.pr-automation.test.ts: retiring openclaw.devicePairSetupChanges
+
+ ✓ |cron| src/cron/service.pr-automation.test.ts > nonthread-addressed: native publication and Cron observation lifecycle 8141ms
+ ✓ |cron| src/cron/session-run.session-model-strictness.integration.test.ts > stored session model selections in scheduled session turns > lets scheduled preflight compaction finish beyond the setup watchdog 26833ms
+stderr | src/cron/session-run.session-model-strictness.integration.test.ts > stored session model selections in scheduled session turns > reports a failed user selection in a session/undefined turn without fallback
+Embedded agent failed before reply: Couldn't sign in to the AI service. Sign in again under Models in the OpenClaw app or run `openclaw configure`.
+
+ ✓ |cron| src/cron/session-run.session-model-strictness.integration.test.ts > stored session model selections in scheduled session turns > reports a failed user selection in a session/undefined turn without fallback 3531ms
+stderr | src/cron/session-run.session-model-strictness.integration.test.ts > stored session model selections in scheduled session turns > reports a failed legacy selection in a session/undefined turn without fallback
+Embedded agent failed before reply: Couldn't sign in to the AI service. Sign in again under Models in the OpenClaw app or run `openclaw configure`.
+
+ ✓ |cron| src/cron/session-run.session-model-strictness.integration.test.ts > stored session model selections in scheduled session turns > reports a failed legacy selection in a session/undefined turn without fallback 3435ms
+stderr | src/cron/session-run.session-model-strictness.integration.test.ts > stored session model selections in scheduled session turns > reports a failed user selection in a main/undefined turn without fallback
+Embedded agent failed before reply: Couldn't sign in to the AI service. Sign in again under Models in the OpenClaw app or run `openclaw configure`.
+
+ ✓ |cron| src/cron/session-run.session-model-strictness.integration.test.ts > stored session model selections in scheduled session turns > reports a failed user selection in a main/undefined turn without fallback 3369ms
+stderr | src/cron/session-run.session-model-strictness.integration.test.ts > stored session model selections in scheduled session turns > reports a failed legacy selection in a main/undefined turn without fallback
+Embedded agent failed before reply: Couldn't sign in to the AI service. Sign in again under Models in the OpenClaw app or run `openclaw configure`.
+
+ ✓ |cron| src/cron/session-run.session-model-strictness.integration.test.ts > stored session model selections in scheduled session turns > reports a failed legacy selection in a main/undefined turn without fallback 3264ms
+stderr | src/cron/session-run.session-model-strictness.integration.test.ts > stored session model selections in scheduled session turns > reports a failed user selection in a main/systemEvent turn without fallback
+Embedded agent failed before reply: Couldn't sign in to the AI service. Sign in again under Models in the OpenClaw app or run `openclaw configure`.
+
+ ✓ |cron| src/cron/session-run.session-model-strictness.integration.test.ts > stored session model selections in scheduled session turns > reports a failed user selection in a main/systemEvent turn without fallback 3398ms
+stderr | src/cron/session-run.session-model-strictness.integration.test.ts > stored session model selections in scheduled session turns > reports a failed legacy selection in a main/systemEvent turn without fallback
+Embedded agent failed before reply: Couldn't sign in to the AI service. Sign in again under Models in the OpenClaw app or run `openclaw configure`.
+
+ ✓ |cron| src/cron/session-run.session-model-strictness.integration.test.ts > stored session model selections in scheduled session turns > reports a failed legacy selection in a main/systemEvent turn without fallback 3150ms
+ ✓ |cron| src/cron/session-run.session-model-strictness.integration.test.ts > stored session model selections in scheduled session turns > keeps falling back for automatic selection 3837ms
+ ✓ |cron| src/cron/session-run.session-model-strictness.integration.test.ts > stored session model selections in scheduled session turns > keeps falling back for unpinned main system-event 3170ms
+ ✓ |cron| src/cron/session-run.session-model-strictness.integration.test.ts > stored session model selections in scheduled session turns > keeps falling back for explicit job fallbacks 3302ms
+ ✓ |cron| src/cron/session-run.session-model-strictness.integration.test.ts > stored session model selections in scheduled session turns > keeps falling back for explicit job model 3449ms
+ ✓ |cron| src/cron/session-run.session-model-strictness.integration.test.ts > stored session model selections in scheduled session turns > keeps falling back for disallowed user selection 3117ms
+ ✓ |cron| src/cron/session-run.session-model-strictness.integration.test.ts > stored session model selections in scheduled session turns > settles a scheduled occurrence across unrelated target preparation once 2876ms
+ ✓ |cron| src/cron/session-run.session-model-strictness.integration.test.ts > stored session model selections in scheduled session turns > settles a scheduled occurrence across logging-only target preparation once 3436ms
+ ✓ |cron| src/cron/session-run.session-model-strictness.integration.test.ts > stored session model selections in scheduled session turns > settles a scheduled occurrence across unrelated-mcp target preparation once 2915ms
+ ✓ |cron| src/cron/session-run.session-model-strictness.integration.test.ts > stored session model selections in scheduled session turns > settles a scheduled occurrence across unrelated-mcp-hook target preparation once 2988ms
+ ✓ |cron| src/cron/session-run.session-model-strictness.integration.test.ts > stored session model selections in scheduled session turns > settles a scheduled occurrence across unrelated-model-provider target preparation once 2884ms
