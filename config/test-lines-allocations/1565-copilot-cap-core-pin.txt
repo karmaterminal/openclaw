@@ -1,2 +1,2 @@
 # #1565 Copilot per-prompt image cap: root pin that carries the listed copilotMaxPromptImages through core resolveModelAsync (prepareDynamicModel -> resolveDynamicModel -> normalizeResolvedModel) into wrapCopilotProviderStream and the captured Responses wire. Net growth against c5ed7c71 only.
-176
+179
