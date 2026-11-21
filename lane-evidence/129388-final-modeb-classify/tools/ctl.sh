@@ -31,6 +31,9 @@ fi
 # on another uid). Only for tests that never touch /tmp/openclaw; the mode names it.
 wrap=("$iso" "$runwt")
 if [[ "${CTL_NO_ISO:-}" == 1 ]]; then wrap=(); mode="$mode+noiso"; fi
+# CTL_KEEP_BUS=1 swaps the isolation wrapper for iso-keep-bus.sh: the systemd user bus stays
+# visible (private /tmp/openclaw kept). Only for tests whose systemctl calls are mocked; the mode names it.
+if [[ "${CTL_KEEP_BUS:-}" == 1 ]]; then wrap=("$(dirname "$0")/iso-keep-bus.sh" "$runwt"); mode="$mode+keepbus"; fi
 # CTL_MASK_PROFILE_D=1 empties /etc/profile.d first (the runner image's state); the mode names it.
 if [[ "${CTL_MASK_PROFILE_D:-}" == 1 ]]; then wrap=("$(dirname "$0")/mask-profile-d.sh" "${wrap[@]}"); mode="$mode+maskprofiled"; fi
 # CTL_HIDE_BIN=NAME runs with PATH = Node 26.12.1 + a shim of /usr/bin and /bin minus NAME; the mode names it.

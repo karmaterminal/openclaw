@@ -1,0 +1,127 @@
+# ctl ref=base sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 file=src/cli/update-cli/update-command-retained-restart.test.ts run=1 mode=node26121 start=2026-11-21T06:55:29Z
+# files: 1 runwt=/home/figs/classify-129388/base-1129d4c0 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-D9R89k/home TMPDIR=/tmp/oc-classify-D9R89k/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.cli.config.ts
+include-file: /tmp/oc-classify-D9R89k/tmp/oc-focused.dJoKbQ/include.json
+include-file-contents:
+  [
+    "src/cli/update-cli/update-command-retained-restart.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-D9R89k/tmp/oc-focused.dJoKbQ/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.cli.config.ts --maxWorkers=1 src/cli/update-cli/update-command-retained-restart.test.ts
+logs: /tmp/oc-classify-D9R89k/tmp/oc-focused.dJoKbQ
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-1129d4c0
+
+[vitest-workers] local cache hit after 2097ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 3718f2c84396 in 2153ms (20380 inputs, 25474 outputs)
+ × |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > restarts retained A with a real child and keeps both owners until native drain 3959ms
+   → busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: A 105ms
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: B 123ms
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: caller 149ms
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: executor 142ms
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: abort 124ms
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: binding 125ms
+ × |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: unavailable 475ms
+   → expected [Function] to throw error matching /executor|ownership|cancelled fixture|…/ but got 'busctl --user machine Manager.Version…'
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: scope 135ms
+ × |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: A after reset-failed 469ms
+   → expected [Function] to throw error matching /executor|ownership|cancelled fixture|…/ but got 'busctl --user machine Manager.Version…'
+ × |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: B after reset-failed 497ms
+   → expected [Function] to throw error matching /executor|ownership|cancelled fixture|…/ but got 'busctl --user machine Manager.Version…'
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rejects a same-root recovery before native inspection 106ms
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rejects a unretained recovery before native inspection 68ms
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rejects a forged recovery before native inspection 5ms
+ × |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > retains native rejection rather than reporting completed or readiness 478ms
+   → expected [Function] to throw error including 'native failed' but got 'busctl --user machine Manager.Version…'
+stderr | unknown test
+[sqlite-test-lifecycle] src/cli/update-cli/update-command-retained-restart.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/cli/update-cli/update-command-retained-restart.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/cli/update-cli/update-command-retained-restart.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/cli/update-cli/update-command-retained-restart.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/cli/update-cli/update-command-retained-restart.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/cli/update-cli/update-command-retained-restart.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > retained-root query uses actual delegated authority 576ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > restarts retained A with a real child and keeps both owners until native drain
+ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+    226|         const error = timedOut
+    227|           ? new SystemdInspectionTimeout(timedOutCheck)
+    228|           : new ServiceInspectionError(reason);
+       |             ^
+    229|         if (failure) {
+    230|           error.message = `${failure}\n${error.message}`;
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { reason: 'service-manager-unavailable' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: unavailable
+ FAIL  |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: A after reset-failed
+ FAIL  |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: B after reset-failed
+AssertionError: expected [Function] to throw error matching /executor|ownership|cancelled fixture|…/ but got 'busctl --user machine Manager.Version…'
+
+- Expected:
+/executor|ownership|cancelled fixture|changed original service|unavailable|scope/
+
++ Received:
+"busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it."
+
+ ❯ src/cli/update-cli/update-command-retained-restart.test.ts:268:23
+    266|       });
+    267|     });
+    268|     await expect(work).rejects.toThrow(
+       |                       ^
+    269|       /executor|ownership|cancelled fixture|changed original service|u…
+    270|     );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > retains native rejection rather than reporting completed or readiness
+AssertionError: expected [Function] to throw error including 'native failed' but got 'busctl --user machine Manager.Version…'
+
+- Expected
++ Received
+
+- native failed
++ busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
++ No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+
+ ❯ src/cli/update-cli/update-command-retained-restart.test.ts:312:33
+    310|       stderr: "native failed",
+    311|     });
+    312|     await expect(restartOwned()).rejects.toThrow("native failed");
+       |                                 ^
+    313|   });
+    314|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  5 failed | 11 passed (16)
+   Start at  22:55:31
+   Duration  19.80s (transform 48%, tests 39%, worker 6%, import 6%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 config=test/vitest/vitest.cli.config.ts files=src/cli/update-cli/update-command-retained-restart.test.ts
+failing-tests:
+ × |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > restarts retained A with a real child and keeps both owners until native drain 3959ms
+ × |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: unavailable 475ms
+ × |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: A after reset-failed 469ms
+ × |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: B after reset-failed 497ms
+ × |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > retains native rejection rather than reporting completed or readiness 478ms
+VERDICT RED [Test Files 1 failed (1); Tests 5 failed | 11 passed (16)]
+# exit=1
