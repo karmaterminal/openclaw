@@ -1,0 +1,13 @@
+diff --git a/src/gateway/server-methods/models-auth-status.ts b/src/gateway/server-methods/models-auth-status.ts
+index 090cb39931..0b9a08f318 100644
+--- a/src/gateway/server-methods/models-auth-status.ts
++++ b/src/gateway/server-methods/models-auth-status.ts
+@@ -169,7 +169,7 @@ async function refreshAfterCredentialMutation(
+     await refreshModelAuthStateAfterMutation(context.getRuntimeConfig, agentId);
+     return undefined;
+   } catch (error) {
+-    log.warn(`credential change saved but auth refresh failed: ${formatForLog(error)}`);
++    log.warn(`credential change saved but auth refresh failed: ${formatForLog(error)} [instr-stack] ${String((error as { stack?: unknown } | undefined)?.stack)}`);
+     return "Model auth changes were saved, but the Gateway could not refresh them. Run `openclaw gateway restart` to apply the saved changes.";
+   }
+ }

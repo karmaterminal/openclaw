@@ -13,7 +13,7 @@ echo "# pairs3 start=$(date -u +%FT%TZ) iterations=$first..$last refs=$refs file
 for n in $(seq "$first" "$last"); do
   for f in "$@"; do
     for ref in "${reflist[@]}"; do
-      "$here/ctl3.sh" "$ref" "$f" "$n"
+      "$here/ctl3.sh" "$ref" "$f" "$n" 9>&-  # the lock stays with this driver, never a test process
       rc=$?
       if ((rc == 3)); then echo "# DISK-STOP at $ref $f run$n $(date -u +%FT%TZ)"; exit 3; fi
     done

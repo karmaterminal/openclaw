@@ -1,0 +1,266 @@
+# ctl3 ref=cand+fakedirty2200000 sha=16541aa5a8ee81f1e505a414e2d21a758c43cbc2 file=test/scripts/team-shape-fixture.test.ts run=1 start=2026-11-21T21:34:10Z host=ronan arch=aarch64
+# before: dirty_kb/writeback_kb=71672/24 load1=9.47 disk=89.603% extdbw_procs=0
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-nrr-AGjITD/home TMPDIR=/tmp/oc-nrr-AGjITD/tmp umask=0022
+# argv: /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-new-reds-reruns/lane-evidence/129388-new-reds-reruns/tools/iso-fake-dirty.sh 2200000 /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-cand-16541aa5 env ... oc-focused  --worktree /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-cand-16541aa5 test/scripts/team-shape-fixture.test.ts
+# iso-fake-dirty: Dirty:             2200000 kB
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.tooling.config.ts
+include-file: /tmp/oc-nrr-AGjITD/tmp/oc-focused.8fZ4J5/include.json
+include-file-contents:
+  [
+    "test/scripts/team-shape-fixture.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-nrr-AGjITD/tmp/oc-focused.8fZ4J5/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.tooling.config.ts --maxWorkers=1 test/scripts/team-shape-fixture.test.ts
+logs: /tmp/oc-nrr-AGjITD/tmp/oc-focused.8fZ4J5
+
+ RUN  v5.0.5 /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-cand-16541aa5
+
+
+ RUN  v5.0.5 /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-cand-16541aa5
+
+[vitest-workers] local cache hit after 2443ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared c2f086a53a42 in 2504ms (20559 inputs, 25756 outputs)
+stdout | test/scripts/team-shape-fixture.test.ts > preserves existing sessions when seeding offline replay history
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+stdout | test/scripts/team-shape-fixture.test.ts > preserves existing sessions when seeding offline replay history
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+ × |tooling| test/scripts/team-shape-fixture.test.ts > preserves existing sessions when seeding offline replay history 13867ms
+   → Command failed: /home/figs/.nvm/versions/node/v26.12.1/bin/node --import ./scripts/tsx.mjs scripts/perf/transcript-broadcast-measure.ts --state-dir /tmp/oc-nrr-AGjITD/tmp/oc-vt-2tcfnN/team-shape-history-6oHmzP/state --entry src/entry.ts --scenario memory-soak --runs 2 --history-turns 64 --verify-history-replay --reset-every-rounds 0 --seed-history
+/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-cand-16541aa5/scripts/perf/team-shape-sessions.ts:<redacted len=2>
+      throw new Error("Fixture stopped: Linux Dirty memory is unavailable or reached 2 GiB");
+            ^
+
+Error: Fixture stopped: Linux Dirty memory is unavailable or reached 2 GiB
+    at waitForTeamShapeWriteBudget (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-cand-16541aa5/scripts/perf/team-shape-sessions.ts:<redacted len=6>
+    at async <anonymous> (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-cand-16541aa5/scripts/perf/transcript-broadcast-measure.ts:3853:7)
+
+Node.js v26.12.1
+
+ ✓ |tooling| test/scripts/team-shape-fixture.test.ts > rejects unsafe ports and refuses to overwrite existing state 2ms
+stdout | test/scripts/team-shape-fixture.test.ts > adds bounded long histories and an unchanged tracked inventory with a nested checkout
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+stdout | test/scripts/team-shape-fixture.test.ts > adds bounded long histories and an unchanged tracked inventory with a nested checkout
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+ × |tooling| test/scripts/team-shape-fixture.test.ts > adds bounded long histories and an unchanged tracked inventory with a nested checkout 378ms
+   → Fixture stopped: Linux Dirty memory is unavailable or reached 2 GiB
+stdout | test/scripts/team-shape-fixture.test.ts > creates canonical sessions, retained lifecycle states and isolated supporting stores
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+stdout | test/scripts/team-shape-fixture.test.ts > creates canonical sessions, retained lifecycle states and isolated supporting stores
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+ × |tooling| test/scripts/team-shape-fixture.test.ts > creates canonical sessions, retained lifecycle states and isolated supporting stores 469ms
+   → Fixture stopped: Linux Dirty memory is unavailable or reached 2 GiB
+stdout | test/scripts/team-shape-fixture.test.ts > keeps main session keys consistent across retained runs and automation targets
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+stdout | test/scripts/team-shape-fixture.test.ts > keeps main session keys consistent across retained runs and automation targets
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+ ✓ |tooling| test/scripts/team-shape-fixture.test.ts > keeps main session keys consistent across retained runs and automation targets 288ms
+stdout | test/scripts/team-shape-fixture.test.ts > keeps reviewer session keys consistent across retained runs and automation targets
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=reviewer
+
+stdout | test/scripts/team-shape-fixture.test.ts > keeps reviewer session keys consistent across retained runs and automation targets
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=reviewer
+
+ ✓ |tooling| test/scripts/team-shape-fixture.test.ts > keeps reviewer session keys consistent across retained runs and automation targets 270ms
+stdout | test/scripts/team-shape-fixture.test.ts > retains settled history and seeds disabled announce/last jobs without delivery routes
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+stdout | test/scripts/team-shape-fixture.test.ts > retains settled history and seeds disabled announce/last jobs without delivery routes
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+ ✓ |tooling| test/scripts/team-shape-fixture.test.ts > retains settled history and seeds disabled announce/last jobs without delivery routes 303ms
+stdout | test/scripts/team-shape-fixture.test.ts > seeds the stress category mix with readable collector parents and settled unarchived children
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+stdout | test/scripts/team-shape-fixture.test.ts > seeds the stress category mix with readable collector parents and settled unarchived children
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+stderr | unknown test
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+
+stderr | unknown test
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+
+ ✓ |tooling| test/scripts/team-shape-fixture.test.ts > seeds the stress category mix with readable collector parents and settled unarchived children 604ms
+ ❯ |tooling| test/scripts/team-shape-fixture.test.ts (8 tests | 3 failed) 16184ms
+   × preserves existing sessions when seeding offline replay history 13867ms
+   ✓ rejects unsafe ports and refuses to overwrite existing state 2ms
+   × adds bounded long histories and an unchanged tracked inventory with a nested checkout 378ms
+   × creates canonical sessions, retained lifecycle states and isolated supporting stores 469ms
+   ✓ keeps main session keys consistent across retained runs and automation targets 288ms
+   ✓ keeps reviewer session keys consistent across retained runs and automation targets 270ms
+   ✓ retains settled history and seeds disabled announce/last jobs without delivery routes 303ms
+   ✓ seeds the stress category mix with readable collector parents and settled unarchived children 604ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |tooling| test/scripts/team-shape-fixture.test.ts > preserves existing sessions when seeding offline replay history
+Error: Command failed: /home/figs/.nvm/versions/node/v26.12.1/bin/node --import ./scripts/tsx.mjs scripts/perf/transcript-broadcast-measure.ts --state-dir /tmp/oc-nrr-AGjITD/tmp/oc-vt-2tcfnN/team-shape-history-6oHmzP/state --entry src/entry.ts --scenario memory-soak --runs 2 --history-turns 64 --verify-history-replay --reset-every-rounds 0 --seed-history
+/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-cand-16541aa5/scripts/perf/team-shape-sessions.ts:<redacted len=2>
+      throw new Error("Fixture stopped: Linux Dirty memory is unavailable or reached 2 GiB");
+            ^
+
+Error: Fixture stopped: Linux Dirty memory is unavailable or reached 2 GiB
+    at waitForTeamShapeWriteBudget (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-cand-16541aa5/scripts/perf/team-shape-sessions.ts:<redacted len=6>
+    at async <anonymous> (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-cand-16541aa5/scripts/perf/transcript-broadcast-measure.ts:3853:7)
+
+Node.js v26.12.1
+
+ ❯ waitForTeamShapeWriteBudget scripts/perf/team-shape-sessions.ts:<redacted len=5>
+     56|     const dirtyKb = Number(/^Dirty:\s+(\d+)/m.exec(await readFile("/pr…
+     57|     if (!Number.isFinite(dirtyKb) || dirtyKb >= 2 * 1024 * 1024) {
+     58|       throw new Error("Fixture stopped: Linux Dirty memory is unavaila…
+       |             ^
+     59|     }
+     60|     if (dirtyKb < 1024 * 1024) {
+ ❯ <anonymous> scripts/perf/transcript-broadcast-measure.ts:3853:7
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 1, killed: false, signal: null, cmd: '/home/figs/.nvm/versions/node/v26.12.1/bin/node --import ./scripts/tsx.mjs scripts/perf/transcript-broadcast-measure.ts --state-dir /tmp/oc-nrr-AGjITD/tmp/oc-vt-2tcfnN/team-shape-history-6oHmzP/state --entry src/entry.ts --scenario memory-soak --runs 2 --history-turns 64 --verify-history-replay --reset-every-rounds 0 --seed-history', stdout: '', stderr: '/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-cand-16541aa5/scripts/perf/team-shape-sessions.ts:<redacted len=2>
+      throw new Error("Fixture stopped: Linux Dirty memory is unavailable or reached 2 GiB");
+            ^
+
+Error: Fixture stopped: Linux Dirty memory is unavailable or reached 2 GiB
+    at waitForTeamShapeWriteBudget (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-cand-16541aa5/scripts/perf/team-shape-sessions.ts:<redacted len=6>
+    at async <anonymous> (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-cand-16541aa5/scripts/perf/transcript-broadcast-measure.ts:3853:7)
+
+Node.js v26.12.1
+' }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  |tooling| test/scripts/team-shape-fixture.test.ts > adds bounded long histories and an unchanged tracked inventory with a nested checkout
+Error: Fixture stopped: Linux Dirty memory is unavailable or reached 2 GiB
+ ❯ waitForTeamShapeWriteBudget scripts/perf/team-shape-sessions.ts:<redacted len=5>
+     56|     const dirtyKb = Number(/^Dirty:\s+(\d+)/m.exec(await readFile("/pr…
+     57|     if (!Number.isFinite(dirtyKb) || dirtyKb >= 2 * 1024 * 1024) {
+     58|       throw new Error("Fixture stopped: Linux Dirty memory is unavaila…
+       |             ^
+     59|     }
+     60|     if (dirtyKb < 1024 * 1024) {
+ ❯ seedProjects scripts/perf/team-shape-extras.ts:216:11
+ ❯ seedTeamShapeExtras scripts/perf/team-shape-extras.ts:326:28
+ ❯ generateTeamShapeFixture scripts/perf/team-shape-fixture.ts:268:22
+ ❯ test/scripts/team-shape-fixture.test.ts:106:28
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  |tooling| test/scripts/team-shape-fixture.test.ts > creates canonical sessions, retained lifecycle states and isolated supporting stores
+Error: Fixture stopped: Linux Dirty memory is unavailable or reached 2 GiB
+ ❯ waitForTeamShapeWriteBudget scripts/perf/team-shape-sessions.ts:<redacted len=5>
+     56|     const dirtyKb = Number(/^Dirty:\s+(\d+)/m.exec(await readFile("/pr…
+     57|     if (!Number.isFinite(dirtyKb) || dirtyKb >= 2 * 1024 * 1024) {
+     58|       throw new Error("Fixture stopped: Linux Dirty memory is unavaila…
+       |             ^
+     59|     }
+     60|     if (dirtyKb < 1024 * 1024) {
+ ❯ seedProjects scripts/perf/team-shape-extras.ts:216:11
+ ❯ seedTeamShapeExtras scripts/perf/team-shape-extras.ts:326:28
+ ❯ generateTeamShapeFixture scripts/perf/team-shape-fixture.ts:268:22
+ ❯ test/scripts/team-shape-fixture.test.ts:196:23
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 5 passed (8)
+   Start at  13:34:12
+   Duration  22.53s (tests 73%, transform 21%, import 4%, worker 2%)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |tooling| test/scripts/team-shape-fixture.test.ts > preserves existing sessions when seeding offline replay history
+Error: Command failed: /home/figs/.nvm/versions/node/v26.12.1/bin/node --import ./scripts/tsx.mjs scripts/perf/transcript-broadcast-measure.ts --state-dir /tmp/oc-nrr-AGjITD/tmp/oc-vt-2tcfnN/team-shape-history-6oHmzP/state --entry src/entry.ts --scenario memory-soak --runs 2 --history-turns 64 --verify-history-replay --reset-every-rounds 0 --seed-history
+/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-cand-16541aa5/scripts/perf/team-shape-sessions.ts:<redacted len=2>
+      throw new Error("Fixture stopped: Linux Dirty memory is unavailable or reached 2 GiB");
+            ^
+
+Error: Fixture stopped: Linux Dirty memory is unavailable or reached 2 GiB
+    at waitForTeamShapeWriteBudget (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-cand-16541aa5/scripts/perf/team-shape-sessions.ts:<redacted len=6>
+    at async <anonymous> (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-cand-16541aa5/scripts/perf/transcript-broadcast-measure.ts:3853:7)
+
+Node.js v26.12.1
+
+ ❯ waitForTeamShapeWriteBudget scripts/perf/team-shape-sessions.ts:<redacted len=5>
+     56|     const dirtyKb = Number(/^Dirty:\s+(\d+)/m.exec(await readFile("/pr…
+     57|     if (!Number.isFinite(dirtyKb) || dirtyKb >= 2 * 1024 * 1024) {
+     58|       throw new Error("Fixture stopped: Linux Dirty memory is unavaila…
+       |             ^
+     59|     }
+     60|     if (dirtyKb < 1024 * 1024) {
+ ❯ <anonymous> scripts/perf/transcript-broadcast-measure.ts:3853:7
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  |tooling| test/scripts/team-shape-fixture.test.ts > adds bounded long histories and an unchanged tracked inventory with a nested checkout
+Error: Fixture stopped: Linux Dirty memory is unavailable or reached 2 GiB
+ ❯ waitForTeamShapeWriteBudget scripts/perf/team-shape-sessions.ts:<redacted len=5>
+     56|     const dirtyKb = Number(/^Dirty:\s+(\d+)/m.exec(await readFile("/pr…
+     57|     if (!Number.isFinite(dirtyKb) || dirtyKb >= 2 * 1024 * 1024) {
+     58|       throw new Error("Fixture stopped: Linux Dirty memory is unavaila…
+       |             ^
+     59|     }
+     60|     if (dirtyKb < 1024 * 1024) {
+ ❯ seedProjects scripts/perf/team-shape-extras.ts:216:11
+ ❯ seedTeamShapeExtras scripts/perf/team-shape-extras.ts:326:28
+ ❯ generateTeamShapeFixture scripts/perf/team-shape-fixture.ts:268:22
+ ❯ test/scripts/team-shape-fixture.test.ts:106:28
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  |tooling| test/scripts/team-shape-fixture.test.ts > creates canonical sessions, retained lifecycle states and isolated supporting stores
+Error: Fixture stopped: Linux Dirty memory is unavailable or reached 2 GiB
+ ❯ waitForTeamShapeWriteBudget scripts/perf/team-shape-sessions.ts:<redacted len=5>
+     56|     const dirtyKb = Number(/^Dirty:\s+(\d+)/m.exec(await readFile("/pr…
+     57|     if (!Number.isFinite(dirtyKb) || dirtyKb >= 2 * 1024 * 1024) {
+     58|       throw new Error("Fixture stopped: Linux Dirty memory is unavaila…
+       |             ^
+     59|     }
+     60|     if (dirtyKb < 1024 * 1024) {
+ ❯ seedProjects scripts/perf/team-shape-extras.ts:216:11
+ ❯ seedTeamShapeExtras scripts/perf/team-shape-extras.ts:326:28
+ ❯ generateTeamShapeFixture scripts/perf/team-shape-fixture.ts:268:22
+ ❯ test/scripts/team-shape-fixture.test.ts:196:23
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 5 passed (8)
+   Start at  13:34:12
+   Duration  22.55s (tests 73%, transform 21%, import 4%, worker 2%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=16541aa5a8ee81f1e505a414e2d21a758c43cbc2 config=test/vitest/vitest.tooling.config.ts files=test/scripts/team-shape-fixture.test.ts
+failing-tests:
+ × |tooling| test/scripts/team-shape-fixture.test.ts > preserves existing sessions when seeding offline replay history 13867ms
+ × |tooling| test/scripts/team-shape-fixture.test.ts > adds bounded long histories and an unchanged tracked inventory with a nested checkout 378ms
+ × |tooling| test/scripts/team-shape-fixture.test.ts > creates canonical sessions, retained lifecycle states and isolated supporting stores 469ms
+VERDICT RED [Test Files 1 failed (1); Tests 3 failed | 5 passed (8)]
+# exit=1
+# after: dirty_kb/writeback_kb=51232/0 max_during_dirty_kb=72772 max_during_writeback_kb=6328 load1=10.49 extdbw_procs=0 run_write_bytes=95395840 run_cancelled_write_bytes=4272128

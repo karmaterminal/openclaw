@@ -1,0 +1,121 @@
+# ctl3 ref=cand+fakedirty0 sha=16541aa5a8ee81f1e505a414e2d21a758c43cbc2 file=test/scripts/team-shape-fixture.test.ts run=1 start=2026-11-21T21:45:37Z host=ronan arch=aarch64
+# before: dirty_kb/writeback_kb=176772/0 load1=7.71 disk=89.595% extdbw_procs=0
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-nrr-zeRAM6/home TMPDIR=/tmp/oc-nrr-zeRAM6/tmp umask=0022
+# argv: /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-new-reds-reruns/lane-evidence/129388-new-reds-reruns/tools/iso-fake-dirty.sh 0 /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-cand-16541aa5 env ... oc-focused  --worktree /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-cand-16541aa5 test/scripts/team-shape-fixture.test.ts
+# iso-fake-dirty: Dirty:            0 kB
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.tooling.config.ts
+include-file: /tmp/oc-nrr-zeRAM6/tmp/oc-focused.yxoHo1/include.json
+include-file-contents:
+  [
+    "test/scripts/team-shape-fixture.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-nrr-zeRAM6/tmp/oc-focused.yxoHo1/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.tooling.config.ts --maxWorkers=1 test/scripts/team-shape-fixture.test.ts
+logs: /tmp/oc-nrr-zeRAM6/tmp/oc-focused.yxoHo1
+
+ RUN  v5.0.5 /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-cand-16541aa5
+
+
+ RUN  v5.0.5 /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-cand-16541aa5
+
+[vitest-workers] local cache hit after 2198ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared d1da19873f08 in 2265ms (20559 inputs, 25756 outputs)
+stdout | test/scripts/team-shape-fixture.test.ts > preserves existing sessions when seeding offline replay history
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+stdout | test/scripts/team-shape-fixture.test.ts > preserves existing sessions when seeding offline replay history
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+[vitest] still running with no output for 30000ms.
+ ✓ |tooling| test/scripts/team-shape-fixture.test.ts > preserves existing sessions when seeding offline replay history 32832ms
+ ✓ |tooling| test/scripts/team-shape-fixture.test.ts > rejects unsafe ports and refuses to overwrite existing state 3ms
+stdout | test/scripts/team-shape-fixture.test.ts > adds bounded long histories and an unchanged tracked inventory with a nested checkout
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+stdout | test/scripts/team-shape-fixture.test.ts > adds bounded long histories and an unchanged tracked inventory with a nested checkout
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+ ✓ |tooling| test/scripts/team-shape-fixture.test.ts > adds bounded long histories and an unchanged tracked inventory with a nested checkout 945ms
+stdout | test/scripts/team-shape-fixture.test.ts > creates canonical sessions, retained lifecycle states and isolated supporting stores
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+stdout | test/scripts/team-shape-fixture.test.ts > creates canonical sessions, retained lifecycle states and isolated supporting stores
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+ ✓ |tooling| test/scripts/team-shape-fixture.test.ts > creates canonical sessions, retained lifecycle states and isolated supporting stores 983ms
+stdout | test/scripts/team-shape-fixture.test.ts > keeps main session keys consistent across retained runs and automation targets
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+stdout | test/scripts/team-shape-fixture.test.ts > keeps main session keys consistent across retained runs and automation targets
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+ ✓ |tooling| test/scripts/team-shape-fixture.test.ts > keeps main session keys consistent across retained runs and automation targets 447ms
+stdout | test/scripts/team-shape-fixture.test.ts > keeps reviewer session keys consistent across retained runs and automation targets
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=reviewer
+
+stdout | test/scripts/team-shape-fixture.test.ts > keeps reviewer session keys consistent across retained runs and automation targets
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=reviewer
+
+ ✓ |tooling| test/scripts/team-shape-fixture.test.ts > keeps reviewer session keys consistent across retained runs and automation targets 478ms
+stdout | test/scripts/team-shape-fixture.test.ts > retains settled history and seeds disabled announce/last jobs without delivery routes
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+stdout | test/scripts/team-shape-fixture.test.ts > retains settled history and seeds disabled announce/last jobs without delivery routes
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+ ✓ |tooling| test/scripts/team-shape-fixture.test.ts > retains settled history and seeds disabled announce/last jobs without delivery routes 557ms
+stdout | test/scripts/team-shape-fixture.test.ts > seeds the stress category mix with readable collector parents and settled unarchived children
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+stdout | test/scripts/team-shape-fixture.test.ts > seeds the stress category mix with readable collector parents and settled unarchived children
+[state/agent-db] agent database clean-close receipt: verification-missing; agent=main
+
+stderr | unknown test
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+
+stderr | unknown test
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] test/scripts/team-shape-fixture.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+
+ ✓ |tooling| test/scripts/team-shape-fixture.test.ts > seeds the stress category mix with readable collector parents and settled unarchived children 788ms
+ ✓ |tooling| test/scripts/team-shape-fixture.test.ts (8 tests) 37034ms
+   ✓ preserves existing sessions when seeding offline replay history 32832ms
+   ✓ adds bounded long histories and an unchanged tracked inventory with a nested checkout 945ms
+   ✓ creates canonical sessions, retained lifecycle states and isolated supporting stores 983ms
+   ✓ keeps main session keys consistent across retained runs and automation targets 447ms
+   ✓ keeps reviewer session keys consistent across retained runs and automation targets 478ms
+   ✓ retains settled history and seeds disabled announce/last jobs without delivery routes 557ms
+   ✓ seeds the stress category mix with readable collector parents and settled unarchived children 788ms
+
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+   Start at  13:45:39
+   Duration  42.59s (tests 88%, transform 10%, import 2%, worker 1%)
+
+
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+   Start at  13:45:39
+   Duration  42.60s (tests 88%, transform 10%, import 2%, worker 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=16541aa5a8ee81f1e505a414e2d21a758c43cbc2 config=test/vitest/vitest.tooling.config.ts files=test/scripts/team-shape-fixture.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 8 passed (8)]
+# exit=0
+# after: dirty_kb/writeback_kb=1285368/0 max_during_dirty_kb=2278304 max_during_writeback_kb=324 load1=11.49 extdbw_procs=0 run_write_bytes=177319936 run_cancelled_write_bytes=34856960

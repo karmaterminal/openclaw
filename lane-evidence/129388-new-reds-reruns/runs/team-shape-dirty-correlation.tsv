@@ -1,0 +1,33 @@
+ref	run	verdict	dirty_before_MiB	dirty_max_MiB	dirty_max>=2GiB	run_write_MiB	log
+cand	1	RED	164	5014	yes	n/a(run1)	cand-scripts-team-shape-fixture-ts-run1.log
+prior	1	PASS	5072	5077	yes	n/a(run1)	prior-scripts-team-shape-fixture-ts-run1.log
+base	1	PASS	332	468	no	n/a(run1)	base-scripts-team-shape-fixture-ts-run1.log
+cand	2	PASS	45	147	no	169	cand-scripts-team-shape-fixture-ts-run2.log
+prior	2	PASS	47	232	no	169	prior-scripts-team-shape-fixture-ts-run2.log
+base	2	PASS	146	147	no	168	base-scripts-team-shape-fixture-ts-run2.log
+cand	3	PASS	45	337	no	169	cand-scripts-team-shape-fixture-ts-run3.log
+prior	3	PASS	384	1810	no	169	prior-scripts-team-shape-fixture-ts-run3.log
+base	3	RED	90	2501	yes	168	base-scripts-team-shape-fixture-ts-run3.log
+cand	4	RED	983	4662	yes	91	cand-scripts-team-shape-fixture-ts-run4.log
+prior	4	PASS	360	388	no	169	prior-scripts-team-shape-fixture-ts-run4.log
+base	4	PASS	316	442	no	168	base-scripts-team-shape-fixture-ts-run4.log
+cand	5	PASS	29	73	no	169	cand-scripts-team-shape-fixture-ts-run5.log
+prior	5	PASS	15	104	no	169	prior-scripts-team-shape-fixture-ts-run5.log
+base	5	PASS	40	93	no	169	base-scripts-team-shape-fixture-ts-run5.log
+cand	6	PASS	234	498	no	169	cand-scripts-team-shape-fixture-ts-run6.log
+prior	6	PASS	437	437	no	169	prior-scripts-team-shape-fixture-ts-run6.log
+base	6	PASS	23	463	no	168	base-scripts-team-shape-fixture-ts-run6.log
+cand	7	PASS	2471	2484	yes	169	cand-scripts-team-shape-fixture-ts-run7.log
+prior	7	PASS	417	449	no	169	prior-scripts-team-shape-fixture-ts-run7.log
+base	7	PASS	138	231	no	168	base-scripts-team-shape-fixture-ts-run7.log
+cand	8	PASS	175	405	no	169	cand-scripts-team-shape-fixture-ts-run8.log
+prior	8	PASS	279	301	no	169	prior-scripts-team-shape-fixture-ts-run8.log
+base	8	PASS	115	1042	no	168	base-scripts-team-shape-fixture-ts-run8.log
+cand	9	PASS	53	115	no	169	cand-scripts-team-shape-fixture-ts-run9.log
+prior	9	PASS	56	223	no	169	prior-scripts-team-shape-fixture-ts-run9.log
+base	9	PASS	152	153	no	169	base-scripts-team-shape-fixture-ts-run9.log
+cand	10	PASS	44	84	no	169	cand-scripts-team-shape-fixture-ts-run10.log
+prior	10	PASS	32	78	no	169	prior-scripts-team-shape-fixture-ts-run10.log
+base	10	PASS	32	125	no	168	base-scripts-team-shape-fixture-ts-run10.log
+# dirty_max>=2GiB=False: runs=25 red=0
+# dirty_max>=2GiB=True: runs=5 red=3

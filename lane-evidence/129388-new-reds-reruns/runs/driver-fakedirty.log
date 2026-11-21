@@ -1,0 +1,20 @@
+# pairs3 start=2026-11-21T21:34:10Z iterations=1..2 refs=cand,prior,base files=test/scripts/team-shape-fixture.test.ts
+cand+fakedirty2200000 test/scripts/team-shape-fixture.test.ts run1 rc=1 26s VERDICT RED [Test Files 1 failed (1); Tests 3 failed | 5 passed (8)] dirty_max=72772kB disk=89.603%
+prior+fakedirty2200000 test/scripts/team-shape-fixture.test.ts run1 rc=1 24s VERDICT RED [Test Files 1 failed (1); Tests 3 failed | 5 passed (8)] dirty_max=51564kB disk=89.606%
+base+fakedirty2200000 test/scripts/team-shape-fixture.test.ts run1 rc=1 24s VERDICT RED [Test Files 1 failed (1); Tests 3 failed | 5 passed (8)] dirty_max=44072kB disk=89.607%
+cand+fakedirty2200000 test/scripts/team-shape-fixture.test.ts run2 rc=1 25s VERDICT RED [Test Files 1 failed (1); Tests 3 failed | 5 passed (8)] dirty_max=37036kB disk=89.609%
+prior+fakedirty2200000 test/scripts/team-shape-fixture.test.ts run2 rc=1 25s VERDICT RED [Test Files 1 failed (1); Tests 3 failed | 5 passed (8)] dirty_max=60392kB disk=89.611%
+base+fakedirty2200000 test/scripts/team-shape-fixture.test.ts run2 rc=1 24s VERDICT RED [Test Files 1 failed (1); Tests 3 failed | 5 passed (8)] dirty_max=99096kB disk=89.614%
+# pairs3 done=2026-11-21T21:36:39Z
+another pairs3 driver holds the lock
+# pairs3 start=2026-11-21T21:45:37Z iterations=1..3 refs=cand,prior,base files=test/scripts/team-shape-fixture.test.ts
+cand+fakedirty0 test/scripts/team-shape-fixture.test.ts run1 rc=0 46s VERDICT PASS [Test Files 1 passed (1); Tests 8 passed (8)] dirty_max=2278304kB disk=89.595%
+prior+fakedirty0 test/scripts/team-shape-fixture.test.ts run1 rc=0 44s VERDICT PASS [Test Files 1 passed (1); Tests 8 passed (8)] dirty_max=1371300kB disk=89.621%
+base+fakedirty0 test/scripts/team-shape-fixture.test.ts run1 rc=0 42s VERDICT PASS [Test Files 1 passed (1); Tests 8 passed (8)] dirty_max=146132kB disk=89.626%
+cand+fakedirty0 test/scripts/team-shape-fixture.test.ts run2 rc=0 42s VERDICT PASS [Test Files 1 passed (1); Tests 8 passed (8)] dirty_max=161972kB disk=89.629%
+prior+fakedirty0 test/scripts/team-shape-fixture.test.ts run2 rc=0 42s VERDICT PASS [Test Files 1 passed (1); Tests 8 passed (8)] dirty_max=174768kB disk=89.628%
+base+fakedirty0 test/scripts/team-shape-fixture.test.ts run2 rc=0 41s VERDICT PASS [Test Files 1 passed (1); Tests 8 passed (8)] dirty_max=185608kB disk=89.626%
+cand+fakedirty0 test/scripts/team-shape-fixture.test.ts run3 rc=0 44s VERDICT PASS [Test Files 1 passed (1); Tests 8 passed (8)] dirty_max=516756kB disk=89.612%
+prior+fakedirty0 test/scripts/team-shape-fixture.test.ts run3 rc=0 43s VERDICT PASS [Test Files 1 passed (1); Tests 8 passed (8)] dirty_max=423736kB disk=89.626%
+base+fakedirty0 test/scripts/team-shape-fixture.test.ts run3 rc=0 41s VERDICT PASS [Test Files 1 passed (1); Tests 8 passed (8)] dirty_max=449024kB disk=89.638%
+# pairs3 done=2026-11-21T21:52:02Z
