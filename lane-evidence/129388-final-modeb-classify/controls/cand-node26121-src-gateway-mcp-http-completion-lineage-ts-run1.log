@@ -1,0 +1,111 @@
+# ctl ref=cand sha=93a1e356c7aabf0d868560e46790b07449813840 file=src/gateway/mcp-http.completion-lineage.test.ts run=1 mode=node26121 start=2026-11-21T08:06:21Z
+# files: 1 runwt=/home/figs/classify-129388/cand-93a1e356 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-C9mzcW/home TMPDIR=/tmp/oc-classify-C9mzcW/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.gateway-database-workers.config.ts
+include-file: /tmp/oc-classify-C9mzcW/tmp/oc-focused.qXDEsV/include.json
+include-file-contents:
+  [
+    "src/gateway/mcp-http.completion-lineage.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-C9mzcW/tmp/oc-focused.qXDEsV/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.gateway-database-workers.config.ts --maxWorkers=1 src/gateway/mcp-http.completion-lineage.test.ts
+logs: /tmp/oc-classify-C9mzcW/tmp/oc-focused.qXDEsV
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-93a1e356
+
+[vitest-workers] local cache hit after 2167ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared f4e1b5cf37ed in 2260ms (20558 inputs, 25754 outputs)
+[vitest] still running with no output for 30000ms.
+ ✓ |gateway-database-workers| src/gateway/mcp-http.completion-lineage.test.ts > MCP loopback completion lineage at the final tool-effect fence > registers watches without host SQL for durable lineage 2131ms
+ ✓ |gateway-database-workers| src/gateway/mcp-http.completion-lineage.test.ts > MCP loopback completion lineage at the final tool-effect fence > registers watches without host SQL for incognito lineage 102ms
+ ✓ |gateway-database-workers| src/gateway/mcp-http.completion-lineage.test.ts > MCP loopback completion lineage at the final tool-effect fence > registers watches without host SQL for incognito-by-id lineage 53ms
+ ✓ |gateway-database-workers| src/gateway/mcp-http.completion-lineage.test.ts > MCP loopback completion lineage at the final tool-effect fence > registers watches without host SQL for mixed lineage 74ms
+ ✓ |gateway-database-workers| src/gateway/mcp-http.completion-lineage.test.ts > MCP loopback completion lineage at the final tool-effect fence > registers watches without host SQL for by-id lineage 218ms
+ ✓ |gateway-database-workers| src/gateway/mcp-http.completion-lineage.test.ts > MCP loopback completion lineage at the final tool-effect fence > rejects a watch when incognito lineage changes during its commit grant 57ms
+ ✓ |gateway-database-workers| src/gateway/mcp-http.completion-lineage.test.ts > MCP loopback completion lineage at the final tool-effect fence > rejects a watch when durable lineage changes during its transaction grant 69ms
+ ✓ |gateway-database-workers| src/gateway/mcp-http.completion-lineage.test.ts > MCP loopback completion lineage at the final tool-effect fence > rejects a watch when durable lineage changes during its commit grant 57ms
+ ✓ |gateway-database-workers| src/gateway/mcp-http.completion-lineage.test.ts > MCP loopback completion lineage at the final tool-effect fence > rejects a watch when durable lineage changes during its prepare grant 67ms
+ ✓ |gateway-database-workers| src/gateway/mcp-http.completion-lineage.test.ts > MCP loopback completion lineage at the final tool-effect fence > rejects the write when the child lineage is removed during an awaited before-tool hook 45ms
+ ✓ |gateway-database-workers| src/gateway/mcp-http.completion-lineage.test.ts > MCP loopback completion lineage at the final tool-effect fence > rejects the write when the child lineage is re-parented during an awaited before-tool hook 47ms
+ ✓ |gateway-database-workers| src/gateway/mcp-http.completion-lineage.test.ts > MCP loopback completion lineage at the final tool-effect fence > rejects the write when the child lineage is handed to another completion owner during an awaited before-tool hook 37ms
+ ✓ |gateway-database-workers| src/gateway/mcp-http.completion-lineage.test.ts > MCP loopback completion lineage at the final tool-effect fence > rejects the write when the child lineage is reassigned in memory during an awaited before-tool hook 36ms
+ ✓ |gateway-database-workers| src/gateway/mcp-http.completion-lineage.test.ts > MCP loopback completion lineage at the final tool-effect fence > rejects the write when the child lineage is removed during a hook approval wait 43ms
+ × |gateway-database-workers| src/gateway/mcp-http.completion-lineage.test.ts > MCP loopback completion lineage at the final tool-effect fence > rejects the write at its source guard when the lineage is removed after dispatch 42ms
+   → expected { jsonrpc: '2.0', id: 1, …(1) } to match object { result: { isError: true, …(1) } }
+(3 matching properties omitted from actual)
+ ✓ |gateway-database-workers| src/gateway/mcp-http.completion-lineage.test.ts > MCP loopback completion lineage at the final tool-effect fence > rejects a grant whose child lineage belongs to another requester 22ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.stateDomainPublication.sandbox-registry
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/gateway/mcp-http.completion-lineage.test.ts: retiring openclaw.devicePairSetupChanges
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |gateway-database-workers| src/gateway/mcp-http.completion-lineage.test.ts > MCP loopback completion lineage at the final tool-effect fence > rejects the write at its source guard when the lineage is removed after dispatch
+AssertionError: expected { jsonrpc: '2.0', id: 1, …(1) } to match object { result: { isError: true, …(1) } }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "result": {
+      "content": [
+        {
+-         "text": StringContaining "tool invocation authority is no longer active",
++         "text": "Successfully wrote 23 bytes to /tmp/oc-classify-C9mzcW/tmp/oc-vt-E09vtW/openclaw-mcp-completion-lineage-D49FJb/workspace/lineage-removed-in-tool.txt",
+        },
+      ],
+-     "isError": true,
++     "isError": false,
+    },
+  }
+
+ ❯ src/gateway/mcp-http.completion-lineage.test.ts:451:35
+    449|     const response = await pending;
+    450|
+    451|     expect(await response.json()).toMatchObject({
+       |                                   ^
+    452|       result: {
+    453|         isError: true,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 15 passed (16)
+   Start at  00:06:22
+   Duration  47.46s (transform 79%, import 11%, tests 7%, worker 2%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=93a1e356c7aabf0d868560e46790b07449813840 config=test/vitest/vitest.gateway-database-workers.config.ts files=src/gateway/mcp-http.completion-lineage.test.ts
+failing-tests:
+ × |gateway-database-workers| src/gateway/mcp-http.completion-lineage.test.ts > MCP loopback completion lineage at the final tool-effect fence > rejects the write at its source guard when the lineage is removed after dispatch 42ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 15 passed (16)]
+# exit=1

@@ -1,0 +1,96 @@
+# ctl ref=base sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 file=src/auto-reply/reply/session-event-permissions.test.ts run=1 mode=node26121 start=2026-11-21T08:07:18Z
+# files: 1 runwt=/home/figs/classify-129388/base-1129d4c0 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-vl8Acv/home TMPDIR=/tmp/oc-classify-vl8Acv/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.infra.config.ts
+include-file: /tmp/oc-classify-vl8Acv/tmp/oc-focused.A9pzK3/include.json
+include-file-contents:
+  [
+    "src/auto-reply/reply/session-event-permissions.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-vl8Acv/tmp/oc-focused.A9pzK3/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.infra.config.ts --maxWorkers=1 src/auto-reply/reply/session-event-permissions.test.ts
+logs: /tmp/oc-classify-vl8Acv/tmp/oc-focused.A9pzK3
+[vitest-workers] local cache hit after 2257ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared ceadc6713224 in 2313ms (20380 inputs, 25474 outputs)
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-1129d4c0
+
+[vitest] still running with no output for 30000ms.
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > preserves session event admission policy: archived 2432ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > preserves session event admission policy: still initializing 1182ms
+(node:182) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: createToolSurface is deprecated; use createToolSurfaceAsync instead. Synchronous tool construction retains its pinned skill resources. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a production background completion by current and retained permissions: new-session 4369ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a production background completion by current and retained permissions: creation-retry 1901ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a production background completion by current and retained permissions: cancelled-creation 1738ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a production background completion by current and retained permissions: downgrade 2719ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a production background completion by current and retained permissions: upgrade 2668ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a production background completion by current and retained permissions: retained-tool-downgrade 2587ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a production background completion by current and retained permissions: retained-overrides-downgrade 2535ms
+ × |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a production background completion by current and retained permissions: retained-database-replacement 2588ms
+   → {"status":"completed","executionStarted":true,"terminalOutcome":{"reason":"completed","status":"ok"},"interruptedByRestart":false,"delivered":false,"deliveryAttempted":false,"deliveryAmbiguous":false,"admissionDeferred":false,"summary":"Completion observed"}: expected 'completed\n' to be 'original\n' // Object.is equality
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a production background completion by current and retained permissions: retained-config-downgrade 2448ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a production background completion by current and retained permissions: retained-channel-config-downgrade 2580ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a production background completion by current and retained permissions: unrelated-agent-config 2694ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a production background completion by current and retained permissions: unrelated-session-maintenance 2874ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a production background completion by current and retained permissions: remapped-workspace 2724ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a production background completion by current and retained permissions: remapped-guarded 2624ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a production background completion by current and retained permissions: remapped-default 2705ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a production background completion by current and retained permissions: failed-adoption 2422ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a production background completion by current and retained permissions: tool-only-delivery 2529ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a production background completion by current and retained permissions: cli-watchdog-guarded 5746ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > batches 1 watched sessions after FIFO adoption (cancellation: none) 3334ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > batches 2 watched sessions after FIFO adoption (cancellation: none) 4540ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > batches 2 watched sessions after FIFO adoption (cancellation: all) 3907ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > batches 2 watched sessions after FIFO adoption (cancellation: request) 3724ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > creates the unused terminal receiver for an immediate hook (false, ok) 3518ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > creates the unused terminal receiver for an immediate hook (true, error) 2458ms
+(node:182) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: ensureAuthProfileStoreWithoutExternalProfiles is deprecated; use ensureAuthProfileStoreWithoutExternalProfilesAsync instead. The legacy contract remains supported during its deprecation period. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+(node:182) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: resolveSandboxRuntimeStatus is deprecated; use resolveSandboxRuntimeStatusAsync instead. The legacy contract remains supported during its deprecation period. Removal requires an announced ordinary stable release window.
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > runs an owner-only tool from a background completion only for its current owner requester: owner 2730ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > runs an owner-only tool from a background completion only for its current owner requester: guest 2669ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > runs an owner-only tool from a background completion only for its current owner requester: revoked-before-admission 2777ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > runs an owner-only tool from a background completion only for its current owner requester: revoked-after-admission 2718ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a same-session background completion's final effects: same-session 2557ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a same-session background completion's final effects: restricted-sender 2648ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a same-session background completion's final effects: cross-session 2789ms
+ ✓ |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a same-session background completion's final effects: revoked-before-write 2745ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a production background completion by current and retained permissions: retained-database-replacement
+AssertionError: {"status":"completed","executionStarted":true,"terminalOutcome":{"reason":"completed","status":"ok"},"interruptedByRestart":false,"delivered":false,"deliveryAttempted":false,"deliveryAmbiguous":false,"admissionDeferred":false,"summary":"Completion observed"}: expected 'completed\n' to be 'original\n' // Object.is equality
+
+- Expected
++ Received
+
+- original
++ completed
+
+
+ ❯ src/auto-reply/reply/session-event-permissions.test.ts:<redacted len=6>
+    520|       expect(accepted).toEqual({ ok: true });
+    521|       const evidence = JSON.stringify(outcome);
+    522|       expect(await fs.readFile(filePath, "utf8"), evidence).toBe(
+       |                                                             ^
+    523|         change === "new-session" || remapped || toolOnly || unrelatedC…
+    524|           ? "completed\n"
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 33 passed (34)
+   Start at  00:07:23
+   Duration  144.30s (tests 68%, transform 28%, import 4%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 config=test/vitest/vitest.infra.config.ts files=src/auto-reply/reply/session-event-permissions.test.ts
+failing-tests:
+ × |infra| src/auto-reply/reply/session-event-permissions.test.ts > bounds a production background completion by current and retained permissions: retained-database-replacement 2588ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 33 passed (34)]
+# exit=1
