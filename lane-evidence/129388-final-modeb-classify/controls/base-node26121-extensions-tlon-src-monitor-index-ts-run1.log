@@ -1,0 +1,299 @@
+# ctl ref=base sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 file=extensions/tlon/src/monitor/index.test.ts run=1 mode=node26121 start=2026-11-21T07:41:06Z
+# files: 1 runwt=/home/figs/classify-129388/base-1129d4c0 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-g9lFWR/home TMPDIR=/tmp/oc-classify-g9lFWR/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.extension-database-workers.config.ts
+include-file: /tmp/oc-classify-g9lFWR/tmp/oc-focused.xq6kH0/include.json
+include-file-contents:
+  [
+    "extensions/tlon/src/monitor/index.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-g9lFWR/tmp/oc-focused.xq6kH0/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.extension-database-workers.config.ts --maxWorkers=1 extensions/tlon/src/monitor/index.test.ts
+logs: /tmp/oc-classify-g9lFWR/tmp/oc-focused.xq6kH0
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-1129d4c0
+
+[vitest-workers] local cache hit after 2197ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared c825a9cf95b1 in 2277ms (20380 inputs, 25474 outputs)
+[vitest] still running with no output for 30000ms.
+ ✓ |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > routes ~nec's 'approve missing' through the owner command boundary 24ms
+ ✓ |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > routes ~nec's 'pending' through the owner command boundary 9ms
+ ✓ |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > routes ~bus's 'pending' through the owner command boundary 14ms
+ ✓ |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > monitorTlonProvider authentication retry > uses the shared abort-aware sleep for retry backoff 16ms
+ ✓ |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > awaits cumulative Tlon discovery persistence and retries failed writes 64ms
+ ✓ |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > awaits owner group invite acceptance and retries failed writes 61ms
+ ✓ |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > awaits allowlisted group invite acceptance and retries failed writes 59ms
+ ✓ |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > retries failed owner DM invite acceptance before acknowledgement 62ms
+ ✓ |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > retries failed allowlisted DM invite acceptance before acknowledgement 65ms
+ ✓ |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > persists group invite approval before notification and acknowledgement 62ms
+ ✓ |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > preserves an oversized queue and applies an explicit owner approval 67ms
+ ✓ |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > keeps saturated DM invites retryable while notifying the owner once 65ms
+ ✓ |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > continues startup after an initial group invite write fails 60ms
+ ✓ |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > monitorTlonProvider reply prefixes > delivers the selected model prefix through the shared dispatcher 14553ms
+ ✓ |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > monitorTlonProvider sender roles > labels unprefixed sender from the admitted sender 59ms
+ ✓ |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > monitorTlonProvider sender roles > labels missing owner from the admitted sender 59ms
+ ✓ |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > monitorTlonProvider sender roles > labels user group message from the admitted sender 57ms
+ ✓ |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > monitorTlonProvider sender roles > labels owner suffix lookalike from the admitted sender 59ms
+stderr | extensions/tlon/src/monitor/index.test.ts > monitorTlonProvider inbound media truth > reports a failed download beside successful ima… to the model without changing command text
+[tlon-media] Error downloading inbound media
+
+ ✓ |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > monitorTlonProvider inbound media truth > reports a failed download beside successful ima… to the model without changing command text 60ms
+ ✓ |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > monitorTlonProvider inbound media truth > reports images beyond the eight-image cap to the model without changing command text 58ms
+ ✓ |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > monitorTlonProvider shutdown > does not authenticate when the shutdown signal is already aborted 8ms
+ ✓ |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > monitorTlonProvider shutdown > cleans up real Urbit HTTP and SSE after abort during the SSE handshake 57ms
+ ✓ |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > monitorTlonProvider shutdown > cleans up real Urbit HTTP and SSE after normal abort after the SSE connection 59ms
+ × |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > monitorTlonProvider shutdown > streams deeply nested poison and capped messages over real HTTP SSE through production handlers and recovers on the next messages 855ms
+   → expected "vi.fn()" to be called with arguments: [ Array(1) ]
+
+Received:
+
+  1st vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Starting monitor for ~zod",
+  ]
+
+  2nd vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Attempting authentication to http://127.0.0.1:46869...",
+  ]
+
+  3rd vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Migrated dmAllowlist from config to settings store",
+  ]
+
+  4th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Migrated groupChannels from config to settings store",
+  ]
+
+  5th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Added 1 manual groupChannels to monitoring",
+  ]
+
+  6th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Monitoring 1 group channel(s): chat/~zod/general",
+  ]
+
+  7th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Subscribing to firehose updates...",
+  ]
+
+  8th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Subscribed to channels firehose (/v2)",
+  ]
+
+  9th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Subscribed to chat firehose (/v3)",
+  ]
+
+  10th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Subscribed to contacts updates (/v1/news)",
+  ]
+
+  11th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Subscribed to groups-ui for real-time channel detection",
+  ]
+
+  12th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Subscribed to foreigns (/v1/foreigns) for auto-accepting group invites",
+  ]
+
+  13th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Watching channel: chat/~zod/general",
+  ]
+
+  14th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] All subscriptions registered, connecting to SSE stream...",
+  ]
+
+  15th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Connected! Firehose subscriptions active",
+  ]
+
+
+Number of calls: 15
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > monitorTlonProvider shutdown > streams deeply nested poison and capped messages over real HTTP SSE through production handlers and recovers on the next messages
+AssertionError: expected "vi.fn()" to be called with arguments: [ Array(1) ]
+
+Received:
+
+  1st vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Starting monitor for ~zod",
+  ]
+
+  2nd vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Attempting authentication to http://127.0.0.1:46869...",
+  ]
+
+  3rd vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Migrated dmAllowlist from config to settings store",
+  ]
+
+  4th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Migrated groupChannels from config to settings store",
+  ]
+
+  5th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Added 1 manual groupChannels to monitoring",
+  ]
+
+  6th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Monitoring 1 group channel(s): chat/~zod/general",
+  ]
+
+  7th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Subscribing to firehose updates...",
+  ]
+
+  8th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Subscribed to channels firehose (/v2)",
+  ]
+
+  9th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Subscribed to chat firehose (/v3)",
+  ]
+
+  10th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Subscribed to contacts updates (/v1/news)",
+  ]
+
+  11th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Subscribed to groups-ui for real-time channel detection",
+  ]
+
+  12th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Subscribed to foreigns (/v1/foreigns) for auto-accepting group invites",
+  ]
+
+  13th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Watching channel: chat/~zod/general",
+  ]
+
+  14th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] All subscriptions registered, connecting to SSE stream...",
+  ]
+
+  15th vi.fn() call:
+
+  [
+-   "tlon dropped channels event: Tlon firehose event is too deeply nested to store.",
++   "[tlon] Connected! Firehose subscriptions active",
+  ]
+
+
+Number of calls: 15
+
+ ❯ extensions/tlon/src/monitor/index.test.ts:1091:27
+    1089|         },
+    1090|       ]);
+    1091|       expect(runtime.log).toHaveBeenCalledWith(
+       |                           ^
+    1092|         "tlon dropped channels event: Tlon firehose event is too deepl…
+    1093|       );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 23 passed (24)
+   Start at  23:41:08
+   Duration  56.52s (transform 62%, tests 30%, import 8%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 config=test/vitest/vitest.extension-database-workers.config.ts files=extensions/tlon/src/monitor/index.test.ts
+failing-tests:
+ × |extension-database-workers| extensions/tlon/src/monitor/index.test.ts > monitorTlonProvider shutdown > streams deeply nested poison and capped messages over real HTTP SSE through production handlers and recovers on the next messages 855ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 23 passed (24)]
+# exit=1

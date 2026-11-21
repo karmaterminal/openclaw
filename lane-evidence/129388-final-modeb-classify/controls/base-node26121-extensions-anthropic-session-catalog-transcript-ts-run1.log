@@ -1,0 +1,135 @@
+# ctl ref=base sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 file=extensions/anthropic/session-catalog-transcript.test.ts run=1 mode=node26121 start=2026-11-21T07:37:24Z
+# files: 1 runwt=/home/figs/classify-129388/base-1129d4c0 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-KzUquJ/home TMPDIR=/tmp/oc-classify-KzUquJ/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.extension-providers.config.ts
+include-file: /tmp/oc-classify-KzUquJ/tmp/oc-focused.0oSiVL/include.json
+include-file-contents:
+  [
+    "extensions/anthropic/session-catalog-transcript.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-KzUquJ/tmp/oc-focused.0oSiVL/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.extension-providers.config.ts --maxWorkers=1 extensions/anthropic/session-catalog-transcript.test.ts
+logs: /tmp/oc-classify-KzUquJ/tmp/oc-focused.0oSiVL
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-1129d4c0
+
+[vitest-workers] local cache miss after 5622ms
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js (48:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js:48:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m48 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js (11:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js:11:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m11 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js (6:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js:6:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m6 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js (9:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js:9:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m9 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js (12:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js:12:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m12 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+[vitest] still running with no output for 30000ms.
+[vitest-workers] prepared b5d06de07670 in 36134ms (20380 inputs, 25474 outputs)
+ × |extension-providers| extensions/anthropic/session-catalog-transcript.test.ts > pages deeply nested Claude content without losing text 75ms
+   → expected { type: 'agentMessage', …(6) } to match object { type: 'agentMessage', …(4) }
+(3 matching properties omitted from actual)
+stderr | unknown test
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] extensions/anthropic/session-catalog-transcript.test.ts: retiring openclaw.sessionStateNotices
+
+ × |extension-providers| extensions/anthropic/session-catalog-transcript.test.ts > pages deeply nested Claude metadata without losing text 42ms
+   → expected { type: 'agentMessage', …(6) } to match object { type: 'agentMessage', …(4) }
+(3 matching properties omitted from actual)
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |extension-providers| extensions/anthropic/session-catalog-transcript.test.ts > pages deeply nested Claude content without losing text
+ FAIL  |extension-providers| extensions/anthropic/session-catalog-transcript.test.ts > pages deeply nested Claude metadata without losing text
+AssertionError: expected { type: 'agentMessage', …(6) } to match object { type: 'agentMessage', …(4) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "model": "fixture-model",
+    "timestamp": "2026-01-01T00:00:00Z",
+-   "truncated": true,
+    "type": "agentMessage",
+    "uuid": "latest",
+  }
+
+ ❯ extensions/anthropic/session-catalog-transcript.test.ts:<redacted len=5>
+     32|     const page = await readLocalClaudeTranscriptPage({ threadId, limit…
+     33|     const item = page.items[0];
+     34|     expect(item).toMatchObject({
+       |                  ^
+     35|       type: "agentMessage",
+     36|       uuid: "latest",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed (2)
+   Start at  23:37:26
+   Duration  57.24s (transform 93%, import 4%, worker 2%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 config=test/vitest/vitest.extension-providers.config.ts files=extensions/anthropic/session-catalog-transcript.test.ts
+failing-tests:
+ × |extension-providers| extensions/anthropic/session-catalog-transcript.test.ts > pages deeply nested Claude content without losing text 75ms
+ × |extension-providers| extensions/anthropic/session-catalog-transcript.test.ts > pages deeply nested Claude metadata without losing text 42ms
+VERDICT RED [Test Files 1 failed (1); Tests 2 failed (2)]
+# exit=1

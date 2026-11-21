@@ -1,7 +1,8 @@
 """Build a Mode-B failset from downloaded openclaw-local-ci-batch-* artifacts.
 
-Union of each shard's summary.json .failures[] and the logs' `x` lines (file > title),
-plus every `FAILED (error:` sub-shard crash line. Run with `python3 -I failset.py DLDIR OUT`.
+Union of each shard's summary.json .failures[] and the logs' `x` lines (file > title), the
+unprefixed `x` lines of a cancelled shard's *.in-flight.log, plus every `FAILED (error:` sub-shard
+crash line. Run with `python3 -I failset.py DLDIR OUT`.
 Writes OUT.shards.tsv, OUT.tests.tsv, OUT.crashes.tsv, OUT.other.tsv.
 """
 import json
@@ -14,6 +15,7 @@ XLINE = re.compile(r"^\[(shard(?:-failure)?):([^\]]+)\]\s+×\s+(.*)$")
 TESTFILE = re.compile(r"\S+\.(?:test|e2e|spec)[\w.-]*\.(?:ts|tsx|mts|cts|js|mjs)")
 CRASH = re.compile(r"^\[shard-failure:([^\]]+)\]\s+FAILED \(error:(.*)\)\s*$")
 TAILMS = re.compile(r"\s+\d+(?:\.\d+)?\s?ms$")
+INFLIGHT = re.compile(r"^\s*×\s+(\S+)\s+(.*)$")
 
 dl, out = sys.argv[1], sys.argv[2]
 shards, tests, crashes, other = [], {}, [], []
@@ -66,6 +68,16 @@ for batch in sorted(os.listdir(dl)):
                         crashes.append([batch, shard, name, m.group(1), m.group(2).strip()])
                         continue
                     m = XLINE.match(line)
+                    if not m and name.endswith(".in-flight.log"):
+                        # A cancelled shard's in-flight flush prints vitest lines unprefixed.
+                        m = INFLIGHT.match(line)
+                        if m:
+                            rest = m.group(2)
+                            fm = TESTFILE.search(rest)
+                            if fm and " > " in rest[fm.end():]:
+                                title = TAILMS.sub("", rest[fm.end():].split(" > ", 1)[1].strip())
+                                add((shard, fm.group(0), title), "in-flight", shard, m.group(1))
+                        continue
                     if not m:
                         continue
                     rest = m.group(3)
