@@ -1,0 +1,155 @@
+# ctl ref=base sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 file=test/scripts/vitest-worker-shutdown.test.ts run=1 mode=node26121 start=2026-11-21T05:59:51Z
+# files: 1
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-T68VD3/home TMPDIR=/tmp/oc-classify-T68VD3/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.tooling.config.ts
+include-file: /tmp/oc-classify-T68VD3/tmp/oc-focused.SAcJ86/include.json
+include-file-contents:
+  [
+    "test/scripts/vitest-worker-shutdown.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-T68VD3/tmp/oc-focused.SAcJ86/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.tooling.config.ts --maxWorkers=1 test/scripts/vitest-worker-shutdown.test.ts
+logs: /tmp/oc-classify-T68VD3/tmp/oc-focused.SAcJ86
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-1129d4c0
+
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-1129d4c0
+
+[vitest-workers] local cache miss after 1224ms
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js (48:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js:48:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m48 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js (11:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js:11:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m11 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js (6:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js:6:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m6 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js (12:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js:12:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m12 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js (9:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js:9:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m9 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+[vitest] still running with no output for 30000ms.
+[vitest-workers] prepared 57868e1891e9 in 35077ms (20380 inputs, 25474 outputs)
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins disposal work before honoring SIGINT 990ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins disposal work before honoring SIGTERM 1063ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins disposal work before honoring SIGINT 1079ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins disposal work before honoring SIGTERM 1084ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins admission work before honoring SIGINT 1080ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins admission work before honoring SIGTERM 1063ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins compilation work before honoring SIGINT 979ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins compilation work before honoring SIGTERM 915ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins compilation work before honoring SIGINT 1040ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins compilation work before honoring SIGTERM 1017ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins compilation work before honoring SIGINT 1401ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins compilation work before honoring SIGTERM 1394ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci-shared wrapper joins compilation work before honoring SIGINT 1295ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci-shared wrapper joins compilation work before honoring SIGTERM 1370ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins admission work before honoring SIGINT 1376ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins admission work before honoring SIGTERM 1489ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins disposal work before honoring SIGINT 1495ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins disposal work before honoring SIGTERM 1528ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci-disconnect wrapper joins admission work before honoring SIGTERM 1482ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins deletion work before honoring SIGINT 1407ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins deletion work before honoring SIGTERM 1460ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins deletion work before honoring SIGINT 906ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins deletion work before honoring SIGTERM 950ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins deletion work before honoring SIGINT 1048ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins deletion work before honoring SIGTERM 1061ms
+(node:2848) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+stderr | test/scripts/vitest-worker-shutdown.test.ts > rejects a live borrower when its owner closes during verification
+[vitest-workers] prepared be5336b0a644 in 5ms (3 inputs, 3 outputs)
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > rejects a live borrower when its owner closes during verification
+[vitest-workers] prepared be5336b0a644 in 5ms (3 inputs, 3 outputs)
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > rejects a live borrower when its owner closes during verification
+[vitest-workers] verifying completed generation before cleanup
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > rejects a live borrower when its owner closes during verification
+[vitest-workers] verifying completed generation before cleanup
+
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > rejects a live borrower when its owner closes during verification 169ms
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts (26 tests) 33418ms
+   ✓ direct wrapper joins disposal work before honoring SIGINT 990ms
+   ✓ direct wrapper joins disposal work before honoring SIGTERM 1063ms
+   ✓ serial wrapper joins disposal work before honoring SIGINT 1079ms
+   ✓ serial wrapper joins disposal work before honoring SIGTERM 1084ms
+   ✓ direct wrapper joins admission work before honoring SIGINT 1080ms
+   ✓ direct wrapper joins admission work before honoring SIGTERM 1063ms
+   ✓ direct wrapper joins compilation work before honoring SIGINT 979ms
+   ✓ direct wrapper joins compilation work before honoring SIGTERM 915ms
+   ✓ serial wrapper joins compilation work before honoring SIGINT 1040ms
+   ✓ serial wrapper joins compilation work before honoring SIGTERM 1017ms
+   ✓ ci wrapper joins compilation work before honoring SIGINT 1401ms
+   ✓ ci wrapper joins compilation work before honoring SIGTERM 1394ms
+   ✓ ci-shared wrapper joins compilation work before honoring SIGINT 1295ms
+   ✓ ci-shared wrapper joins compilation work before honoring SIGTERM 1370ms
+   ✓ ci wrapper joins admission work before honoring SIGINT 1376ms
+   ✓ ci wrapper joins admission work before honoring SIGTERM 1489ms
+   ✓ ci wrapper joins disposal work before honoring SIGINT 1495ms
+   ✓ ci wrapper joins disposal work before honoring SIGTERM 1528ms
+   ✓ ci-disconnect wrapper joins admission work before honoring SIGTERM 1482ms
+   ✓ ci wrapper joins deletion work before honoring SIGINT 1407ms
+   ✓ ci wrapper joins deletion work before honoring SIGTERM 1460ms
+   ✓ direct wrapper joins deletion work before honoring SIGINT 906ms
+   ✓ direct wrapper joins deletion work before honoring SIGTERM 950ms
+   ✓ serial wrapper joins deletion work before honoring SIGINT 1048ms
+   ✓ serial wrapper joins deletion work before honoring SIGTERM 1061ms
+
+ Test Files  1 passed (1)
+      Tests  26 passed (26)
+   Start at  21:59:53
+   Duration  72.22s (transform 52%, tests 46%, worker 1%)
+
+
+ Test Files  1 passed (1)
+      Tests  26 passed (26)
+   Start at  21:59:53
+   Duration  72.22s (transform 52%, tests 46%, worker 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 config=test/vitest/vitest.tooling.config.ts files=test/scripts/vitest-worker-shutdown.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 26 passed (26)]
+# exit=0

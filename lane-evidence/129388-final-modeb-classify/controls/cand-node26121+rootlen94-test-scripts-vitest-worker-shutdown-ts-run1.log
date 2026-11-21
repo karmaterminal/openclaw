@@ -1,0 +1,1566 @@
+# ctl ref=cand sha=93a1e356c7aabf0d868560e46790b07449813840 file=test/scripts/vitest-worker-shutdown.test.ts run=1 mode=node26121+rootlen94 start=2026-11-21T06:08:23Z
+# files: 1 runwt=/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x (94 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-FVpo5M/home TMPDIR=/tmp/oc-classify-FVpo5M/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.tooling.config.ts
+include-file: /tmp/oc-classify-FVpo5M/tmp/oc-focused.41UkoV/include.json
+include-file-contents:
+  [
+    "test/scripts/vitest-worker-shutdown.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-FVpo5M/tmp/oc-focused.41UkoV/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.tooling.config.ts --maxWorkers=1 test/scripts/vitest-worker-shutdown.test.ts
+logs: /tmp/oc-classify-FVpo5M/tmp/oc-focused.41UkoV
+
+ RUN  v5.0.5 /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x
+
+
+ RUN  v5.0.5 /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x
+
+[vitest-workers] local cache miss after 2267ms
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js (48:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js:48:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m48 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js (11:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js:11:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m11 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js (6:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js:6:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m6 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js (9:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js:9:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m9 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js (12:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js:12:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m12 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+[vitest] still running with no output for 30000ms.
+[vitest-workers] prepared 91e1bfa5a999 in 34116ms (20558 inputs, 25754 outputs)
+stderr | test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins disposal work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins disposal work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins disposal work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins disposal work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins disposal work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins disposal work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins disposal work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins disposal work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins admission work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins admission work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins admission work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins admission work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins disposal work before honoring SIGINT 33ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-B6gjkL/verification-ready
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins disposal work before honoring SIGTERM 13ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-2vPmCt/verification-ready
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins disposal work before honoring SIGINT 14ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-ezSrCs/verification-ready
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins disposal work before honoring SIGTERM 16ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-izQwzb/verification-ready
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins admission work before honoring SIGINT 14ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-PGDCpC/verification-ready
+stderr | test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins compilation work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins compilation work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins compilation work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins compilation work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins compilation work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins compilation work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins compilation work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins compilation work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins compilation work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins compilation work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins compilation work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins compilation work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > ci-shared wrapper joins compilation work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > ci-shared wrapper joins compilation work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > ci-shared wrapper joins compilation work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > ci-shared wrapper joins compilation work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins admission work before honoring SIGTERM 16ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-03vlDN/verification-ready
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins compilation work before honoring SIGINT 14ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-RJpwJm/compiler-ready
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins compilation work before honoring SIGTERM 13ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-tgoCu3/compiler-ready
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins compilation work before honoring SIGINT 15ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-oHcp5r/compiler-ready
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins compilation work before honoring SIGTERM 12ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-ZOl0Tf/compiler-ready
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins compilation work before honoring SIGINT 11ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-AqPyyx/compiler-ready
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins compilation work before honoring SIGTERM 12ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-24evG4/compiler-ready
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci-shared wrapper joins compilation work before honoring SIGINT 12ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-h5SnVz/compiler-ready
+stderr | test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins admission work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins admission work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins admission work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins admission work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins disposal work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins disposal work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins disposal work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins disposal work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > ci-disconnect wrapper joins admission work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > ci-disconnect wrapper joins admission work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins deletion work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins deletion work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins deletion work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins deletion work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins deletion work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins deletion work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins deletion work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins deletion work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins deletion work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins deletion work before honoring SIGINT
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci-shared wrapper joins compilation work before honoring SIGTERM 11ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-TOUGs2/compiler-ready
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins admission work before honoring SIGINT 13ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-gx1cGm/verification-ready
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins admission work before honoring SIGTERM 12ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-0R1CRr/verification-ready
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins disposal work before honoring SIGINT 8ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-cJT3s7/verification-ready
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins disposal work before honoring SIGTERM 13ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-dqum1B/verification-ready
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci-disconnect wrapper joins admission work before honoring SIGTERM 13ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-JB0Iq0/verification-ready
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins deletion work before honoring SIGINT 9ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-hicrjk/verification-ready
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins deletion work before honoring SIGTERM 8ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-oQHOdy/verification-ready
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins deletion work before honoring SIGINT 7ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-tv5cvC/verification-ready
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins deletion work before honoring SIGTERM 10ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-rX2EC3/verification-ready
+stderr | test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins deletion work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins deletion work before honoring SIGTERM
+Error: spawn E2BIG
+    at ChildProcess.spawn (node:internal/child_process:486:11)
+    at spawn (node:child_process:860:9)
+    at runManagedCommandInner (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:824:13)
+    at runOwnedManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:744:16)
+    at runManagedCommand (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/scripts/lib/managed-child-process.mts:595:12)
+    at runNodeScript (/home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/helpers/run-node-script.ts:46:20)
+    at /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/test/scripts/vitest-worker-shutdown.test.ts:288:9 {
+  errno: -7,
+  code: 'E2BIG',
+  syscall: 'spawn'
+} 
+
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins deletion work before honoring SIGINT 12ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-x9eo7T/verification-ready
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins deletion work before honoring SIGTERM 12ms
+   → Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-j8vGxf/verification-ready
+(node:505) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+stderr | test/scripts/vitest-worker-shutdown.test.ts > rejects a live borrower when its owner closes during verification
+[vitest-workers] prepared 735377fcf28d in 5ms (3 inputs, 3 outputs)
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > rejects a live borrower when its owner closes during verification
+[vitest-workers] prepared 735377fcf28d in 5ms (3 inputs, 3 outputs)
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > rejects a live borrower when its owner closes during verification
+[vitest-workers] verifying completed generation before cleanup
+
+stderr | test/scripts/vitest-worker-shutdown.test.ts > rejects a live borrower when its owner closes during verification
+[vitest-workers] verifying completed generation before cleanup
+
+ ✓ |tooling| test/scripts/vitest-worker-shutdown.test.ts > rejects a live borrower when its owner closes during verification 146ms
+ ❯ |tooling| test/scripts/vitest-worker-shutdown.test.ts (26 tests | 25 failed) 3991ms
+   × direct wrapper joins disposal work before honoring SIGINT 33ms
+   × direct wrapper joins disposal work before honoring SIGTERM 13ms
+   × serial wrapper joins disposal work before honoring SIGINT 14ms
+   × serial wrapper joins disposal work before honoring SIGTERM 16ms
+   × direct wrapper joins admission work before honoring SIGINT 14ms
+   × direct wrapper joins admission work before honoring SIGTERM 16ms
+   × direct wrapper joins compilation work before honoring SIGINT 14ms
+   × direct wrapper joins compilation work before honoring SIGTERM 13ms
+   × serial wrapper joins compilation work before honoring SIGINT 15ms
+   × serial wrapper joins compilation work before honoring SIGTERM 12ms
+   × ci wrapper joins compilation work before honoring SIGINT 11ms
+   × ci wrapper joins compilation work before honoring SIGTERM 12ms
+   × ci-shared wrapper joins compilation work before honoring SIGINT 12ms
+   × ci-shared wrapper joins compilation work before honoring SIGTERM 11ms
+   × ci wrapper joins admission work before honoring SIGINT 13ms
+   × ci wrapper joins admission work before honoring SIGTERM 12ms
+   × ci wrapper joins disposal work before honoring SIGINT 8ms
+   × ci wrapper joins disposal work before honoring SIGTERM 13ms
+   × ci-disconnect wrapper joins admission work before honoring SIGTERM 13ms
+   × ci wrapper joins deletion work before honoring SIGINT 9ms
+   × ci wrapper joins deletion work before honoring SIGTERM 8ms
+   × direct wrapper joins deletion work before honoring SIGINT 7ms
+   × direct wrapper joins deletion work before honoring SIGTERM 10ms
+   × serial wrapper joins deletion work before honoring SIGINT 12ms
+   × serial wrapper joins deletion work before honoring SIGTERM 12ms
+   ✓ rejects a live borrower when its owner closes during verification 146ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 25 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins disposal work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-B6gjkL/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins disposal work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-2vPmCt/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins disposal work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-ezSrCs/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins disposal work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-izQwzb/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins admission work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-PGDCpC/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins admission work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-03vlDN/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins compilation work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-RJpwJm/compiler-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins compilation work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-tgoCu3/compiler-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins compilation work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-oHcp5r/compiler-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins compilation work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-ZOl0Tf/compiler-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins compilation work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-AqPyyx/compiler-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins compilation work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-24evG4/compiler-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci-shared wrapper joins compilation work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-h5SnVz/compiler-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci-shared wrapper joins compilation work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-TOUGs2/compiler-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins admission work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-gx1cGm/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins admission work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-0R1CRr/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins disposal work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-cJT3s7/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins disposal work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-dqum1B/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci-disconnect wrapper joins admission work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-JB0Iq0/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins deletion work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-hicrjk/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[20/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins deletion work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-oQHOdy/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[21/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins deletion work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-tv5cvC/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins deletion work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-rX2EC3/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[23/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins deletion work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-x9eo7T/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[24/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins deletion work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-j8vGxf/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[25/25]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  25 failed | 1 passed (26)
+   Start at  22:08:25
+   Duration  41.77s (transform 87%, tests 10%, worker 3%, import 1%)
+
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 25 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins disposal work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-B6gjkL/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins disposal work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-2vPmCt/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins disposal work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-ezSrCs/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins disposal work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-izQwzb/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins admission work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-PGDCpC/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins admission work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-03vlDN/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins compilation work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-RJpwJm/compiler-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins compilation work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-tgoCu3/compiler-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins compilation work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-oHcp5r/compiler-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins compilation work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-ZOl0Tf/compiler-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins compilation work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-AqPyyx/compiler-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins compilation work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-24evG4/compiler-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci-shared wrapper joins compilation work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-h5SnVz/compiler-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci-shared wrapper joins compilation work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-TOUGs2/compiler-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins admission work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-gx1cGm/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins admission work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-0R1CRr/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins disposal work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-cJT3s7/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins disposal work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-dqum1B/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci-disconnect wrapper joins admission work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-JB0Iq0/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins deletion work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-hicrjk/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[20/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins deletion work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-oQHOdy/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[21/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins deletion work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-tv5cvC/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins deletion work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-rX2EC3/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[23/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins deletion work before honoring SIGINT
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-x9eo7T/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[24/25]⎯
+
+ FAIL  |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins deletion work before honoring SIGTERM
+Error: Missing shutdown receipt: /home/figs/classify-129388/lr/ci-batch-work-cand-00000000000000000000000000000000000/shard-1-x/.artifacts/worker proof-j8vGxf/verification-ready
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:344:23
+    342|               // separate transports can deliver command completion fi…
+    343|               if (!fs.existsSync(filename) || fs.statSync(filename).si…
+    344|                 throw new Error(`Missing shutdown receipt: ${filename}…
+       |                       ^
+    345|               }
+    346|             }),
+ ❯ test/scripts/vitest-worker-shutdown.test.ts:356:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[25/25]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  25 failed | 1 passed (26)
+   Start at  22:08:25
+   Duration  41.78s (transform 87%, tests 10%, worker 3%, import 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=93a1e356c7aabf0d868560e46790b07449813840 config=test/vitest/vitest.tooling.config.ts files=test/scripts/vitest-worker-shutdown.test.ts
+failing-tests:
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins disposal work before honoring SIGINT 33ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins disposal work before honoring SIGTERM 13ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins disposal work before honoring SIGINT 14ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins disposal work before honoring SIGTERM 16ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins admission work before honoring SIGINT 14ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins admission work before honoring SIGTERM 16ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins compilation work before honoring SIGINT 14ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins compilation work before honoring SIGTERM 13ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins compilation work before honoring SIGINT 15ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins compilation work before honoring SIGTERM 12ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins compilation work before honoring SIGINT 11ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins compilation work before honoring SIGTERM 12ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci-shared wrapper joins compilation work before honoring SIGINT 12ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci-shared wrapper joins compilation work before honoring SIGTERM 11ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins admission work before honoring SIGINT 13ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins admission work before honoring SIGTERM 12ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins disposal work before honoring SIGINT 8ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins disposal work before honoring SIGTERM 13ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci-disconnect wrapper joins admission work before honoring SIGTERM 13ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins deletion work before honoring SIGINT 9ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins deletion work before honoring SIGTERM 8ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins deletion work before honoring SIGINT 7ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins deletion work before honoring SIGTERM 10ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins deletion work before honoring SIGINT 12ms
+ × |tooling| test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins deletion work before honoring SIGTERM 12ms
+VERDICT RED [Test Files 1 failed (1); Tests 25 failed | 1 passed (26)]
+# exit=1

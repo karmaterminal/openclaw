@@ -1,0 +1,8 @@
+# e2big-probe.mts at both refs; 2026-11-21T06:10:04Z; node v26.12.1
+{"wt":"/home/figs/classify-129388/base-1129d4c0","sourceRoot":"/home/figs/classify-129388/base-1129d4c0","sourceRootLength":40,"preparedRoot":"/tmp/oc-classify-AbCdEf/tmp/oc-vt-prepared-cli-AbCdEf","preparedRootLength":53,"closureTsModules":430,"closureRelPathBytes":14938,"nodeOptionsBytes":106827,"maxArgStrlen":131072,"e2big":false}
+{"wt":"/home/figs/classify-129388/base-1129d4c0","sourceRoot":"/home/runner/_work/_temp/ci-batch-work-44871298969-1-hosted-batch-004/shard-1-compact-small-30","sourceRootLength":94,"preparedRoot":"/tmp/oce0da13/.oc-ci-tmp/sveu/t/oc-vt-prepared-cli-AbCdEf","preparedRootLength":57,"closureTsModules":430,"closureRelPathBytes":14938,"nodeOptionsBytes":140087,"maxArgStrlen":131072,"e2big":true}
+{"wt":"/home/figs/classify-129388/cand-93a1e356","sourceRoot":"/home/figs/classify-129388/cand-93a1e356","sourceRootLength":40,"preparedRoot":"/tmp/oc-classify-AbCdEf/tmp/oc-vt-prepared-cli-AbCdEf","preparedRootLength":53,"closureTsModules":431,"closureRelPathBytes":14973,"nodeOptionsBytes":107075,"maxArgStrlen":131072,"e2big":false}
+{"wt":"/home/figs/classify-129388/cand-93a1e356","sourceRoot":"/home/runner/_work/_temp/ci-batch-work-44871298969-1-hosted-batch-004/shard-1-compact-small-30","sourceRootLength":94,"preparedRoot":"/tmp/oce0da13/.oc-ci-tmp/sveu/t/oc-vt-prepared-cli-AbCdEf","preparedRootLength":57,"closureTsModules":431,"closureRelPathBytes":14973,"nodeOptionsBytes":140411,"maxArgStrlen":131072,"e2big":true}
+# closure diff base→cand:
+128a129
+> src/bootstrap/node-compiler-args.ts
