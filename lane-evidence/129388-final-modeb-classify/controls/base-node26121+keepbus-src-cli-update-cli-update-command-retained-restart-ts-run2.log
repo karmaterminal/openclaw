@@ -1,0 +1,54 @@
+# ctl ref=base sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 file=src/cli/update-cli/update-command-retained-restart.test.ts run=2 mode=node26121+keepbus start=2026-11-21T06:59:19Z
+# files: 1 runwt=/home/figs/classify-129388/base-1129d4c0 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-Tvyo0z/home TMPDIR=/tmp/oc-classify-Tvyo0z/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.cli.config.ts
+include-file: /tmp/oc-classify-Tvyo0z/tmp/oc-focused.FG5N6y/include.json
+include-file-contents:
+  [
+    "src/cli/update-cli/update-command-retained-restart.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-Tvyo0z/tmp/oc-focused.FG5N6y/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.cli.config.ts --maxWorkers=1 src/cli/update-cli/update-command-retained-restart.test.ts
+logs: /tmp/oc-classify-Tvyo0z/tmp/oc-focused.FG5N6y
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-1129d4c0
+
+[vitest-workers] local cache hit after 2085ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 9355c8c4b1ed in 2177ms (20380 inputs, 25474 outputs)
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > restarts retained A with a real child and keeps both owners until native drain 1753ms
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: A 111ms
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: B 139ms
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: caller 130ms
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: executor 126ms
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: abort 108ms
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: binding 114ms
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: unavailable 460ms
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: scope 115ms
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: A after reset-failed 422ms
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: B after reset-failed 392ms
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rejects a same-root recovery before native inspection 92ms
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rejects a unretained recovery before native inspection 60ms
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rejects a forged recovery before native inspection 3ms
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > retains native rejection rather than reporting completed or readiness 433ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/cli/update-cli/update-command-retained-restart.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/cli/update-cli/update-command-retained-restart.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/cli/update-cli/update-command-retained-restart.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/cli/update-cli/update-command-retained-restart.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/cli/update-cli/update-command-retained-restart.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/cli/update-cli/update-command-retained-restart.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+
+ ✓ |cli| src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > retained-root query uses actual delegated authority 576ms
+
+ Test Files  1 passed (1)
+      Tests  16 passed (16)
+   Start at  22:59:21
+   Duration  10.87s (tests 48%, transform 39%, import 8%, worker 3%, setup 2%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 config=test/vitest/vitest.cli.config.ts files=src/cli/update-cli/update-command-retained-restart.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 16 passed (16)]
+# exit=0
