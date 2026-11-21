@@ -1,0 +1,29 @@
+# ctl ref=cand sha=93a1e356c7aabf0d868560e46790b07449813840 file=ui/src/test-helpers/new-session-page-opener.node.test.ts run=1 mode=node26121+PLAYWRIGHT_BROWSERS_PATH start=2026-11-21T08:45:29Z
+# files: 1 runwt=/home/figs/classify-129388/cand-93a1e356 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-dL6p8h/home TMPDIR=/tmp/oc-classify-dL6p8h/tmp PLAYWRIGHT_BROWSERS_PATH=/home/figs/.cache/ms-playwright
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.ui.config.ts
+include-file: /tmp/oc-classify-dL6p8h/tmp/oc-focused.8jL0LE/include.json
+include-file-contents:
+  [
+    "ui/src/test-helpers/new-session-page-opener.node.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-dL6p8h/tmp/oc-focused.8jL0LE/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.ui.config.ts --maxWorkers=1 ui/src/test-helpers/new-session-page-opener.node.test.ts
+logs: /tmp/oc-classify-dL6p8h/tmp/oc-focused.8jL0LE
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - JSON import "./control-ui-i18n-config.json" without import attributes (scripts/lib/control-ui-i18n-sync-plan.ts:2:41). Add `with { type: 'json' }`
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-93a1e356
+
+ ✓ |ui| ui/src/test-helpers/new-session-page-opener.node.test.ts > captures New Session failures before closing their contexts and starting the next test 1646ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  00:45:31
+   Duration  2.91s (tests 64%, worker 18%, environment 10%, import 6%, setup 2%, transform 1%)
+
+receipt head=93a1e356c7aabf0d868560e46790b07449813840 config=test/vitest/vitest.ui.config.ts files=ui/src/test-helpers/new-session-page-opener.node.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 1 passed (1)]
+# exit=0

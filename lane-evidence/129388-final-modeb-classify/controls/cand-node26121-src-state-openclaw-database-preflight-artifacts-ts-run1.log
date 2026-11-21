@@ -1,0 +1,68 @@
+# ctl ref=cand sha=93a1e356c7aabf0d868560e46790b07449813840 file=src/state/openclaw-database-preflight.artifacts.test.ts run=1 mode=node26121 start=2026-11-21T08:42:48Z
+# files: 1 runwt=/home/figs/classify-129388/cand-93a1e356 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-nTZbIw/home TMPDIR=/tmp/oc-classify-nTZbIw/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.unit.config.ts
+include-file: /tmp/oc-classify-nTZbIw/tmp/oc-focused.Xf0chV/include.json
+include-file-contents:
+  [
+    "src/state/openclaw-database-preflight.artifacts.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-nTZbIw/tmp/oc-focused.Xf0chV/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.unit.config.ts --maxWorkers=1 src/state/openclaw-database-preflight.artifacts.test.ts
+logs: /tmp/oc-classify-nTZbIw/tmp/oc-focused.Xf0chV
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-93a1e356
+
+[vitest-workers] local cache hit after 2249ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 960d32d764d9 in 2318ms (20558 inputs, 25754 outputs)
+ ✓ |unit| src/state/openclaw-database-preflight.artifacts.test.ts > retains the source-reader lock tolerance beyond the runtime busy timeout 8452ms
+ ✓ |unit| src/state/openclaw-database-preflight.artifacts.test.ts > unions native locators and aliases without dropping distinct stores 3358ms
+ ✓ |unit| src/state/openclaw-database-preflight.artifacts.test.ts > inspects incompatible agent schemas while an independent WAL writer keeps committing 4068ms
+ ✓ |unit| src/state/openclaw-database-preflight.artifacts.test.ts > admits a live agent store's schema without a stable copy while it keeps checkpointing 1546ms
+ ✓ |unit| src/state/openclaw-database-preflight.artifacts.test.ts > refuses a newer schema committed only to an open WAL without changing a source byte 1476ms
+ × |unit| src/state/openclaw-database-preflight.artifacts.test.ts > falls back to the private snapshot when the last owner closes during a preserving read 269ms
+   → expected 0 to be greater than 0
+ ✓ |unit| src/state/openclaw-database-preflight.artifacts.test.ts > ignores uncommitted writer versions without ending the owning transactions 1381ms
+ ✓ |unit| src/state/openclaw-database-preflight.artifacts.test.ts > fails closed when the state snapshot cannot be prepared 573ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/state/openclaw-database-preflight.artifacts.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/state/openclaw-database-preflight.artifacts.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/state/openclaw-database-preflight.artifacts.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/state/openclaw-database-preflight.artifacts.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/state/openclaw-database-preflight.artifacts.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/state/openclaw-database-preflight.artifacts.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/state/openclaw-database-preflight.artifacts.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/state/openclaw-database-preflight.artifacts.test.ts: retiring openclaw.agentDatabaseLifecycle
+
+ ✓ |unit| src/state/openclaw-database-preflight.artifacts.test.ts > fails closed when the main snapshot cannot be prepared 1419ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| src/state/openclaw-database-preflight.artifacts.test.ts > falls back to the private snapshot when the last owner closes during a preserving read
+AssertionError: expected 0 to be greater than 0
+ ❯ src/state/openclaw-database-preflight.artifacts.test.ts:417:29
+    415|   // Both paths ran: live families were read in place, closed ones wen…
+    416|   expect(outcomes.read).toBeGreaterThan(0);
+    417|   expect(outcomes.snapshot).toBeGreaterThan(0);
+       |                             ^
+    418| }, 60_000);
+    419|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 passed (9)
+   Start at  00:42:50
+   Duration  38.06s (tests 60%, transform 33%, import 4%, worker 3%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=93a1e356c7aabf0d868560e46790b07449813840 config=test/vitest/vitest.unit.config.ts files=src/state/openclaw-database-preflight.artifacts.test.ts
+failing-tests:
+ × |unit| src/state/openclaw-database-preflight.artifacts.test.ts > falls back to the private snapshot when the last owner closes during a preserving read 269ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 8 passed (9)]
+# exit=1
