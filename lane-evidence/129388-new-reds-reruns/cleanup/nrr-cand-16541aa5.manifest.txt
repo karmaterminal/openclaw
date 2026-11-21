@@ -1,0 +1,9 @@
+# worktree /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-cand-16541aa5
+# head 16541aa5a8ee81f1e505a414e2d21a758c43cbc2 (reachable on origin: origin/codeagent/129388-extdbw-local-shard)
+# tracked changes (staged+unstaged): 0
+# untracked, not ignored: 0
+# ignored files outside node_modules/, .cache/, .artifacts/: 0
+# rebuildable ignored dirs (not archived):
+  .cache 242156016 bytes 10302 files
+  .artifacts 273600665 bytes 25761 files
+  node_modules dirs: 208 (hard links from openclaw-129388-final-fix, lock 2873a286)
