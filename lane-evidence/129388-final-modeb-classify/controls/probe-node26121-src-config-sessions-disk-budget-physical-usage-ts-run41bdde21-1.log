@@ -1,0 +1,92 @@
+# ctl ref=probe sha=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f file=src/config/sessions/disk-budget.physical-usage.test.ts run=41bdde21-1 mode=node26121 start=2026-11-21T08:29:00Z
+# files: 1 runwt=/home/figs/classify-129388/probe-final (38 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-RuSkXy/home TMPDIR=/tmp/oc-classify-RuSkXy/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.infra.config.ts
+include-file: /tmp/oc-classify-RuSkXy/tmp/oc-focused.BINGge/include.json
+include-file-contents:
+  [
+    "src/config/sessions/disk-budget.physical-usage.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-RuSkXy/tmp/oc-focused.BINGge/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.infra.config.ts --maxWorkers=1 src/config/sessions/disk-budget.physical-usage.test.ts
+logs: /tmp/oc-classify-RuSkXy/tmp/oc-focused.BINGge
+[vitest-workers] local cache miss after 1499ms
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js (48:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js:48:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m48 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js (6:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js:6:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m6 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js (11:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js:11:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m11 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js (9:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js:9:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m9 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js (12:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js:12:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m12 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+[vitest-workers] prepared 616bffcffe1e in 33033ms (20344 inputs, 25418 outputs)
+
+ RUN  v5.0.5 /home/figs/classify-129388/probe-final
+
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > loads database ownership inspection only for multi-store scans 130ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > bounds per-artifact promise allocation inside the scan worker 14ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins a forced followup after maintenance failure (mutation fails: false) 109ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins a forced followup after maintenance failure (mutation fails: true) 101ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins real SDK mutation maintenance before native fixture drainage 2300ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins case-owned disk discovery before agent database cleanup completes 80ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > retains disk discovery cleanup custody when native retirement fails 124ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins a measurement admitted after drainage starts before retiring its worker 107ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > coalesces file teardown with another teardown while a runtime scan awaits retirement 169ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > coalesces runtime lifecycle cleanup with another teardown while a runtime scan awaits retirement 210ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > reports scan overload and retires queued scans before reusing workers 225ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > measures and prunes the canonical session artifacts through the SQLite selector 87ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > does not add synchronous realpath work as session artifacts grow 93ms
+
+ Test Files  1 passed (1)
+      Tests  13 passed (13)
+   Start at  00:29:36
+   Duration  22.23s (transform 71%, tests 17%, import 9%, setup 2%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=41bdde2111dd7031c93b47c57d7dad2e56bb0f5f config=test/vitest/vitest.infra.config.ts files=src/config/sessions/disk-budget.physical-usage.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 13 passed (13)]
+# exit=0

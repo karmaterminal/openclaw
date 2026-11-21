@@ -1,0 +1,141 @@
+# ctl ref=probe sha=93a1e356c7aabf0d868560e46790b07449813840 file=src/config/sessions/disk-budget.physical-usage.test.ts run=93a1e356-evt-1 mode=node26121 start=2026-11-21T08:33:30Z
+# files: 1 runwt=/home/figs/classify-129388/probe-final (38 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-sJTyW5/home TMPDIR=/tmp/oc-classify-sJTyW5/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.infra.config.ts
+include-file: /tmp/oc-classify-sJTyW5/tmp/oc-focused.aiSpj4/include.json
+include-file-contents:
+  [
+    "src/config/sessions/disk-budget.physical-usage.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-sJTyW5/tmp/oc-focused.aiSpj4/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.infra.config.ts --maxWorkers=1 src/config/sessions/disk-budget.physical-usage.test.ts
+logs: /tmp/oc-classify-sJTyW5/tmp/oc-focused.aiSpj4
+[vitest-workers] local cache miss after 1637ms
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js (48:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js:48:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m48 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js (11:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js:11:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m11 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js (6:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js:6:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m6 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js (12:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js:12:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m12 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js (9:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js:9:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m9 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+[vitest-workers] prepared d1a333222b8c in 33786ms (20558 inputs, 25754 outputs)
+
+ RUN  v5.0.5 /home/figs/classify-129388/probe-final
+
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > loads database ownership inspection only for multi-store scans 437ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > bounds per-artifact promise allocation inside the scan worker 275ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins a forced followup after maintenance failure (mutation fails: false) 194ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins a forced followup after maintenance failure (mutation fails: true) 86ms
+stderr | src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins real SDK mutation maintenance before native fixture drainage
+EVT KICK force=undefined running=false pending=false lastForced=-Infinity lastCheck=-Infinity now=1795250055594 blocked=undefined
+EVT RUN-START force=undefined
+EVT SCAN 1
+
+stderr | src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins real SDK mutation maintenance before native fixture drainage
+EVT DELETE-CALL
+
+stderr | src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins real SDK mutation maintenance before native fixture drainage
+EVT KICK force=true running=false pending=false lastForced=-Infinity lastCheck=-Infinity now=1795250056702 blocked=undefined
+EVT RUN-START force=true
+EVT SCAN 2
+
+stderr | src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins real SDK mutation maintenance before native fixture drainage
+EVT BODY-CHECK scans=2
+
+stderr | src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins real SDK mutation maintenance before native fixture drainage
+EVT RUN-END
+
+stderr | src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins real SDK mutation maintenance before native fixture drainage
+EVT RUN-END
+
+ × |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins real SDK mutation maintenance before native fixture drainage 2343ms
+   → expected 2 to be 1 // Object.is equality
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins case-owned disk discovery before agent database cleanup completes 101ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > retains disk discovery cleanup custody when native retirement fails 113ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins a measurement admitted after drainage starts before retiring its worker 103ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > coalesces file teardown with another teardown while a runtime scan awaits retirement 161ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > coalesces runtime lifecycle cleanup with another teardown while a runtime scan awaits retirement 168ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > reports scan overload and retires queued scans before reusing workers 239ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > measures and prunes the canonical session artifacts through the SQLite selector 109ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > does not add synchronous realpath work as session artifacts grow 124ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins real SDK mutation maintenance before native fixture drainage
+AssertionError: expected 2 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ src/config/sessions/disk-budget.physical-usage.test.ts:298:25
+    296|           ).toBeGreaterThan(0);
+    297|           console.error(`EVT BODY-CHECK scans=${scans}`);
+    298|           expect(scans).toBe(1);
+       |                         ^
+    299|           mutationBodyFinished.resolve(true);
+    300|         } catch (error) {
+ ❯ Module.withSessionHistoryBudgetSweepsForTest src/config/sessions/session-history-budget.test-support.ts:<redacted len=5>
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 12 passed (13)
+   Start at  00:34:06
+   Duration  11.16s (tests 41%, transform 38%, import 17%, setup 4%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=93a1e356c7aabf0d868560e46790b07449813840 config=test/vitest/vitest.infra.config.ts files=src/config/sessions/disk-budget.physical-usage.test.ts
+failing-tests:
+ × |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins real SDK mutation maintenance before native fixture drainage 2343ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 12 passed (13)]
+# exit=1

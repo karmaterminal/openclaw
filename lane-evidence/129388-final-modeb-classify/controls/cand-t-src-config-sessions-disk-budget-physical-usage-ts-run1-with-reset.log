@@ -1,0 +1,54 @@
+# ctl-t ref=cand sha=93a1e356c7aabf0d868560e46790b07449813840 file=src/config/sessions/disk-budget.physical-usage.test.ts config=test/vitest/vitest.infra.config.ts run=1-with-reset pattern=loads database ownership inspection|joins real SDK mutation maintenance start=2026-11-21T08:38:19Z
+[vitest-workers] local cache hit after 2173ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 75225325cbd3 in 2236ms (20558 inputs, 25754 outputs)
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-93a1e356
+
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > loads database ownership inspection only for multi-store scans 69ms
+ ↓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > bounds per-artifact promise allocation inside the scan worker
+ ↓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins a forced followup after maintenance failure (mutation fails: false)
+ ↓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins a forced followup after maintenance failure (mutation fails: true)
+ × |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins real SDK mutation maintenance before native fixture drainage 2343ms
+   → expected 2 to be 1 // Object.is equality
+ ↓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins case-owned disk discovery before agent database cleanup completes
+ ↓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > retains disk discovery cleanup custody when native retirement fails
+ ↓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins a measurement admitted after drainage starts before retiring its worker
+ ↓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > coalesces file teardown with another teardown while a runtime scan awaits retirement
+ ↓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > coalesces runtime lifecycle cleanup with another teardown while a runtime scan awaits retirement
+ ↓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > reports scan overload and retires queued scans before reusing workers
+ ↓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > measures and prunes the canonical session artifacts through the SQLite selector
+ ↓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > does not add synchronous realpath work as session artifacts grow
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins real SDK mutation maintenance before native fixture drainage
+AssertionError: expected 2 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ src/config/sessions/disk-budget.physical-usage.test.ts:295:25
+    293|             "Actual SDK mutations must reach the canonical observed qu…
+    294|           ).toBeGreaterThan(0);
+    295|           expect(scans).toBe(1);
+       |                         ^
+    296|           mutationBodyFinished.resolve(true);
+    297|         } catch (error) {
+ ❯ Module.withSessionHistoryBudgetSweepsForTest src/config/sessions/session-history-budget.test-support.ts:<redacted len=5>
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed | 11 skipped (13)
+   Start at  00:38:23
+   Duration  9.01s (transform 47%, tests 28%, import 21%, setup 4%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+# exit=1

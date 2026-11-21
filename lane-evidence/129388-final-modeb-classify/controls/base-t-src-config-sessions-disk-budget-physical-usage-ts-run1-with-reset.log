@@ -1,0 +1,29 @@
+# ctl-t ref=base sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 file=src/config/sessions/disk-budget.physical-usage.test.ts config=test/vitest/vitest.infra.config.ts run=1-with-reset pattern=loads database ownership inspection|joins real SDK mutation maintenance start=2026-11-21T08:38:40Z
+[vitest-workers] local cache hit after 2312ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared aa3fc71236f4 in 2374ms (20380 inputs, 25474 outputs)
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-1129d4c0
+
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > loads database ownership inspection only for multi-store scans 52ms
+ ↓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > bounds per-artifact promise allocation inside the scan worker
+ ↓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins a forced followup after maintenance failure (mutation fails: false)
+ ↓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins a forced followup after maintenance failure (mutation fails: true)
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins real SDK mutation maintenance before native fixture drainage 2227ms
+ ↓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins case-owned disk discovery before agent database cleanup completes
+ ↓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > retains disk discovery cleanup custody when native retirement fails
+ ↓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins a measurement admitted after drainage starts before retiring its worker
+ ↓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > coalesces file teardown with another teardown while a runtime scan awaits retirement
+ ↓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > coalesces runtime lifecycle cleanup with another teardown while a runtime scan awaits retirement
+ ↓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > reports scan overload and retires queued scans before reusing workers
+ ↓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > measures and prunes the canonical session artifacts through the SQLite selector
+ ↓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > does not add synchronous realpath work as session artifacts grow
+
+ Test Files  1 passed (1)
+      Tests  2 passed | 11 skipped (13)
+   Start at  00:38:44
+   Duration  8.98s (transform 48%, tests 27%, import 21%, setup 4%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+# exit=0

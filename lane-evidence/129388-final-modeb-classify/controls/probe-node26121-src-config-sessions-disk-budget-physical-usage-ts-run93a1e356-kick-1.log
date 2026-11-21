@@ -1,0 +1,263 @@
+# ctl ref=probe sha=93a1e356c7aabf0d868560e46790b07449813840 file=src/config/sessions/disk-budget.physical-usage.test.ts run=93a1e356-kick-1 mode=node26121 start=2026-11-21T08:31:39Z
+# files: 1 runwt=/home/figs/classify-129388/probe-final (38 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-zr0tv0/home TMPDIR=/tmp/oc-classify-zr0tv0/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.infra.config.ts
+include-file: /tmp/oc-classify-zr0tv0/tmp/oc-focused.GX2qTw/include.json
+include-file-contents:
+  [
+    "src/config/sessions/disk-budget.physical-usage.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-zr0tv0/tmp/oc-focused.GX2qTw/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.infra.config.ts --maxWorkers=1 src/config/sessions/disk-budget.physical-usage.test.ts
+logs: /tmp/oc-classify-zr0tv0/tmp/oc-focused.GX2qTw
+[vitest-workers] local cache miss after 1680ms
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js (48:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js:48:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m48 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js (6:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js:6:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m6 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js (11:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js:11:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m11 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js (9:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js:9:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m9 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js (12:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js:12:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m12 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+[vitest-workers] prepared 7eef1e0239af in 32971ms (20558 inputs, 25754 outputs)
+
+ RUN  v5.0.5 /home/figs/classify-129388/probe-final
+
+stderr | src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins a forced followup after maintenance failure (mutation fails: false)
+KICK force=undefined running=false store=/tmp/oc-classify-zr0tv0/tmp/oc-vt-eTxnSq/openclaw-maintenance-failure-drain-8Oixdw/dir-2/openclaw-agent.sqlite
+Error: 
+    at Module.kickSessionHistoryDiskBudgetMaintenance (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:286:113)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/disk-budget.physical-usage.test.ts:175:11
+    at Module.withSessionHistoryBudgetSweepsForTest (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-budget.test-support.ts:73:42)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/disk-budget.physical-usage.test.ts:174:27
+    at Module.withTestDir (/home/figs/classify-129388/probe-final/src/test-helpers/temp-dir.ts:65:12)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/disk-budget.physical-usage.test.ts:125:7
+    at async file:///home/figs/classify-129388/probe-final/node_modules/.pnpm/vitest@5.0.5_patch_hash=a2a78abe9470cc2ceb0d4eeb81acfc62d6180e9990bc866a7771ba60b1320ea_75661d0a5892d48edf76140ec77ed19d/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:2801:20
+RUN-MAINT automatic=true
+Error: 
+    at runSessionHistoryDiskBudgetMaintenance (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:357:65)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:320:5
+    at AsyncContext.run (/home/figs/classify-129388/probe-final/src/shared/async-context.ts:25:14)
+    at AsyncContext.exit (/home/figs/classify-129388/probe-final/src/shared/async-context.ts:39:17)
+    at Object.cleanupContext.exit (/home/figs/classify-129388/probe-final/src/sessions/session-controller.cleanup-context.ts:11:42)
+    at runWithSessionControllerCleanup (/home/figs/classify-129388/probe-final/src/sessions/session-controller.cleanup-context.ts:17:47)
+    at Module.kickSessionHistoryDiskBudgetMaintenance (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:319:8)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/disk-budget.physical-usage.test.ts:175:11
+    at Module.withSessionHistoryBudgetSweepsForTest (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-budget.test-support.ts:73:42)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/disk-budget.physical-usage.test.ts:174:27
+KICK force=true running=true store=/tmp/oc-classify-zr0tv0/tmp/oc-vt-eTxnSq/openclaw-maintenance-failure-drain-8Oixdw/dir-2/openclaw-agent.sqlite
+Error: 
+    at Module.kickSessionHistoryDiskBudgetMaintenance (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:286:113)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/disk-budget.physical-usage.test.ts:176:11
+    at Module.withSessionHistoryBudgetSweepsForTest (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-budget.test-support.ts:73:42)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/disk-budget.physical-usage.test.ts:174:27
+    at Module.withTestDir (/home/figs/classify-129388/probe-final/src/test-helpers/temp-dir.ts:65:12)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/disk-budget.physical-usage.test.ts:125:7
+    at async file:///home/figs/classify-129388/probe-final/node_modules/.pnpm/vitest@5.0.5_patch_hash=a2a78abe9470cc2ceb0d4eeb81acfc62d6180e9990bc866a7771ba60b1320ea_75661d0a5892d48edf76140ec77ed19d/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:2801:20
+
+stderr | src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins a forced followup after maintenance failure (mutation fails: false)
+KICK force=true running=false store=/tmp/oc-classify-zr0tv0/tmp/oc-vt-eTxnSq/openclaw-maintenance-failure-drain-8Oixdw/dir-2/openclaw-agent.sqlite
+Error: 
+    at kickSessionHistoryDiskBudgetMaintenance (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:286:113)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:336:9
+    at <anonymous>
+RUN-MAINT automatic=true
+Error: 
+    at runSessionHistoryDiskBudgetMaintenance (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:357:65)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:320:5
+    at AsyncContext.run (/home/figs/classify-129388/probe-final/src/shared/async-context.ts:25:14)
+    at AsyncContext.exit (/home/figs/classify-129388/probe-final/src/shared/async-context.ts:39:17)
+    at Object.cleanupContext.exit (/home/figs/classify-129388/probe-final/src/sessions/session-controller.cleanup-context.ts:11:42)
+    at runWithSessionControllerCleanup (/home/figs/classify-129388/probe-final/src/sessions/session-controller.cleanup-context.ts:17:47)
+    at kickSessionHistoryDiskBudgetMaintenance (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:319:8)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:336:9
+    at <anonymous>
+
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > loads database ownership inspection only for multi-store scans 65ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > bounds per-artifact promise allocation inside the scan worker 14ms
+stderr | src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins a forced followup after maintenance failure (mutation fails: true)
+KICK force=undefined running=false store=/tmp/oc-classify-zr0tv0/tmp/oc-vt-eTxnSq/openclaw-maintenance-failure-drain-KOiR5O/dir-3/openclaw-agent.sqlite
+Error: 
+    at Module.kickSessionHistoryDiskBudgetMaintenance (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:286:113)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/disk-budget.physical-usage.test.ts:175:11
+    at Module.withSessionHistoryBudgetSweepsForTest (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-budget.test-support.ts:73:42)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/disk-budget.physical-usage.test.ts:174:27
+    at Module.withTestDir (/home/figs/classify-129388/probe-final/src/test-helpers/temp-dir.ts:65:12)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/disk-budget.physical-usage.test.ts:125:7
+    at async file:///home/figs/classify-129388/probe-final/node_modules/.pnpm/vitest@5.0.5_patch_hash=a2a78abe9470cc2ceb0d4eeb81acfc62d6180e9990bc866a7771ba60b1320ea_75661d0a5892d48edf76140ec77ed19d/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:2801:20
+RUN-MAINT automatic=true
+Error: 
+    at runSessionHistoryDiskBudgetMaintenance (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:357:65)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:320:5
+    at AsyncContext.run (/home/figs/classify-129388/probe-final/src/shared/async-context.ts:25:14)
+    at AsyncContext.exit (/home/figs/classify-129388/probe-final/src/shared/async-context.ts:39:17)
+    at Object.cleanupContext.exit (/home/figs/classify-129388/probe-final/src/sessions/session-controller.cleanup-context.ts:11:42)
+    at runWithSessionControllerCleanup (/home/figs/classify-129388/probe-final/src/sessions/session-controller.cleanup-context.ts:17:47)
+    at Module.kickSessionHistoryDiskBudgetMaintenance (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:319:8)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/disk-budget.physical-usage.test.ts:175:11
+    at Module.withSessionHistoryBudgetSweepsForTest (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-budget.test-support.ts:73:42)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/disk-budget.physical-usage.test.ts:174:27
+KICK force=true running=true store=/tmp/oc-classify-zr0tv0/tmp/oc-vt-eTxnSq/openclaw-maintenance-failure-drain-KOiR5O/dir-3/openclaw-agent.sqlite
+Error: 
+    at Module.kickSessionHistoryDiskBudgetMaintenance (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:286:113)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/disk-budget.physical-usage.test.ts:176:11
+    at Module.withSessionHistoryBudgetSweepsForTest (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-budget.test-support.ts:73:42)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/disk-budget.physical-usage.test.ts:174:27
+    at Module.withTestDir (/home/figs/classify-129388/probe-final/src/test-helpers/temp-dir.ts:65:12)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/disk-budget.physical-usage.test.ts:125:7
+    at async file:///home/figs/classify-129388/probe-final/node_modules/.pnpm/vitest@5.0.5_patch_hash=a2a78abe9470cc2ceb0d4eeb81acfc62d6180e9990bc866a7771ba60b1320ea_75661d0a5892d48edf76140ec77ed19d/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:2801:20
+
+stderr | src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins a forced followup after maintenance failure (mutation fails: true)
+KICK force=true running=false store=/tmp/oc-classify-zr0tv0/tmp/oc-vt-eTxnSq/openclaw-maintenance-failure-drain-KOiR5O/dir-3/openclaw-agent.sqlite
+Error: 
+    at kickSessionHistoryDiskBudgetMaintenance (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:286:113)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:336:9
+    at <anonymous>
+RUN-MAINT automatic=true
+Error: 
+    at runSessionHistoryDiskBudgetMaintenance (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:357:65)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:320:5
+    at AsyncContext.run (/home/figs/classify-129388/probe-final/src/shared/async-context.ts:25:14)
+    at AsyncContext.exit (/home/figs/classify-129388/probe-final/src/shared/async-context.ts:39:17)
+    at Object.cleanupContext.exit (/home/figs/classify-129388/probe-final/src/sessions/session-controller.cleanup-context.ts:11:42)
+    at runWithSessionControllerCleanup (/home/figs/classify-129388/probe-final/src/sessions/session-controller.cleanup-context.ts:17:47)
+    at kickSessionHistoryDiskBudgetMaintenance (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:319:8)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:336:9
+    at <anonymous>
+
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins a forced followup after maintenance failure (mutation fails: false) 121ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins a forced followup after maintenance failure (mutation fails: true) 104ms
+stderr | src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins real SDK mutation maintenance before native fixture drainage
+KICK force=undefined running=false store=/tmp/oc-classify-zr0tv0/tmp/oc-vt-eTxnSq/openclaw-test-state-state-gJGssL/state/agents/main/sessions/sessions.json
+Error: 
+    at kickSessionHistoryDiskBudgetMaintenance (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:286:113)
+    at patchSqliteSessionEntrySnapshot (/home/figs/classify-129388/probe-final/src/config/sessions/session-accessor.sqlite-entry.ts:617:5)
+    at applySessionEntryOperation (/home/figs/classify-129388/probe-final/src/config/sessions/session-accessor.sqlite-entry.ts:186:17)
+    at Module.upsertSessionEntry (/home/figs/classify-129388/probe-final/src/plugin-sdk/session-store-runtime.ts:597:3)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/disk-budget.physical-usage.test.ts:278:11
+    at Module.withSessionHistoryBudgetSweepsForTest (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-budget.test-support.ts:73:36)
+RUN-MAINT automatic=true
+Error: 
+    at runSessionHistoryDiskBudgetMaintenance (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:357:65)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:320:5
+    at AsyncContext.run (/home/figs/classify-129388/probe-final/src/shared/async-context.ts:25:14)
+    at AsyncContext.exit (/home/figs/classify-129388/probe-final/src/shared/async-context.ts:39:17)
+    at Object.cleanupContext.exit (/home/figs/classify-129388/probe-final/src/sessions/session-controller.cleanup-context.ts:11:42)
+    at runWithSessionControllerCleanup (/home/figs/classify-129388/probe-final/src/sessions/session-controller.cleanup-context.ts:17:47)
+    at kickSessionHistoryDiskBudgetMaintenance (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:319:8)
+    at patchSqliteSessionEntrySnapshot (/home/figs/classify-129388/probe-final/src/config/sessions/session-accessor.sqlite-entry.ts:617:5)
+    at applySessionEntryOperation (/home/figs/classify-129388/probe-final/src/config/sessions/session-accessor.sqlite-entry.ts:186:17)
+    at Module.upsertSessionEntry (/home/figs/classify-129388/probe-final/src/plugin-sdk/session-store-runtime.ts:597:3)
+
+stderr | src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins real SDK mutation maintenance before native fixture drainage
+KICK force=true running=false store=/tmp/oc-classify-zr0tv0/tmp/oc-vt-eTxnSq/openclaw-test-state-state-gJGssL/state/agents/main/sessions/sessions.json
+Error: 
+    at kickSessionHistoryDiskBudgetMaintenance (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:286:113)
+    at withCommittedHistoryMaintenance (/home/figs/classify-129388/probe-final/src/config/sessions/session-accessor.sqlite-lifecycle-maintenance.ts:32:7)
+    at deleteSessionEntryLifecycle (/home/figs/classify-129388/probe-final/src/config/sessions/session-accessor.lifecycle.ts:69:12)
+    at Module.deleteSessionEntry (/home/figs/classify-129388/probe-final/src/plugin-sdk/session-store-runtime.ts:616:18)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/disk-budget.physical-usage.test.ts:282:18
+    at Module.withSessionHistoryBudgetSweepsForTest (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-budget.test-support.ts:73:36)
+RUN-MAINT automatic=true
+Error: 
+    at runSessionHistoryDiskBudgetMaintenance (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:357:65)
+    at /home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:320:5
+    at AsyncContext.run (/home/figs/classify-129388/probe-final/src/shared/async-context.ts:25:14)
+    at AsyncContext.exit (/home/figs/classify-129388/probe-final/src/shared/async-context.ts:39:17)
+    at Object.cleanupContext.exit (/home/figs/classify-129388/probe-final/src/sessions/session-controller.cleanup-context.ts:11:42)
+    at runWithSessionControllerCleanup (/home/figs/classify-129388/probe-final/src/sessions/session-controller.cleanup-context.ts:17:47)
+    at kickSessionHistoryDiskBudgetMaintenance (/home/figs/classify-129388/probe-final/src/config/sessions/session-history-eviction.ts:319:8)
+    at withCommittedHistoryMaintenance (/home/figs/classify-129388/probe-final/src/config/sessions/session-accessor.sqlite-lifecycle-maintenance.ts:32:7)
+    at deleteSessionEntryLifecycle (/home/figs/classify-129388/probe-final/src/config/sessions/session-accessor.lifecycle.ts:69:12)
+    at Module.deleteSessionEntry (/home/figs/classify-129388/probe-final/src/plugin-sdk/session-store-runtime.ts:616:18)
+
+ × |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins real SDK mutation maintenance before native fixture drainage 2242ms
+   → expected 2 to be 1 // Object.is equality
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins case-owned disk discovery before agent database cleanup completes 101ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > retains disk discovery cleanup custody when native retirement fails 86ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins a measurement admitted after drainage starts before retiring its worker 106ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > coalesces file teardown with another teardown while a runtime scan awaits retirement 174ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > coalesces runtime lifecycle cleanup with another teardown while a runtime scan awaits retirement 208ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > reports scan overload and retires queued scans before reusing workers 230ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > measures and prunes the canonical session artifacts through the SQLite selector 108ms
+ ✓ |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > does not add synchronous realpath work as session artifacts grow 100ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins real SDK mutation maintenance before native fixture drainage
+AssertionError: expected 2 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ src/config/sessions/disk-budget.physical-usage.test.ts:295:25
+    293|             "Actual SDK mutations must reach the canonical observed qu…
+    294|           ).toBeGreaterThan(0);
+    295|           expect(scans).toBe(1);
+       |                         ^
+    296|           mutationBodyFinished.resolve(true);
+    297|         } catch (error) {
+ ❯ Module.withSessionHistoryBudgetSweepsForTest src/config/sessions/session-history-budget.test-support.ts:<redacted len=5>
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 12 passed (13)
+   Start at  00:32:15
+   Duration  10.31s (transform 40%, tests 37%, import 19%, setup 4%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=93a1e356c7aabf0d868560e46790b07449813840 config=test/vitest/vitest.infra.config.ts files=src/config/sessions/disk-budget.physical-usage.test.ts
+failing-tests:
+ × |infra| src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins real SDK mutation maintenance before native fixture drainage 2242ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 12 passed (13)]
+# exit=1
