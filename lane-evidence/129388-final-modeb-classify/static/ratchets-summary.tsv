@@ -7,3 +7,4 @@
 2026-11-21T06:48:08Z	base	1129d4c0716c	7ce2d10eced5	scripts/check-database-dialect-ratchet.mts	0	11s	see-log
 2026-11-21T06:48:19Z	cand	93a1e356c7aa	7ce2d10eced5	scripts/check-database-dialect-ratchet.mts	0	11s	see-log
 2026-11-21T06:48:30Z	base	1129d4c0716c	7ce2d10eced5	scripts/check-database-worker-ratchet.mts	0	142s	see-log
+2026-11-21T06:50:52Z	cand	93a1e356c7aa	7ce2d10eced5	scripts/check-database-worker-ratchet.mts	0	143s	see-log
