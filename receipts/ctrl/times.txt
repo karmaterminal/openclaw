@@ -1,0 +1,14 @@
+label=ctrl-1129d4c0
+tree=/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-extdbw-ctrl-1129d4c0
+head=1129d4c0716c7dcc6fba86753ec214584ec8ebd1
+status_before=0 lines
+node=v26.12.1
+host=ronan arch=aarch64 nproc=20
+start_utc=2026-11-21T20:49:19Z
+start_epoch=1795294159
+disk_start_pct=89.635
+wrap_pid=2126229
+end_utc=2026-11-21T23:27:37Z
+end_epoch=1795303657
+disk_end_pct=88.579
+rc=1

@@ -88,25 +88,88 @@ replaced by `cp -al` hard-link copies of all 208 `node_modules` dirs from
 worktree got `cp -al` copies of that copy. The control's lockfile hashes the same; the root
 `package.json` differs only in fork metadata (schema version, plugin-SDK export entries).
 
-## Status at this commit
+## Verdict
 
-Candidate run complete; control run (1129d4c0) in progress on the same seat, started after the
-candidate finished. Final verdict, red classification and the control comparison follow in a later
-commit.
+`extension-database-workers @16541aa5: 10846 tests, 10731 pass, 2 fail (113 skipped); candidate-attributable: 0`
 
-Candidate `16541aa5`, ronan, 2026-11-21T18:10:48Z → 20:48:37Z (9,469 s), rc 1:
-845 files (= the config inventory, none missing, none extra), 10,846 tests: 10,731 pass, 2 fail,
-113 skip; 93 Vitest invocations (slices), every one with a footer, footers sum to the same totals.
+Both reds are red at the upstream control too, failing the same test with the same error.
 
-Count match: every file of both CI partials ran locally; every file CI finished (409 at the
-16541aa5 re-gate, 422 at 93a1e356) has identical pass/fail/skip counts. The only per-file difference is
-the file each CI run was executing when SIGTERM arrived (its `shard-state.json` `last_test_file`).
-CI's routing receipts carry `tests: null` (rc 125), so the in-flight logs are the only CI counts.
+## Runs (ronan, aarch64, 20 cpus, serial, same seat)
 
-Reds at the candidate:
+| run                                        | tree     | UTC start → end     | wall    | rc  | files | tests  | pass   | fail | skip | slices |
+| ------------------------------------------ | -------- | ------------------- | ------- | --- | ----- | ------ | ------ | ---- | ---- | ------ |
+| smoke (1 file, `includePatterns` override) | 16541aa5 | 18:09:20 → 18:10:20 | 60 s    | 0   | 1     | 1      | 1      | 0    | 0    | 1      |
+| candidate                                  | 16541aa5 | 18:10:48 → 20:48:37 | 9,469 s | 1   | 845   | 10,846 | 10,731 | 2    | 113  | 93     |
+| control                                    | 1129d4c0 | 20:49:19 → 23:27:37 | 9,498 s | 1   | 842   | 10,840 | 10,725 | 2    | 113  | 93     |
 
-- `extensions/tlon/src/monitor/index.test.ts` › monitorTlonProvider shutdown › streams deeply nested
-  poison … — same test, same assertion as both CI partials.
-- `extensions/memory-core/src/workspace-file-mode.test.ts` › retains inherited named ACL access in the
-  file mask — `setfacl -m d:u:65534:… Invalid argument`; reproduced outside the test as a property of
-  the isolation wrapper's single-uid user namespace (`env-probes/setfacl-in-isolation-wrapper.txt`).
+Runtime: Node v26.12.1, `OPENCLAW_VITEST_RUNTIME=node`, one worker. Every slice (Vitest invocation)
+printed a footer; the slice footers sum to the totals above, and the files run equal each tree's config
+inventory (845 / 842: none missing, none extra). The smoke's build output was removed before the
+candidate run, so both full runs started from a fresh tree and did the runtime build CI does.
+A full Mode-B (44932832262) shared the seat during both runs; `/` stayed between 88.6 % and 89.7 %
+(`disk.log`, 60 s samples, stop at 90 %).
+
+## Reds
+
+| file › test                                                                                                                                                                                                    | cand 16541aa5    | ctrl 1129d4c0 | CI 93a1e356 partial | CI 16541aa5 re-gate partial | class                           |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | ------------- | ------------------- | --------------------------- | ------------------------------- |
+| `extensions/tlon/src/monitor/index.test.ts` › monitorTlonProvider shutdown › streams deeply nested poison and capped messages over real HTTP SSE through production handlers and recovers on the next messages | 23 pass / 1 fail | 23 / 1        | 23 / 1              | 23 / 1                      | upstream-carried                |
+| `extensions/memory-core/src/workspace-file-mode.test.ts` › retains inherited named ACL access in the file mask                                                                                                 | 5 / 1            | 5 / 1         | not reached         | not reached                 | environment (red at both trees) |
+
+- **tlon**: at all four logs, `AssertionError: expected "vi.fn()" to be called with arguments` at
+  `index.test.ts:1091:27`: `runtime.log` never receives `"tlon dropped channels event: Tlon firehose event
+  is too deeply nested to store."` (received: the monitor's start/auth lines). Neither the test nor
+  `extensions/tlon/src/monitor/` differs between 1129d4c0 and 16541aa5.
+- **workspace-file-mode**: the test's own `setfacl -m d:u:65534:rwX,d:m::rwx <workspace>` fails with
+  `Invalid argument` under `/tmp/openclaw` at both trees. `env-probes/setfacl-in-isolation-wrapper.txt`
+  shows the cause outside the test: inside the isolation wrapper the user namespace maps one uid
+  (`uid_map 1000 0 1`), so an ACL entry for uid 65534 is unrepresentable (EINVAL on the wrapper's tmpfs
+  and on disk alike), while the same command succeeds on the host and an entry for the mapped uid
+  succeeds inside. The file does not differ between the trees. CI's partials never reached it, so this
+  lane has no green observation of it; it needs a run outside a single-uid user namespace.
+
+## Count match
+
+| reference                                           | files | tests  | pass   | fail | skip |
+| --------------------------------------------------- | ----- | ------ | ------ | ---- | ---- |
+| CI 44871298969 @93a1e356, cut by SIGTERM at 5,184 s | 423   | 6,759  | 6,696  | 1    | 62   |
+| CI 44917878785 @16541aa5, cut by SIGTERM at 5,208 s | 410   | 6,548  | 6,493  | 1    | 54   |
+| local candidate @16541aa5                           | 845   | 10,846 | 10,731 | 2    | 113  |
+
+- Every file of both CI partials ran locally (0 missing).
+- CI finished 28 slices before the cut: 377 files, 5,580 tests. The candidate's first 28 slices hold
+  the same files and footers, and all 377 files have identical pass/fail/skip counts (0 differ).
+- In the cut slice, 32 of 33 (re-gate) and 45 of 46 (93a1e356) files match too. The one exception in
+  each is the file CI was executing at SIGTERM (`shard-state.json` `last_test_file`):
+  `memory/generic-embedding-provider.integration.test.ts` 12 vs 29 local,
+  `memory/manager-active-memory-retrieval.test.ts` 2 vs 9 local.
+- So every file CI finished (409 at the re-gate, 422 at 93a1e356) matches; the remaining 436 / 423
+  candidate files have no CI reference and are compared with the control instead.
+- 93a1e356 → 16541aa5 changes 10 files, none under `extensions/`.
+- Skips: 113 at both trees, in 23 files (PostgreSQL suites without a PG service, a Windows-only file,
+  native Codex sandbox/inference); the 8 of those files inside the 93a1e356 partial skip the same counts.
+
+## Candidate vs control
+
+Same reds; every file present at both trees has identical counts except one. The candidate's
++3 files / +6 tests are the fork's own tests, all passing:
+
+| file                                                                              | cand    | ctrl    | added by                                                                                               |
+| --------------------------------------------------------------------------------- | ------- | ------- | ------------------------------------------------------------------------------------------------------ |
+| `extensions/codex/src/app-server/side-question.continuation.test.ts`              | 1 pass  | absent  | `13bdb562b1`                                                                                           |
+| `extensions/diagnostics-otel/src/codex-dynamic-tool-origin.integration.test.ts`   | 1 pass  | absent  | `2273ef64d5`                                                                                           |
+| `extensions/diagnostics-otel/src/continuation-tracer-adapter.integration.test.ts` | 3 pass  | absent  | `2273ef64d5`                                                                                           |
+| `extensions/codex/src/app-server/run-attempt.dynamic-tools.test.ts`               | 17 pass | 16 pass | `2273ef64d5` ("reports a scheduled continuation as completed through the app-server request boundary") |
+
+## Files
+
+- `plan/`: plan-group dumps and config inventories for both trees.
+- `cand/`, `ctrl/`, `smoke-cand/`: raw `run.log`, `times.txt`, `disk.log`, `child-env.txt`, `rc.txt`,
+  tree status before/after, parsed per-file counts. `ctrl/worktree-removal-manifest.txt` lists the
+  control worktree's untracked and ignored files, recorded before it was removed.
+- `compare-final.json`: count match, red rows and candidate-vs-control from `tools/compare.mjs`.
+- `ci-ref/`: per-file counts parsed from the two CI partials; `CI-SOURCES.md` names the private
+  artifacts and their sha256.
+- `env-probes/`: the setfacl probe. `npm-env-probe/`: what `pnpm exec` exports.
+- `tools/`: the launcher, dump, inventory, parser and comparison scripts as run.
+- `SHA256SUMS`: every file above, over the committed bytes.
