@@ -1,0 +1,3 @@
+Net test lines: +164552; allowance: 400; allocation credit: 127129.
+Delete or consolidate tests to remove 37023 lines, or add a justified config/test-lines-allocations/<change>.txt record of 164152 and state the reason in the PR.
+# exit=1

@@ -1,0 +1,9 @@
+base+cpus0     n=3 min=20265 median=20273 max=20280
+base+cpus19    n=2 min=14132 median=14132 max=14204
+base           n=10 min=18995 median=19476 max=19790
+cand+cpus0     n=3 min=20264 median=20269 max=20277
+cand+cpus19    n=2 min=14972 median=14972 max=14999
+cand           n=10 min=18981 median=19624 max=20227
+prior+cpus0    n=3 min=20274 median=20279 max=20306
+prior+cpus19   n=2 min=15250 median=15250 max=15274
+prior          n=10 min=19026 median=19282 max=20093

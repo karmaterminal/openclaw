@@ -1,0 +1,32 @@
+true
+2026-11-21T17:58:08.7861238Z [cost-guard] hosted lane on ARC scale set oc-8cpu-32gb; nothing rented.
+{
+  "verdict": "failure",
+  "failed_jobs": [
+    {
+      "name": "static-gates",
+      "result": "failure"
+    },
+    {
+      "name": "test-shard-hosted-arc-early",
+      "result": "failure"
+    },
+    {
+      "name": "test-shard-arc-early",
+      "result": "failure"
+    },
+    {
+      "name": "test-shard-arc-dist",
+      "result": "failure"
+    }
+  ],
+  "deterministic_failures": 87,
+  "hosted_worker_pools": [
+    "arc:oc-8cpu-32gb"
+  ],
+  "tests": {
+    "passed": 258978,
+    "failed": 130
+  }
+}
+validate rc=0
