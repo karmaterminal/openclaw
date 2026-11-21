@@ -38,17 +38,6 @@ if [[ -n "${CTL_FAKE_DIRTY_KB:-}" ]]; then
   summary="$here/runs/controls.tsv"
   tag="$ref+fakedirty$CTL_FAKE_DIRTY_KB"
 fi
-# CTL_CPU_STARVE=CORES:LOOPS: one-variable control, the whole run pinned to CORES (taskset list) with
-# LOOPS busy loops pinned to the same cores for its duration (CPU contention, as when CI runs four
-# Vitest workers beside other pods). Worker count stays 1. Rows go to runs/controls.tsv.
-starve_pids=()
-if [[ -n "${CTL_CPU_STARVE:-}" ]]; then
-  starve_cores=${CTL_CPU_STARVE%%:*} starve_loops=${CTL_CPU_STARVE##*:}
-  [[ "$starve_cores" =~ ^[0-9,-]+$ && "$starve_loops" =~ ^[0-9]+$ ]] || { echo "CTL_CPU_STARVE must be CORES:LOOPS" >&2; exit 2; }
-  wrap=(taskset -c "$starve_cores" "${wrap[@]}")
-  summary="$here/runs/controls.tsv"
-  tag="$tag+starve${starve_cores//,/_}x${starve_loops}"
-fi
 log="$here/runs/${tag}-${slug}-run${run}.log"
 mem="$here/runs/${tag}-${slug}-run${run}.meminfo.tsv"
 
@@ -74,11 +63,8 @@ start=$(date -u +%FT%TZ); t0=$(date +%s)
 printf 'epoch\tdirty_kb\twriteback_kb\n' >"$mem"
 ( while :; do printf '%s\t%s\n' "$(date +%s)" "$(meminfo)" >>"$mem"; sleep 1; done ) &
 sampler=$!
-# A killed ctl3 must not leave its sampler or busy loops behind.
-trap 'kill "$sampler" ${starve_pids[@]+"${starve_pids[@]}"} 2>/dev/null' EXIT
-if [[ -n "${CTL_CPU_STARVE:-}" ]]; then
-  for _ in $(seq "$starve_loops"); do taskset -c "$starve_cores" sh -c 'while :; do :; done' & starve_pids+=($!); done
-fi
+# A killed ctl3 must not leave its sampler behind.
+trap 'kill "$sampler" 2>/dev/null' EXIT
 {
   echo "# ctl3 ref=$tag sha=$sha file=$file run=$run start=$start host=$(hostname) arch=$(uname -m)"
   echo "# before: dirty_kb/writeback_kb=${mb/$'\t'//} load1=$lb disk=${pct}% extdbw_procs=$xb"
@@ -90,7 +76,6 @@ fi
   echo "# exit=$?"
 } >"$log" 2>&1
 kill "$sampler" 2>/dev/null; wait "$sampler" 2>/dev/null
-if ((${#starve_pids[@]})); then kill "${starve_pids[@]}" 2>/dev/null; wait "${starve_pids[@]}" 2>/dev/null; fi
 ma=$(meminfo); la=$(load1); xa=$(extdbw)
 io1=$(ioacct)
 iow=$(( ${io1%%$'\t'*} - ${io0%%$'\t'*} )); ioc=$(( ${io1##*$'\t'} - ${io0##*$'\t'} ))
