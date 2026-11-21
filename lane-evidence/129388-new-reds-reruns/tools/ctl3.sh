@@ -38,6 +38,17 @@ if [[ -n "${CTL_FAKE_DIRTY_KB:-}" ]]; then
   summary="$here/runs/controls.tsv"
   tag="$ref+fakedirty$CTL_FAKE_DIRTY_KB"
 fi
+# CTL_CPU_STARVE=CORES:LOOPS: one-variable control, the whole run pinned to CORES (taskset list) with
+# LOOPS busy loops pinned to the same cores for its duration (CPU contention, as when CI runs four
+# Vitest workers beside other pods). Worker count stays 1. Rows go to runs/controls.tsv.
+starve_pids=()
+if [[ -n "${CTL_CPU_STARVE:-}" ]]; then
+  starve_cores=${CTL_CPU_STARVE%%:*} starve_loops=${CTL_CPU_STARVE##*:}
+  [[ "$starve_cores" =~ ^[0-9,-]+$ && "$starve_loops" =~ ^[0-9]+$ ]] || { echo "CTL_CPU_STARVE must be CORES:LOOPS" >&2; exit 2; }
+  wrap=(taskset -c "$starve_cores" "${wrap[@]}")
+  summary="$here/runs/controls.tsv"
+  tag="$tag+starve${starve_cores//,/_}x${starve_loops}"
+fi
 log="$here/runs/${tag}-${slug}-run${run}.log"
 mem="$here/runs/${tag}-${slug}-run${run}.meminfo.tsv"
 
@@ -55,10 +66,19 @@ scratch=$(mktemp -d /tmp/oc-nrr-XXXXXX)
 mkdir -m 0700 "$scratch/home" "$scratch/tmp"
 sha=$(git -C "$wt" rev-parse HEAD)
 mb=$(meminfo); lb=$(load1); xb=$(extdbw)
+# write_bytes / cancelled_write_bytes of this process, which accumulates every reaped descendant
+# (the run's whole process tree): the page-cache bytes this run itself dirtied.
+ioacct() { awk '/^write_bytes:/{w=$2} /^cancelled_write_bytes:/{c=$2} END{printf "%s\t%s", w, c}' "/proc/$$/io"; }
+io0=$(ioacct)
 start=$(date -u +%FT%TZ); t0=$(date +%s)
 printf 'epoch\tdirty_kb\twriteback_kb\n' >"$mem"
 ( while :; do printf '%s\t%s\n' "$(date +%s)" "$(meminfo)" >>"$mem"; sleep 1; done ) &
 sampler=$!
+# A killed ctl3 must not leave its sampler or busy loops behind.
+trap 'kill "$sampler" ${starve_pids[@]+"${starve_pids[@]}"} 2>/dev/null' EXIT
+if [[ -n "${CTL_CPU_STARVE:-}" ]]; then
+  for _ in $(seq "$starve_loops"); do taskset -c "$starve_cores" sh -c 'while :; do :; done' & starve_pids+=($!); done
+fi
 {
   echo "# ctl3 ref=$tag sha=$sha file=$file run=$run start=$start host=$(hostname) arch=$(uname -m)"
   echo "# before: dirty_kb/writeback_kb=${mb/$'\t'//} load1=$lb disk=${pct}% extdbw_procs=$xb"
@@ -70,10 +90,15 @@ sampler=$!
   echo "# exit=$?"
 } >"$log" 2>&1
 kill "$sampler" 2>/dev/null; wait "$sampler" 2>/dev/null
+if ((${#starve_pids[@]})); then kill "${starve_pids[@]}" 2>/dev/null; wait "${starve_pids[@]}" 2>/dev/null; fi
 ma=$(meminfo); la=$(load1); xa=$(extdbw)
+io1=$(ioacct)
+iow=$(( ${io1%%$'\t'*} - ${io0%%$'\t'*} )); ioc=$(( ${io1##*$'\t'} - ${io0##*$'\t'} ))
+[[ -s "$here/runs/io.tsv" ]] || printf 'start\tref\tfile\trun\trun_write_bytes\trun_cancelled_write_bytes\tdirty_before_kb\tdirty_max_kb\n' >"$here/runs/io.tsv"
 maxd=$(awk -F'\t' 'NR>1 && $2>m{m=$2} END{print m+0}' "$mem")
 maxw=$(awk -F'\t' 'NR>1 && $3>m{m=$3} END{print m+0}' "$mem")
-echo "# after: dirty_kb/writeback_kb=${ma/$'\t'//} max_during_dirty_kb=$maxd max_during_writeback_kb=$maxw load1=$la extdbw_procs=$xa" >>"$log"
+echo "# after: dirty_kb/writeback_kb=${ma/$'\t'//} max_during_dirty_kb=$maxd max_during_writeback_kb=$maxw load1=$la extdbw_procs=$xa run_write_bytes=$iow run_cancelled_write_bytes=$ioc" >>"$log"
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$start" "$tag" "$file" "$run" "$iow" "$ioc" "${mb%%$'\t'*}" "$maxd" >>"$here/runs/io.tsv"
 rc=$(sed -nE 's/^# exit=([0-9]+)$/\1/p' "$log" | tail -n1)
 verdict=$(grep -aE '^VERDICT ' "$log" | tail -n1)
 secs=$(( $(date +%s) - t0 ))

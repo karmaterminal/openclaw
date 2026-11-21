@@ -1,0 +1,17 @@
+# pairs3 start=2026-11-21T20:48:48Z iterations=1..10 refs=cand,prior,base files=src/gateway/server-methods/models-auth-removal.integration.test.ts test/scripts/team-shape-fixture.test.ts
+cand src/gateway/server-methods/models-auth-removal.integration.test.ts run1 rc=0 44s VERDICT PASS [Test Files 1 passed (1); Tests 5 passed (5)] dirty_max=19452kB disk=89.635%
+prior src/gateway/server-methods/models-auth-removal.integration.test.ts run1 rc=0 47s VERDICT PASS [Test Files 1 passed (1); Tests 5 passed (5)] dirty_max=395316kB disk=89.635%
+base src/gateway/server-methods/models-auth-removal.integration.test.ts run1 rc=0 45s VERDICT PASS [Test Files 1 passed (1); Tests 5 passed (5)] dirty_max=480932kB disk=89.543%
+cand test/scripts/team-shape-fixture.test.ts run1 rc=1 35s VERDICT RED [Test Files 1 failed (1); Tests 3 failed | 5 passed (8)] dirty_max=5134052kB disk=89.200%
+prior test/scripts/team-shape-fixture.test.ts run1 rc=0 53s VERDICT PASS [Test Files 1 passed (1); Tests 8 passed (8)] dirty_max=5198868kB disk=89.351%
+base test/scripts/team-shape-fixture.test.ts run1 rc=0 49s VERDICT PASS [Test Files 1 passed (1); Tests 8 passed (8)] dirty_max=479292kB disk=89.552%
+cand src/gateway/server-methods/models-auth-removal.integration.test.ts run2 rc=0 47s VERDICT PASS [Test Files 1 passed (1); Tests 5 passed (5)] dirty_max=174768kB disk=89.560%
+prior src/gateway/server-methods/models-auth-removal.integration.test.ts run2 rc=0 49s VERDICT PASS [Test Files 1 passed (1); Tests 5 passed (5)] dirty_max=196628kB disk=89.568%
+base src/gateway/server-methods/models-auth-removal.integration.test.ts run2 rc=0 48s VERDICT PASS [Test Files 1 passed (1); Tests 5 passed (5)] dirty_max=166976kB disk=89.577%
+cand test/scripts/team-shape-fixture.test.ts run2 rc=0 41s VERDICT PASS [Test Files 1 passed (1); Tests 8 passed (8)] dirty_max=150416kB disk=89.582%
+prior test/scripts/team-shape-fixture.test.ts run2 rc=0 42s VERDICT PASS [Test Files 1 passed (1); Tests 8 passed (8)] dirty_max=237632kB disk=89.569%
+base test/scripts/team-shape-fixture.test.ts run2 rc=0 42s VERDICT PASS [Test Files 1 passed (1); Tests 8 passed (8)] dirty_max=150728kB disk=89.574%
+cand src/gateway/server-methods/models-auth-removal.integration.test.ts run3 rc=0 47s VERDICT PASS [Test Files 1 passed (1); Tests 5 passed (5)] dirty_max=93580kB disk=89.577%
+prior src/gateway/server-methods/models-auth-removal.integration.test.ts run3 rc=0 48s VERDICT PASS [Test Files 1 passed (1); Tests 5 passed (5)] dirty_max=150932kB disk=89.578%
+base src/gateway/server-methods/models-auth-removal.integration.test.ts run3 rc=1 45s VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 4 passed (5)] dirty_max=74064kB disk=89.583%
+cand test/scripts/team-shape-fixture.test.ts run3 rc=0 44s VERDICT PASS [Test Files 1 passed (1); Tests 8 passed (8)] dirty_max=345148kB disk=89.581%

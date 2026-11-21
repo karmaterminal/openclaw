@@ -1,0 +1,11 @@
+start	ref	file	run	run_write_bytes	run_cancelled_write_bytes	dirty_before_kb	dirty_max_kb
+2026-11-21T20:53:21Z	cand	src/gateway/server-methods/models-auth-removal.integration.test.ts	2	66916352	5533696	163936	174768
+2026-11-21T20:54:08Z	prior	src/gateway/server-methods/models-auth-removal.integration.test.ts	2	67121152	5652480	175248	196628
+2026-11-21T20:54:57Z	base	src/gateway/server-methods/models-auth-removal.integration.test.ts	2	66269184	5341184	119844	166976
+2026-11-21T20:55:45Z	cand	test/scripts/team-shape-fixture.test.ts	2	177532928	34856960	46256	150416
+2026-11-21T20:56:27Z	prior	test/scripts/team-shape-fixture.test.ts	2	177287168	34856960	47760	237632
+2026-11-21T20:57:09Z	base	test/scripts/team-shape-fixture.test.ts	2	176517120	34570240	149144	150728
+2026-11-21T20:57:51Z	cand	src/gateway/server-methods/models-auth-removal.integration.test.ts	3	66891776	5533696	88284	93580
+2026-11-21T20:58:38Z	prior	src/gateway/server-methods/models-auth-removal.integration.test.ts	3	66830336	5414912	67632	150932
+2026-11-21T20:59:26Z	base	src/gateway/server-methods/models-auth-removal.integration.test.ts	3	65966080	5537792	61092	74064
+2026-11-21T21:00:11Z	cand	test/scripts/team-shape-fixture.test.ts	3	177266688	34856960	45676	345148
