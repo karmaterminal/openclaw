@@ -1,0 +1,159 @@
+# ctl ref=cand sha=93a1e356c7aabf0d868560e46790b07449813840 file=test/helpers/openclaw-test-instance.test.ts run=2 mode=node26121 start=2026-11-21T07:57:13Z
+# files: 1 runwt=/home/figs/classify-129388/cand-93a1e356 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-TAdLUP/home TMPDIR=/tmp/oc-classify-TAdLUP/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.tooling.config.ts
+include-file: /tmp/oc-classify-TAdLUP/tmp/oc-focused.M4lqZY/include.json
+include-file-contents:
+  [
+    "test/helpers/openclaw-test-instance.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-TAdLUP/tmp/oc-focused.M4lqZY/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.tooling.config.ts --maxWorkers=1 test/helpers/openclaw-test-instance.test.ts
+logs: /tmp/oc-classify-TAdLUP/tmp/oc-focused.M4lqZY
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-93a1e356
+
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-93a1e356
+
+[vitest-workers] local cache hit after 2215ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 2c55e4683d71 in 2283ms (20558 inputs, 25754 outputs)
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > reserves its idle port through refusal, CLI work, and stopped restarts 512ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > releases reservation probe connections before startup and terminal cleanup 170ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > preserves the refusal when reacquiring the same port fails (held-unrelated) 151ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > preserves the refusal when reacquiring the same port fails (late-unrelated) 159ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > leaves explicitly supplied ports owned by the caller 3ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > owns complete CLI JSON and diagnostic tails (complete) 67ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > owns complete CLI JSON and diagnostic tails (overflow) 128ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > owns complete CLI JSON and diagnostic tails (overflow-close) 194ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > captures complete CLI output and releases its deadline after 0 (prepare=false) 73ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > captures complete CLI output and releases its deadline after 7 (prepare=false) 74ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > captures complete CLI output and releases its deadline after drain (prepare=false) 117ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > captures complete CLI output and releases its deadline after stderr (prepare=false) 97ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > captures complete CLI output and releases its deadline after large (prepare=false) 52ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > captures complete CLI output and releases its deadline after wait (prepare=false) 1049ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > captures complete CLI output and releases its deadline after 0 (prepare=true) 143ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > captures complete CLI output and releases its deadline after signal (prepare=false) 70ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > keeps claimed port offset 0 unavailable while its child starts 1737ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > keeps claimed port offset 1 unavailable while its child starts 1719ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > orders concurrent starts around an intervening stop=false 171ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > orders concurrent starts around an intervening stop=true 262ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > joins shared entrypoint preparation without launching the cancelled owner 197ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > rolls back the real child after owner cancellation during pending probe 161ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > rolls back the real child after owner cancellation during readiness handoff 125ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > joins a cancelled CLI command before releasing instance state 103ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > starts a ready replacement after a real readiness deadline expires 1248ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > reclaims a stopped detached descendant before releasing Gateway state (cleanup) 1673ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > reclaims a stopped detached descendant before releasing Gateway state (forced-stop) 171ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > does not launch after stopGateway settles during entrypoint preparation 164ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > does not launch after cleanup settles during entrypoint preparation 186ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > reports a typed legacy-refuse only after the child's stderr closes 256ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > reports a typed profile-legacy-refuse only after the child's stderr closes 264ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > reports a typed late-legacy-refuse only after the child's stderr closes 284ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > reports a typed startup-legacy-refuse only after the child's stderr closes 223ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > reports a typed startup-late-legacy-refuse only after the child's stderr closes 273ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > does not classify legacy-stdout as an explained legacy migration refusal 104ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > does not classify legacy-status1 as an explained legacy migration refusal 126ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > does not classify legacy-no-advice as an explained legacy migration refusal 98ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > does not classify profile-legacy-refuse as an explained legacy migration refusal 125ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > does not classify startup-no-advice as an explained legacy migration refusal 145ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > does not classify startup-warning as an explained legacy migration refusal 140ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > does not retry a drained migration refusal after owner cancellation 116ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > restarts one refuse refusal with identical launch state and owns the ready child 296ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > restarts one late-refuse refusal with identical launch state and owns the ready child 310ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > keeps near convergence lookalikes terminal 141ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > keeps prefixed convergence lookalikes terminal 138ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > keeps stdout convergence lookalikes terminal 88ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > keeps status2 convergence lookalikes terminal 131ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > keeps signal convergence lookalikes terminal 90ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > keeps unrelated convergence lookalikes terminal 87ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > preserves both refusals and never spawns a third gateway 266ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > preserves an eligible refusal when its startup deadline expires during stdio drain 622ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > reaps terminal children with inherited stdio before starting a new gateway 445ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > observes Windows joined closure after blocking termination 26ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > observes Windows held pipe after blocking termination 252ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > observes Windows unverified tree after blocking termination 1ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > observes Windows unverified exited leader after blocking termination 0ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > observes Windows exited forced tree after blocking termination 0ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > observes Windows exited closed pipes after blocking termination 0ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > observes Windows taskkill timeout after blocking termination 0ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > observes Windows taskkill exception after blocking termination 0ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > UTF-8 log trimming > terminates UTF-8 log trimming within the byte cap 6217ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > fails startup waits immediately after signaled gateway exits 1ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > backs off readiness probes during a transport failure and recovers when the listener returns 5ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > backs off readiness probes during a proxy refusal and recovers when the listener returns 3ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > preserves the cancellation reason while a readiness backoff is pending 1ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > waits for startup admission after the gateway readiness probe reports ready 72ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > reports terminal agent admission refusal before the startup deadline 1ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > bounds not-ready diagnostics without exposing response details 101ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > retains the last failed response (502/proxy refusal) before a final timeout 1ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > retains the last failed response (503/{"ready":false}) before a final timeout 1ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > retains the last failed response (200/{"ready":false}) before a final timeout 1ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > retains the last failed response (503/{"ready":true}) before a final timeout 1ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > retains the last failed response (200/{}) before a final timeout 1ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > does not replace a failed response with an expired body on timeout 0ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > does not replace a failed response with an expired body on child-exit 0ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > does not replace a failed response with an expired body on aborted 0ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > keeps the formatted receipt below 1024 bytes with maximal sanitized fields 0ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > records only the fixed fetch-failed readiness category 26ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > records only the fixed invalid-json readiness category 25ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > records only the fixed body-failed readiness category 25ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > keeps stalled readiness headers inside … 1ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > aborts stalled readiness headers when t… 0ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > keeps stalled readiness body inside the… 0ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > aborts stalled readiness body when the … 0ms
+stderr | unknown test
+[sqlite-test-lifecycle] test/helpers/openclaw-test-instance.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] test/helpers/openclaw-test-instance.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] test/helpers/openclaw-test-instance.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] test/helpers/openclaw-test-instance.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] test/helpers/openclaw-test-instance.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] test/helpers/openclaw-test-instance.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] test/helpers/openclaw-test-instance.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] test/helpers/openclaw-test-instance.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+
+stderr | unknown test
+[sqlite-test-lifecycle] test/helpers/openclaw-test-instance.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] test/helpers/openclaw-test-instance.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] test/helpers/openclaw-test-instance.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] test/helpers/openclaw-test-instance.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] test/helpers/openclaw-test-instance.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] test/helpers/openclaw-test-instance.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] test/helpers/openclaw-test-instance.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] test/helpers/openclaw-test-instance.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > retains an expired probe snapshot after abort-ignoring headers and body arrive 1011ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts > openclaw test instance > creates isolated config and spawn env without mutating process env 5ms
+ ✓ |tooling| test/helpers/openclaw-test-instance.test.ts (86 tests) 23531ms
+   ✓ openclaw test instance (86)
+     ✓ reserves its idle port through refusal, CLI work, and stopped restarts 512ms
+     ✓ captures complete CLI output and releases its deadline after wait (prepare=false) 1049ms
+     ✓ keeps claimed port offset 0 unavailable while its child starts 1737ms
+     ✓ keeps claimed port offset 1 unavailable while its child starts 1719ms
+     ✓ starts a ready replacement after a real readiness deadline expires 1248ms
+     ✓ reclaims a stopped detached descendant before releasing Gateway state (cleanup) 1673ms
+     ✓ restarts one late-refuse refusal with identical launch state and owns the ready child 310ms
+     ✓ preserves an eligible refusal when its startup deadline expires during stdio drain 622ms
+     ✓ reaps terminal children with inherited stdio before starting a new gateway 445ms
+     ✓ UTF-8 log trimming (1)
+       ✓ terminates UTF-8 log trimming within the byte cap 6217ms
+     ✓ retains an expired probe snapshot after abort-ignoring headers and body arrive 1011ms
+
+ Test Files  1 passed (1)
+      Tests  86 passed (86)
+   Start at  23:57:15
+   Duration  30.15s (tests 79%, transform 16%, import 4%, worker 1%)
+
+
+ Test Files  1 passed (1)
+      Tests  86 passed (86)
+   Start at  23:57:15
+   Duration  30.16s (tests 79%, transform 16%, import 4%, worker 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=93a1e356c7aabf0d868560e46790b07449813840 config=test/vitest/vitest.tooling.config.ts files=test/helpers/openclaw-test-instance.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 86 passed (86)]
+# exit=0

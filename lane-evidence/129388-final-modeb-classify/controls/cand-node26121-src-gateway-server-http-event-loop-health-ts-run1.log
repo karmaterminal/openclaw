@@ -1,0 +1,51 @@
+# ctl ref=cand sha=93a1e356c7aabf0d868560e46790b07449813840 file=src/gateway/server-http.event-loop-health.test.ts run=1 mode=node26121 start=2026-11-21T07:53:22Z
+# files: 1 runwt=/home/figs/classify-129388/cand-93a1e356 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-9ggkrx/home TMPDIR=/tmp/oc-classify-9ggkrx/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.gateway-server.config.ts
+include-file: /tmp/oc-classify-9ggkrx/tmp/oc-focused.ekrLjS/include.json
+include-file-contents:
+  [
+    "src/gateway/server-http.event-loop-health.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-9ggkrx/tmp/oc-focused.ekrLjS/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.gateway-server.config.ts --maxWorkers=1 src/gateway/server-http.event-loop-health.test.ts
+logs: /tmp/oc-classify-9ggkrx/tmp/oc-focused.ekrLjS
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-93a1e356
+
+[vitest-workers] local cache hit after 2046ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 22c48e0f5d27 in 2108ms (20558 inputs, 25754 outputs)
+stderr | unknown test
+[sqlite-test-lifecycle] src/gateway/server-http.event-loop-health.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/gateway/server-http.event-loop-health.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-http.event-loop-health.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/gateway/server-http.event-loop-health.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/gateway/server-http.event-loop-health.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/gateway/server-http.event-loop-health.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/gateway/server-http.event-loop-health.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/gateway/server-http.event-loop-health.test.ts: retiring openclaw.devicePairSetupChanges
+[sqlite-test-lifecycle] src/gateway/server-http.event-loop-health.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/gateway/server-http.event-loop-health.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/gateway/server-http.event-loop-health.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-http.event-loop-health.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/gateway/server-http.event-loop-health.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/gateway/server-http.event-loop-health.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/gateway/server-http.event-loop-health.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/gateway/server-http.event-loop-health.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/gateway/server-http.event-loop-health.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/gateway/server-http.event-loop-health.test.ts: retiring openclaw.pluginStateNamespaceOwner
+
+ ✓ |gateway-server (gateway-server-parallel)| src/gateway/server-http.event-loop-health.test.ts > retains a blocked request interval when readiness is read before the sampler resumes 219ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  23:53:24
+   Duration  27.07s (transform 83%, import 12%, worker 4%, tests 1%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=93a1e356c7aabf0d868560e46790b07449813840 config=test/vitest/vitest.gateway-server.config.ts files=src/gateway/server-http.event-loop-health.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 1 passed (1)]
+# exit=0

@@ -1,8 +1,8 @@
 """Build a Mode-B failset from downloaded openclaw-local-ci-batch-* artifacts.
 
 Union of each shard's summary.json .failures[] and the logs' `x` lines (file > title), the
-unprefixed `x` lines of a cancelled shard's *.in-flight.log, plus every `FAILED (error:` sub-shard
-crash line. Run with `python3 -I failset.py DLDIR OUT`.
+unprefixed `x` lines of a cancelled shard's *.in-flight.log, a file-level row for every vitest worker
+killed by a signal, plus every `FAILED (error:` sub-shard crash line. Run with `python3 -I failset.py DLDIR OUT`.
 Writes OUT.shards.tsv, OUT.tests.tsv, OUT.crashes.tsv, OUT.other.tsv.
 """
 import json
@@ -15,6 +15,8 @@ XLINE = re.compile(r"^\[(shard(?:-failure)?):([^\]]+)\]\s+×\s+(.*)$")
 TESTFILE = re.compile(r"\S+\.(?:test|e2e|spec)[\w.-]*\.(?:ts|tsx|mts|cts|js|mjs)")
 CRASH = re.compile(r"^\[shard-failure:([^\]]+)\]\s+FAILED \(error:(.*)\)\s*$")
 TAILMS = re.compile(r"\s+\d+(?:\.\d+)?\s?ms$")
+WORKERKILL = re.compile(r"Worker exited unexpectedly with signal (\w+) .*running test file (\S+)")
+SHARDROOT = re.compile(r"^.*/shard-\d+-[^/]+/")
 INFLIGHT = re.compile(r"^\s*×\s+(\S+)\s+(.*)$")
 
 dl, out = sys.argv[1], sys.argv[2]
@@ -63,6 +65,14 @@ for batch in sorted(os.listdir(dl)):
             with open(os.path.join(spath, name), errors="replace") as fh:
                 for raw in fh:
                     line = ANSI.sub("", raw.rstrip("\n"))
+                    k = WORKERKILL.search(line)
+                    if k:
+                        # A killed vitest worker fails its file without a per-test line.
+                        rel = SHARDROOT.sub("", k.group(2))
+                        sub = line[1:line.index("]")] if line.startswith("[") else ""
+                        add((shard, rel, f"(file-level: vitest worker killed by {k.group(1)})"),
+                            "log", shard, sub.split(":", 1)[-1])
+                        continue
                     m = CRASH.match(line)
                     if m:
                         crashes.append([batch, shard, name, m.group(1), m.group(2).strip()])
