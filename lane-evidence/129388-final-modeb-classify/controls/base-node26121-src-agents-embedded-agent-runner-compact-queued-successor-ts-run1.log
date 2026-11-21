@@ -1,0 +1,81 @@
+# ctl ref=base sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 file=src/agents/embedded-agent-runner/compact.queued-successor.test.ts run=1 mode=node26121 start=2026-11-21T08:54:16Z
+# files: 1 runwt=/home/figs/classify-129388/base-1129d4c0 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-KBCTwP/home TMPDIR=/tmp/oc-classify-KBCTwP/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.infra.config.ts
+include-file: /tmp/oc-classify-KBCTwP/tmp/oc-focused.gi23wg/include.json
+include-file-contents:
+  [
+    "src/agents/embedded-agent-runner/compact.queued-successor.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-KBCTwP/tmp/oc-focused.gi23wg/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.infra.config.ts --maxWorkers=1 src/agents/embedded-agent-runner/compact.queued-successor.test.ts
+logs: /tmp/oc-classify-KBCTwP/tmp/oc-focused.gi23wg
+[vitest-workers] local cache hit after 2123ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 9575ac929851 in 2195ms (20380 inputs, 25474 outputs)
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-1129d4c0
+
+ ✓ |infra| src/agents/embedded-agent-runner/compact.queued-successor.test.ts > does not dispatch plugin compact after its writer is replaced 2633ms
+ ✓ |infra| src/agents/embedded-agent-runner/compact.queued-successor.test.ts > does not dispatch plugin maintain after its writer is replaced 1508ms
+ ✓ |infra| src/agents/embedded-agent-runner/compact.queued-successor.test.ts > reanchors CLI history across compaction bookkeeping without trusting a foreign prefix (false) 1386ms
+ ✓ |infra| src/agents/embedded-agent-runner/compact.queued-successor.test.ts > reanchors CLI history across compaction bookkeeping without trusting a foreign prefix (true) 1316ms
+(node:182) [DEP_SESSION_PERSISTENCE] DeprecationWarning: Plugin SDK: SessionManager.open is deprecated; use openAsync instead. Synchronous calls retain their return values and commit before returning. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:182) [DEP_SESSION_PERSISTENCE] DeprecationWarning: Plugin SDK: SessionManager.appendMessage is deprecated; use appendMessageAsync instead. Synchronous calls retain their return values and commit before returning. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+ ✓ |infra| src/agents/embedded-agent-runner/compact.queued-successor.test.ts > hydrates post-compaction history only once for a requested rewrite 1199ms
+ ✓ |infra| src/agents/embedded-agent-runner/compact.queued-successor.test.ts > keeps manual compaction with its transcript owner after authored runtime fallback (nativePinned=false, observed=openclaw) 1141ms
+ ✓ |infra| src/agents/embedded-agent-runner/compact.queued-successor.test.ts > keeps manual compaction with its transcript owner after authored runtime fallback (nativePinned=true, observed=codex) 1083ms
+ ✓ |infra| src/agents/embedded-agent-runner/compact.queued-successor.test.ts > commits the successor before observers, with caller abort=false 1102ms
+ ✓ |infra| src/agents/embedded-agent-runner/compact.queued-successor.test.ts > commits the successor before observers, with caller abort=true 1106ms
+ ✓ |infra| src/agents/embedded-agent-runner/compact.queued-successor.test.ts > preserves completed same-ID compaction when the first post-backend gate closes 1109ms
+ ✓ |infra| src/agents/embedded-agent-runner/compact.queued-successor.test.ts > preserves completed declared but unaccepted successor when the first post-backend gate closes 1141ms
+ ✓ |infra| src/agents/embedded-agent-runner/compact.queued-successor.test.ts > rejects an owner changed while compaction awaited 1087ms
+(node:182) [DEP_SESSION_PERSISTENCE] DeprecationWarning: Plugin SDK: SessionManager.appendCompaction is deprecated; use appendCompactionAsync instead. Synchronous calls retain their return values and commit before returning. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+ ✓ |infra| src/agents/embedded-agent-runner/compact.queued-successor.test.ts > binds backend append to the captured writer (captured=writer, takeover=false) 1273ms
+ ✓ |infra| src/agents/embedded-agent-runner/compact.queued-successor.test.ts > binds backend append to the captured writer (captured=undefined, takeover=true) 1184ms
+ ✓ |infra| src/agents/embedded-agent-runner/compact.queued-successor.test.ts > rejects an inherited backend continuation after the queued owner closes 1214ms
+ ✓ |infra| src/agents/embedded-agent-runner/compact.queued-successor.test.ts > fences a synchronous timeout-listener append while the caller remains active 1140ms
+ ✓ |infra| src/agents/embedded-agent-runner/compact.queued-successor.test.ts > does not resolve or adopt successor fields from a failed compaction 1130ms
+ ✓ |infra| src/agents/embedded-agent-runner/compact.queued-successor.test.ts > rejects retained queued maintenance rewrites after normal closure 1153ms
+ ✓ |infra| src/agents/embedded-agent-runner/compact.queued-successor.test.ts > fences a queued maintenance writer replacement after acceptance: before rewrite (captured=writer) 1315ms
+ × |infra| src/agents/embedded-agent-runner/compact.queued-successor.test.ts > fences a queued maintenance writer replacement after acceptance: during branch read (captured=undefined) 1439ms
+   → expected false to be true // Object.is equality
+ ✓ |infra| src/agents/embedded-agent-runner/compact.queued-successor.test.ts > preserves a committed maintenance rewrite after cancellation 1133ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |infra| src/agents/embedded-agent-runner/compact.queued-successor.test.ts > fences a queued maintenance writer replacement after acceptance: during branch read (captured=undefined)
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/agents/embedded-agent-runner/compact.queued-successor.test.ts:821:38
+    819|     ).catch(() => undefined);
+    820|
+    821|     expect(observed.rewriteRejected).toBe(true);
+       |                                      ^
+    822|     expect(loadSessionEntry(target())).toMatchObject({
+    823|       ...owner,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 20 passed (21)
+   Start at  00:54:20
+   Duration  37.10s (tests 73%, transform 18%, import 7%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 config=test/vitest/vitest.infra.config.ts files=src/agents/embedded-agent-runner/compact.queued-successor.test.ts
+failing-tests:
+ × |infra| src/agents/embedded-agent-runner/compact.queued-successor.test.ts > fences a queued maintenance writer replacement after acceptance: during branch read (captured=undefined) 1439ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 20 passed (21)]
+# exit=1

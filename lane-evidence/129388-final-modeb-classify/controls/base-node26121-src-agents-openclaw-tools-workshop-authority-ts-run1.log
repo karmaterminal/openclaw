@@ -1,0 +1,64 @@
+# ctl ref=base sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 file=src/agents/openclaw-tools.workshop-authority.test.ts run=1 mode=node26121 start=2026-11-21T08:53:17Z
+# files: 1 runwt=/home/figs/classify-129388/base-1129d4c0 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-g1mdg0/home TMPDIR=/tmp/oc-classify-g1mdg0/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.infra.config.ts
+include-file: /tmp/oc-classify-g1mdg0/tmp/oc-focused.nKYRDa/include.json
+include-file-contents:
+  [
+    "src/agents/openclaw-tools.workshop-authority.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-g1mdg0/tmp/oc-focused.nKYRDa/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.infra.config.ts --maxWorkers=1 src/agents/openclaw-tools.workshop-authority.test.ts
+logs: /tmp/oc-classify-g1mdg0/tmp/oc-focused.nKYRDa
+[vitest-workers] local cache hit after 2197ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared b0778b7887c2 in 2260ms (20380 inputs, 25474 outputs)
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-1129d4c0
+
+(node:183) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: ensureAuthProfileStoreWithoutExternalProfiles is deprecated; use ensureAuthProfileStoreWithoutExternalProfilesAsync instead. The legacy contract remains supported during its deprecation period. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:183) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: resolveSandboxRuntimeStatus is deprecated; use resolveSandboxRuntimeStatusAsync instead. The legacy contract remains supported during its deprecation period. Removal requires an announced ordinary stable release window.
+stdout | src/agents/openclaw-tools.workshop-authority.test.ts > writes the skill while the invoking caller stays authorized
+[workshop-authority] authority:captured → written → SKILL.md exists: true
+
+ ✓ |infra| src/agents/openclaw-tools.workshop-authority.test.ts > writes the skill while the invoking caller stays authorized 9699ms
+stdout | src/agents/openclaw-tools.workshop-authority.test.ts > refuses the write when the caller is revoked during awaited preparation
+[workshop-authority] authority:captured → caller:revoked → written → SKILL.md exists: true
+
+ × |infra| src/agents/openclaw-tools.workshop-authority.test.ts > refuses the write when the caller is revoked during awaited preparation 1058ms
+   → expected 'written' to be 'refused (tool invocation authority is…' // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |infra| src/agents/openclaw-tools.workshop-authority.test.ts > refuses the write when the caller is revoked during awaited preparation
+AssertionError: expected 'written' to be 'refused (tool invocation authority is…' // Object.is equality
+
+Expected: "refused (tool invocation authority is no longer active)"
+Received: "written"
+
+ ❯ src/agents/openclaw-tools.workshop-authority.test.ts:107:26
+    105|   const result = await createUnderCaller("revoked", true);
+    106|   expect(result.trace).toContain("caller:revoked");
+    107|   expect(result.outcome).toBe("refused (tool invocation authority is n…
+       |                          ^
+    108|   expect(result.exists).toBe(false);
+    109| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+   Start at  00:53:22
+   Duration  24.42s (tests 45%, transform 37%, import 16%, setup 2%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 config=test/vitest/vitest.infra.config.ts files=src/agents/openclaw-tools.workshop-authority.test.ts
+failing-tests:
+ × |infra| src/agents/openclaw-tools.workshop-authority.test.ts > refuses the write when the caller is revoked during awaited preparation 1058ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 1 passed (2)]
+# exit=1
