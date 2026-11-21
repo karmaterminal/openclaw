@@ -1,0 +1,70 @@
+# ctl ref=cand sha=93a1e356c7aabf0d868560e46790b07449813840 file=src/infra/package-update-permission-drift.test.ts run=1 mode=node26121+noiso+hide-setfacl start=2026-11-21T10:01:50Z
+# files: 1 runwt=/home/figs/classify-129388/cand-93a1e356 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-YZTbvX/home TMPDIR=/tmp/oc-classify-YZTbvX/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.infra.config.ts
+include-file: /tmp/oc-classify-YZTbvX/tmp/oc-focused.MNk6hE/include.json
+include-file-contents:
+  [
+    "src/infra/package-update-permission-drift.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-YZTbvX/tmp/oc-focused.MNk6hE/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.infra.config.ts --maxWorkers=1 src/infra/package-update-permission-drift.test.ts
+logs: /tmp/oc-classify-YZTbvX/tmp/oc-focused.MNk6hE
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-93a1e356
+
+[vitest-workers] local cache hit after 2148ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared f6605c9a26ba in 2188ms (20558 inputs, 25754 outputs)
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > clears write drift once without removing read access (shared inode=false) 63ms
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > clears write drift once without removing read access (shared inode=true) 20ms
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > does not repair a tree with changed bytes 26ms
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > does not repair a tree with changed owner-mode 25ms
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > does not repair a tree with changed inode 20ms
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > does not repair a tree with changed target 16ms
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > keeps old public-mode receipts valid across recovery attempts 39ms
+ × |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > repairs a recursive named-user POSIX ACL 11ms
+   → spawnSync setfacl ENOENT
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > warns and continues when verified permissions cannot be tightened 27ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > repairs a recursive named-user POSIX ACL
+Error: spawnSync setfacl ENOENT
+ ❯ src/infra/package-update-permission-drift.test.ts:124:5
+    122|   it.skipIf(process.platform !== "linux")("repairs a recursive named-u…
+    123|     const f = fixture();
+    124|     execFileSync("setfacl", ["-R", "-m", "u:65534:rwX", f.root]);
+       |     ^
+    125|     expect(fs.statSync(f.payload).mode & 0o022).not.toBe(0);
+    126|     await expect(f.matches()).resolves.toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { errno: -2, code: 'ENOENT', syscall: 'spawnSync setfacl', path: 'setfacl', spawnargs: [ '-R', '-m', 'u:65534:rwX', '/tmp/oc-classify-YZTbvX/tmp/oc-vt-DWiRHG/publication-permission-drift-hT4gCC' ], error: { stack: 'Error: spawnSync setfacl ENOENT
+    at Object.spawnSync (node:internal/child_process:1175:20)
+    at spawnSync (node:child_process:976:24)
+    at execFileSync (node:child_process:1019:15)
+    at /home/figs/classify-129388/cand-93a1e356/src/infra/package-update-permission-drift.test.ts:124:5
+    at file:///home/figs/classify-129388/cand-93a1e356/node_modules/.pnpm/vitest@5.0.5_patch_hash=a2a78abe9470cc2ceb0d4eeb81acfc62d6180e9990bc866a7771ba60b1320ea_75661d0a5892d48edf76140ec77ed19d/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:1632:35
+    at file:///home/figs/classify-129388/cand-93a1e356/node_modules/.pnpm/vitest@5.0.5_patch_hash=a2a78abe9470cc2ceb0d4eeb81acfc62d6180e9990bc866a7771ba60b1320ea_75661d0a5892d48edf76140ec77ed19d/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:2801:26
+    at file:///home/figs/classify-129388/cand-93a1e356/node_modules/.pnpm/vitest@5.0.5_patch_hash=a2a78abe9470cc2ceb0d4eeb81acfc62d6180e9990bc866a7771ba60b1320ea_75661d0a5892d48edf76140ec77ed19d/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:3338:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///home/figs/classify-129388/cand-93a1e356/node_modules/.pnpm/vitest@5.0.5_patch_hash=a2a78abe9470cc2ceb0d4eeb81acfc62d6180e9990bc866a7771ba60b1320ea_75661d0a5892d48edf76140ec77ed19d/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:3333:10)
+    at file:///home/figs/classify-129388/cand-93a1e356/node_modules/.pnpm/vitest@5.0.5_patch_hash=a2a78abe9470cc2ceb0d4eeb81acfc62d6180e9990bc866a7771ba60b1320ea_75661d0a5892d48edf76140ec77ed19d/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:3318:20', message: 'spawnSync setfacl ENOENT', errno: -2, code: 'ENOENT', syscall: 'spawnSync setfacl', path: 'setfacl', spawnargs: [ '-R', '-m', 'u:65534:rwX', '/tmp/oc-classify-YZTbvX/tmp/oc-vt-DWiRHG/publication-permission-drift-hT4gCC' ], error: [Circular], status: null, signal: null, output: null, pid: 0, stdout: undefined, stderr: undefined, constructor: 'Function<Error>', name: 'Error', toString: 'Function<toString>', stacks: [ { method: '', file: '/home/figs/classify-129388/cand-93a1e356/src/infra/package-update-permission-drift.test.ts', line: 124, column: 5 } ] }, status: null, signal: null, output: null, pid: 0, stdout: undefined, stderr: undefined }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 passed (9)
+   Start at  02:01:52
+   Duration  4.98s (transform 82%, setup 8%, tests 6%, import 5%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=93a1e356c7aabf0d868560e46790b07449813840 config=test/vitest/vitest.infra.config.ts files=src/infra/package-update-permission-drift.test.ts
+failing-tests:
+ × |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > repairs a recursive named-user POSIX ACL 11ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 8 passed (9)]
+# exit=1

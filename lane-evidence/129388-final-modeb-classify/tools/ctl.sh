@@ -11,7 +11,8 @@ case "$ref" in
   base) wt=/home/figs/classify-129388/base-1129d4c0 ;;
   cand) wt=/home/figs/classify-129388/cand-93a1e356 ;;
   probe) wt=/home/figs/classify-129388/probe-final ;; # bisect probe; its SHA is in the log header and summary row
-  *) echo "ref must be base|cand|probe" >&2; exit 2 ;;
+  probeold) wt=/home/figs/classify-129388/probe-old ;; # bisect probe on the pre-stage-2 lock (c0ae2058)
+  *) echo "ref must be base|cand|probe|probeold" >&2; exit 2 ;;
 esac
 here=$(cd "$(dirname "$0")/.." && pwd)
 iso=/home/figs/flesh_beast_best_beast/source/frond-scribe/skills/pr-drift-cure-gates/run-isolated-from-live-gateways.sh

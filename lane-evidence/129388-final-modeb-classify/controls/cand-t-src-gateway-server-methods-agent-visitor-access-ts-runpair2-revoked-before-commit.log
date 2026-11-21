@@ -1,0 +1,53 @@
+# ctl-t ref=cand sha=93a1e356c7aabf0d868560e46790b07449813840 file=src/gateway/server-methods/agent.visitor-access.test.ts config=test/vitest/vitest.gateway.config.ts run=pair2-revoked-before-commit pattern=Visitor Access: revoked before commit$|reopens existing profiles and grants start=2026-11-21T09:22:54Z
+[test] preparing runtime runtime before Vitest workers
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-93a1e356
+
+[vitest-workers] local cache hit after 2187ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared f6605c9a26ba in 2231ms (20558 inputs, 25754 outputs)
+ ↓ |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: admin
+ ↓ |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: writer
+ ✓ |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: revoked before commit 4627ms
+ ↓ |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: revoked after commit
+ × |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > reopens existing profiles and grants and repairs a missing Visitor model policy 3623ms
+   → Session access facts are unavailable; retry after session storage is ready.
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > reopens existing profiles and grants and repairs a missing Visitor model policy
+SessionMutationFactsUnavailableError: <redacted len=75>
+ ❯ prepareSessionMutationFacts src/gateway/session-sharing-preparation.ts:<redacted len=5>
+    707|       error instanceof SessionCanonicalKeyMigrationRequiredError
+    708|       ? error
+    709|       : new SessionMutationFactsUnavailableError({ cause: error });
+       |         ^
+    710|   }
+    711| }
+ ❯ resolveSessionMutationAuthorizationAsync src/gateway/session-sharing-authorization-async.ts:<redacted len=6>
+ ❯ authorizeGatewayRequestPreDispatch src/gateway/server-methods/request-authorization.ts:<redacted len=5>
+ ❯ dispatch src/gateway/server-methods.ts:409:29
+ ❯ handleGatewayRequest src/gateway/server-methods.ts:685:12
+ ❯ invoke src/gateway/server-methods/agent.visitor-access.test-utils.ts:505:13
+ ❯ src/gateway/server-methods/agent.visitor-access.test-utils.ts:537:61
+
+Caused by: AgentDatabaseRegistryChangedError: Agent database registry changed during discovery; retry the read.
+ ❯ assertCurrent src/state/openclaw-agent-db-registry-listing.ts:642:19
+ ❯ Object.assertCurrent src/state/openclaw-agent-db-registry-listing.ts:703:85
+ ❯ dispatch src/gateway/server-methods.ts:409:29
+ ❯ handleGatewayRequest src/gateway/server-methods.ts:685:12
+ ❯ invoke src/gateway/server-methods/agent.visitor-access.test-utils.ts:505:13
+ ❯ src/gateway/server-methods/agent.visitor-access.test-utils.ts:537:61
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed | 3 skipped (5)
+   Start at  01:22:58
+   Duration  25.47s (transform 47%, tests 33%, import 17%, worker 2%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+# exit=1

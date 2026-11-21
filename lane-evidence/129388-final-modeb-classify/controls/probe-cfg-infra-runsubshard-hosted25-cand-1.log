@@ -1,0 +1,355 @@
+# ctlcfg ref=probe sha=93a1e356c7aabf0d868560e46790b07449813840 config=test/vitest/vitest.infra.config.ts run=subshard-hosted25-cand-1 start=2026-11-21T09:58:56Z
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-fbENMe/home TMPDIR=/tmp/oc-classify-fbENMe/tmp umask=0022 OPENCLAW_VITEST_INCLUDE_FILE=/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-final-modeb-classify/lane-evidence/129388-final-modeb-classify/controls/subshard-core-runtime-infra-storage-state-hosted-25.include.json
+[vitest-workers] local cache miss after 1622ms
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js (48:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js:48:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m48 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js (6:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js:6:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m6 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js (11:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js:11:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m11 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js (9:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js:9:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m9 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js (12:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js:12:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m12 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+[vitest-workers] prepared 2f21f125d2fa in 27161ms (20558 inputs, 25754 outputs)
+
+ RUN  v5.0.5 /home/figs/classify-129388/probe-final
+
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > propagates ambiguous managed repair ownership before commit or later repairs 691ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > preserves a accepted installed artifact when replacement capability consent is pending 59ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > preserves a stale-descriptor installed artifact when replacement capability consent is pending 32ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > preserves refused repair records while a sibling succeeds 189ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > resolves an earlier consent refusal after repair without clearing another plugin's refusal 1063ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > reviews doctor npm artifact capabilities through post-core convergence, accepted=true 442ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > reviews doctor npm-retry artifact capabilities through post-core convergence, accepted=false 449ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > reviews doctor clawhub artifact capabilities through post-core convergence, accepted=false 393ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > returns a cohort repair plan without publishing its pending baseline 608ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > fences baseline persistence when authority is revoked after the async callback returns 382ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > retries the operator ClawHub selector when no beta release is published 120ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > preserves ClawHub-only install metadata and review notices 118ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > adds repair warnings for blocked ClawHub update outcomes 17ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > installs a missing channel plugin selected by environment config from npm 117ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > preserves the selected release while repairing official plugins (installed=false) 22ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > preserves the selected release while repairing official plugins (installed=true) 5ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > does not install channel plugins for a channel metadata 4ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > does not install channel plugins for a matching disabled plugin entry 49ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > removes stale managed install records when the configured plugin is bundled 126ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > repairs a hollow official external install in a source checkout 24ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > keeps clawhub install records whose package names only share a bundled prefix 54ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > converges orphaned legacy npm payloads to the verified stable target 2026.8.2 30ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > converges orphaned project npm payloads to the verified stable target 2026.8.2 28ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > defers recorded channel-selected package repair during updates 116ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > does not install configured plugins when plugins are globally disabled 14ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > installs a selected runtime from its built-in fallback when no catalog entry exists 21ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > does not select npm targets for a disabled configured plugin 3ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > does not select npm targets for a bundled configured plugin 3ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > preserves exact npm selector intent when refreshing a stale Codex runtime plugin 27ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > converges managed Codex startup: stale beta follows newer latest 31ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > converges managed Codex startup: already-current beta older than the host is a no-op 31ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > converges managed Codex startup: registry outage retains a healthy installed beta 31ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > does not install a blocked downloadable plugin from explicit channel ids 67ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > does not install a channel catalog plugin when a configured plugin already owns that channel 48ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > preserves npm updater warnings at the correct severity 23ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > preserves clawhub updater warnings at the correct severity 20ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > replaces a configured official channel … 119ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > does not delete an arbitrary recorded path when replacing a broken official plugin 16ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > rechecks live authority after async replacement planning (revoked: one-shot-callback) 375ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > rechecks live authority after async replacement planning (revoked: one-shot-lease) 361ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > settles an alternate-path repair before retiring the old payload: index-failure 213ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > settles an alternate-path repair before retiring the old payload: cleanup-failure 207ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > settles an alternate-path repair before retiring the old payload: cleanup-refusal 221ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > settles an alternate-path repair before retiring the old payload: path-replaced 227ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > settles an alternate-path repair before retiring the old payload: symlink-success 235ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > settles an alternate-path repair before retiring the old payload: symlink-replaced 251ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > settles an alternate-path repair before retiring the old payload: parent-symlink-replaced 238ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > settles an alternate-path repair before retiring the old payload: parent-target-replaced 201ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > does not replace a non-official install that collides with an official plugin id 6ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > installs configured external speech and web-fetch plugins from selected providers 22ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > installs the official llama.cpp plugin for configured local memory embeddings 20ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > does not let runtime fallback metadata override official catalog install specs 20ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > installs an external media-understanding provider selected only by media config 19ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > does not install an env-selected denied search plugin 5ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > leaves retired npm declaration stubs untouched without using their install spec 6ms
+ ✓ |infra| src/commands/doctor/shared/missing-configured-plugin-install.test.ts > repairMissingConfiguredPluginInstalls > installs Firecrawl for env-only web fetch when search is disabled 18ms
+(node:326) [DEP_SESSION_PERSISTENCE] DeprecationWarning: Plugin SDK: SessionManager.appendMessage is deprecated; use appendMessageAsync instead. Synchronous calls retain their return values and commit before returning. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:326) [DEP_SESSION_PERSISTENCE] DeprecationWarning: Plugin SDK: SessionManager.appendCompaction is deprecated; use appendCompactionAsync instead. Synchronous calls retain their return values and commit before returning. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > reuses private memory state across fallback (overflow=false) 2784ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > reuses private memory state across fallback (overflow=true) 965ms
+(node:326) [DEP_SESSION_PERSISTENCE] DeprecationWarning: Plugin SDK: SessionManager.open is deprecated; use openAsync instead. Synchronous calls retain their return values and commit before returning. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+(node:326) [DEP_SESSION_PERSISTENCE] DeprecationWarning: Plugin SDK: SessionManager.appendCustomEntry is deprecated; use appendCustomEntryAsync instead. Synchronous calls retain their return values and commit before returning. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > accounts for usage and owner-turn taint independently across bounded tail 961ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > accounts for usage and owner-turn taint independently across new user boundary 355ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > accounts for usage and owner-turn taint independently across non-owner requester 347ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > records error payload without changing the source session 328ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > records user abort without changing the source session 256ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > records exhaustion without changing the source session 278ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > records a failed initial plan resolution attempt, cleans up, and retries 305ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > records a failed target preparation attempt, cleans up, and retries 318ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > skips incognito memory flush identified by its entry flag 11ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > skips incognito memory flush identified by its key after process-local state is gone 5ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > uses the policy owner's memory-flush writability for agent:other:main 129ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > skips memory flush when a persisted sandbox requirement caps workspace access 224ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > settles required preflight for already under target (ok=true) 450ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > settles required preflight for no real conversation messages (ok=false) 173ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > settles required preflight for plugin already stored this turn (ok=true) 171ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > settles required preflight for deferred to background context-engine m… (ok=true) 174ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > passes persisted session policy, runtime policy key and turn skills to preflight compaction 284ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > applies session compaction at reported pressure after a runtime fallback with memory flush disabled 503ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > rechecks the session after its pre-compaction checkpoint: successor 284ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > rechecks the session after its pre-compaction checkpoint: below pressure 111ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > rechecks the session after its pre-compaction checkpoint: cancelled 116ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > refreshes the retained reply reader after preflight accepts a successor 354ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > rejects authorization invalidation before start without accounting or adopting compaction 4ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > rejects authorization invalidation after start notice without accounting or adopting compaction 189ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > rejects authorization invalidation after awaited compactor without accounting or adopting compaction 170ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > rejects abort invalidation after awaited compactor without accounting or adopting compaction 169ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > rejects operator invalidation after awaited compactor without accounting or adopting compaction 171ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > ignores prompt-only version 1 state and legacy CLI usage on the first upgraded turn 606ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > does not combine a fresh owner snapshot with unrelated transcript output 251ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > does not add unavailable output twice when full-message estimation already includes it 249ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > uses appended transcript growth without overwriting the request owner's usage 333ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > estimates Codex tool-result mirrors through the provider projection after provider usage after runtime cutover 307ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > combines latest usage with post-usage tail pressure across 513 display-only messages 362ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > preserves token-pressure compaction while byte retries are latched 411ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > leaves oversized Codex history and old latches untouched after native compact=false 261ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > leaves oversized Codex history and old latches untouched after native compact=true 278ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > records tokens compaction before a queued continuation claims the session 389ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > skips memory flush and byte preflight for CLI-owned sessions 241ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > preserves post-compaction context when prepared delivery ownership changes 429ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > keeps incognito preflight compaction in the process-local transcript store 174ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > preserves accounting for an initial leaf control targeting null 354ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > preserves accounting for an initial leaf control targeting missing 367ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > reports failed memory maintenance on the parent run 325ms
+ ✓ |infra| src/auto-reply/reply/agent-runner-memory.test.ts > runMemoryFlushIfNeeded > reports bounded context when server compaction leaves oversized history 368ms
+(node:372) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: createToolSurface is deprecated; use createToolSurfaceAsync instead. Synchronous tool construction retains its pinned skill resources. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > continues a resumed turn after compaction and a runtime row notification 4859ms
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > executes a recovery event after its producer's plugin scope closes 3166ms
+stderr | src/auto-reply/reply/session-event-config-readmission.test.ts > finalizes a failed-before-reply event after its visitor policy scope closes
+Embedded agent failed before reply: accepted continuation children could not transfer terminal delivery
+
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > finalizes a failed-before-reply event after its visitor policy scope closes 3229ms
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > re-admits accepted deferred work after a config publication: published-deny 3949ms
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > re-admits accepted deferred work after a config publication: retained-ceiling 4293ms
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > re-admits accepted deferred work after a config publication: allow-control 4049ms
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > re-admits accepted deferred work after a config publication: revoked-producer 3517ms
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > re-admits accepted deferred work after a config publication: publication-storm 3780ms
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > re-admits accepted deferred work after a config publication: scheduled-control 5136ms
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > re-admits accepted deferred work after a config publication: scheduled-revoked 3740ms
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > re-admits accepted deferred work after a config publication: scheduled-model-revoked 3829ms
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > re-admits accepted deferred work after a config publication: scheduled-model-malformed 2859ms
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > re-admits accepted deferred work after a config publication: scheduled-subagent-default 4352ms
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > re-admits accepted deferred work after a config publication: scheduled-subagent-locked 4177ms
+(node:372) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: saveAuthProfileStore is deprecated; use updateAuthProfileStoreWithLock from openclaw/plugin-sdk/provider-auth instead. The legacy contract remains supported during its deprecation period. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > re-admits accepted deferred work after a config publication: scheduled-gmail-default 4456ms
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > re-admits accepted deferred work after a config publication: scheduled-account-cross-provider 4242ms
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > re-admits accepted deferred work after a config publication: scheduled-account-same-provider 4282ms
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > re-admits accepted deferred work after a config publication: scheduled-account-bound-unavailable 4838ms
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > re-admits accepted deferred work after a config publication: scheduled-failure-transport 3216ms
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > re-admits accepted deferred work after a config publication: scheduled-failure-agent 2990ms
+stderr | src/auto-reply/reply/session-event-config-readmission.test.ts > re-admits accepted deferred work after a config publication: scheduled-failure-context-overflow
+Auto-compaction failed (400 The prompt is too long: 203557, model maximum context length: 196607). Preserving existing session mapping for agent:main:config-readmission.
+
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > re-admits accepted deferred work after a config publication: scheduled-failure-context-overflow 3020ms
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > revalidates queued scheduled content and destination: changed 4004ms
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > revalidates queued scheduled content and destination: unchanged 4109ms
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > revalidates queued scheduled content and destination: no-delivery 4081ms
+ ✓ |infra| src/auto-reply/reply/session-event-config-readmission.test.ts > revalidates queued scheduled content and destination: gmail-policy 4372ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > keeps foreground no-op and mutation outcomes accurate: noop (candidate=false) 2339ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > keeps foreground no-op and mutation outcomes accurate: noop (candidate=true) 1877ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > keeps foreground no-op and mutation outcomes accurate: runtime (candidate=false) 1646ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > keeps foreground no-op and mutation outcomes accurate: runtime (candidate=true) 1703ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > keeps foreground no-op and mutation outcomes accurate: plugins (candidate=false) 1634ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > keeps foreground no-op and mutation outcomes accurate: plugins (candidate=true) 1617ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > keeps foreground no-op and mutation outcomes accurate: park-failed (candidate=false) 1580ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > keeps foreground no-op and mutation outcomes accurate: park-failed (candidate=true) 1483ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > keeps foreground no-op and mutation outcomes accurate: retirement (candidate=true) 1795ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > managed npm finalization tolerates child maintenance (expires=false) 4163ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > managed npm finalization tolerates child maintenance (expires=true) 2629ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > keeps data-at-risk refusal authoritative over maintenance contention 7ms
+│
+◇  ACP session keys ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                                                                                                                 │
+│  - Repaired 1 of 1 legacy ACP metadata record(s).                                                                                                                                                                               │
+│  - Saved ACP metadata backup:                                                                                                                                                                                                   │
+│    /tmp/oc-classify-fbENMe/tmp/oc-vt-nTKTAx/openclaw-test-state-update-stale-session-receipt-RDqMWx/home/.openclaw/agents/main/agent/openclaw-agent.sqlite.pre-acp-metadata-migration-85894543-85be-4ec5-b905-6195d912657a.bak  │
+│                                                                                                                                                                                                                                 │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+│
+◇  Session titles ────────────────────────────────────────────────────────╮
+│                                                                         │
+│  - Repaired 2 of 2 missing session title(s) without changing activity.  │
+│                                                                         │
+├─────────────────────────────────────────────────────────────────────────╯
+│
+◇  Session SQLite ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                                              │
+│  - Legacy entries: 2; SQLite entries: 2.                                                                                                                     │
+│  - Transcript events: imported=2; validated=0.                                                                                                               │
+│  - /tmp/oc-classify-fbENMe/tmp/oc-vt-nTKTAx/openclaw-test-state-update-stale-session-receipt-RDqMWx/home/.openclaw/agents/main/sessions/sessions.json:       │
+│    [retained_plugin_receipt_superseded] Session import receipt is bound                                                                                      │
+│    to a different database (123:456); it cannot certify                                                                                                      │
+│    /tmp/oc-classify-fbENMe/tmp/oc-vt-nTKTAx/openclaw-test-state-update-stale-session-receipt-RDqMWx/home/.openclaw/agents/main/agent/openclaw-agent.sqlite.  │
+│    Preserved the superseded receipt in migration_runs. Retained                                                                                              │
+│    originals will be checked against live session state without                                                                                              │
+│    replacing current settings.                                                                                                                               │
+│  - /tmp/oc-classify-fbENMe/tmp/oc-vt-nTKTAx/openclaw-test-state-update-stale-session-receipt-RDqMWx/home/.openclaw/agents/main/sessions/sessions.json:       │
+│    [plugin_migration_source_retained] Session import is verified.                                                                                            │
+│    Original session migration inputs, including unindexed history,                                                                                           │
+│    remain pending for plugin(s): brave. Install the plugin and run                                                                                           │
+│    openclaw doctor --fix to finish.                                                                                                                          │
+│  - Found 1 session SQLite issue(s). Inspect with "openclaw doctor                                                                                            │
+│    --session-sqlite dry-run --session-sqlite-all-agents".                                                                                                    │
+│                                                                                                                                                              │
+├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+(node:1154) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: readAcpSessionEntry is deprecated; use readAcpSessionEntryAsync instead. The legacy contract remains supported during its deprecation period. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > restarts the stopped Gateway after Doctor supersedes a foreign session receipt 5645ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > awaits current-core service history before Doctor with current authority 3029ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > awaits current-core service history before Doctor with requester-revoked authority 1906ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > reconciles an already-current service installation (drift=false, restart=true, outcome=ok) 1976ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > reconciles an already-current service installation (drift=true, restart=true, outcome=ok) 2532ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > reconciles an already-current service installation (drift=true, restart=false, outcome=ok) 1711ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > reconciles an already-current service installation (drift=true, restart=true, outcome=reconciliation-pending) 3490ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > reconciles an already-current service installation (drift=true, restart=true, outcome=readiness-pending) 2702ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > reconciles an already-current service installation (drift=false, restart=true, outcome=absent) 1848ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > refuses same-schema finalization after requester revocation 125ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > does not finalize or clean an active durable run without its live executor 500ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > keeps the activated candidate when its service definition refuses startup (restart) 1858ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > keeps the activated candidate when its service definition refuses startup (revalidation) 1918ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > settles progress before finalization and retains its failure (confirmed) 2029ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > settles progress before finalization and retains its failure (unknown) 156ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > settles progress before finalization and retains its failure (refused) 1565ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > settles progress before finalization and retains its failure (revoked) 154ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > settles the POSIX predecessor stop before Doctor: stopped 616ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > settles the POSIX predecessor stop before Doctor: not-stopped 146ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > settles the POSIX predecessor stop before Doctor: joined-error 633ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > settles the POSIX predecessor stop before Doctor: cleanup-uncertain 613ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > settles the POSIX predecessor stop before Doctor: native-unsafe 143ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > settles the POSIX predecessor stop before Doctor: receipt-write-failed 126ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > settles the POSIX predecessor stop before Doctor: receipt-pending 645ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > settles the POSIX predecessor stop before Doctor: receipt-pending-native-error 629ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > settles the POSIX predecessor stop before Doctor: receipt-and-stop-failed 142ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > settles the POSIX predecessor stop before Doctor: run-finished 563ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > adopts a POSIX Doctor stop during ordinary finalization (stopped) 2846ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > adopts a POSIX Doctor stop during ordinary finalization (owned-selectors) 2753ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > adopts a POSIX Doctor stop during ordinary finalization (failed-uninspected) 1488ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > adopts a POSIX Doctor stop during ordinary finalization (legacy-stop-failed) 1588ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > adopts a POSIX Doctor stop during ordinary finalization (legacy-stop-uncertain) 536ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > adopts a POSIX Doctor stop during ordinary finalization (legacy-stop-revoked) 475ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > adopts a POSIX Doctor stop during ordinary finalization (legacy-stop-native-authority) 503ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > adopts a POSIX Doctor stop during ordinary finalization (inspection-unavailable) 981ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > adopts a POSIX Doctor stop during ordinary finalization (inspection-threw) 981ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > adopts a POSIX Doctor stop during ordinary finalization (inspection-uncertain) 964ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > adopts a POSIX Doctor stop during ordinary finalization (inspection-native-authority) 921ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > adopts a POSIX Doctor stop during ordinary finalization (runtime-unverified) 996ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > adopts a POSIX Doctor stop during migrated finalization (stopped) 2694ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > adopts a POSIX Doctor stop during migrated finalization (restart-requested) 2564ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > adopts a POSIX Doctor stop during migrated finalization (legacy-stopped) 2453ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > adopts a POSIX Doctor stop during migrated finalization (legacy-no-stop) 2598ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > adopts a POSIX Doctor stop during ordinary finalization (no-receipt) 1858ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > adopts a POSIX Doctor stop during ordinary finalization (replaced-service) 1901ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > adopts a POSIX Doctor stop during ordinary finalization (replaced-manager) 1853ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > adopts a POSIX Doctor stop during ordinary finalization (already-running) 1853ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > adopts a POSIX Doctor stop during ordinary finalization (executor-revoked) 995ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > adopts a POSIX Doctor stop during ordinary finalization (requester-revoked) 1039ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > retained service finalization distinguishes native effects: missing-entrypoint 4507ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > retained service finalization distinguishes native effects: unsettled-child 1270ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > keeps service activation behind awaited local convergence and Doctor 2587ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > keeps service activation behind awaited fresh convergence and Doctor 1986ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > restarts after completion status inspection fails 2625ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > classifies post-activation failures without granting authority (restart-health) 2619ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > classifies post-activation failures without granting authority (reported-failure) 2677ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > classifies post-activation failures without granting authority (authority) 2619ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > classifies post-activation failures without granting authority (unknown) 2686ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > classifies post-activation failures without granting authority (data-at-risk) 2706ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > classifies post-activation failures without granting authority (health-with-authority) 2616ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > classifies post-activation failures without granting authority (admission-unavailable) 2685ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > converges plugins for a switched Git release only after it verified 2861ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > restarts when completion cache refresh reports failure 2624ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > restarts when shell completion cache generation returns false 2521ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > reports Windows autostart recovery failure before exiting 2861ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > retires the wrapper before persisting a… 2782ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > keeps the package and warns when wrappe… 2728ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > keeps a verified target and warns when … 2744ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > removes operator overrides and process identity from the managed install environment 2563ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > managed service finalization > keeps plugin convergence stopped and measures the full interval through verification (unchanged, initial stop=500) 2713ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > managed service finalization > keeps plugin convergence stopped and measures the full interval through verification (rolled-back, initial stop=500) 4545ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > managed service finalization > keeps plugin convergence stopped and measures the full interval through verification (unverified, initial stop=500) 5112ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > managed service finalization > skips unsafe metadata refresh for unknown ownership 2742ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > managed service finalization > does not restart a stopped sealed service when fresh inspection fails 1920ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > managed service finalization > does not restart a stopped sealed service when fresh revalidation fails 1914ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > managed service finalization > canonical sealed post-update marks failed activation without finaliz… 4781ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > managed service finalization > canonical sealed post-update preserves the native context of an unlo… 3807ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > managed service finalization > leaves native service management blocked when HOME is relocated 1988ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > runs deferred Doctor inspections after the restart for the original updater 2850ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > runs deferred Doctor inspections after the restart for the migrated worker with the marker 2785ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > runs deferred Doctor inspections after the restart for the unadopted worker from a shipped updater 2743ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > runs deferred Doctor inspections after the restart for the adopted worker from a shipped updater 2797ms
+ ✓ |infra| src/cli/update-cli/update-command-post-update.test.ts > successful update finalization ordering > runs deferred Doctor inspections after the restart for the unverified Gateway 2768ms
+ ✓ |infra| src/agents/embedded-agent-runner/run/attempt-prompt-submit.projections.test.ts > durable model prompt projection at provider dispatch > commits final listener text with its actor carrier without a separate rewrite request 1861ms
+ ✓ |infra| src/agents/embedded-agent-runner/run/attempt-prompt-submit.projections.test.ts > durable model prompt projection at provider dispatch > preserves resized image request prefixes after an aborted turn, retries, and reopen 2023ms
+ ✓ |infra| src/agents/embedded-agent-runner/run/attempt-prompt-submit.projections.test.ts > durable model prompt projection at provider dispatch > keeps one dispatched user turn across fallback (0 images, enriched=false) 1174ms
+ ✓ |infra| src/agents/embedded-agent-runner/run/attempt-prompt-submit.projections.test.ts > durable model prompt projection at provider dispatch > keeps one dispatched user turn across fallback (0 images, enriched=true) 1135ms
+ ✓ |infra| src/agents/embedded-agent-runner/run/attempt-prompt-submit.projections.test.ts > durable model prompt projection at provider dispatch > keeps one dispatched user turn across fallback (1 images, enriched=false) 1199ms
+ ✓ |infra| src/agents/embedded-agent-runner/run/attempt-prompt-submit.projections.test.ts > durable model prompt projection at provider dispatch > keeps one dispatched user turn across fallback (1 images, enriched=true) 1152ms
+ ✓ |infra| src/agents/embedded-agent-runner/run/attempt-prompt-submit.projections.test.ts > durable model prompt projection at provider dispatch > keeps one dispatched user turn across fallback (2 images, enriched=false) 1141ms
+ ✓ |infra| src/agents/embedded-agent-runner/run/attempt-prompt-submit.projections.test.ts > durable model prompt projection at provider dispatch > keeps one dispatched user turn across fallback (2 images, enriched=true) 1211ms
+ ✓ |infra| src/agents/embedded-agent-runner/run/attempt-prompt-submit.projections.test.ts > durable model prompt projection at provider dispatch > appends late media resolved during capture without rewriting the frozen prompt 1242ms
+ ✓ |infra| src/agents/embedded-agent-runner/run/attempt-prompt-submit.projections.test.ts > durable model prompt projection at provider dispatch > appends late media resolved during dispatch without rewriting the frozen prompt 1214ms
+ ✓ |infra| src/agents/embedded-agent-runner/run/attempt-prompt-submit.projections.test.ts > durable model prompt projection at provider dispatch > does not transfer a compacted keyless user's projection to the retained turn 1261ms
+ ✓ |infra| src/agents/embedded-agent-runner/run/attempt-prompt-submit.projections.test.ts > durable model prompt projection at provider dispatch > replays an inter-session turn with its stored provenance envelope: plain body 1152ms
+ ✓ |infra| src/agents/embedded-agent-runner/run/attempt-prompt-submit.projections.test.ts > durable model prompt projection at provider dispatch > replays an inter-session turn with its stored provenance envelope: forwarded inter-session body 1205ms
+ ✓ |infra| src/agents/embedded-agent-runner/run/attempt-prompt-submit.projections.test.ts > durable model prompt projection at provider dispatch > replays an inter-session turn with its stored provenance envelope: hook body 1202ms
+ ✓ |infra| src/agents/embedded-agent-runner/run/attempt-prompt-submit.projections.test.ts > durable model prompt projection at provider dispatch > replays an inter-session turn with its stored provenance envelope: restart with frozen prompt body 1169ms
+ ✓ |infra| src/agents/embedded-agent-runner/run/attempt-prompt-submit.projections.test.ts > tool-result projection persistence at dispatch > writes one marker for unchanged requests and another for a new frozen batch 8ms
+ ✓ |infra| src/agents/subagent-announce.live-tree-chain-proof.test.ts > continuation chain production composition proof (tree hop-1 + hop-2) > recovers a depth-1 orchestrator after its depth-2 delegate settles exactly once 4393ms
+ ✓ |infra| src/agents/subagent-announce.live-tree-chain-proof.test.ts > continuation chain production composition proof (tree hop-1 + hop-2) > keeps a raw-final token delegate owned by its registered disposable origin 3281ms
+(node:5304) [DEP_SESSION_PERSISTENCE] DeprecationWarning: Plugin SDK: SessionManager.openBounded is deprecated; use openBoundedAsync instead. Synchronous calls retain their return values and commit before returning. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:5304) [DEP_SESSION_PERSISTENCE] DeprecationWarning: Plugin SDK: SessionManager.appendMessageWithTranscriptAnchor is deprecated; use appendMessageWithTranscriptAnchorAsync instead. Synchronous calls retain their return values and commit before returning. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+ ✓ |infra| src/agents/sessions/session-manager-bounded.test.ts > keeps generated entry ids unique outside a bounded transcript tail 2144ms
+ ✓ |infra| src/agents/sessions/session-manager-bounded.test.ts > retries a stale bounded append without parsing transcript rows outside the bounded context 1099ms
+(node:5304) [DEP_SESSION_PERSISTENCE] DeprecationWarning: Plugin SDK: SessionManager.open is deprecated; use openAsync instead. Synchronous calls retain their return values and commit before returning. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+(node:5304) [DEP_SESSION_PERSISTENCE] DeprecationWarning: Plugin SDK: SessionManager.appendMessage is deprecated; use appendMessageAsync instead. Synchronous calls retain their return values and commit before returning. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.

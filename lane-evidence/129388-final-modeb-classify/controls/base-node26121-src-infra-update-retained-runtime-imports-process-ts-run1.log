@@ -1,0 +1,35 @@
+# ctl ref=base sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 file=src/infra/update-retained-runtime-imports.process.test.ts run=1 mode=node26121 start=2026-11-21T09:59:42Z
+# files: 1 runwt=/home/figs/classify-129388/base-1129d4c0 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-zxwwEJ/home TMPDIR=/tmp/oc-classify-zxwwEJ/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.infra.config.ts
+include-file: /tmp/oc-classify-zxwwEJ/tmp/oc-focused.AiTk9y/include.json
+include-file-contents:
+  [
+    "src/infra/update-retained-runtime-imports.process.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-zxwwEJ/tmp/oc-focused.AiTk9y/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.infra.config.ts --maxWorkers=1 src/infra/update-retained-runtime-imports.process.test.ts
+logs: /tmp/oc-classify-zxwwEJ/tmp/oc-focused.AiTk9y
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-1129d4c0
+
+[vitest-workers] local cache hit after 2195ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 70ade47f3938 in 2259ms (20380 inputs, 25474 outputs)
+stderr | src/infra/update-retained-runtime-imports.process.test.ts > keeps bun late imports on the old generation through replacement and CLI teardown
+[openclaw] Staging pinned Bun fork openclaw-v1.4.4-20261026-191755ec11-webkit-b82bc917e9 (one-time download)…
+
+ ✓ |infra| src/infra/update-retained-runtime-imports.process.test.ts > keeps node late imports on the old generation through replacement and CLI teardown 2752ms
+ ✓ |infra| src/infra/update-retained-runtime-imports.process.test.ts > keeps bun late imports on the old generation through replacement and CLI teardown 1592ms
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  01:59:43
+   Duration  8.66s (tests 52%, transform 44%, setup 4%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 config=test/vitest/vitest.infra.config.ts files=src/infra/update-retained-runtime-imports.process.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 2 passed (2)]
+# exit=0

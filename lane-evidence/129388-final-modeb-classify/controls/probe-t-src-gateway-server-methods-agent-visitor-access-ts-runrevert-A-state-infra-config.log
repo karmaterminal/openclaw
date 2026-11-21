@@ -1,0 +1,89 @@
+# ctl-t ref=probe sha=93a1e356c7aabf0d868560e46790b07449813840 file=src/gateway/server-methods/agent.visitor-access.test.ts config=test/vitest/vitest.gateway.config.ts run=revert-A-state-infra-config pattern=Visitor Access: admin$|reopens existing profiles and grants start=2026-11-21T09:39:01Z
+[test] preparing runtime runtime before Vitest workers
+[build-all] runtime:scripts:check
+[build-all] runtime:scripts:check done in 2.95s
+[build-all] plugins:assets:build
+[clawrouter] build: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/clawrouter
+[deep-research] build: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/deep-research
+[knowledge] build: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/knowledge
+[mcp-relay] build: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/mcp-relay
+[memory-core] build: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/memory-core
+[nostr] build: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/nostr
+[openclaw-id-access] build: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/openclaw-id-access
+[whatsapp] build: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/whatsapp
+[workboard] build: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/workboard
+[x] build: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/x
+[build-all] plugins:assets:build done in 3.67s
+[build-all] tsdown
+[tsdown-build] invocation 1/2 finished in 0.5s
+
+ ERROR  Error: Build failed with 70 errors:
+
+[31m[MISSING_EXPORT] [0m"resolveRuntimeCompilerArgs" is not exported by "src/infra/runtime-worker-url.ts".
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/agents/harness/native-hook-relay-command.ts:9:10 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m9 │[0m [38;5;249mi[0m[38;5;249mm[0m[38;5;249mp[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249mt[0m[38;5;249m [0m[38;5;249m{[0m[38;5;249m [0mresolveRuntimeCompilerArgs[38;5;249m [0m[38;5;249m}[0m[38;5;249m [0m[38;5;249mf[0m[38;5;249mr[0m[38;5;249mo[0m[38;5;249mm[0m[38;5;249m [0m[38;5;249m"[0m[38;5;249m.[0m[38;5;249m.[0m[38;5;249m/[0m[38;5;249m.[0m[38;5;249m.[0m[38;5;249m/[0m[38;5;249mi[0m[38;5;249mn[0m[38;5;249mf[0m[38;5;249mr[0m[38;5;249ma[0m[38;5;249m/[0m[38;5;249mr[0m[38;5;249mu[0m[38;5;249mn[0m[38;5;249mt[0m[38;5;249mi[0m[38;5;249mm[0m[38;5;249me[0m[38;5;249m-[0m[38;5;249mw[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249mk[0m[38;5;249me[0m[38;5;249mr[0m[38;5;249m-[0m[38;5;249mu[0m[38;5;249mr[0m[38;5;249ml[0m[38;5;249m.[0m[38;5;249mj[0m[38;5;249ms[0m[38;5;249m"[0m[38;5;249m;[0m
+ [38;5;240m  │[0m          ─────────────┬────────────  
+ [38;5;240m  │[0m                       ╰────────────── Missing export
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mNote[0m: If you meant to import a type rather than a value, make sure to add the `type` modifier (e.g. `import { type Foo } from '../../infra/runtime-worker-url.js'`).
+[38;5;246m───╯[0m
+
+[31m[MISSING_EXPORT] [0m"listPendingContinuationSessionDeliveryKeys" is not exported by "src/infra/session-delivery-queue-storage.ts".
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/agents/subagents/registry/subagent-registry-maintenance.ts:26:10 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m26 │[0m [38;5;249mi[0m[38;5;249mm[0m[38;5;249mp[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249mt[0m[38;5;249m [0m[38;5;249m{[0m[38;5;249m [0mlistPendingContinuationSessionDeliveryKeys[38;5;249m [0m[38;5;249m}[0m[38;5;249m [0m[38;5;249mf[0m[38;5;249mr[0m[38;5;249mo[0m[38;5;249mm[0m[38;5;249m [0m[38;5;249m"[0m[38;5;249m.[0m[38;5;249m.[0m[38;5;249m/[0m[38;5;249m.[0m[38;5;249m.[0m[38;5;249m/[0m[38;5;249m.[0m[38;5;249m.[0m[38;5;249m/[0m[38;5;249mi[0m[38;5;249mn[0m[38;5;249mf[0m[38;5;249mr[0m[38;5;249ma[0m[38;5;249m/[0m[38;5;249ms[0m[38;5;249me[0m[38;5;249ms[0m[38;5;249ms[0m[38;5;249mi[0m[38;5;249mo[0m[38;5;249mn[0m[38;5;249m-[0m[38;5;249md[0m[38;5;249me[0m[38;5;249ml[0m[38;5;249mi[0m[38;5;249mv[0m[38;5;249me[0m[38;5;249mr[0m[38;5;249my[0m[38;5;249m-[0m[38;5;249mq[0m[38;5;249mu[0m[38;5;249me[0m[38;5;249mu[0m[38;5;249me[0m[38;5;249m-[0m[38;5;249ms[0m[38;5;249mt[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249ma[0m[38;5;249mg[0m[38;5;249me[0m[38;5;249m.[0m[38;5;249mj[0m[38;5;249ms[0m[38;5;249m"[0m[38;5;249m;[0m
+ [38;5;240m   │[0m          ─────────────────────┬────────────────────  
+ [38;5;240m   │[0m                               ╰────────────────────── Missing export
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mNote[0m: If you meant to import a type rather than a value, make sure to add the `type` modifier (e.g. `import { type Foo } from '../../../infra/session-delivery-queue-storage.js'`).
+[38;5;246m────╯[0m
+
+[31m[MISSING_EXPORT] [0m"normalizeDiagnosticTraceparent" is not exported by "src/infra/diagnostic-trace-context.ts".
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/agents/subagents/announce/subagent-announce-delivery.ts:5:10 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m5 │[0m [38;5;249mi[0m[38;5;249mm[0m[38;5;249mp[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249mt[0m[38;5;249m [0m[38;5;249m{[0m[38;5;249m [0mnormalizeDiagnosticTraceparent[38;5;249m [0m[38;5;249m}[0m[38;5;249m [0m[38;5;249mf[0m[38;5;249mr[0m[38;5;249mo[0m[38;5;249mm[0m[38;5;249m [0m[38;5;249m"[0m[38;5;249m.[0m[38;5;249m.[0m[38;5;249m/[0m[38;5;249m.[0m[38;5;249m.[0m[38;5;249m/[0m[38;5;249m.[0m[38;5;249m.[0m[38;5;249m/[0m[38;5;249mi[0m[38;5;249mn[0m[38;5;249mf[0m[38;5;249mr[0m[38;5;249ma[0m[38;5;249m/[0m[38;5;249md[0m[38;5;249mi[0m[38;5;249ma[0m[38;5;249mg[0m[38;5;249mn[0m[38;5;249mo[0m[38;5;249ms[0m[38;5;249mt[0m[38;5;249mi[0m[38;5;249mc[0m[38;5;249m-[0m[38;5;249mt[0m[38;5;249mr[0m[38;5;249ma[0m[38;5;249mc[0m[38;5;249me[0m[38;5;249m-[0m[38;5;249mc[0m[38;5;249mo[0m[38;5;249mn[0m[38;5;249mt[0m[38;5;249me[0m[38;5;249mx[0m[38;5;249mt[0m[38;5;249m.[0m[38;5;249mj[0m[38;5;249ms[0m[38;5;249m"[0m[38;5;249m;[0m
+ [38;5;240m  │[0m          ───────────────┬──────────────  
+ [38;5;240m  │[0m                         ╰──────────────── Missing export
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mNote[0m: If you meant to import a type rather than a value, make sure to add the `type` modifier (e.g. `import { type Foo } from '../../../infra/diagnostic-trace-context.js'`).
+[38;5;246m───╯[0m
+
+[31m[MISSING_EXPORT] [0m"normalizeDiagnosticTraceparent" is not exported by "src/infra/diagnostic-trace-context.ts".
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/agents/subagents/announce/subagent-announce.runtime.ts:5:10 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m5 │[0m [38;5;249mi[0m[38;5;249mm[0m[38;5;249mp[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249mt[0m[38;5;249m [0m[38;5;249m{[0m[38;5;249m [0mnormalizeDiagnosticTraceparent[38;5;249m [0m[38;5;249m}[0m[38;5;249m [0m[38;5;249mf[0m[38;5;249mr[0m[38;5;249mo[0m[38;5;249mm[0m[38;5;249m [0m[38;5;249m"[0m[38;5;249m.[0m[38;5;249m.[0m[38;5;249m/[0m[38;5;249m.[0m[38;5;249m.[0m[38;5;249m/[0m[38;5;249m.[0m[38;5;249m.[0m[38;5;249m/[0m[38;5;249mi[0m[38;5;249mn[0m[38;5;249mf[0m[38;5;249mr[0m[38;5;249ma[0m[38;5;249m/[0m[38;5;249md[0m[38;5;249mi[0m[38;5;249ma[0m[38;5;249mg[0m[38;5;249mn[0m[38;5;249mo[0m[38;5;249ms[0m[38;5;249mt[0m[38;5;249mi[0m[38;5;249mc[0m[38;5;249m-[0m[38;5;249mt[0m[38;5;249mr[0m[38;5;249ma[0m[38;5;249mc[0m[38;5;249me[0m[38;5;249m-[0m[38;5;249mc[0m[38;5;249mo[0m[38;5;249mn[0m[38;5;249mt[0m[38;5;249me[0m[38;5;249mx[0m[38;5;249mt[0m[38;5;249m.[0m[38;5;249mj[0m[38;5;249ms[0m[38;5;249m"[0m[38;5;249m;[0m
+ [38;5;240m  │[0m          ───────────────┬──────────────  
+ [38;5;240m  │[0m                         ╰──────────────── Missing export
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mNote[0m: If you meant to import a type rather than a value, make sure to add the `type` modifier (e.g. `import { type Foo } from '../../../infra/diagnostic-trace-context.js'`).
+[38;5;246m───╯[0m
+
+[31m[MISSING_EXPORT] [0m"enqueueSystemEventRaw" is not exported by "src/infra/system-events.ts".
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/agents/subagent-announce.continuation.runtime.ts:34:10 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m34 │[0m [38;5;249mi[0m[38;5;249mm[0m[38;5;249mp[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249mt[0m[38;5;249m [0m[38;5;249m{[0m[38;5;249m [0menqueueSystemEventRaw[38;5;249m [0m[38;5;249ma[0m[38;5;249ms[0m[38;5;249m [0m[38;5;249me[0m[38;5;249mn[0m[38;5;249mq[0m[38;5;249mu[0m[38;5;249me[0m[38;5;249mu[0m[38;5;249me[0m[38;5;249mS[0m[38;5;249my[0m[38;5;249ms[0m[38;5;249mt[0m[38;5;249me[0m[38;5;249mm[0m[38;5;249mE[0m[38;5;249mv[0m[38;5;249me[0m[38;5;249mn[0m[38;5;249mt[0m[38;5;249m [0m[38;5;249m}[0m[38;5;249m [0m[38;5;249mf[0m[38;5;249mr[0m[38;5;249mo[0m[38;5;249mm[0m[38;5;249m [0m[38;5;249m"[0m[38;5;249m.[0m[38;5;249m.[0m[38;5;249m/[0m[38;5;249mi[0m[38;5;249mn[0m[38;5;249mf[0m[38;5;249mr[0m[38;5;249ma[0m[38;5;249m/[0m[38;5;249ms[0m[38;5;249my[0m[38;5;249ms[0m[38;5;249mt[0m[38;5;249me[0m[38;5;249mm[0m[38;5;249m-[0m[38;5;249me[0m[38;5;249mv[0m[38;5;249me[0m[38;5;249mn[0m[38;5;249mt[0m[38;5;249ms[0m[38;5;249m.[0m[38;5;249mj[0m[38;5;249ms[0m[38;5;249m"[0m[38;5;249m;[0m
+ [38;5;240m   │[0m          ──────────┬──────────  
+ [38;5;240m   │[0m                    ╰──────────── Missing export
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mNote[0m: If you meant to import a type rather than a value, make sure to add the `type` modifier (e.g. `import { type Foo } from '../infra/system-events.js'`).
+[38;5;246m────╯[0m
+
+...
+    at aggregateBindingErrorsIntoJsError (file:///home/figs/classify-129388/probe-final/node_modules/.pnpm/rolldown@1.2.15/node_modules/rolldown/dist/shared/error-D0SD8_tL.mjs:49:18)
+    at unwrapBindingResult (file:///home/figs/classify-129388/probe-final/node_modules/.pnpm/rolldown@1.2.15/node_modules/rolldown/dist/shared/error-D0SD8_tL.mjs:19:128)
+    at #build (file:///home/figs/classify-129388/probe-final/node_modules/.pnpm/rolldown@1.2.15/node_modules/rolldown/dist/shared/rolldown-CMhwwZPA.mjs:145:34)
+    at async build (file:///home/figs/classify-129388/probe-final/node_modules/.pnpm/rolldown@1.2.15/node_modules/rolldown/dist/index.mjs:46:22)
+    at async Promise.all (index 0)
+    at async Object.runBuild (file:///home/figs/classify-129388/probe-final/node_modules/.pnpm/tsdown@0.23.4_tsx@4.23.15_typescript@7.1.0-dev.20261028.1_unrun@0.3.1/node_modules/tsdown/dist/style-BMCJFWa9.mjs:57:11)
+    at async buildSingle (file:///home/figs/classify-129388/probe-final/node_modules/.pnpm/tsdown@0.23.4_tsx@4.23.15_typescript@7.1.0-dev.20261028.1_unrun@0.3.1/node_modules/tsdown/dist/build-wv1dWHDH.mjs:808:19)
+    at async Promise.all (index 75)
+    at async buildWithConfigs (file:///home/figs/classify-129388/probe-final/node_modules/.pnpm/tsdown@0.23.4_tsx@4.23.15_typescript@7.1.0-dev.20261028.1_unrun@0.3.1/node_modules/tsdown/dist/build-wv1dWHDH.mjs:754:18)
+    at async build$1 (file:///home/figs/classify-129388/probe-final/node_modules/.pnpm/tsdown@0.23.4_tsx@4.23.15_typescript@7.1.0-dev.20261028.1_unrun@0.3.1/node_modules/tsdown/dist/build-wv1dWHDH.mjs:709:9)
+
+[tsdown-build] child result pid=840: {"status":1,"signal":null,"parentSignal":null,"timedOut":false,"cleanup":"none","observedProcessState":"dead","observationScope":"process-group","finalStatus":1}
+[tsdown-build] invocation 2/2 finished in 6.2s
+[build-all] tsdown failed after 9.25s
+[build-all] phase timings: total 16.5s; slowest tsdown (failed) 9.25s; plugins:assets:build 3.67s; runtime:scripts:check 2.95s
+[test] FAILED (exit 2)
+# exit=2

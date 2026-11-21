@@ -1,0 +1,240 @@
+# ctl ref=cand sha=93a1e356c7aabf0d868560e46790b07449813840 file=src/agents/harness/mediated-delegation-effects.test.ts run=1 mode=node26121 start=2026-11-21T09:53:47Z
+# files: 1 runwt=/home/figs/classify-129388/cand-93a1e356 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-eyDnXI/home TMPDIR=/tmp/oc-classify-eyDnXI/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.agents-support.config.ts
+include-file: /tmp/oc-classify-eyDnXI/tmp/oc-focused.gE76BM/include.json
+include-file-contents:
+  [
+    "src/agents/harness/mediated-delegation-effects.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-eyDnXI/tmp/oc-focused.gE76BM/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.agents-support.config.ts --maxWorkers=1 src/agents/harness/mediated-delegation-effects.test.ts
+logs: /tmp/oc-classify-eyDnXI/tmp/oc-focused.gE76BM
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-93a1e356
+
+[vitest-workers] local cache hit after 2173ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared f6605c9a26ba in 2225ms (20558 inputs, 25754 outputs)
+[vitest] still running with no output for 30000ms.
+ ✓ |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > cli-loopback delegated final effects (stamped visible spawn: false) > executes the persisted exception, then restores the deny fallback on resume 2070ms
+ ✓ |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > cli-loopback delegated final effects (stamped visible spawn: false) > does not waive sender restrictions even with a persisted delegation exception 85ms
+ × |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > cli-loopback delegated final effects (stamped visible spawn: false) > rejects revocation at the final exec boundary 151ms
+   → Warning: continuation options are unavailable; running synchronously.
+
+
+
+(no output): expected false to be true // Object.is equality
+ × |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > cli-loopback delegated final effects (stamped visible spawn: false) > rejects revocation at the final write boundary 107ms
+   → Successfully wrote 9 bytes to /tmp/oc-classify-eyDnXI/tmp/oc-vt-U02QZ6/openclaw-mediated-delegation-bhyXAr/workspace/cli-loopback-revoked-write.txt: expected false to be true // Object.is equality
+ ✓ |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > plugin-harness delegated final effects (stamped visible spawn: false) > executes the persisted exception, then restores the deny fallback on resume 175ms
+ ✓ |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > plugin-harness delegated final effects (stamped visible spawn: false) > does not waive sender restrictions even with a persisted delegation exception 47ms
+ × |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > plugin-harness delegated final effects (stamped visible spawn: false) > rejects revocation at the final exec boundary 130ms
+   → Warning: continuation options are unavailable; running synchronously.
+
+
+
+(no output): expected false to be true // Object.is equality
+ × |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > plugin-harness delegated final effects (stamped visible spawn: false) > rejects revocation at the final write boundary 66ms
+   → Successfully wrote 9 bytes to /tmp/oc-classify-eyDnXI/tmp/oc-vt-U02QZ6/openclaw-mediated-delegation-bhyXAr/workspace/plugin-harness-revoked-write.txt: expected false to be true // Object.is equality
+ ✓ |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > cli-loopback delegated final effects (stamped visible spawn: true) > executes the persisted exception, then restores the deny fallback on resume 180ms
+ ✓ |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > cli-loopback delegated final effects (stamped visible spawn: true) > does not waive sender restrictions even with a persisted delegation exception 45ms
+ × |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > cli-loopback delegated final effects (stamped visible spawn: true) > rejects revocation at the final exec boundary 120ms
+   → Warning: continuation options are unavailable; running synchronously.
+
+
+
+(no output): expected false to be true // Object.is equality
+ × |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > cli-loopback delegated final effects (stamped visible spawn: true) > rejects revocation at the final write boundary 73ms
+   → Successfully wrote 9 bytes to /tmp/oc-classify-eyDnXI/tmp/oc-vt-U02QZ6/openclaw-mediated-delegation-bhyXAr/workspace/cli-loopback-stamped-revoked-write.txt: expected false to be true // Object.is equality
+ ✓ |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > plugin-harness delegated final effects (stamped visible spawn: true) > executes the persisted exception, then restores the deny fallback on resume 163ms
+ ✓ |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > plugin-harness delegated final effects (stamped visible spawn: true) > does not waive sender restrictions even with a persisted delegation exception 44ms
+ × |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > plugin-harness delegated final effects (stamped visible spawn: true) > rejects revocation at the final exec boundary 128ms
+   → Warning: continuation options are unavailable; running synchronously.
+
+
+
+(no output): expected false to be true // Object.is equality
+ × |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > plugin-harness delegated final effects (stamped visible spawn: true) > rejects revocation at the final write boundary 49ms
+   → Successfully wrote 9 bytes to /tmp/oc-classify-eyDnXI/tmp/oc-vt-U02QZ6/openclaw-mediated-delegation-bhyXAr/workspace/plugin-harness-stamped-revoked-write.txt: expected false to be true // Object.is equality
+stderr | unknown test
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.stateDomainPublication.sandbox-registry
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/agents/harness/mediated-delegation-effects.test.ts: retiring openclaw.devicePairSetupChanges
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 8 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > cli-loopback delegated final effects (stamped visible spawn: false) > rejects revocation at the final exec boundary
+ FAIL  |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > cli-loopback delegated final effects (stamped visible spawn: true) > rejects revocation at the final exec boundary
+AssertionError: Warning: continuation options are unavailable; running synchronously.
+
+
+
+(no output): expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ expectRejected src/agents/harness/mediated-delegation-effects.test.ts:276:41
+    274| }
+    275| async function expectRejected(receipt: Receipt, target: string) {
+    276|   expect(receipt.isError, receipt.text).toBe(true);
+       |                                         ^
+    277|   expect(receipt.text).toMatch(/authorization changed|authority is no …
+    278|   expect(await fs.readFile(target, "utf8")).toBe("original");
+ ❯ src/agents/harness/mediated-delegation-effects.test.ts:392:15
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/8]⎯
+
+ FAIL  |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > cli-loopback delegated final effects (stamped visible spawn: false) > rejects revocation at the final write boundary
+AssertionError: Successfully wrote 9 bytes to /tmp/oc-classify-eyDnXI/tmp/oc-vt-U02QZ6/openclaw-mediated-delegation-bhyXAr/workspace/cli-loopback-revoked-write.txt: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ expectRejected src/agents/harness/mediated-delegation-effects.test.ts:276:41
+    274| }
+    275| async function expectRejected(receipt: Receipt, target: string) {
+    276|   expect(receipt.isError, receipt.text).toBe(true);
+       |                                         ^
+    277|   expect(receipt.text).toMatch(/authorization changed|authority is no …
+    278|   expect(await fs.readFile(target, "utf8")).toBe("original");
+ ❯ src/agents/harness/mediated-delegation-effects.test.ts:392:15
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/8]⎯
+
+ FAIL  |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > plugin-harness delegated final effects (stamped visible spawn: false) > rejects revocation at the final exec boundary
+ FAIL  |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > plugin-harness delegated final effects (stamped visible spawn: true) > rejects revocation at the final exec boundary
+AssertionError: Warning: continuation options are unavailable; running synchronously.
+
+
+
+(no output): expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ expectRejected src/agents/harness/mediated-delegation-effects.test.ts:276:41
+    274| }
+    275| async function expectRejected(receipt: Receipt, target: string) {
+    276|   expect(receipt.isError, receipt.text).toBe(true);
+       |                                         ^
+    277|   expect(receipt.text).toMatch(/authorization changed|authority is no …
+    278|   expect(await fs.readFile(target, "utf8")).toBe("original");
+ ❯ src/agents/harness/mediated-delegation-effects.test.ts:392:15
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/8]⎯
+
+ FAIL  |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > plugin-harness delegated final effects (stamped visible spawn: false) > rejects revocation at the final write boundary
+AssertionError: Successfully wrote 9 bytes to /tmp/oc-classify-eyDnXI/tmp/oc-vt-U02QZ6/openclaw-mediated-delegation-bhyXAr/workspace/plugin-harness-revoked-write.txt: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ expectRejected src/agents/harness/mediated-delegation-effects.test.ts:276:41
+    274| }
+    275| async function expectRejected(receipt: Receipt, target: string) {
+    276|   expect(receipt.isError, receipt.text).toBe(true);
+       |                                         ^
+    277|   expect(receipt.text).toMatch(/authorization changed|authority is no …
+    278|   expect(await fs.readFile(target, "utf8")).toBe("original");
+ ❯ src/agents/harness/mediated-delegation-effects.test.ts:392:15
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/8]⎯
+
+ FAIL  |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > cli-loopback delegated final effects (stamped visible spawn: true) > rejects revocation at the final write boundary
+AssertionError: Successfully wrote 9 bytes to /tmp/oc-classify-eyDnXI/tmp/oc-vt-U02QZ6/openclaw-mediated-delegation-bhyXAr/workspace/cli-loopback-stamped-revoked-write.txt: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ expectRejected src/agents/harness/mediated-delegation-effects.test.ts:276:41
+    274| }
+    275| async function expectRejected(receipt: Receipt, target: string) {
+    276|   expect(receipt.isError, receipt.text).toBe(true);
+       |                                         ^
+    277|   expect(receipt.text).toMatch(/authorization changed|authority is no …
+    278|   expect(await fs.readFile(target, "utf8")).toBe("original");
+ ❯ src/agents/harness/mediated-delegation-effects.test.ts:392:15
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/8]⎯
+
+ FAIL  |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > plugin-harness delegated final effects (stamped visible spawn: true) > rejects revocation at the final write boundary
+AssertionError: Successfully wrote 9 bytes to /tmp/oc-classify-eyDnXI/tmp/oc-vt-U02QZ6/openclaw-mediated-delegation-bhyXAr/workspace/plugin-harness-stamped-revoked-write.txt: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ expectRejected src/agents/harness/mediated-delegation-effects.test.ts:276:41
+    274| }
+    275| async function expectRejected(receipt: Receipt, target: string) {
+    276|   expect(receipt.isError, receipt.text).toBe(true);
+       |                                         ^
+    277|   expect(receipt.text).toMatch(/authorization changed|authority is no …
+    278|   expect(await fs.readFile(target, "utf8")).toBe("original");
+ ❯ src/agents/harness/mediated-delegation-effects.test.ts:392:15
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/8]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  8 failed | 8 passed (16)
+   Start at  01:53:49
+   Duration  50.28s (transform 81%, tests 9%, import 7%, worker 2%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=93a1e356c7aabf0d868560e46790b07449813840 config=test/vitest/vitest.agents-support.config.ts files=src/agents/harness/mediated-delegation-effects.test.ts
+failing-tests:
+ × |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > cli-loopback delegated final effects (stamped visible spawn: false) > rejects revocation at the final exec boundary 151ms
+ × |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > cli-loopback delegated final effects (stamped visible spawn: false) > rejects revocation at the final write boundary 107ms
+ × |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > plugin-harness delegated final effects (stamped visible spawn: false) > rejects revocation at the final exec boundary 130ms
+ × |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > plugin-harness delegated final effects (stamped visible spawn: false) > rejects revocation at the final write boundary 66ms
+ × |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > cli-loopback delegated final effects (stamped visible spawn: true) > rejects revocation at the final exec boundary 120ms
+ × |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > cli-loopback delegated final effects (stamped visible spawn: true) > rejects revocation at the final write boundary 73ms
+ × |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > plugin-harness delegated final effects (stamped visible spawn: true) > rejects revocation at the final exec boundary 128ms
+ × |agents-support| src/agents/harness/mediated-delegation-effects.test.ts > plugin-harness delegated final effects (stamped visible spawn: true) > rejects revocation at the final write boundary 49ms
+VERDICT RED [Test Files 1 failed (1); Tests 8 failed | 8 passed (16)]
+# exit=1

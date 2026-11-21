@@ -1,0 +1,52 @@
+# ctl ref=cand sha=93a1e356c7aabf0d868560e46790b07449813840 file=ui/src/styles/background-invalidation.node.test.ts run=1 mode=node26121 start=2026-11-21T10:05:30Z
+# files: 1 runwt=/home/figs/classify-129388/cand-93a1e356 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-m3bAek/home TMPDIR=/tmp/oc-classify-m3bAek/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.ui.config.ts
+include-file: /tmp/oc-classify-m3bAek/tmp/oc-focused.wHyb0i/include.json
+include-file-contents:
+  [
+    "ui/src/styles/background-invalidation.node.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-m3bAek/tmp/oc-focused.wHyb0i/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.ui.config.ts --maxWorkers=1 ui/src/styles/background-invalidation.node.test.ts
+logs: /tmp/oc-classify-m3bAek/tmp/oc-focused.wHyb0i
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - JSON import "./control-ui-i18n-config.json" without import attributes (scripts/lib/control-ui-i18n-sync-plan.ts:2:41). Add `with { type: 'json' }`
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-93a1e356
+
+ ↓ |ui| ui/src/styles/background-invalidation.node.test.ts > personal background style scope > keeps background-style updates scoped away from the sidebar
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |ui| ui/src/styles/background-invalidation.node.test.ts [ ui/src/styles/background-invalidation.node.test.ts ]
+AssertionError: Chromium is required for paint proof: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ ui/src/styles/style-fixture.test-support.ts:62:65
+     60|   beforeAll(async () => {
+     61|     if (required) {
+     62|       expect(available, "Chromium is required for paint proof").toBe(t…
+       |                                                                 ^
+     63|     }
+     64|     if (available) {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 skipped (1)
+   Start at  02:05:31
+   Duration  1.60s (worker 40%, import 24%, environment 21%, transform 12%, setup 3%)
+
+[test] FAILED (exit 1)
+receipt head=93a1e356c7aabf0d868560e46790b07449813840 config=test/vitest/vitest.ui.config.ts files=ui/src/styles/background-invalidation.node.test.ts
+VERDICT RUN-BROKEN [Test Files 1 failed (1); Tests 1 skipped (1)] reason=1 failed suite(s): a test file did not load or a hook threw
+# exit=1

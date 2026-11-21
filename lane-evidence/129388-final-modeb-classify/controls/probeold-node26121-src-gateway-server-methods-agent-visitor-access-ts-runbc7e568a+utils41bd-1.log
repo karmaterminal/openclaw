@@ -1,0 +1,93 @@
+# ctl ref=probeold sha=bc7e568a54341ab108e9284d43960376b845d282 file=src/gateway/server-methods/agent.visitor-access.test.ts run=bc7e568a+utils41bd-1 mode=node26121 start=2026-11-21T09:46:01Z
+# files: 1 runwt=/home/figs/classify-129388/probe-old (36 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-JG2GuH/home TMPDIR=/tmp/oc-classify-JG2GuH/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.gateway.config.ts
+include-file: /tmp/oc-classify-JG2GuH/tmp/oc-focused.MbGCT1/include.json
+include-file-contents:
+  [
+    "src/gateway/server-methods/agent.visitor-access.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-JG2GuH/tmp/oc-focused.MbGCT1/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.gateway.config.ts --maxWorkers=1 src/gateway/server-methods/agent.visitor-access.test.ts
+logs: /tmp/oc-classify-JG2GuH/tmp/oc-focused.MbGCT1
+[test] preparing runtime runtime before Vitest workers
+
+ RUN  v5.0.5 /home/figs/classify-129388/probe-old
+
+[vitest-workers] local cache hit after 2040ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared ef68a7690fee in 2097ms (19122 inputs, 24645 outputs)
+ ✓ |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: admin 4228ms
+ ✓ |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: writer 2056ms
+ × |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: revoked before commit 2022ms
+   → expected { ownerBefore: true, …(2) } to deeply equal { ownerBefore: true, …(2) }
+ × |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: revoked after commit 1987ms
+   → expected { ownerBefore: true, …(2) } to deeply equal { ownerBefore: true, …(2) }
+ × |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > reopens existing profiles and grants and repairs a missing Visitor model policy 2304ms
+   → expected error to be instance of GatewayOperatorAccessUnavailableError
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: revoked before commit
+ FAIL  |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: revoked after commit
+AssertionError: expected { ownerBefore: true, …(2) } to deeply equal { ownerBefore: true, …(2) }
+
+- Expected
++ Received
+
+  {
+    "callerCurrent": false,
+-   "ownerAfter": true,
++   "ownerAfter": false,
+    "ownerBefore": true,
+  }
+
+ ❯ src/gateway/server-methods/agent.visitor-access.test-utils.ts:334:35
+    332|             return;
+    333|           }
+    334|           expect(revocationState).toEqual({
+       |                                   ^
+    335|             ownerBefore: true,
+    336|             callerCurrent: false,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > reopens existing profiles and grants and repairs a missing Visitor model policy
+AssertionError: expected error to be instance of GatewayOperatorAccessUnavailableError
+
+- Expected:
+[Function GatewayOperatorAccessUnavailableError]
+
++ Received:
+GatewayOperatorAccessDeniedError {
+  "message": "Gateway access is not active for this account; ask a Gateway administrator to grant or restore access.",
+  "name": "GatewayOperatorAccessDeniedError",
+}
+
+ ❯ src/gateway/server-methods/agent.visitor-access.test-utils.ts:479:11
+    477|         expect(() =>
+    478|           resolveGatewayOperatorAccessAuthority(unassigned.id, restric…
+    479|         ).toThrow(GatewayOperatorAccessUnavailableError);
+       |           ^
+    480|         for (const profile of [staff, owner]) {
+    481|           expect(resolveGatewayOperatorAccessAuthority(profile.id, res…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 2 passed (5)
+   Start at  01:46:07
+   Duration  27.76s (tests 46%, transform 36%, import 16%, worker 2%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=bc7e568a54341ab108e9284d43960376b845d282 config=test/vitest/vitest.gateway.config.ts files=src/gateway/server-methods/agent.visitor-access.test.ts
+failing-tests:
+ × |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: revoked before commit 2022ms
+ × |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: revoked after commit 1987ms
+ × |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > reopens existing profiles and grants and repairs a missing Visitor model policy 2304ms
+VERDICT RED [Test Files 1 failed (1); Tests 3 failed | 2 passed (5)]
+# exit=1

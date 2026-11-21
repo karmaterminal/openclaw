@@ -1,0 +1,308 @@
+# ctl-t ref=probe sha=93a1e356c7aabf0d868560e46790b07449813840 file=src/gateway/server-methods/agent.visitor-access.test.ts config=test/vitest/vitest.gateway.config.ts run=reg3-cand-pre pattern=Visitor Access: admin$|reopens existing profiles and grants start=2026-11-21T09:33:17Z
+[test] preparing runtime runtime before Vitest workers
+[build-all] runtime:scripts:check
+[build-all] runtime:scripts:check done in 3.15s
+[build-all] plugins:assets:build
+[clawrouter] build: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/clawrouter
+[deep-research] build: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/deep-research
+[knowledge] build: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/knowledge
+[mcp-relay] build: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/mcp-relay
+[memory-core] build: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/memory-core
+[nostr] build: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/nostr
+[openclaw-id-access] build: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/openclaw-id-access
+[whatsapp] build: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/whatsapp
+[workboard] build: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/workboard
+[x] build: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/x
+[build-all] plugins:assets:build done in 4.73s
+[build-all] tsdown
+[tsdown-build] invocation 1/2 finished in 0.6s
+[tsdown-cache] tsdown-runtime-agent-core: reused
+[tsdown-cache] tsdown-runtime-gateway-protocol: reused
+[tsdown-cache] tsdown-runtime-gateway-client: reused
+[tsdown-cache] tsdown-runtime-net-policy: reused
+[tsdown-cache] tsdown-runtime-media-generation-core: reused
+[tsdown-cache] tsdown-runtime-media-understanding-common: reused
+[tsdown-cache] tsdown-runtime-markdown-core: reused
+[tsdown-cache] tsdown-runtime-normalization-core: reused
+[tsdown-cache] tsdown-runtime-retry: reused
+[tsdown-cache] tsdown-runtime-worker-runtime: reused
+[tsdown-cache] tsdown-runtime-sdk: reused
+[tsdown-cache] tsdown-runtime-media-core: reused
+[tsdown-cache] tsdown-runtime-acp-core: reused
+[tsdown-cache] tsdown-runtime-terminal-core: reused
+[tsdown-cache] tsdown-runtime-llm-core: reused
+[tsdown-cache] tsdown-runtime-model-catalog-core: reused
+extensions/browser/src/browser/page-function-runtime.ts (13:31) [33m[EVAL] [0mUse of direct `eval` function is strongly discouraged as it poses security risks and may cause issues with minification.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m extensions/browser/src/browser/page-function-runtime.ts:13:32 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m13 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249mc[0m[38;5;249mo[0m[38;5;249mn[0m[38;5;249ms[0m[38;5;249mt[0m[38;5;249m [0m[38;5;249mc[0m[38;5;249ma[0m[38;5;249mn[0m[38;5;249md[0m[38;5;249mi[0m[38;5;249md[0m[38;5;249ma[0m[38;5;249mt[0m[38;5;249me[0m[38;5;249m:[0m[38;5;249m [0m[38;5;249mu[0m[38;5;249mn[0m[38;5;249mk[0m[38;5;249mn[0m[38;5;249mo[0m[38;5;249mw[0m[38;5;249mn[0m[38;5;249m [0m[38;5;249m=[0m[38;5;249m [0meval[38;5;249m([0m[38;5;249m`[0m[38;5;249m"[0m[38;5;249mu[0m[38;5;249ms[0m[38;5;249me[0m[38;5;249m [0m[38;5;249ms[0m[38;5;249mt[0m[38;5;249mr[0m[38;5;249mi[0m[38;5;249mc[0m[38;5;249mt[0m[38;5;249m"[0m[38;5;249m;[0m[38;5;249m\[0m[38;5;249mn[0m[38;5;249m([0m[38;5;249m$[0m[38;5;249m{[0m[38;5;249mo[0m[38;5;249mp[0m[38;5;249mt[0m[38;5;249mi[0m[38;5;249mo[0m[38;5;249mn[0m[38;5;249ms[0m[38;5;249m.[0m[38;5;249mf[0m[38;5;249mn[0m[38;5;249mS[0m[38;5;249mo[0m[38;5;249mu[0m[38;5;249mr[0m[38;5;249mc[0m[38;5;249me[0m[38;5;249m}[0m[38;5;249m)[0m[38;5;249m`[0m[38;5;249m)[0m[38;5;249m;[0m
+ [38;5;240m   │[0m                                ──┬─  
+ [38;5;240m   │[0m                                  ╰─── Use of direct `eval` here.
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: Consider using indirect eval. For more information, check the documentation: https://rolldown.rs/guide/troubleshooting#avoiding-direct-eval
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/playwright-core@1.64.1_patch_hash=eedf680682a6840d82c6ad530a60875857aa8c0372785acf8e8e5df9c2e3ac16/node_modules/playwright-core/lib/coreBundle.js (68254:28) [33m[EVAL] [0mUse of direct `eval` function is strongly discouraged as it poses security risks and may cause issues with minification.
+       [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/playwright-core@1.64.1_patch_hash=eedf680682a6840d82c6ad530a60875857aa8c0372785acf8e8e5df9c2e3ac16/node_modules/playwright-core/lib/coreBundle.js:68254:29 [38;5;246m][0m
+       [38;5;246m│[0m
+ [38;5;246m68254 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249mc[0m[38;5;249mo[0m[38;5;249mn[0m[38;5;249ms[0m[38;5;249mt[0m[38;5;249m [0m[38;5;249mv[0m[38;5;249ma[0m[38;5;249ml[0m[38;5;249mu[0m[38;5;249me[0m[38;5;249m [0m[38;5;249m=[0m[38;5;249m [0meval[38;5;249m([0m[38;5;249m`[0m[38;5;249m([0m[38;5;249m$[0m[38;5;249m{[0m[38;5;249me[0m[38;5;249mx[0m[38;5;249mp[0m[38;5;249mr[0m[38;5;249m}[0m[38;5;249m)[0m[38;5;249m`[0m[38;5;249m)[0m[38;5;249m;[0m
+ [38;5;240m      │[0m                             ──┬─  
+ [38;5;240m      │[0m                               ╰─── Use of direct `eval` here.
+ [38;5;240m      │[0m 
+ [38;5;240m      │[0m [38;5;115mHelp[0m: Consider using indirect eval. For more information, check the documentation: https://rolldown.rs/guide/troubleshooting#avoiding-direct-eval
+[38;5;246m───────╯[0m
+
+node_modules/.pnpm/playwright-core@1.64.1_patch_hash=eedf680682a6840d82c6ad530a60875857aa8c0372785acf8e8e5df9c2e3ac16/node_modules/playwright-core/lib/coreBundle.js (68261:28) [33m[EVAL] [0mUse of direct `eval` function is strongly discouraged as it poses security risks and may cause issues with minification.
+       [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/playwright-core@1.64.1_patch_hash=eedf680682a6840d82c6ad530a60875857aa8c0372785acf8e8e5df9c2e3ac16/node_modules/playwright-core/lib/coreBundle.js:68261:29 [38;5;246m][0m
+       [38;5;246m│[0m
+ [38;5;246m68261 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249mc[0m[38;5;249mo[0m[38;5;249mn[0m[38;5;249ms[0m[38;5;249mt[0m[38;5;249m [0m[38;5;249mv[0m[38;5;249ma[0m[38;5;249ml[0m[38;5;249mu[0m[38;5;249me[0m[38;5;249m [0m[38;5;249m=[0m[38;5;249m [0meval[38;5;249m([0m[38;5;249m`[0m[38;5;249m([0m[38;5;249m$[0m[38;5;249m{[0m[38;5;249me[0m[38;5;249mx[0m[38;5;249mp[0m[38;5;249mr[0m[38;5;249m}[0m[38;5;249m)[0m[38;5;249m`[0m[38;5;249m)[0m[38;5;249m;[0m
+ [38;5;240m      │[0m                             ──┬─  
+ [38;5;240m      │[0m                               ╰─── Use of direct `eval` here.
+ [38;5;240m      │[0m 
+ [38;5;240m      │[0m [38;5;115mHelp[0m: Consider using indirect eval. For more information, check the documentation: https://rolldown.rs/guide/troubleshooting#avoiding-direct-eval
+[38;5;246m───────╯[0m
+
+node_modules/.pnpm/web-tree-sitter@0.27.1/node_modules/web-tree-sitter/web-tree-sitter.js (2400:30) [33m[EVAL] [0mUse of direct `eval` function is strongly discouraged as it poses security risks and may cause issues with minification.
+      [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/web-tree-sitter@0.27.1/node_modules/web-tree-sitter/web-tree-sitter.js:2400:31 [38;5;246m][0m
+      [38;5;246m│[0m
+ [38;5;246m2400 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249mA[0m[38;5;249mS[0m[38;5;249mM[0m[38;5;249m_[0m[38;5;249mC[0m[38;5;249mO[0m[38;5;249mN[0m[38;5;249mS[0m[38;5;249mT[0m[38;5;249mS[0m[38;5;249m[[0m[38;5;249ms[0m[38;5;249mt[0m[38;5;249ma[0m[38;5;249mr[0m[38;5;249mt[0m[38;5;249m][0m[38;5;249m [0m[38;5;249m=[0m[38;5;249m [0meval[38;5;249m([0m[38;5;249mf[0m[38;5;249mu[0m[38;5;249mn[0m[38;5;249mc[0m[38;5;249m)[0m[38;5;249m;[0m
+ [38;5;240m     │[0m                               ──┬─  
+ [38;5;240m     │[0m                                 ╰─── Use of direct `eval` here.
+ [38;5;240m     │[0m 
+ [38;5;240m     │[0m [38;5;115mHelp[0m: Consider using indirect eval. For more information, check the documentation: https://rolldown.rs/guide/troubleshooting#avoiding-direct-eval
+[38;5;246m──────╯[0m
+
+node_modules/.pnpm/web-tree-sitter@0.27.1/node_modules/web-tree-sitter/web-tree-sitter.js (2423:32) [33m[EVAL] [0mUse of direct `eval` function is strongly discouraged as it poses security risks and may cause issues with minification.
+      [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/web-tree-sitter@0.27.1/node_modules/web-tree-sitter/web-tree-sitter.js:2423:33 [38;5;246m][0m
+      [38;5;246m│[0m
+ [38;5;246m2423 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249mm[0m[38;5;249mo[0m[38;5;249md[0m[38;5;249mu[0m[38;5;249ml[0m[38;5;249me[0m[38;5;249mE[0m[38;5;249mx[0m[38;5;249mp[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249mt[0m[38;5;249ms[0m[38;5;249m[[0m[38;5;249mn[0m[38;5;249ma[0m[38;5;249mm[0m[38;5;249me[0m[38;5;249m][0m[38;5;249m [0m[38;5;249m=[0m[38;5;249m [0meval[38;5;249m([0m[38;5;249mf[0m[38;5;249mu[0m[38;5;249mn[0m[38;5;249mc[0m[38;5;249m)[0m[38;5;249m;[0m
+ [38;5;240m     │[0m                                 ──┬─  
+ [38;5;240m     │[0m                                   ╰─── Use of direct `eval` here.
+ [38;5;240m     │[0m 
+ [38;5;240m     │[0m [38;5;115mHelp[0m: Consider using indirect eval. For more information, check the documentation: https://rolldown.rs/guide/troubleshooting#avoiding-direct-eval
+[38;5;246m──────╯[0m
+
+node_modules/.pnpm/@acemir+cssom@0.9.32/node_modules/@acemir/cssom/lib/errorUtils.js (31:8) [33m[EVAL] [0mUse of direct `eval` function is strongly discouraged as it poses security risks and may cause issues with minification.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@acemir+cssom@0.9.32/node_modules/@acemir/cssom/lib/errorUtils.js:31:9 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m31 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0meval[38;5;249m([0m[38;5;249me[0m[38;5;249mr[0m[38;5;249mr[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249mT[0m[38;5;249my[0m[38;5;249mp[0m[38;5;249me[0m[38;5;249m)[0m[38;5;249m;[0m
+ [38;5;240m   │[0m            ──┬─  
+ [38;5;240m   │[0m              ╰─── Use of direct `eval` here.
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: Consider using indirect eval. For more information, check the documentation: https://rolldown.rs/guide/troubleshooting#avoiding-direct-eval
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/web-tree-sitter@0.27.1/node_modules/web-tree-sitter/web-tree-sitter.js (2400:30) [33m[EVAL] [0mUse of direct `eval` function is strongly discouraged as it poses security risks and may cause issues with minification.
+      [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/web-tree-sitter@0.27.1/node_modules/web-tree-sitter/web-tree-sitter.js:2400:31 [38;5;246m][0m
+      [38;5;246m│[0m
+ [38;5;246m2400 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249mA[0m[38;5;249mS[0m[38;5;249mM[0m[38;5;249m_[0m[38;5;249mC[0m[38;5;249mO[0m[38;5;249mN[0m[38;5;249mS[0m[38;5;249mT[0m[38;5;249mS[0m[38;5;249m[[0m[38;5;249ms[0m[38;5;249mt[0m[38;5;249ma[0m[38;5;249mr[0m[38;5;249mt[0m[38;5;249m][0m[38;5;249m [0m[38;5;249m=[0m[38;5;249m [0meval[38;5;249m([0m[38;5;249mf[0m[38;5;249mu[0m[38;5;249mn[0m[38;5;249mc[0m[38;5;249m)[0m[38;5;249m;[0m
+ [38;5;240m     │[0m                               ──┬─  
+ [38;5;240m     │[0m                                 ╰─── Use of direct `eval` here.
+ [38;5;240m     │[0m 
+ [38;5;240m     │[0m [38;5;115mHelp[0m: Consider using indirect eval. For more information, check the documentation: https://rolldown.rs/guide/troubleshooting#avoiding-direct-eval
+[38;5;246m──────╯[0m
+
+node_modules/.pnpm/web-tree-sitter@0.27.1/node_modules/web-tree-sitter/web-tree-sitter.js (2423:32) [33m[EVAL] [0mUse of direct `eval` function is strongly discouraged as it poses security risks and may cause issues with minification.
+      [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/web-tree-sitter@0.27.1/node_modules/web-tree-sitter/web-tree-sitter.js:2423:33 [38;5;246m][0m
+      [38;5;246m│[0m
+ [38;5;246m2423 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249mm[0m[38;5;249mo[0m[38;5;249md[0m[38;5;249mu[0m[38;5;249ml[0m[38;5;249me[0m[38;5;249mE[0m[38;5;249mx[0m[38;5;249mp[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249mt[0m[38;5;249ms[0m[38;5;249m[[0m[38;5;249mn[0m[38;5;249ma[0m[38;5;249mm[0m[38;5;249me[0m[38;5;249m][0m[38;5;249m [0m[38;5;249m=[0m[38;5;249m [0meval[38;5;249m([0m[38;5;249mf[0m[38;5;249mu[0m[38;5;249mn[0m[38;5;249mc[0m[38;5;249m)[0m[38;5;249m;[0m
+ [38;5;240m     │[0m                                 ──┬─  
+ [38;5;240m     │[0m                                   ╰─── Use of direct `eval` here.
+ [38;5;240m     │[0m 
+ [38;5;240m     │[0m [38;5;115mHelp[0m: Consider using indirect eval. For more information, check the documentation: https://rolldown.rs/guide/troubleshooting#avoiding-direct-eval
+[38;5;246m──────╯[0m
+
+extensions/browser/src/browser/page-function-runtime.ts (13:31) [33m[EVAL] [0mUse of direct `eval` function is strongly discouraged as it poses security risks and may cause issues with minification.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m extensions/browser/src/browser/page-function-runtime.ts:13:32 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m13 │[0m [38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249m [0m[38;5;249mc[0m[38;5;249mo[0m[38;5;249mn[0m[38;5;249ms[0m[38;5;249mt[0m[38;5;249m [0m[38;5;249mc[0m[38;5;249ma[0m[38;5;249mn[0m[38;5;249md[0m[38;5;249mi[0m[38;5;249md[0m[38;5;249ma[0m[38;5;249mt[0m[38;5;249me[0m[38;5;249m:[0m[38;5;249m [0m[38;5;249mu[0m[38;5;249mn[0m[38;5;249mk[0m[38;5;249mn[0m[38;5;249mo[0m[38;5;249mw[0m[38;5;249mn[0m[38;5;249m [0m[38;5;249m=[0m[38;5;249m [0meval[38;5;249m([0m[38;5;249m`[0m[38;5;249m"[0m[38;5;249mu[0m[38;5;249ms[0m[38;5;249me[0m[38;5;249m [0m[38;5;249ms[0m[38;5;249mt[0m[38;5;249mr[0m[38;5;249mi[0m[38;5;249mc[0m[38;5;249mt[0m[38;5;249m"[0m[38;5;249m;[0m[38;5;249m\[0m[38;5;249mn[0m[38;5;249m([0m[38;5;249m$[0m[38;5;249m{[0m[38;5;249mo[0m[38;5;249mp[0m[38;5;249mt[0m[38;5;249mi[0m[38;5;249mo[0m[38;5;249mn[0m[38;5;249ms[0m[38;5;249m.[0m[38;5;249mf[0m[38;5;249mn[0m[38;5;249mS[0m[38;5;249mo[0m[38;5;249mu[0m[38;5;249mr[0m[38;5;249mc[0m[38;5;249me[0m[38;5;249m}[0m[38;5;249m)[0m[38;5;249m`[0m[38;5;249m)[0m[38;5;249m;[0m
+ [38;5;240m   │[0m                                ──┬─  
+ [38;5;240m   │[0m                                  ╰─── Use of direct `eval` here.
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: Consider using indirect eval. For more information, check the documentation: https://rolldown.rs/guide/troubleshooting#avoiding-direct-eval
+[38;5;246m────╯[0m
+
+[tsdown-build] invocation 2/2 finished in 32.7s
+[build-all] tsdown done in 35.8s
+[build-all] external-plugins:local-dist
+[external-plugin-local-dist] built 106 plugins in 2839ms
+[build-all] external-plugins:local-dist done in 3.18s
+[build-all] check-cli-bootstrap-imports
+agents/identity-file.worker.js: 204 evaluated modules (budget 220)
+extensions/codex/catalog-page.worker.js: 69 evaluated modules (budget 100)
+CLI bootstrap import guard passed.
+[build-all] check-cli-bootstrap-imports done in 5.92s
+[build-all] plugins:assets:copy
+[browser] copy: node scripts/copy-chrome-extension.mjs
+[clawrouter] copy: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/clawrouter --copy
+[deep-research] copy: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/deep-research --copy
+[knowledge] copy: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/knowledge --copy
+[mcp-relay] copy: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/mcp-relay --copy
+[memory-core] copy: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/memory-core --copy
+[nostr] copy: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/nostr --copy
+[openclaw-id-access] copy: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/openclaw-id-access --copy
+[whatsapp] copy: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/whatsapp --copy
+[workboard] copy: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/workboard --copy
+[x] copy: cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/x --copy
+[build-all] plugins:assets:copy done in 1.84s
+[build-all] runtime-postbuild
+[plugin-control-plane-loads] verified 56 built modules with native require and checked doctor closures
+runtime-postbuild: 14 phases completed in 3957ms (slowest: built plugin control-plane loads 1947ms)
+[build-all] runtime-postbuild done in 4.82s
+[build-all] build-stamp
+[build-all] build-stamp done in 102ms
+[build-all] runtime-postbuild-stamp
+[build-all] runtime-postbuild-stamp done in 74ms
+[build-all] phase timings: total 1m 0.3s; slowest tsdown 35.8s; check-cli-bootstrap-imports 5.92s; runtime-postbuild 4.82s; plugins:assets:build 4.73s; external-plugins:local-dist 3.18s; runtime:scripts:check 3.15s; plugins:assets:copy 1.84s; build-stamp 102ms; runtime-postbuild-stamp 74ms
+
+ RUN  v5.0.5 /home/figs/classify-129388/probe-final
+
+[vitest-workers] local cache miss after 2080ms
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js (48:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js:48:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m48 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js (11:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js:11:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m11 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js (6:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js:6:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m6 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js (12:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js:12:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m12 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js (9:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js:9:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m9 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+[vitest] still running with no output for 30000ms.
+[vitest-workers] prepared 9afa6dcfc37c in 34467ms (20558 inputs, 25754 outputs)
+stderr | src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: admin
+REG-ADV2 phase=begin kind=upsert agents=main active=false path=openclaw-test-state-visitor-admitted-caller-XG9Dm7/home/.openclaw/state/openclaw.sqlite t=1795253713914
+
+REG-ADV2 phase=begin kind=upsert agents=main active=false path=openclaw-test-state-visitor-admitted-caller-XG9Dm7/home/.openclaw/state/openclaw.sqlite t=1795253714195
+stderr | src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: admin
+REG-ADV2 phase=commit kind=upsert agents=main active=false path=openclaw-test-state-visitor-admitted-caller-XG9Dm7/home/.openclaw/state/openclaw.sqlite t=1795253714238
+
+REG-ADV2 phase=commit kind=upsert agents=main active=false path=openclaw-test-state-visitor-admitted-caller-XG9Dm7/home/.openclaw/state/openclaw.sqlite t=1795253714196
+REG-ADV2 phase=finish kind=upsert agents=main active=false path=openclaw-test-state-visitor-admitted-caller-XG9Dm7/home/.openclaw/state/openclaw.sqlite t=1795253714196
+stderr | src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: admin
+REG-ADV2 phase=finish kind=upsert agents=main active=false path=openclaw-test-state-visitor-admitted-caller-XG9Dm7/home/.openclaw/state/openclaw.sqlite t=1795253714243
+
+stderr | src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: admin
+REG-WITNESS path=openclaw-test-state-visitor-admitted-caller-XG9Dm7/home/.openclaw/state/openclaw.sqlite t=1795253716777
+
+stderr | src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: admin
+REG-WITNESS path=openclaw-test-state-visitor-admitted-caller-XG9Dm7/home/.openclaw/state/openclaw.sqlite t=1795253717661
+
+stderr | src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: admin
+REG-WITNESS path=openclaw-test-state-visitor-admitted-caller-XG9Dm7/home/.openclaw/state/openclaw.sqlite t=1795253717667
+
+ ✓ |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: admin 4731ms
+ ↓ |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: writer
+ ↓ |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: revoked before commit
+ ↓ |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: revoked after commit
+stderr | src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > reopens existing profiles and grants and repairs a missing Visitor model policy
+REG-ADV2 phase=begin kind=upsert agents=main active=false path=openclaw-test-state-visitor-admitted-caller-Uwz1MY/home/.openclaw/state/openclaw.sqlite t=1795253718646
+
+REG-ADV2 phase=begin kind=upsert agents=main active=false path=openclaw-test-state-visitor-admitted-caller-Uwz1MY/home/.openclaw/state/openclaw.sqlite t=1795253719263
+stderr | src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > reopens existing profiles and grants and repairs a missing Visitor model policy
+REG-ADV2 phase=commit kind=upsert agents=main active=false path=openclaw-test-state-visitor-admitted-caller-Uwz1MY/home/.openclaw/state/openclaw.sqlite t=1795253719344
+
+stderr | src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > reopens existing profiles and grants and repairs a missing Visitor model policy
+REG-ADV2 phase=finish kind=upsert agents=main active=false path=openclaw-test-state-visitor-admitted-caller-Uwz1MY/home/.openclaw/state/openclaw.sqlite t=1795253719346
+
+REG-ADV2 phase=commit kind=upsert agents=main active=false path=openclaw-test-state-visitor-admitted-caller-Uwz1MY/home/.openclaw/state/openclaw.sqlite t=1795253719264
+REG-ADV2 phase=finish kind=upsert agents=main active=false path=openclaw-test-state-visitor-admitted-caller-Uwz1MY/home/.openclaw/state/openclaw.sqlite t=1795253719264
+stderr | src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > reopens existing profiles and grants and repairs a missing Visitor model policy
+REG-WITNESS path=openclaw-test-state-visitor-admitted-caller-Uwz1MY/home/.openclaw/state/openclaw.sqlite t=1795253721081
+
+stderr | src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > reopens existing profiles and grants and repairs a missing Visitor model policy
+REG-ADV2 phase=begin kind=upsert agents=main active=true path=openclaw-test-state-visitor-admitted-caller-Uwz1MY/home/.openclaw/state/openclaw.sqlite t=1795253721592
+
+REG-ADV2 phase=begin kind=upsert agents=main active=false path=openclaw-test-state-visitor-admitted-caller-Uwz1MY/home/.openclaw/state/openclaw.sqlite t=1795253721594
+stderr | src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > reopens existing profiles and grants and repairs a missing Visitor model policy
+REG-ADV2 phase=commit kind=upsert agents=main active=true path=openclaw-test-state-visitor-admitted-caller-Uwz1MY/home/.openclaw/state/openclaw.sqlite t=1795253721596
+
+stderr | src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > reopens existing profiles and grants and repairs a missing Visitor model policy
+REG-ADV2 phase=finish kind=upsert agents=main active=true path=openclaw-test-state-visitor-admitted-caller-Uwz1MY/home/.openclaw/state/openclaw.sqlite t=1795253721598
+
+stderr | src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > reopens existing profiles and grants and repairs a missing Visitor model policy
+REG-THROW t=1795253721601
+
+REG-ADV2 phase=commit kind=upsert agents=main active=false path=openclaw-test-state-visitor-admitted-caller-Uwz1MY/home/.openclaw/state/openclaw.sqlite t=1795253721595
+REG-ADV2 phase=finish kind=upsert agents=main active=false path=openclaw-test-state-visitor-admitted-caller-Uwz1MY/home/.openclaw/state/openclaw.sqlite t=1795253721595
+ × |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > reopens existing profiles and grants and repairs a missing Visitor model policy 3648ms
+   → Session access facts are unavailable; retry after session storage is ready.
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > reopens existing profiles and grants and repairs a missing Visitor model policy
+SessionMutationFactsUnavailableError: <redacted len=75>
+ ❯ prepareSessionMutationFacts src/gateway/session-sharing-preparation.ts:<redacted len=5>
+    707|       error instanceof SessionCanonicalKeyMigrationRequiredError
+    708|       ? error
+    709|       : new SessionMutationFactsUnavailableError({ cause: error });
+       |         ^
+    710|   }
+    711| }
+ ❯ resolveSessionMutationAuthorizationAsync src/gateway/session-sharing-authorization-async.ts:<redacted len=6>
+ ❯ authorizeGatewayRequestPreDispatch src/gateway/server-methods/request-authorization.ts:<redacted len=5>
+ ❯ dispatch src/gateway/server-methods.ts:409:29
+ ❯ handleGatewayRequest src/gateway/server-methods.ts:685:12
+ ❯ invoke src/gateway/server-methods/agent.visitor-access.test-utils.ts:505:13
+ ❯ src/gateway/server-methods/agent.visitor-access.test-utils.ts:537:61
+
+Caused by: AgentDatabaseRegistryChangedError: Agent database registry changed during discovery; retry the read.
+ ❯ assertCurrent src/state/openclaw-agent-db-registry-listing.ts:645:19
+ ❯ Object.assertCurrent src/state/openclaw-agent-db-registry-listing.ts:706:85
+ ❯ dispatch src/gateway/server-methods.ts:409:29
+ ❯ handleGatewayRequest src/gateway/server-methods.ts:685:12
+ ❯ invoke src/gateway/server-methods/agent.visitor-access.test-utils.ts:505:13
+ ❯ src/gateway/server-methods/agent.visitor-access.test-utils.ts:537:61
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed | 3 skipped (5)
+   Start at  01:34:24
+   Duration  57.58s (transform 76%, tests 15%, import 8%, worker 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+# exit=1

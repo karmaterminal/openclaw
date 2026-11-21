@@ -1,0 +1,64 @@
+# ctl ref=cand sha=93a1e356c7aabf0d868560e46790b07449813840 file=src/infra/shell-env.test.ts run=1 mode=node26121 start=2026-11-21T09:59:26Z
+# files: 1 runwt=/home/figs/classify-129388/cand-93a1e356 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-vRmEWp/home TMPDIR=/tmp/oc-classify-vRmEWp/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.infra.config.ts
+include-file: /tmp/oc-classify-vRmEWp/tmp/oc-focused.HD3E0r/include.json
+include-file-contents:
+  [
+    "src/infra/shell-env.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-vRmEWp/tmp/oc-focused.HD3E0r/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.infra.config.ts --maxWorkers=1 src/infra/shell-env.test.ts
+logs: /tmp/oc-classify-vRmEWp/tmp/oc-focused.HD3E0r
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-93a1e356
+
+[vitest-workers] local cache hit after 2156ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared f6605c9a26ba in 2201ms (20558 inputs, 25754 outputs)
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > shares an in-flight probe and makes later synchronous resolution immediate 114ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > preserves a synchronous result published during preparation 29ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > retries spawn error without caching the failed preparation 27ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > retries timeout without caching the failed preparation 26ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > retries stdout overflow without caching the failed preparation 27ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > retries combined output overflow without caching the failed preparation 25ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > caches a null async PATH on linux for "\u0000PATH= \u0000" 24ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > caches a null async PATH on linux for "unframed PATH=/shell/bin" 25ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > caches a null async PATH on win32 for "\u0000PATH=/usr/local/bin:/usr/bin\u0000HOME=/tmp\u0000" 24ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > caches a null sync PATH on linux for "\u0000PATH=   \u0000HOME=/tmp\u0000" 20ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > caches a null sync PATH on win32 for "\u0000PATH=/usr/local/bin:/usr/bin\u0000HOME=/tmp\u0000" 18ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > keeps the deadline until output closes (shell exited: false) 25ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > keeps the deadline until output closes (shell exited: true) 26ms
+ ✓ |infra| src/infra/shell-env.test.ts > async login-shell PATH preparation > keeps timeout and startup environment semantics and separates in-flight keys 22ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > parses the opt-in OPENCLAW_LOAD_SHELL_ENV flag 19ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > parses the opt-in OPENCLAW_DEFER_SHELL_ENV_FALLBACK flag 18ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > resolves timeout from env with default fallback 16ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > imports missing expected keys even when another expected key already exists 15ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > treats explicitly empty env vars as intentional overrides 16ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > retries failed environment probes and caches recovery 18ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > retries failed PATH probes and caches recovery 21ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > tracks and selectively clears applied keys across success, skip, and failure 18ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > selects a trusted shell for relative SHELL 20ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > selects a trusted shell for unregistered SHELL 21ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > selects a trusted shell for registered SHELL 23ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > skips shell env fallback on win32 without probing /bin/sh 20ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > sanitizes environment startup and caps its exec timeout 18ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > sanitizes PATH startup and caps its exec timeout 18ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > uses interactive Bash login startup before nounset reads PS1 35ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > runs the login-shell probe in its own session 35ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > keeps Bash PATH discovery noninteractive and cached separately from env imports 17ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > resolves an executable with daemon hit 16ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > resolves an executable with daemon miss 19ms
+ ✓ |infra| src/infra/shell-env.test.ts > shell env fallback > resolves an executable with prefer shell 19ms
+
+ Test Files  1 passed (1)
+      Tests  34 passed (34)
+   Start at  01:59:27
+   Duration  5.21s (transform 75%, tests 17%, setup 8%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=93a1e356c7aabf0d868560e46790b07449813840 config=test/vitest/vitest.infra.config.ts files=src/infra/shell-env.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 34 passed (34)]
+# exit=0

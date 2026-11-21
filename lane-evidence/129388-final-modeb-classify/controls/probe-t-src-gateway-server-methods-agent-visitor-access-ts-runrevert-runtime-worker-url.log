@@ -1,0 +1,17 @@
+# ctl-t ref=probe sha=93a1e356c7aabf0d868560e46790b07449813840 file=src/gateway/server-methods/agent.visitor-access.test.ts config=test/vitest/vitest.gateway.config.ts run=revert-runtime-worker-url pattern=Visitor Access: admin$|reopens existing profiles and grants start=2026-11-21T09:47:26Z
+[test] preparing runtime runtime before Vitest workers
+[build-all] runtime:scripts:check
+/home/figs/classify-129388/probe-final/src/infra/runtime-process-url.ts:15
+  resolveRuntimeCompilerArgs,
+  ^
+SyntaxError: The requested module './runtime-worker-url.js' does not provide an export named 'resolveRuntimeCompilerArgs'
+    at #asyncInstantiate (node:internal/modules/esm/module_job:463:21)
+    at async ModuleJob.run (node:internal/modules/esm/module_job:561:5)
+    at async node:internal/modules/esm/loader:650:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:105:5)
+
+Node.js v26.12.1
+[build-all] runtime:scripts:check failed after 2.34s
+[build-all] phase timings: total 2.34s; slowest runtime:scripts:check (failed) 2.34s
+[test] FAILED (exit 2)
+# exit=2

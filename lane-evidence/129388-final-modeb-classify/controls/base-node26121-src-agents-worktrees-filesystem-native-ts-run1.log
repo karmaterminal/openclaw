@@ -1,0 +1,53 @@
+# ctl ref=base sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 file=src/agents/worktrees/filesystem-native.test.ts run=1 mode=node26121 start=2026-11-21T10:01:58Z
+# files: 1 runwt=/home/figs/classify-129388/base-1129d4c0 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-tgfLLZ/home TMPDIR=/tmp/oc-classify-tgfLLZ/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.agents-support.config.ts
+include-file: /tmp/oc-classify-tgfLLZ/tmp/oc-focused.eFK5j4/include.json
+include-file-contents:
+  [
+    "src/agents/worktrees/filesystem-native.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-tgfLLZ/tmp/oc-focused.eFK5j4/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.agents-support.config.ts --maxWorkers=1 src/agents/worktrees/filesystem-native.test.ts
+logs: /tmp/oc-classify-tgfLLZ/tmp/oc-focused.eFK5j4
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-1129d4c0
+
+[vitest-workers] local cache hit after 2157ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 70ade47f3938 in 2199ms (20380 inputs, 25474 outputs)
+stderr | src/agents/worktrees/filesystem-native.test.ts > preserves native mode across ReFS copies on a reused worker
+[openclaw] Staging pinned Bun fork openclaw-v1.4.4-20261026-191755ec11-webkit-b82bc917e9 (one-time download)…
+
+ ✓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > removes owned captures with read-only directories without changing linked live workspaces 130ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/agents/worktrees/filesystem-native.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/agents/worktrees/filesystem-native.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/agents/worktrees/filesystem-native.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/agents/worktrees/filesystem-native.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+
+ ✓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > preserves native mode across ReFS copies on a reused worker 1284ms
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > clones and reads provenance with the host's native helper still off
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > refuses retargeted workspace authority at the native copy owner
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > refuses retargeted workspace authority at the refs-worker copy owner
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > waits for delayed input and retains prepared authority until the native copy settles
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > honors explicit FS_SAFE_NATIVE_MODE=off in read and write children
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > honors explicit OPENCLAW_FS_SAFE_NATIVE_MODE=off in read and write children
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > honors explicit FS_SAFE_PYTHON_MODE=off in read and write children
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > honors explicit OPENCLAW_FS_SAFE_PYTHON_MODE=off in read and write children
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > revalidates copy authority before input
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > revalidates createSource authority before input
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > revalidates remove authority before input
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > joins a canceled write child before cleanup
+
+ Test Files  1 passed (1)
+      Tests  2 passed | 12 skipped (14)
+   Start at  02:02:00
+   Duration  7.06s (transform 60%, tests 21%, import 8%, worker 8%, setup 3%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 config=test/vitest/vitest.agents-support.config.ts files=src/agents/worktrees/filesystem-native.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 2 passed | 12 skipped (14)]
+# exit=0

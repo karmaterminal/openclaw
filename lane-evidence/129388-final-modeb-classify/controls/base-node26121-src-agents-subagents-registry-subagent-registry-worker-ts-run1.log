@@ -1,0 +1,113 @@
+# ctl ref=base sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 file=src/agents/subagents/registry/subagent-registry-worker.test.ts run=1 mode=node26121 start=2026-11-21T09:56:12Z
+# files: 1 runwt=/home/figs/classify-129388/base-1129d4c0 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-Bi8cMb/home TMPDIR=/tmp/oc-classify-Bi8cMb/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.agents-support.config.ts
+include-file: /tmp/oc-classify-Bi8cMb/tmp/oc-focused.VbYnWp/include.json
+include-file-contents:
+  [
+    "src/agents/subagents/registry/subagent-registry-worker.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-Bi8cMb/tmp/oc-focused.VbYnWp/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.agents-support.config.ts --maxWorkers=1 src/agents/subagents/registry/subagent-registry-worker.test.ts
+logs: /tmp/oc-classify-Bi8cMb/tmp/oc-focused.VbYnWp
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-1129d4c0
+
+[vitest-workers] local cache hit after 2141ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 70ade47f3938 in 2193ms (20380 inputs, 25474 outputs)
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > restores rows without an explicit read transaction 617ms
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > streams bounded restore batches in one read and retains one snapshot 62ms
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > joins a cancelled stream without publishing partial restored rows 209ms
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > refuses quarantined registry reads in the worker without replacing resident publication 930ms
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > publishes native registry receipts once without repeating their payload in the reply (delivered) 40ms
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > publishes native registry receipts once without repeating their payload in the reply (lost) 30ms
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > preserves the registry commit outcome and failure with after acknowledgment 24ms
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > preserves the registry commit outcome and failure with lost acknowledgment 18ms
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > preserves the registry commit outcome and failure with missing receipt 21ms
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > publishes overlapping durable and runtime-only mutations in FIFO order 32ms
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > releases unrelated registration rows while following new owners and deletion receipts 64ms
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > selects registration rows in owner order without traversing unrelated live runs 31ms
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > persists prepared-only registration without resurrecting it after a queued deletion 37ms
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > fences an uncertain row through source close until canonical restoration 640ms
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > serializes opposite multi-row orders without a lock-order deadlock 28ms
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > settles a plugin-origin requester cohort and killed-child cleanup during shutdown drain 120ms
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > installs captured raw postimages and runtime custody before notifying every projection 32ms
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > revalidates live caller authority at native transaction admission 23ms
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > revalidates live caller authority at native commit admission 19ms
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > keeps an acknowledged row and notifies readers when its custody callback fails 29ms
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > keeps an old-source commit from notifying a replacement database (before ACK) 25ms
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > keeps an old-source commit from notifying a replacement database (inside failing callback) 20ms
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > retains the execution's Gateway binding through immutable metadata publications 18ms
+ × |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > releases serialized payloads while their immutable registry rows remain resident 51ms
+   → Expected values to be strictly equal:
+
+1 !== 0
+
+stderr | unknown test
+[sqlite-test-lifecycle] src/agents/subagents/registry/subagent-registry-worker.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/agents/subagents/registry/subagent-registry-worker.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/agents/subagents/registry/subagent-registry-worker.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/agents/subagents/registry/subagent-registry-worker.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/agents/subagents/registry/subagent-registry-worker.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/agents/subagents/registry/subagent-registry-worker.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/agents/subagents/registry/subagent-registry-worker.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/agents/subagents/registry/subagent-registry-worker.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/agents/subagents/registry/subagent-registry-worker.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/agents/subagents/registry/subagent-registry-worker.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/agents/subagents/registry/subagent-registry-worker.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/agents/subagents/registry/subagent-registry-worker.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/agents/subagents/registry/subagent-registry-worker.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/agents/subagents/registry/subagent-registry-worker.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/agents/subagents/registry/subagent-registry-worker.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/agents/subagents/registry/subagent-registry-worker.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/agents/subagents/registry/subagent-registry-worker.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/agents/subagents/registry/subagent-registry-worker.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/agents/subagents/registry/subagent-registry-worker.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/agents/subagents/registry/subagent-registry-worker.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/agents/subagents/registry/subagent-registry-worker.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/agents/subagents/registry/subagent-registry-worker.test.ts: retiring openclaw.sessionGroupCatalog
+
+ ✓ |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > matches the previous commit algorithm's writes and exact bytes through randomized row lifetimes 532ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > releases serialized payloads while their immutable registry rows remain resident
+AssertionError: Expected values to be strictly equal:
+
+1 !== 0
+
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ expectLiveObjects src/test-utils/retention.ts:23:10
+     21| ): Promise<void> {
+     22|   await collectForRetentionCheck("live-objects", 1);
+     23|   assert.equal(refs.filter((ref) => ref.deref() !== undefined).length,…
+       |          ^
+     24| }
+     25|
+ ❯ expectCollected src/test-utils/retention.ts:27:3
+ ❯ src/agents/subagents/registry/subagent-registry-worker.test.ts:873:3
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 24 passed (25)
+   Start at  01:56:14
+   Duration  17.71s (transform 60%, tests 22%, import 14%, worker 3%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 config=test/vitest/vitest.agents-support.config.ts files=src/agents/subagents/registry/subagent-registry-worker.test.ts
+failing-tests:
+ × |agents-support| src/agents/subagents/registry/subagent-registry-worker.test.ts > releases serialized payloads while their immutable registry rows remain resident 51ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 24 passed (25)]
+# exit=1

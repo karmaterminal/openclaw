@@ -8,7 +8,8 @@ ref=$1 config=$2 run=$3; shift 3
 case "$ref" in
   base) wt=/home/figs/classify-129388/base-1129d4c0 ;;
   cand) wt=/home/figs/classify-129388/cand-93a1e356 ;;
-  *) echo "ref must be base|cand" >&2; exit 2 ;;
+  probe) wt=/home/figs/classify-129388/probe-final ;;
+  *) echo "ref must be base|cand|probe" >&2; exit 2 ;;
 esac
 here=$(cd "$(dirname "$0")/.." && pwd)
 iso=/home/figs/flesh_beast_best_beast/source/frond-scribe/skills/pr-drift-cure-gates/run-isolated-from-live-gateways.sh

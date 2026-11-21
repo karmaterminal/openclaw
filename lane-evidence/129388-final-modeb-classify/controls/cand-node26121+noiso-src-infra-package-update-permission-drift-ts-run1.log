@@ -1,0 +1,39 @@
+# ctl ref=cand sha=93a1e356c7aabf0d868560e46790b07449813840 file=src/infra/package-update-permission-drift.test.ts run=1 mode=node26121+noiso start=2026-11-21T10:01:40Z
+# files: 1 runwt=/home/figs/classify-129388/cand-93a1e356 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-7eozKQ/home TMPDIR=/tmp/oc-classify-7eozKQ/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.infra.config.ts
+include-file: /tmp/oc-classify-7eozKQ/tmp/oc-focused.vL1ZZf/include.json
+include-file-contents:
+  [
+    "src/infra/package-update-permission-drift.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-7eozKQ/tmp/oc-focused.vL1ZZf/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.infra.config.ts --maxWorkers=1 src/infra/package-update-permission-drift.test.ts
+logs: /tmp/oc-classify-7eozKQ/tmp/oc-focused.vL1ZZf
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-93a1e356
+
+[vitest-workers] local cache hit after 2161ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared f6605c9a26ba in 2224ms (20558 inputs, 25754 outputs)
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > clears write drift once without removing read access (shared inode=false) 73ms
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > clears write drift once without removing read access (shared inode=true) 27ms
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > does not repair a tree with changed bytes 28ms
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > does not repair a tree with changed owner-mode 26ms
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > does not repair a tree with changed inode 27ms
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > does not repair a tree with changed target 18ms
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > keeps old public-mode receipts valid across recovery attempts 26ms
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > repairs a recursive named-user POSIX ACL 38ms
+ ✓ |infra| src/infra/package-update-permission-drift.test.ts > publication permission drift > warns and continues when verified permissions cannot be tightened 25ms
+
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Start at  02:01:42
+   Duration  5.36s (transform 82%, setup 8%, tests 6%, import 4%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=93a1e356c7aabf0d868560e46790b07449813840 config=test/vitest/vitest.infra.config.ts files=src/infra/package-update-permission-drift.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 9 passed (9)]
+# exit=0

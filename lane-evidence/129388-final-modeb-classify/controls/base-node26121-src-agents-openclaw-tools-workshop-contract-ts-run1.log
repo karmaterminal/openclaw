@@ -1,0 +1,96 @@
+# ctl ref=base sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 file=src/agents/openclaw-tools.workshop-contract.test.ts run=1 mode=node26121 start=2026-11-21T09:54:40Z
+# files: 1 runwt=/home/figs/classify-129388/base-1129d4c0 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-W7J7Xg/home TMPDIR=/tmp/oc-classify-W7J7Xg/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.infra.config.ts
+include-file: /tmp/oc-classify-W7J7Xg/tmp/oc-focused.Mwsjfn/include.json
+include-file-contents:
+  [
+    "src/agents/openclaw-tools.workshop-contract.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-W7J7Xg/tmp/oc-focused.Mwsjfn/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.infra.config.ts --maxWorkers=1 src/agents/openclaw-tools.workshop-contract.test.ts
+logs: /tmp/oc-classify-W7J7Xg/tmp/oc-focused.Mwsjfn
+[vitest-workers] local cache hit after 2268ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 70ade47f3938 in 2309ms (20380 inputs, 25474 outputs)
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-1129d4c0
+
+(node:178) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: ensureAuthProfileStoreWithoutExternalProfiles is deprecated; use ensureAuthProfileStoreWithoutExternalProfilesAsync instead. The legacy contract remains supported during its deprecation period. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:178) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: resolveSandboxRuntimeStatus is deprecated; use resolveSandboxRuntimeStatusAsync instead. The legacy contract remains supported during its deprecation period. Removal requires an announced ordinary stable release window.
+ ✓ |infra| src/agents/openclaw-tools.workshop-contract.test.ts > Workshop through the OpenClaw tool set > T1 T6 L1: executes the public actions, preserves support trees, and explains undo 8619ms
+ ✓ |infra| src/agents/openclaw-tools.workshop-contract.test.ts > Workshop through the OpenClaw tool set > T4 T5: review guards, attribution, and foreground-only live usage 993ms
+ ✓ |infra| src/agents/openclaw-tools.workshop-contract.test.ts > Workshop through the OpenClaw tool set > T8: a propose-mode review saves drafts only; the foreground lists, views, and discards them 737ms
+ ✓ |infra| src/agents/openclaw-tools.workshop-contract.test.ts > Workshop through the OpenClaw tool set > T7: abortfalse refuses file and feed effects 614ms
+ ✓ |infra| src/agents/openclaw-tools.workshop-contract.test.ts > Workshop through the OpenClaw tool set > T7: aborttrue refuses file and feed effects 593ms
+ × |infra| src/agents/openclaw-tools.workshop-contract.test.ts > Workshop through the OpenClaw tool set > T7: captures the invoking source authority before its first await 927ms
+   → promise resolved "{ content: [ { …(2) } ], …(1) }" instead of rejecting
+ ✓ |infra| src/agents/openclaw-tools.workshop-contract.test.ts > Workshop through the OpenClaw tool set > L2 L3: retains ten prior trees and serves a feed with pruned-version references 1425ms
+ ✓ |infra| src/agents/openclaw-tools.workshop-contract.test.ts > Workshop through the OpenClaw tool set > L2: refuses symlinked and invalid saved versions without changing the live tree 992ms
+ ✓ |infra| src/agents/openclaw-tools.workshop-contract.test.ts > Workshop through the OpenClaw tool set > L3 L4: refreshes discovery and caps persisted rows independently per agent 1779ms
+ ✓ |infra| src/agents/openclaw-tools.workshop-contract.test.ts > Workshop through the OpenClaw tool set > L5: validates new names, unsafe paths, overlapping patches, and manages legacy names 1181ms
+ ✓ |infra| src/agents/openclaw-tools.workshop-contract.test.ts > Workshop through the OpenClaw tool set > L5: enforces maxSkillBytes undefined as 40000 bytes 1018ms
+ ✓ |infra| src/agents/openclaw-tools.workshop-contract.test.ts > Workshop through the OpenClaw tool set > L5: enforces maxSkillBytes 1 as 1024 bytes 951ms
+ ✓ |infra| src/agents/openclaw-tools.workshop-contract.test.ts > Workshop through the OpenClaw tool set > L5: enforces maxSkillBytes 999999 as 200000 bytes 893ms
+ ✓ |infra| src/agents/openclaw-tools.workshop-contract.test.ts > Workshop through the OpenClaw tool set > T2 T3: host-issued capability adds skill_library for personal operations (multiple profiles: false) 1544ms
+ ✓ |infra| src/agents/openclaw-tools.workshop-contract.test.ts > Workshop through the OpenClaw tool set > T2 T3: host-issued capability adds skill_library for personal operations (multiple profiles: true) 723ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |infra| src/agents/openclaw-tools.workshop-contract.test.ts > Workshop through the OpenClaw tool set > T7: captures the invoking source authority before its first await
+AssertionError: promise resolved "{ content: [ { …(2) } ], …(1) }" instead of rejecting
+
+- Expected
++ Received
+
+- Error {
+-   "message": "rejected promise",
++ {
++   "content": [
++     {
++       "text": "Patched \"deploy\" (patched SKILL.md). Saved previous version; undo with action=restore name=deploy.",
++       "type": "text",
++     },
++   ],
++   "details": {
++     "change": {
++       "action": "patch",
++       "actor": "agent",
++       "agentId": "main",
++       "createdAtMs": 1795254911085,
++       "id": "b59472e5-7765-46f1-9451-2e789ab099f8",
++       "runId": "f2a4a295-6742-452f-a8a2-de62c956a58e",
++       "sessionKey": "<redacted len=19>",
++       "skillName": "deploy",
++       "summary": "patched SKILL.md",
++       "versionId": "20261121T095510764Z-patch",
++     },
++   },
+  }
+
+ ❯ src/agents/openclaw-tools.workshop-contract.test.ts:427:26
+    425|       return write;
+    426|     });
+    427|     await expect(pending).rejects.toThrow("tool invocation authority i…
+       |                          ^
+    428|     expect(await fs.readFile(path.join(root, "deploy", "SKILL.md"), "u…
+    429|     expect((await changes()).changes).toEqual([]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 14 passed (15)
+   Start at  01:54:44
+   Duration  37.46s (tests 62%, transform 28%, import 9%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 config=test/vitest/vitest.infra.config.ts files=src/agents/openclaw-tools.workshop-contract.test.ts
+failing-tests:
+ × |infra| src/agents/openclaw-tools.workshop-contract.test.ts > Workshop through the OpenClaw tool set > T7: captures the invoking source authority before its first await 927ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 14 passed (15)]
+# exit=1

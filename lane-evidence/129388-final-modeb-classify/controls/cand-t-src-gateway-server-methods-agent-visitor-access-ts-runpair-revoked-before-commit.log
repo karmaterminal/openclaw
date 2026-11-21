@@ -1,0 +1,22 @@
+# ctl-t ref=cand sha=93a1e356c7aabf0d868560e46790b07449813840 file=src/gateway/server-methods/agent.visitor-access.test.ts config=test/vitest/vitest.gateway.config.ts run=pair-revoked-before-commit pattern=admitted caller revoked before commit$|reopens existing profiles and grants start=2026-11-21T09:20:51Z
+[test] preparing runtime runtime before Vitest workers
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-93a1e356
+
+[vitest-workers] local cache hit after 2291ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared f6605c9a26ba in 2348ms (20558 inputs, 25754 outputs)
+ ↓ |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: admin
+ ↓ |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: writer
+ ↓ |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: revoked before commit
+ ↓ |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > retains the original caller through Visitor Access: revoked after commit
+ ✓ |gateway-methods-isolated| src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > reopens existing profiles and grants and repairs a missing Visitor model policy 5887ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 4 skipped (5)
+   Start at  01:20:56
+   Duration  22.62s (transform 49%, tests 27%, import 21%, worker 2%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+# exit=0

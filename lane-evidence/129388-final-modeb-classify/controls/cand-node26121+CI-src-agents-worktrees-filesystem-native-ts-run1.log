@@ -1,0 +1,133 @@
+# ctl ref=cand sha=93a1e356c7aabf0d868560e46790b07449813840 file=src/agents/worktrees/filesystem-native.test.ts run=1 mode=node26121+CI start=2026-11-21T10:02:50Z
+# files: 1 runwt=/home/figs/classify-129388/cand-93a1e356 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-qT0e89/home TMPDIR=/tmp/oc-classify-qT0e89/tmp CI=true
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.agents-support.config.ts
+include-file: /tmp/oc-classify-qT0e89/tmp/oc-focused.y58tNw/include.json
+include-file-contents:
+  [
+    "src/agents/worktrees/filesystem-native.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-qT0e89/tmp/oc-focused.y58tNw/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.agents-support.config.ts --maxWorkers=1 src/agents/worktrees/filesystem-native.test.ts
+logs: /tmp/oc-classify-qT0e89/tmp/oc-focused.y58tNw
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-93a1e356
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js (48:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js:48:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m48 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js (11:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js:11:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m11 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js (6:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js:6:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m6 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js (12:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js:12:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m12 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js (9:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js:9:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m9 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+[vitest-workers] prepared 2ea726d3c31b in 27479ms (15834 inputs, 25754 outputs)
+stderr | unknown test
+[sqlite-test-lifecycle] src/agents/worktrees/filesystem-native.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/agents/worktrees/filesystem-native.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/agents/worktrees/filesystem-native.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/agents/worktrees/filesystem-native.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+
+ ✓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > removes owned captures with read-only directories without changing linked live workspaces 156ms
+ × |agents-support| src/agents/worktrees/filesystem-native.test.ts > preserves native mode across ReFS copies on a reused worker 13ms
+   → [openclaw] CI job unknown: Bun revision verification failed: spawnSync bun ENOENT. Run .github/actions/setup-test-bun before tests.
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > clones and reads provenance with the host's native helper still off
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > refuses retargeted workspace authority at the native copy owner
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > refuses retargeted workspace authority at the refs-worker copy owner
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > waits for delayed input and retains prepared authority until the native copy settles
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > honors explicit FS_SAFE_NATIVE_MODE=off in read and write children
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > honors explicit OPENCLAW_FS_SAFE_NATIVE_MODE=off in read and write children
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > honors explicit FS_SAFE_PYTHON_MODE=off in read and write children
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > honors explicit OPENCLAW_FS_SAFE_PYTHON_MODE=off in read and write children
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > revalidates copy authority before input
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > revalidates createSource authority before input
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > revalidates remove authority before input
+ ↓ |agents-support| src/agents/worktrees/filesystem-native.test.ts > isolated native worktree operations > joins a canceled write child before cleanup
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |agents-support| src/agents/worktrees/filesystem-native.test.ts > preserves native mode across ReFS copies on a reused worker
+Error: [openclaw] CI job unknown: Bun revision verification failed: spawnSync bun ENOENT. Run .github/actions/setup-test-bun before tests.
+ ❯ requirePinnedBun scripts/lib/pinned-bun.mts:189:13
+    187|       }
+    188|     } catch (error) {
+    189|       throw new Error(
+       |             ^
+    190|         `[openclaw] ${ciJob}Bun revision verification failed: ${error …
+    191|         { cause: error },
+ ❯ src/agents/worktrees/filesystem-native.test.ts:74:7
+
+Caused by: Error: spawnSync bun ENOENT
+ ❯ requirePinnedBun scripts/lib/pinned-bun.mts:180:24
+ ❯ src/agents/worktrees/filesystem-native.test.ts:74:7
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { errno: -2, code: 'ENOENT', syscall: 'spawnSync bun', path: 'bun', spawnargs: [ '--revision' ], error: { stack: 'Error: spawnSync bun ENOENT
+    at Object.spawnSync (node:internal/child_process:1175:20)
+    at spawnSync (node:child_process:976:24)
+    at execFileSync (node:child_process:1019:15)
+    at requirePinnedBun (/home/figs/classify-129388/cand-93a1e356/scripts/lib/pinned-bun.mts:180:24)
+    at /home/figs/classify-129388/cand-93a1e356/src/agents/worktrees/filesystem-native.test.ts:74:7
+    at file:///home/figs/classify-129388/cand-93a1e356/node_modules/.pnpm/vitest@5.0.5_patch_hash=a2a78abe9470cc2ceb0d4eeb81acfc62d6180e9990bc866a7771ba60b1320ea_75661d0a5892d48edf76140ec77ed19d/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:1632:35
+    at file:///home/figs/classify-129388/cand-93a1e356/node_modules/.pnpm/vitest@5.0.5_patch_hash=a2a78abe9470cc2ceb0d4eeb81acfc62d6180e9990bc866a7771ba60b1320ea_75661d0a5892d48edf76140ec77ed19d/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:2801:26
+    at file:///home/figs/classify-129388/cand-93a1e356/node_modules/.pnpm/vitest@5.0.5_patch_hash=a2a78abe9470cc2ceb0d4eeb81acfc62d6180e9990bc866a7771ba60b1320ea_75661d0a5892d48edf76140ec77ed19d/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:3338:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///home/figs/classify-129388/cand-93a1e356/node_modules/.pnpm/vitest@5.0.5_patch_hash=a2a78abe9470cc2ceb0d4eeb81acfc62d6180e9990bc866a7771ba60b1320ea_75661d0a5892d48edf76140ec77ed19d/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:3333:10)', message: 'spawnSync bun ENOENT', errno: -2, code: 'ENOENT', syscall: 'spawnSync bun', path: 'bun', spawnargs: [ '--revision' ], error: [Circular], status: null, signal: null, output: null, pid: 0, stdout: undefined, stderr: undefined, constructor: 'Function<Error>', name: 'Caused by: Error', toString: 'Function<toString>', stacks: [ { method: 'requirePinnedBun', file: '/home/figs/classify-129388/cand-93a1e356/scripts/lib/pinned-bun.mts', line: 180, column: 24 }, { method: '', file: '/home/figs/classify-129388/cand-93a1e356/src/agents/worktrees/filesystem-native.test.ts', line: 74, column: 7 } ] }, status: null, signal: null, output: null, pid: 0, stdout: undefined, stderr: undefined }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed | 12 skipped (14)
+   Start at  02:02:52
+   Duration  31.14s (transform 96%, import 2%, worker 2%, setup 1%, tests 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[test] FAILED (exit 1)
+receipt head=93a1e356c7aabf0d868560e46790b07449813840 config=test/vitest/vitest.agents-support.config.ts files=src/agents/worktrees/filesystem-native.test.ts
+failing-tests:
+ × |agents-support| src/agents/worktrees/filesystem-native.test.ts > preserves native mode across ReFS copies on a reused worker 13ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 1 passed | 12 skipped (14)]
+# exit=1
