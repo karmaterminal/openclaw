@@ -1,0 +1,53 @@
+# ctl ref=base sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 file=test/scripts/bun-standalone-codegen.test.ts run=1 mode=node26121 start=2026-11-21T07:28:32Z
+# files: 1 runwt=/home/figs/classify-129388/base-1129d4c0 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-mCfyND/home TMPDIR=/tmp/oc-classify-mCfyND/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.tooling.config.ts
+include-file: /tmp/oc-classify-mCfyND/tmp/oc-focused.vkrRY9/include.json
+include-file-contents:
+  [
+    "test/scripts/bun-standalone-codegen.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-mCfyND/tmp/oc-focused.vkrRY9/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.tooling.config.ts --maxWorkers=1 test/scripts/bun-standalone-codegen.test.ts
+logs: /tmp/oc-classify-mCfyND/tmp/oc-focused.vkrRY9
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-1129d4c0
+
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-1129d4c0
+
+stderr | test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > captures remaining static programs (//#region)
+[openclaw] Staging pinned Bun fork openclaw-v1.4.4-20261026-191755ec11-webkit-b82bc917e9 (one-time download)…
+
+stderr | test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > captures remaining static programs (//#region)
+[openclaw] Staging pinned Bun fork openclaw-v1.4.4-20261026-191755ec11-webkit-b82bc917e9 (one-time download)…
+
+ ✓ |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > captures remaining static programs (//#region) 2602ms
+ ✓ |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > captures remaining static programs (//) 133ms
+ ✓ |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > captures remaining static programs (//!) 153ms
+ ✓ |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > keeps captured JavaScript outside typed callers and creates a fresh function per call 468ms
+ ✓ |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > emits an executable lexical function and respects a shadowed compiler binding 5ms
+ ✓ |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > records unsupported runtime programs instead of inventing captured behavior 2ms
+ ✓ |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > preserves JIT library behavior unless AOT is requested (false) 3ms
+ ✓ |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > preserves JIT library behavior unless AOT is requested (true) 2ms
+ ✓ |tooling| test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > only disables TypeBox acceleration in AOT mode 2ms
+ ✓ |tooling| test/scripts/bun-standalone-codegen.test.ts (9 tests) 3371ms
+   ✓ standalone fixed code generation (9)
+     ✓ captures remaining static programs (//#region) 2602ms
+     ✓ keeps captured JavaScript outside typed callers and creates a fresh function per call 468ms
+
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Start at  23:28:34
+   Duration  4.24s (tests 85%, worker 10%, transform 2%, import 1%, setup 1%)
+
+
+ Test Files  1 passed (1)
+      Tests  9 passed (9)
+   Start at  23:28:34
+   Duration  4.24s (tests 85%, worker 10%, transform 2%, import 1%, setup 1%)
+
+receipt head=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 config=test/vitest/vitest.tooling.config.ts files=test/scripts/bun-standalone-codegen.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 9 passed (9)]
+# exit=0

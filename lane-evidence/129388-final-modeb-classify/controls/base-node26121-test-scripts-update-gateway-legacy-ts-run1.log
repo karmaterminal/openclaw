@@ -1,0 +1,2081 @@
+# ctl ref=base sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 file=test/scripts-update-gateway-legacy.test.ts run=1 mode=node26121 start=2026-11-21T07:23:32Z
+# files: 1 runwt=/home/figs/classify-129388/base-1129d4c0 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-sbb8fW/home TMPDIR=/tmp/oc-classify-sbb8fW/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.tooling.config.ts
+include-file: /tmp/oc-classify-sbb8fW/tmp/oc-focused.l06Szd/include.json
+include-file-contents:
+  [
+    "test/scripts-update-gateway-legacy.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-sbb8fW/tmp/oc-focused.l06Szd/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.tooling.config.ts --maxWorkers=1 test/scripts-update-gateway-legacy.test.ts
+logs: /tmp/oc-classify-sbb8fW/tmp/oc-focused.l06Szd
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-1129d4c0
+
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-1129d4c0
+
+ ✓ |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: default 2051ms
+ ✓ |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: custom 1767ms
+ ✓ |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: manual 1716ms
+ ✓ |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: whitespace 1693ms
+ ✓ |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: disjoint 1875ms
+ ✓ |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: sibling 1864ms
+ ✓ |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: unavailable 1623ms
+ ✓ |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: explicit-profile 1700ms
+ × |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: failure 8704ms
+   → From /tmp/oc-classify-sbb8fW/tmp/oc-vt-n9FCcQ/openclaw-legacy-source-template-2vU8De/seed
+ * branch            main       -> FETCH_HEAD
+   9c77fba..9473a7e  main       -> origin/main
+[update-gateway] stopping gateway before replacing hashed build chunks
+[build-all] native-protocol
+[build-all] native-protocol failed after 0ms
+[build-all] phase timings: total 0ms; slowest native-protocol (failed) 0ms
+[update-gateway] restoring previous build output
+[update-gateway] restarting gateway on previous build after update failure
+/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:369
+            throw new AggregateError(
+                  ^
+
+AggregateError: Source build recovery failed: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+    at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:369:19)
+    at async Promise.allSettled (index 0)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+    at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+    at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+    at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+  [cause]: ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+  No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+      at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+    reason: 'service-manager-unavailable'
+  },
+  [errors]: [
+    Error: Source build failed (exit 17).
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:371:41)
+        at async Promise.allSettled (index 0)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24),
+    ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+    No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+        at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+        at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+      reason: 'service-manager-unavailable'
+    }
+  ]
+}
+
+Node.js v26.12.1
+[update-gateway] FAILED (exit 1)
+: expected 1 to be 17 // Object.is equality
+ ✓ |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: failure-drift 7541ms
+ × |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: failure-scheduled 7670ms
+   → From /tmp/oc-classify-sbb8fW/tmp/oc-vt-n9FCcQ/openclaw-legacy-source-template-2vU8De/seed
+ * branch            main       -> FETCH_HEAD
+   9c77fba..9473a7e  main       -> origin/main
+[update-gateway] stopping gateway before replacing hashed build chunks
+[build-all] native-protocol
+[build-all] native-protocol failed after 0ms
+[build-all] phase timings: total 0ms; slowest native-protocol (failed) 0ms
+[update-gateway] restoring previous build output
+[update-gateway] restarting gateway on previous build after update failure
+/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:369
+            throw new AggregateError(
+                  ^
+
+AggregateError: Source build recovery failed: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+    at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:369:19)
+    at async Promise.allSettled (index 0)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+    at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+    at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+    at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+  [cause]: ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+  No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+      at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+    reason: 'service-manager-unavailable'
+  },
+  [errors]: [
+    Error: Source build failed (exit 17).
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:371:41)
+        at async Promise.allSettled (index 0)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24),
+    ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+    No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+        at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+        at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+      reason: 'service-manager-unavailable'
+    }
+  ]
+}
+
+Node.js v26.12.1
+[update-gateway] FAILED (exit 1)
+: expected [ 'stop', 'mutation', 'build', …(4) ] to deeply equal [ 'stop', 'mutation', 'build', …(5) ]
+ ✓ |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: failure-revoked 7798ms
+ ✓ |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: unjoined 1729ms
+ ✓ |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: enable-failure 1801ms
+ × |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: partial-stop 7500ms
+   → From /tmp/oc-classify-sbb8fW/tmp/oc-vt-n9FCcQ/openclaw-legacy-source-template-2vU8De/seed
+ * branch            main       -> FETCH_HEAD
+   9c77fba..9473a7e  main       -> origin/main
+[update-gateway] stopping gateway before replacing hashed build chunks
+/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:165
+              throw new AggregateError(
+                    ^
+
+AggregateError: Source update stop and original-runtime recovery failed.
+    at Object.stop (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:165:21)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:269:25)
+    at async Promise.allSettled (index 0)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+    at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+    at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+    at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+  [cause]: ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+  No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+      at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+    reason: 'service-manager-unavailable'
+  },
+  [errors]: [
+    Error: fixture stop rejected after native mutation
+        at stop (/home/figs/classify-129388/base-1129d4c0/test/scripts/fixtures/legacy-source-build.mjs:107:11)
+        at Object.stop (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:128:27)
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:269:41)
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:407:7)
+        at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:66:14)
+        at withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:30)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24),
+    ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+    No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+        at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+        at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+      reason: 'service-manager-unavailable'
+    }
+  ]
+}
+
+Node.js v26.12.1
+[update-gateway] FAILED (exit 1)
+: expected [ 'stop', 'native-admission' ] to deeply equal [ 'stop', 'native-admission', …(1) ]
+ × |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: partial-stop-custom 7551ms
+   → From /tmp/oc-classify-sbb8fW/tmp/oc-vt-n9FCcQ/openclaw-legacy-source-template-2vU8De/seed
+ * branch            main       -> FETCH_HEAD
+   9c77fba..9473a7e  main       -> origin/main
+[update-gateway] stopping gateway before replacing hashed build chunks
+/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:165
+              throw new AggregateError(
+                    ^
+
+AggregateError: Source update stop and original-runtime recovery failed.
+    at Object.stop (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:165:21)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:269:25)
+    at async Promise.allSettled (index 0)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+    at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+    at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+    at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+  [cause]: ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+  No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+      at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+    reason: 'service-manager-unavailable'
+  },
+  [errors]: [
+    Error: fixture stop rejected after native mutation
+        at stop (/home/figs/classify-129388/base-1129d4c0/test/scripts/fixtures/legacy-source-build.mjs:107:11)
+        at Object.stop (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:128:27)
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:269:41)
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:407:7)
+        at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:66:14)
+        at withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:30)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24),
+    ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+    No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+        at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+        at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+      reason: 'service-manager-unavailable'
+    }
+  ]
+}
+
+Node.js v26.12.1
+[update-gateway] FAILED (exit 1)
+: expected [ 'stop', 'native-admission' ] to deeply equal [ 'stop', 'native-admission', …(1) ]
+ ✓ |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: partial-stop-drift 7634ms
+ × |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: partial-stop-scheduled 7605ms
+   → From /tmp/oc-classify-sbb8fW/tmp/oc-vt-n9FCcQ/openclaw-legacy-source-template-2vU8De/seed
+ * branch            main       -> FETCH_HEAD
+   9c77fba..9473a7e  main       -> origin/main
+[update-gateway] stopping gateway before replacing hashed build chunks
+/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:165
+              throw new AggregateError(
+                    ^
+
+AggregateError: Source update stop and original-runtime recovery failed.
+    at Object.stop (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:165:21)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:269:25)
+    at async Promise.allSettled (index 0)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+    at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+    at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+    at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+  [cause]: ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+  No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+      at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+    reason: 'service-manager-unavailable'
+  },
+  [errors]: [
+    Error: fixture stop rejected after native mutation
+        at stop (/home/figs/classify-129388/base-1129d4c0/test/scripts/fixtures/legacy-source-build.mjs:107:11)
+        at Object.stop (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:128:27)
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:269:41)
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:407:7)
+        at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:66:14)
+        at withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:30)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24),
+    ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+    No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+        at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+        at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+      reason: 'service-manager-unavailable'
+    }
+  ]
+}
+
+Node.js v26.12.1
+[update-gateway] FAILED (exit 1)
+: expected [ 'stop', 'native-admission' ] to deeply equal [ 'stop', 'native-admission', …(1) ]
+ ✓ |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: native-unjoined 1714ms
+ ✓ |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: drift 1803ms
+ × |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: begin-abort 7952ms
+   → From /tmp/oc-classify-sbb8fW/tmp/oc-vt-n9FCcQ/openclaw-legacy-source-template-2vU8De/seed
+ * branch            main       -> FETCH_HEAD
+   9c77fba..9473a7e  main       -> origin/main
+[update-gateway] stopping gateway before replacing hashed build chunks
+/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:423
+        ? new AggregateError([failure.error, error], "Source build and native settlement failed", {
+          ^
+
+AggregateError: Source build and native settlement failed
+    at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:423:11)
+    at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+    ... 2 lines matching cause stack trace ...
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+  [cause]: Error: Source update interrupted; successful restart remains unconfirmed.
+      at assertUninterrupted (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:86:13)
+      at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:229:11)
+      at async settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:7)
+      at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:9)
+      at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+      at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+      at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+      at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24),
+  [errors]: [
+    AggregateError: Source build admission and original-runtime recovery failed.
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:285:19)
+        at async Promise.allSettled (index 0)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+      [cause]: ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+      No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+          at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+          at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+        reason: 'service-manager-unavailable'
+      },
+      [errors]: [
+        UpdateCommandAbort: openclaw-update-abort
+            at stop (/home/figs/classify-129388/base-1129d4c0/test/scripts/fixtures/legacy-source-build.mjs:110:7)
+            at async Object.stop (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:128:21)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:269:25)
+            at async Promise.allSettled (index 0)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+            at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+            at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+            at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24),
+        ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+        No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+            at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+            at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+          reason: 'service-manager-unavailable'
+        }
+      ]
+    },
+    Error: Source update interrupted; successful restart remains unconfirmed.
+        at assertUninterrupted (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:86:13)
+        at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:229:11)
+        at async settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:7)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:9)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24)
+  ]
+}
+
+Node.js v26.12.1
+[update-gateway] FAILED (exit 1)
+: expected [ 'stop', 'mutation', 'enable', …(2) ] to deeply equal [ 'stop', 'mutation', 'enable', …(3) ]
+ ✓ |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: begin-closed 5447ms
+ ✓ |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: begin-delegated 5517ms
+ ✓ |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: begin-lost 5190ms
+ × |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: begin-unjoined 8072ms
+   → From /tmp/oc-classify-sbb8fW/tmp/oc-vt-n9FCcQ/openclaw-legacy-source-template-2vU8De/seed
+ * branch            main       -> FETCH_HEAD
+   9c77fba..9473a7e  main       -> origin/main
+[update-gateway] stopping gateway before replacing hashed build chunks
+/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:423
+        ? new AggregateError([failure.error, error], "Source build and native settlement failed", {
+          ^
+
+AggregateError: Source build and native settlement failed
+    at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:423:11)
+    at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+    ... 2 lines matching cause stack trace ...
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+  [cause]: Error: Source update interrupted; successful restart remains unconfirmed.
+      at assertUninterrupted (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:86:13)
+      at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:229:11)
+      at async settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:7)
+      at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:9)
+      at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+      at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+      at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+      at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24),
+  [errors]: [
+    AggregateError: Source build admission and original-runtime recovery failed.
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:285:19)
+        at async Promise.allSettled (index 0)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+      [cause]: ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+      No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+          at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+          at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+        reason: 'service-manager-unavailable'
+      },
+      [errors]: [
+        UpdateCommandAbort: openclaw-update-abort
+            at stop (/home/figs/classify-129388/base-1129d4c0/test/scripts/fixtures/legacy-source-build.mjs:110:7)
+            at async Object.stop (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:128:21)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:269:25)
+            at async Promise.allSettled (index 0)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+            at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+            at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+            at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24),
+        ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+        No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+            at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+            at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+          reason: 'service-manager-unavailable'
+        }
+      ]
+    },
+    Error: Source update interrupted; successful restart remains unconfirmed.
+        at assertUninterrupted (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:86:13)
+        at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:229:11)
+        at async settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:7)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:9)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24)
+  ]
+}
+
+Node.js v26.12.1
+[update-gateway] FAILED (exit 1)
+: expected [ 'stop', 'mutation', 'enable', …(2) ] to deeply equal [ 'stop', 'mutation', 'enable', …(4) ]
+ × |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: build-throw-settle 9569ms
+   → From /tmp/oc-classify-sbb8fW/tmp/oc-vt-n9FCcQ/openclaw-legacy-source-template-2vU8De/seed
+ * branch            main       -> FETCH_HEAD
+   9c77fba..9473a7e  main       -> origin/main
+[update-gateway] stopping gateway before replacing hashed build chunks
+[build-all] native-protocol
+[update-gateway] restoring previous build output
+[update-gateway] restarting gateway on previous build after update failure
+/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:423
+        ? new AggregateError([failure.error, error], "Source build and native settlement failed", {
+          ^
+
+AggregateError: Source build and native settlement failed
+    at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:423:11)
+    at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+    ... 2 lines matching cause stack trace ...
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+  [cause]: AggregateError: Source-update native recovery did not settle.
+      at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:226:17)
+      at async settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:7)
+      at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:9)
+      at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+      at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+      at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+      at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+    [errors]: [
+      Error: fixture native completion failed
+          at Object.complete (/home/figs/classify-129388/base-1129d4c0/test/scripts/fixtures/legacy-source-build.mjs:159:17)
+          at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:221:27)
+          at settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:23)
+          at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:15)
+          at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+          at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+          at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+          at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24)
+    ]
+  },
+  [errors]: [
+    AggregateError: Source build recovery failed: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+    No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:369:19)
+        at async Promise.allSettled (index 0)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+      [cause]: ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+      No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+          at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+          at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+        reason: 'service-manager-unavailable'
+      },
+      [errors]: [
+        Error: fixture compiler rejected
+            at runManagedCommand (data:text/javascript,%0A%20%20export%20*%20from%20%22file%3A%2F%2F%2Fhome%2Ffigs%2Fclassify-129388%2Fbase-1129d4c0%2Fscripts%2Flib%2Fmanaged-child-process.mts%3Foriginal%22%3B%0A%20%20import%20%7B%20runManagedCommand%20as%20actual%20%7D%20from%20%22file%3A%2F%2F%2Fhome%2Ffigs%2Fclassify-129388%2Fbase-1129d4c0%2Fscripts%2Flib%2Fmanaged-child-process.mts%3Foriginal%22%3B%0A%20%20import%20fs%20from%20'node%3Afs'%3B%0A%20%20import%20path%20from%20'node%3Apath'%3B%0A%20%20import%20%7B%20event%20%7D%20from%20%22file%3A%2F%2F%2Fhome%2Ffigs%2Fclassify-129388%2Fbase-1129d4c0%2Ftest%2Fscripts%2Ffixtures%2Flegacy-source-build.mjs%22%3B%0A%20%20let%20invoked%20%3D%20false%3B%0A%20%20export%20async%20function%20runManagedCommand(options)%20%7B%0A%20%20%20%20if%20(options.bin%20%3D%3D%3D%20'bash')%20%7B%0A%20%20%20%20%20%20return%20actual(options)%3B%0A%20%20%20%20%7D%0A%20%20%20%20if%20(!invoked)%20%7B%0A%20%20%20%20%20%20invoked%20%3D%20true%3B%0A%20%20%20%20%20%20event('build')%3B%0A%20%20%20%20%20%20if%20(%22build-throw-settle%22%20%3D%3D%3D%20'unjoined')%20throw%20Object.assign(new%20Error('fixture%20writers%20unjoined')%2C%20%7BprocessTreeState%3A'indeterminate'%7D)%3B%0A%20%20%20%20%20%20fs.writeFileSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'dist%2Fentry.js')%2C%20'new%20runtime%5Cn')%3B%0A%20%20%20%20%20%20fs.writeFileSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'build-env.json')%2C%20JSON.stringify(%7B%0A%20%20%20%20%20%20%20%20npm_execpath%3A%20options.env%3F.npm_execpath%2C%0A%20%20%20%20%20%20%20%20workspace%3A%20options.env%3F.NPM_CONFIG_WORKSPACE_DIR%2C%0A%20%20%20%20%20%20%7D))%3B%0A%20%20%20%20%20%20if%20(%22build-throw-settle%22%20%3D%3D%3D%20'build-throw-restore')%20%7B%0A%20%20%20%20%20%20%20%20fs.rmSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'dist')%2C%20%7Brecursive%3Atrue%2C%20force%3Atrue%7D)%3B%0A%20%20%20%20%20%20%20%20fs.symlinkSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'foreign%2Fdist')%2C%20path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'dist'))%3B%0A%20%20%20%20%20%20%7D%0A%20%20%20%20%20%20if%20(%22build-throw-settle%22.startsWith('build-throw-'))%20throw%20new%20Error('fixture%20compiler%20rejected')%3B%0A%20%20%20%20%7D%0A%20%20%20%20return%20%22build-throw-settle%22.startsWith('failure')%20%3F%2017%20%3A%200%3B%0A%20%20%7D:25:66)
+            at runStep (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:594:23)
+            at runSteps (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:655:28)
+            at runBuildAllSteps (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:698:22)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:318:26)
+            at async Promise.allSettled (index 0)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+            at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+            at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+            at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10),
+        ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+        No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+            at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+            at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+          reason: 'service-manager-unavailable'
+        }
+      ]
+    },
+    AggregateError: Source-update native recovery did not settle.
+        at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:226:17)
+        at async settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:7)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:9)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+      [errors]: [
+        Error: fixture native completion failed
+            at Object.complete (/home/figs/classify-129388/base-1129d4c0/test/scripts/fixtures/legacy-source-build.mjs:159:17)
+            at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:221:27)
+            at settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:23)
+            at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:15)
+            at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+            at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+            at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24)
+      ]
+    }
+  ]
+}
+
+Node.js v26.12.1
+[update-gateway] FAILED (exit 1)
+: expected [ 'stop', 'mutation', 'build', …(4) ] to deeply equal [ 'stop', 'mutation', 'build', …(4) ]
+ × |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: build-throw-restart 8151ms
+   → expected 'From /tmp/oc-classify-sbb8fW/tmp/oc-v…' to contain 'fixture native restart failed'
+ ✓ |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: build-throw-restore 4955ms
+ ❯ |tooling| test/scripts-update-gateway-legacy.test.ts (28 tests | 9 failed) 138272ms
+   ✓ published source shell reaches candidate build entry: default 2051ms
+   ✓ published source shell reaches candidate build entry: custom 1767ms
+   ✓ published source shell reaches candidate build entry: manual 1716ms
+   ✓ published source shell reaches candidate build entry: whitespace 1693ms
+   ✓ published source shell reaches candidate build entry: disjoint 1875ms
+   ✓ published source shell reaches candidate build entry: sibling 1864ms
+   ✓ published source shell reaches candidate build entry: unavailable 1623ms
+   ✓ published source shell reaches candidate build entry: explicit-profile 1700ms
+   × published source shell reaches candidate build entry: failure 8704ms
+   ✓ published source shell reaches candidate build entry: failure-drift 7541ms
+   × published source shell reaches candidate build entry: failure-scheduled 7670ms
+   ✓ published source shell reaches candidate build entry: failure-revoked 7798ms
+   ✓ published source shell reaches candidate build entry: unjoined 1729ms
+   ✓ published source shell reaches candidate build entry: enable-failure 1801ms
+   × published source shell reaches candidate build entry: partial-stop 7500ms
+   × published source shell reaches candidate build entry: partial-stop-custom 7551ms
+   ✓ published source shell reaches candidate build entry: partial-stop-drift 7634ms
+   × published source shell reaches candidate build entry: partial-stop-scheduled 7605ms
+   ✓ published source shell reaches candidate build entry: native-unjoined 1714ms
+   ✓ published source shell reaches candidate build entry: drift 1803ms
+   × published source shell reaches candidate build entry: begin-abort 7952ms
+   ✓ published source shell reaches candidate build entry: begin-closed 5447ms
+   ✓ published source shell reaches candidate build entry: begin-delegated 5517ms
+   ✓ published source shell reaches candidate build entry: begin-lost 5190ms
+   × published source shell reaches candidate build entry: begin-unjoined 8072ms
+   × published source shell reaches candidate build entry: build-throw-settle 9569ms
+   × published source shell reaches candidate build entry: build-throw-restart 8151ms
+   ✓ published source shell reaches candidate build entry: build-throw-restore 4955ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 9 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: failure
+AssertionError: From /tmp/oc-classify-sbb8fW/tmp/oc-vt-n9FCcQ/openclaw-legacy-source-template-2vU8De/seed
+ * branch            main       -> FETCH_HEAD
+   9c77fba..9473a7e  main       -> origin/main
+[update-gateway] stopping gateway before replacing hashed build chunks
+[build-all] native-protocol
+[build-all] native-protocol failed after 0ms
+[build-all] phase timings: total 0ms; slowest native-protocol (failed) 0ms
+[update-gateway] restoring previous build output
+[update-gateway] restarting gateway on previous build after update failure
+/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:369
+            throw new AggregateError(
+                  ^
+
+AggregateError: Source build recovery failed: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+    at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:369:19)
+    at async Promise.allSettled (index 0)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+    at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+    at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+    at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+  [cause]: ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+  No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+      at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+    reason: 'service-manager-unavailable'
+  },
+  [errors]: [
+    Error: Source build failed (exit 17).
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:371:41)
+        at async Promise.allSettled (index 0)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24),
+    ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+    No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+        at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+        at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+      reason: 'service-manager-unavailable'
+    }
+  ]
+}
+
+Node.js v26.12.1
+[update-gateway] FAILED (exit 1)
+: expected 1 to be 17 // Object.is equality
+
+- Expected
++ Received
+
+- 17
++ 1
+
+ ❯ <anonymous> scripts/lib/source-update-build.mts:369:19
+ ❯ <anonymous> scripts/lib/source-update-build.mts:262:23
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ <anonymous> scripts/lib/source-update-build.mts:371:41
+ ❯ <anonymous> scripts/lib/source-update-build.mts:262:23
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ test/scripts-update-gateway-legacy.test.ts:156:42
+    154|       };
+    155|       const exists = (file: string) => fs.existsSync(path.join(checkou…
+    156|       expect(result.code, result.stderr).toBe(code);
+       |                                          ^
+    157|       const events = exists("events") ? read("events").trim().split("\…
+    158|       const expectEvents = (sequence: string) =>
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/9]⎯
+
+ FAIL  |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: failure-scheduled
+AssertionError: From /tmp/oc-classify-sbb8fW/tmp/oc-vt-n9FCcQ/openclaw-legacy-source-template-2vU8De/seed
+ * branch            main       -> FETCH_HEAD
+   9c77fba..9473a7e  main       -> origin/main
+[update-gateway] stopping gateway before replacing hashed build chunks
+[build-all] native-protocol
+[build-all] native-protocol failed after 0ms
+[build-all] phase timings: total 0ms; slowest native-protocol (failed) 0ms
+[update-gateway] restoring previous build output
+[update-gateway] restarting gateway on previous build after update failure
+/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:369
+            throw new AggregateError(
+                  ^
+
+AggregateError: Source build recovery failed: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+    at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:369:19)
+    at async Promise.allSettled (index 0)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+    at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+    at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+    at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+  [cause]: ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+  No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+      at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+    reason: 'service-manager-unavailable'
+  },
+  [errors]: [
+    Error: Source build failed (exit 17).
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:371:41)
+        at async Promise.allSettled (index 0)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24),
+    ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+    No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+        at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+        at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+      reason: 'service-manager-unavailable'
+    }
+  ]
+}
+
+Node.js v26.12.1
+[update-gateway] FAILED (exit 1)
+: expected [ 'stop', 'mutation', 'build', …(4) ] to deeply equal [ 'stop', 'mutation', 'build', …(5) ]
+
+- Expected
++ Received
+
+@@ -2,9 +2,8 @@
+    "stop",
+    "mutation",
+    "build",
+    "enable",
+    "native-admission",
+-   "native-restart",
+    "complete:false",
+    "disable",
+  ]
+
+ ❯ <anonymous> scripts/lib/source-update-build.mts:369:19
+ ❯ <anonymous> scripts/lib/source-update-build.mts:262:23
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ <anonymous> scripts/lib/source-update-build.mts:371:41
+ ❯ <anonymous> scripts/lib/source-update-build.mts:262:23
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ expectEvents test/scripts-update-gateway-legacy.test.ts:159:39
+    157|       const events = exists("events") ? read("events").trim().split("\…
+    158|       const expectEvents = (sequence: string) =>
+    159|         expect(events, result.stderr).toEqual(sequence.split(" "));
+       |                                       ^
+    160|       const expectError = (message: string) => expect(result.stderr).t…
+    161|       const build = "stop mutation build";
+ ❯ test/scripts-update-gateway-legacy.test.ts:213:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/9]⎯
+
+ FAIL  |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: partial-stop
+ FAIL  |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: partial-stop-custom
+ FAIL  |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: partial-stop-scheduled
+AssertionError: From /tmp/oc-classify-sbb8fW/tmp/oc-vt-n9FCcQ/openclaw-legacy-source-template-2vU8De/seed
+ * branch            main       -> FETCH_HEAD
+   9c77fba..9473a7e  main       -> origin/main
+[update-gateway] stopping gateway before replacing hashed build chunks
+/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:165
+              throw new AggregateError(
+                    ^
+
+AggregateError: Source update stop and original-runtime recovery failed.
+    at Object.stop (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:165:21)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:269:25)
+    at async Promise.allSettled (index 0)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+    at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+    at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+    at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+  [cause]: ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+  No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+      at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+    reason: 'service-manager-unavailable'
+  },
+  [errors]: [
+    Error: fixture stop rejected after native mutation
+        at stop (/home/figs/classify-129388/base-1129d4c0/test/scripts/fixtures/legacy-source-build.mjs:107:11)
+        at Object.stop (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:128:27)
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:269:41)
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:407:7)
+        at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:66:14)
+        at withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:30)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24),
+    ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+    No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+        at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+        at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+      reason: 'service-manager-unavailable'
+    }
+  ]
+}
+
+Node.js v26.12.1
+[update-gateway] FAILED (exit 1)
+: expected [ 'stop', 'native-admission' ] to deeply equal [ 'stop', 'native-admission', …(1) ]
+
+- Expected
++ Received
+
+  [
+    "stop",
+    "native-admission",
+-   "native-restart",
+  ]
+
+ ❯ Object.stop scripts/lib/source-update-build.mts:165:21
+ ❯ <anonymous> scripts/lib/source-update-build.mts:269:25
+ ❯ <anonymous> scripts/lib/source-update-build.mts:262:23
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ stop test/scripts/fixtures/legacy-source-build.mjs:107:11
+ ❯ Object.stop scripts/lib/source-update-build.mts:128:27
+ ❯ <anonymous> scripts/lib/source-update-build.mts:269:41
+ ❯ <anonymous> scripts/lib/source-update-build.mts:407:7
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:30
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ expectEvents test/scripts-update-gateway-legacy.test.ts:159:39
+    157|       const events = exists("events") ? read("events").trim().split("\…
+    158|       const expectEvents = (sequence: string) =>
+    159|         expect(events, result.stderr).toEqual(sequence.split(" "));
+       |                                       ^
+    160|       const expectError = (message: string) => expect(result.stderr).t…
+    161|       const build = "stop mutation build";
+ ❯ test/scripts-update-gateway-legacy.test.ts:202:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/9]⎯
+
+ FAIL  |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: begin-abort
+AssertionError: From /tmp/oc-classify-sbb8fW/tmp/oc-vt-n9FCcQ/openclaw-legacy-source-template-2vU8De/seed
+ * branch            main       -> FETCH_HEAD
+   9c77fba..9473a7e  main       -> origin/main
+[update-gateway] stopping gateway before replacing hashed build chunks
+/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:423
+        ? new AggregateError([failure.error, error], "Source build and native settlement failed", {
+          ^
+
+AggregateError: Source build and native settlement failed
+    at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:423:11)
+    at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+    ... 2 lines matching cause stack trace ...
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+  [cause]: Error: Source update interrupted; successful restart remains unconfirmed.
+      at assertUninterrupted (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:86:13)
+      at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:229:11)
+      at async settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:7)
+      at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:9)
+      at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+      at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+      at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+      at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24),
+  [errors]: [
+    AggregateError: Source build admission and original-runtime recovery failed.
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:285:19)
+        at async Promise.allSettled (index 0)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+      [cause]: ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+      No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+          at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+          at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+        reason: 'service-manager-unavailable'
+      },
+      [errors]: [
+        UpdateCommandAbort: openclaw-update-abort
+            at stop (/home/figs/classify-129388/base-1129d4c0/test/scripts/fixtures/legacy-source-build.mjs:110:7)
+            at async Object.stop (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:128:21)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:269:25)
+            at async Promise.allSettled (index 0)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+            at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+            at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+            at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24),
+        ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+        No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+            at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+            at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+          reason: 'service-manager-unavailable'
+        }
+      ]
+    },
+    Error: Source update interrupted; successful restart remains unconfirmed.
+        at assertUninterrupted (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:86:13)
+        at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:229:11)
+        at async settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:7)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:9)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24)
+  ]
+}
+
+Node.js v26.12.1
+[update-gateway] FAILED (exit 1)
+: expected [ 'stop', 'mutation', 'enable', …(2) ] to deeply equal [ 'stop', 'mutation', 'enable', …(3) ]
+
+- Expected
++ Received
+
+  [
+    "stop",
+    "mutation",
+    "enable",
+    "native-admission",
+-   "native-restart",
+    "complete:true",
+  ]
+
+ ❯ <anonymous> scripts/lib/source-update-build.mts:423:11
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ assertUninterrupted scripts/lib/source-update-build.mts:86:13
+ ❯ Object.settle scripts/lib/source-update-build.mts:229:11
+ ❯ settle scripts/lib/source-update-build.mts:260:7
+ ❯ <anonymous> scripts/lib/source-update-build.mts:418:9
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ <anonymous> scripts/lib/source-update-build.mts:285:19
+ ❯ <anonymous> scripts/lib/source-update-build.mts:262:23
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ stop test/scripts/fixtures/legacy-source-build.mjs:110:7
+ ❯ Object.stop scripts/lib/source-update-build.mts:128:21
+ ❯ <anonymous> scripts/lib/source-update-build.mts:269:25
+ ❯ <anonymous> scripts/lib/source-update-build.mts:262:23
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ assertUninterrupted scripts/lib/source-update-build.mts:86:13
+ ❯ Object.settle scripts/lib/source-update-build.mts:229:11
+ ❯ settle scripts/lib/source-update-build.mts:260:7
+ ❯ <anonymous> scripts/lib/source-update-build.mts:418:9
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ <anonymous> scripts/build-all.mts:743:24
+ ❯ expectEvents test/scripts-update-gateway-legacy.test.ts:159:39
+    157|       const events = exists("events") ? read("events").trim().split("\…
+    158|       const expectEvents = (sequence: string) =>
+    159|         expect(events, result.stderr).toEqual(sequence.split(" "));
+       |                                       ^
+    160|       const expectError = (message: string) => expect(result.stderr).t…
+    161|       const build = "stop mutation build";
+ ❯ test/scripts-update-gateway-legacy.test.ts:187:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/9]⎯
+
+ FAIL  |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: begin-unjoined
+AssertionError: From /tmp/oc-classify-sbb8fW/tmp/oc-vt-n9FCcQ/openclaw-legacy-source-template-2vU8De/seed
+ * branch            main       -> FETCH_HEAD
+   9c77fba..9473a7e  main       -> origin/main
+[update-gateway] stopping gateway before replacing hashed build chunks
+/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:423
+        ? new AggregateError([failure.error, error], "Source build and native settlement failed", {
+          ^
+
+AggregateError: Source build and native settlement failed
+    at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:423:11)
+    at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+    ... 2 lines matching cause stack trace ...
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+  [cause]: Error: Source update interrupted; successful restart remains unconfirmed.
+      at assertUninterrupted (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:86:13)
+      at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:229:11)
+      at async settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:7)
+      at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:9)
+      at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+      at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+      at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+      at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24),
+  [errors]: [
+    AggregateError: Source build admission and original-runtime recovery failed.
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:285:19)
+        at async Promise.allSettled (index 0)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+      [cause]: ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+      No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+          at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+          at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+        reason: 'service-manager-unavailable'
+      },
+      [errors]: [
+        UpdateCommandAbort: openclaw-update-abort
+            at stop (/home/figs/classify-129388/base-1129d4c0/test/scripts/fixtures/legacy-source-build.mjs:110:7)
+            at async Object.stop (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:128:21)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:269:25)
+            at async Promise.allSettled (index 0)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+            at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+            at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+            at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24),
+        ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+        No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+            at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+            at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+          reason: 'service-manager-unavailable'
+        }
+      ]
+    },
+    Error: Source update interrupted; successful restart remains unconfirmed.
+        at assertUninterrupted (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:86:13)
+        at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:229:11)
+        at async settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:7)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:9)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24)
+  ]
+}
+
+Node.js v26.12.1
+[update-gateway] FAILED (exit 1)
+: expected [ 'stop', 'mutation', 'enable', …(2) ] to deeply equal [ 'stop', 'mutation', 'enable', …(4) ]
+
+- Expected
++ Received
+
+  [
+    "stop",
+    "mutation",
+    "enable",
+    "native-admission",
+-   "restart-unjoined",
+-   "complete:false",
+-   "disable",
++   "complete:true",
+  ]
+
+ ❯ <anonymous> scripts/lib/source-update-build.mts:423:11
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ assertUninterrupted scripts/lib/source-update-build.mts:86:13
+ ❯ Object.settle scripts/lib/source-update-build.mts:229:11
+ ❯ settle scripts/lib/source-update-build.mts:260:7
+ ❯ <anonymous> scripts/lib/source-update-build.mts:418:9
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ <anonymous> scripts/lib/source-update-build.mts:285:19
+ ❯ <anonymous> scripts/lib/source-update-build.mts:262:23
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ stop test/scripts/fixtures/legacy-source-build.mjs:110:7
+ ❯ Object.stop scripts/lib/source-update-build.mts:128:21
+ ❯ <anonymous> scripts/lib/source-update-build.mts:269:25
+ ❯ <anonymous> scripts/lib/source-update-build.mts:262:23
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ assertUninterrupted scripts/lib/source-update-build.mts:86:13
+ ❯ Object.settle scripts/lib/source-update-build.mts:229:11
+ ❯ settle scripts/lib/source-update-build.mts:260:7
+ ❯ <anonymous> scripts/lib/source-update-build.mts:418:9
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ <anonymous> scripts/build-all.mts:743:24
+ ❯ expectEvents test/scripts-update-gateway-legacy.test.ts:159:39
+    157|       const events = exists("events") ? read("events").trim().split("\…
+    158|       const expectEvents = (sequence: string) =>
+    159|         expect(events, result.stderr).toEqual(sequence.split(" "));
+       |                                       ^
+    160|       const expectError = (message: string) => expect(result.stderr).t…
+    161|       const build = "stop mutation build";
+ ❯ test/scripts-update-gateway-legacy.test.ts:189:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/9]⎯
+
+ FAIL  |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: build-throw-settle
+AssertionError: From /tmp/oc-classify-sbb8fW/tmp/oc-vt-n9FCcQ/openclaw-legacy-source-template-2vU8De/seed
+ * branch            main       -> FETCH_HEAD
+   9c77fba..9473a7e  main       -> origin/main
+[update-gateway] stopping gateway before replacing hashed build chunks
+[build-all] native-protocol
+[update-gateway] restoring previous build output
+[update-gateway] restarting gateway on previous build after update failure
+/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:423
+        ? new AggregateError([failure.error, error], "Source build and native settlement failed", {
+          ^
+
+AggregateError: Source build and native settlement failed
+    at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:423:11)
+    at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+    ... 2 lines matching cause stack trace ...
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+  [cause]: AggregateError: Source-update native recovery did not settle.
+      at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:226:17)
+      at async settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:7)
+      at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:9)
+      at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+      at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+      at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+      at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+    [errors]: [
+      Error: fixture native completion failed
+          at Object.complete (/home/figs/classify-129388/base-1129d4c0/test/scripts/fixtures/legacy-source-build.mjs:159:17)
+          at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:221:27)
+          at settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:23)
+          at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:15)
+          at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+          at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+          at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+          at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24)
+    ]
+  },
+  [errors]: [
+    AggregateError: Source build recovery failed: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+    No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:369:19)
+        at async Promise.allSettled (index 0)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+      [cause]: ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+      No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+          at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+          at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+        reason: 'service-manager-unavailable'
+      },
+      [errors]: [
+        Error: fixture compiler rejected
+            at runManagedCommand (data:text/javascript,%0A%20%20export%20*%20from%20%22file%3A%2F%2F%2Fhome%2Ffigs%2Fclassify-129388%2Fbase-1129d4c0%2Fscripts%2Flib%2Fmanaged-child-process.mts%3Foriginal%22%3B%0A%20%20import%20%7B%20runManagedCommand%20as%20actual%20%7D%20from%20%22file%3A%2F%2F%2Fhome%2Ffigs%2Fclassify-129388%2Fbase-1129d4c0%2Fscripts%2Flib%2Fmanaged-child-process.mts%3Foriginal%22%3B%0A%20%20import%20fs%20from%20'node%3Afs'%3B%0A%20%20import%20path%20from%20'node%3Apath'%3B%0A%20%20import%20%7B%20event%20%7D%20from%20%22file%3A%2F%2F%2Fhome%2Ffigs%2Fclassify-129388%2Fbase-1129d4c0%2Ftest%2Fscripts%2Ffixtures%2Flegacy-source-build.mjs%22%3B%0A%20%20let%20invoked%20%3D%20false%3B%0A%20%20export%20async%20function%20runManagedCommand(options)%20%7B%0A%20%20%20%20if%20(options.bin%20%3D%3D%3D%20'bash')%20%7B%0A%20%20%20%20%20%20return%20actual(options)%3B%0A%20%20%20%20%7D%0A%20%20%20%20if%20(!invoked)%20%7B%0A%20%20%20%20%20%20invoked%20%3D%20true%3B%0A%20%20%20%20%20%20event('build')%3B%0A%20%20%20%20%20%20if%20(%22build-throw-settle%22%20%3D%3D%3D%20'unjoined')%20throw%20Object.assign(new%20Error('fixture%20writers%20unjoined')%2C%20%7BprocessTreeState%3A'indeterminate'%7D)%3B%0A%20%20%20%20%20%20fs.writeFileSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'dist%2Fentry.js')%2C%20'new%20runtime%5Cn')%3B%0A%20%20%20%20%20%20fs.writeFileSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'build-env.json')%2C%20JSON.stringify(%7B%0A%20%20%20%20%20%20%20%20npm_execpath%3A%20options.env%3F.npm_execpath%2C%0A%20%20%20%20%20%20%20%20workspace%3A%20options.env%3F.NPM_CONFIG_WORKSPACE_DIR%2C%0A%20%20%20%20%20%20%7D))%3B%0A%20%20%20%20%20%20if%20(%22build-throw-settle%22%20%3D%3D%3D%20'build-throw-restore')%20%7B%0A%20%20%20%20%20%20%20%20fs.rmSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'dist')%2C%20%7Brecursive%3Atrue%2C%20force%3Atrue%7D)%3B%0A%20%20%20%20%20%20%20%20fs.symlinkSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'foreign%2Fdist')%2C%20path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'dist'))%3B%0A%20%20%20%20%20%20%7D%0A%20%20%20%20%20%20if%20(%22build-throw-settle%22.startsWith('build-throw-'))%20throw%20new%20Error('fixture%20compiler%20rejected')%3B%0A%20%20%20%20%7D%0A%20%20%20%20return%20%22build-throw-settle%22.startsWith('failure')%20%3F%2017%20%3A%200%3B%0A%20%20%7D:25:66)
+            at runStep (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:594:23)
+            at runSteps (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:655:28)
+            at runBuildAllSteps (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:698:22)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:318:26)
+            at async Promise.allSettled (index 0)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+            at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+            at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+            at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10),
+        ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+        No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+            at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+            at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+          reason: 'service-manager-unavailable'
+        }
+      ]
+    },
+    AggregateError: Source-update native recovery did not settle.
+        at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:226:17)
+        at async settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:7)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:9)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+      [errors]: [
+        Error: fixture native completion failed
+            at Object.complete (/home/figs/classify-129388/base-1129d4c0/test/scripts/fixtures/legacy-source-build.mjs:159:17)
+            at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:221:27)
+            at settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:23)
+            at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:15)
+            at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+            at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+            at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24)
+      ]
+    }
+  ]
+}
+
+Node.js v26.12.1
+[update-gateway] FAILED (exit 1)
+: expected [ 'stop', 'mutation', 'build', …(4) ] to deeply equal [ 'stop', 'mutation', 'build', …(4) ]
+
+- Expected
++ Received
+
+@@ -2,8 +2,8 @@
+    "stop",
+    "mutation",
+    "build",
+    "enable",
+    "native-admission",
+-   "native-restart",
+-   "complete:true",
++   "complete:false",
++   "disable",
+  ]
+
+ ❯ <anonymous> scripts/lib/source-update-build.mts:423:11
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ Object.settle scripts/lib/source-update-build.mts:226:17
+ ❯ settle scripts/lib/source-update-build.mts:260:7
+ ❯ <anonymous> scripts/lib/source-update-build.mts:418:9
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ Object.complete test/scripts/fixtures/legacy-source-build.mjs:159:17
+ ❯ Object.settle scripts/lib/source-update-build.mts:221:27
+ ❯ settle scripts/lib/source-update-build.mts:260:23
+ ❯ <anonymous> scripts/lib/source-update-build.mts:418:15
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ <anonymous> scripts/build-all.mts:743:24
+ ❯ <anonymous> scripts/lib/source-update-build.mts:369:19
+ ❯ <anonymous> scripts/lib/source-update-build.mts:262:23
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ runManagedCommand data:text/javascript,%0A%20%20export%20*%20from%20%22file%3A%2F%2F%2Fhome%2Ffigs%2Fclassify-129388%2Fbase-1129d4c0%2Fscripts%2Flib%2Fmanaged-child-process.mts%3Foriginal%22%3B%0A%20%20import%20%7B%20runManagedCommand%20as%20actual%20%7D%20from%20%22file%3A%2F%2F%2Fhome%2Ffigs%2Fclassify-129388%2Fbase-1129d4c0%2Fscripts%2Flib%2Fmanaged-child-process.mts%3Foriginal%22%3B%0A%20%20import%20fs%20from%20'node%3Afs'%3B%0A%20%20import%20path%20from%20'node%3Apath'%3B%0A%20%20import%20%7B%20event%20%7D%20from%20%22file%3A%2F%2F%2Fhome%2Ffigs%2Fclassify-129388%2Fbase-1129d4c0%2Ftest%2Fscripts%2Ffixtures%2Flegacy-source-build.mjs%22%3B%0A%20%20let%20invoked%20%3D%20false%3B%0A%20%20export%20async%20function%20runManagedCommand(options)%20%7B%0A%20%20%20%20if%20(options.bin%20%3D%3D%3D%20'bash')%20%7B%0A%20%20%20%20%20%20return%20actual(options)%3B%0A%20%20%20%20%7D%0A%20%20%20%20if%20(!invoked)%20%7B%0A%20%20%20%20%20%20invoked%20%3D%20true%3B%0A%20%20%20%20%20%20event('build')%3B%0A%20%20%20%20%20%20if%20(%22build-throw-settle%22%20%3D%3D%3D%20'unjoined')%20throw%20Object.assign(new%20Error('fixture%20writers%20unjoined')%2C%20%7BprocessTreeState%3A'indeterminate'%7D)%3B%0A%20%20%20%20%20%20fs.writeFileSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'dist%2Fentry.js')%2C%20'new%20runtime%5Cn')%3B%0A%20%20%20%20%20%20fs.writeFileSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'build-env.json')%2C%20JSON.stringify(%7B%0A%20%20%20%20%20%20%20%20npm_execpath%3A%20options.env%3F.npm_execpath%2C%0A%20%20%20%20%20%20%20%20workspace%3A%20options.env%3F.NPM_CONFIG_WORKSPACE_DIR%2C%0A%20%20%20%20%20%20%7D))%3B%0A%20%20%20%20%20%20if%20(%22build-throw-settle%22%20%3D%3D%3D%20'build-throw-restore')%20%7B%0A%20%20%20%20%20%20%20%20fs.rmSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'dist')%2C%20%7Brecursive%3Atrue%2C%20force%3Atrue%7D)%3B%0A%20%20%20%20%20%20%20%20fs.symlinkSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'foreign%2Fdist')%2C%20path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'dist'))%3B%0A%20%20%20%20%20%20%7D%0A%20%20%20%20%20%20if%20(%22build-throw-settle%22.startsWith('build-throw-'))%20throw%20new%20Error('fixture%20compiler%20rejected')%3B%0A%20%20%20%20%7D%0A%20%20%20%20return%20%22build-throw-settle%22.startsWith('failure')%20%3F%2017%20%3A%200%3B%0A%20%20%7D:25:66
+ ❯ runStep scripts/build-all.mts:594:23
+ ❯ runSteps scripts/build-all.mts:655:28
+ ❯ runBuildAllSteps scripts/build-all.mts:698:22
+ ❯ <anonymous> scripts/lib/source-update-build.mts:318:26
+ ❯ <anonymous> scripts/lib/source-update-build.mts:262:23
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ Object.settle scripts/lib/source-update-build.mts:226:17
+ ❯ settle scripts/lib/source-update-build.mts:260:7
+ ❯ <anonymous> scripts/lib/source-update-build.mts:418:9
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ Object.complete test/scripts/fixtures/legacy-source-build.mjs:159:17
+ ❯ Object.settle scripts/lib/source-update-build.mts:221:27
+ ❯ settle scripts/lib/source-update-build.mts:260:23
+ ❯ <anonymous> scripts/lib/source-update-build.mts:418:15
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ <anonymous> scripts/build-all.mts:743:24
+ ❯ expectEvents test/scripts-update-gateway-legacy.test.ts:159:39
+    157|       const events = exists("events") ? read("events").trim().split("\…
+    158|       const expectEvents = (sequence: string) =>
+    159|         expect(events, result.stderr).toEqual(sequence.split(" "));
+       |                                       ^
+    160|       const expectError = (message: string) => expect(result.stderr).t…
+    161|       const build = "stop mutation build";
+ ❯ test/scripts-update-gateway-legacy.test.ts:177:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/9]⎯
+
+ FAIL  |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: build-throw-restart
+AssertionError: expected 'From /tmp/oc-classify-sbb8fW/tmp/oc-v…' to contain 'fixture native restart failed'
+
+- Expected
++ Received
+
+- fixture native restart failed
++ From /tmp/oc-classify-sbb8fW/tmp/oc-vt-n9FCcQ/openclaw-legacy-source-template-2vU8De/seed
++  * branch            main       -> FETCH_HEAD
++    9c77fba..9473a7e  main       -> origin/main
++ [update-gateway] stopping gateway before replacing hashed build chunks
++ [build-all] native-protocol
++ [update-gateway] restoring previous build output
++ [update-gateway] restarting gateway on previous build after update failure
++ /home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:369
++             throw new AggregateError(
++                   ^
++
++ AggregateError: Source build recovery failed: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
++ No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
++     at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:369:19)
++     at async Promise.allSettled (index 0)
++     at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
++     at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
++     at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
++     at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
++     at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
++   [cause]: ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
++   No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
++       at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
++       at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
++     reason: 'service-manager-unavailable'
++   },
++   [errors]: [
++     Error: fixture compiler rejected
++         at runManagedCommand (data:text/javascript,%0A%20%20export%20*%20from%20%22file%3A%2F%2F%2Fhome%2Ffigs%2Fclassify-129388%2Fbase-1129d4c0%2Fscripts%2Flib%2Fmanaged-child-process.mts%3Foriginal%22%3B%0A%20%20import%20%7B%20runManagedCommand%20as%20actual%20%7D%20from%20%22file%3A%2F%2F%2Fhome%2Ffigs%2Fclassify-129388%2Fbase-1129d4c0%2Fscripts%2Flib%2Fmanaged-child-process.mts%3Foriginal%22%3B%0A%20%20import%20fs%20from%20'node%3Afs'%3B%0A%20%20import%20path%20from%20'node%3Apath'%3B%0A%20%20import%20%7B%20event%20%7D%20from%20%22file%3A%2F%2F%2Fhome%2Ffigs%2Fclassify-129388%2Fbase-1129d4c0%2Ftest%2Fscripts%2Ffixtures%2Flegacy-source-build.mjs%22%3B%0A%20%20let%20invoked%20%3D%20false%3B%0A%20%20export%20async%20function%20runManagedCommand(options)%20%7B%0A%20%20%20%20if%20(options.bin%20%3D%3D%3D%20'bash')%20%7B%0A%20%20%20%20%20%20return%20actual(options)%3B%0A%20%20%20%20%7D%0A%20%20%20%20if%20(!invoked)%20%7B%0A%20%20%20%20%20%20invoked%20%3D%20true%3B%0A%20%20%20%20%20%20event('build')%3B%0A%20%20%20%20%20%20if%20(%22build-throw-restart%22%20%3D%3D%3D%20'unjoined')%20throw%20Object.assign(new%20Error('fixture%20writers%20unjoined')%2C%20%7BprocessTreeState%3A'indeterminate'%7D)%3B%0A%20%20%20%20%20%20fs.writeFileSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-MumRe9%2Fcheckout%22%2C%20'dist%2Fentry.js')%2C%20'new%20runtime%5Cn')%3B%0A%20%20%20%20%20%20fs.writeFileSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-MumRe9%2Fcheckout%22%2C%20'build-env.json')%2C%20JSON.stringify(%7B%0A%20%20%20%20%20%20%20%20npm_execpath%3A%20options.env%3F.npm_execpath%2C%0A%20%20%20%20%20%20%20%20workspace%3A%20options.env%3F.NPM_CONFIG_WORKSPACE_DIR%2C%0A%20%20%20%20%20%20%7D))%3B%0A%20%20%20%20%20%20if%20(%22build-throw-restart%22%20%3D%3D%3D%20'build-throw-restore')%20%7B%0A%20%20%20%20%20%20%20%20fs.rmSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-MumRe9%2Fcheckout%22%2C%20'dist')%2C%20%7Brecursive%3Atrue%2C%20force%3Atrue%7D)%3B%0A%20%20%20%20%20%20%20%20fs.symlinkSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-MumRe9%2Fcheckout%22%2C%20'foreign%2Fdist')%2C%20path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-MumRe9%2Fcheckout%22%2C%20'dist'))%3B%0A%20%20%20%20%20%20%7D%0A%20%20%20%20%20%20if%20(%22build-throw-restart%22.startsWith('build-throw-'))%20throw%20new%20Error('fixture%20compiler%20rejected')%3B%0A%20%20%20%20%7D%0A%20%20%20%20return%20%22build-throw-restart%22.startsWith('failure')%20%3F%2017%20%3A%200%3B%0A%20%20%7D:25:67)
++         at runStep (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:594:23)
++         at runSteps (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:655:28)
++         at runBuildAllSteps (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:698:22)
++         at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:318:26)
++         at async Promise.allSettled (index 0)
++         at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
++         at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
++         at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
++         at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10),
++     ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
++     No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
++         at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
++         at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
++       reason: 'service-manager-unavailable'
++     }
++   ]
++ }
++
++ Node.js v26.12.1
++ [update-gateway] FAILED (exit 1)
++
+
+ ❯ expectError test/scripts-update-gateway-legacy.test.ts:160:70
+    158|       const expectEvents = (sequence: string) =>
+    159|         expect(events, result.stderr).toEqual(sequence.split(" "));
+    160|       const expectError = (message: string) => expect(result.stderr).t…
+       |                                                                      ^
+    161|       const build = "stop mutation build";
+    162|       const recovered = "enable native-admission native-restart";
+ ❯ test/scripts-update-gateway-legacy.test.ts:176:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/9]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  9 failed | 19 passed (28)
+   Start at  23:23:34
+   Duration  139.16s (tests 100%)
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 9 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: failure
+AssertionError: From /tmp/oc-classify-sbb8fW/tmp/oc-vt-n9FCcQ/openclaw-legacy-source-template-2vU8De/seed
+ * branch            main       -> FETCH_HEAD
+   9c77fba..9473a7e  main       -> origin/main
+[update-gateway] stopping gateway before replacing hashed build chunks
+[build-all] native-protocol
+[build-all] native-protocol failed after 0ms
+[build-all] phase timings: total 0ms; slowest native-protocol (failed) 0ms
+[update-gateway] restoring previous build output
+[update-gateway] restarting gateway on previous build after update failure
+/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:369
+            throw new AggregateError(
+                  ^
+
+AggregateError: Source build recovery failed: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+    at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:369:19)
+    at async Promise.allSettled (index 0)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+    at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+    at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+    at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+  [cause]: ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+  No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+      at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+    reason: 'service-manager-unavailable'
+  },
+  [errors]: [
+    Error: Source build failed (exit 17).
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:371:41)
+        at async Promise.allSettled (index 0)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24),
+    ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+    No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+        at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+        at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+      reason: 'service-manager-unavailable'
+    }
+  ]
+}
+
+Node.js v26.12.1
+[update-gateway] FAILED (exit 1)
+: expected 1 to be 17 // Object.is equality
+
+- Expected
++ Received
+
+- 17
++ 1
+
+ ❯ <anonymous> scripts/lib/source-update-build.mts:369:19
+ ❯ <anonymous> scripts/lib/source-update-build.mts:262:23
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ <anonymous> scripts/lib/source-update-build.mts:371:41
+ ❯ <anonymous> scripts/lib/source-update-build.mts:262:23
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ test/scripts-update-gateway-legacy.test.ts:156:42
+    154|       };
+    155|       const exists = (file: string) => fs.existsSync(path.join(checkou…
+    156|       expect(result.code, result.stderr).toBe(code);
+       |                                          ^
+    157|       const events = exists("events") ? read("events").trim().split("\…
+    158|       const expectEvents = (sequence: string) =>
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/9]⎯
+
+ FAIL  |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: failure-scheduled
+AssertionError: From /tmp/oc-classify-sbb8fW/tmp/oc-vt-n9FCcQ/openclaw-legacy-source-template-2vU8De/seed
+ * branch            main       -> FETCH_HEAD
+   9c77fba..9473a7e  main       -> origin/main
+[update-gateway] stopping gateway before replacing hashed build chunks
+[build-all] native-protocol
+[build-all] native-protocol failed after 0ms
+[build-all] phase timings: total 0ms; slowest native-protocol (failed) 0ms
+[update-gateway] restoring previous build output
+[update-gateway] restarting gateway on previous build after update failure
+/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:369
+            throw new AggregateError(
+                  ^
+
+AggregateError: Source build recovery failed: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+    at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:369:19)
+    at async Promise.allSettled (index 0)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+    at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+    at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+    at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+  [cause]: ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+  No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+      at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+    reason: 'service-manager-unavailable'
+  },
+  [errors]: [
+    Error: Source build failed (exit 17).
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:371:41)
+        at async Promise.allSettled (index 0)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24),
+    ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+    No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+        at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+        at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+      reason: 'service-manager-unavailable'
+    }
+  ]
+}
+
+Node.js v26.12.1
+[update-gateway] FAILED (exit 1)
+: expected [ 'stop', 'mutation', 'build', …(4) ] to deeply equal [ 'stop', 'mutation', 'build', …(5) ]
+
+- Expected
++ Received
+
+@@ -2,9 +2,8 @@
+    "stop",
+    "mutation",
+    "build",
+    "enable",
+    "native-admission",
+-   "native-restart",
+    "complete:false",
+    "disable",
+  ]
+
+ ❯ <anonymous> scripts/lib/source-update-build.mts:369:19
+ ❯ <anonymous> scripts/lib/source-update-build.mts:262:23
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ <anonymous> scripts/lib/source-update-build.mts:371:41
+ ❯ <anonymous> scripts/lib/source-update-build.mts:262:23
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ expectEvents test/scripts-update-gateway-legacy.test.ts:159:39
+    157|       const events = exists("events") ? read("events").trim().split("\…
+    158|       const expectEvents = (sequence: string) =>
+    159|         expect(events, result.stderr).toEqual(sequence.split(" "));
+       |                                       ^
+    160|       const expectError = (message: string) => expect(result.stderr).t…
+    161|       const build = "stop mutation build";
+ ❯ test/scripts-update-gateway-legacy.test.ts:213:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/9]⎯
+
+ FAIL  |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: partial-stop
+ FAIL  |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: partial-stop-custom
+ FAIL  |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: partial-stop-scheduled
+AssertionError: From /tmp/oc-classify-sbb8fW/tmp/oc-vt-n9FCcQ/openclaw-legacy-source-template-2vU8De/seed
+ * branch            main       -> FETCH_HEAD
+   9c77fba..9473a7e  main       -> origin/main
+[update-gateway] stopping gateway before replacing hashed build chunks
+/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:165
+              throw new AggregateError(
+                    ^
+
+AggregateError: Source update stop and original-runtime recovery failed.
+    at Object.stop (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:165:21)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:269:25)
+    at async Promise.allSettled (index 0)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+    at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+    at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+    at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+  [cause]: ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+  No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+      at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+    reason: 'service-manager-unavailable'
+  },
+  [errors]: [
+    Error: fixture stop rejected after native mutation
+        at stop (/home/figs/classify-129388/base-1129d4c0/test/scripts/fixtures/legacy-source-build.mjs:107:11)
+        at Object.stop (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:128:27)
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:269:41)
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:407:7)
+        at AsyncLocalStorage.run (node:internal/async_local_storage/async_context_frame:66:14)
+        at withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:30)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24),
+    ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+    No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+        at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+        at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+      reason: 'service-manager-unavailable'
+    }
+  ]
+}
+
+Node.js v26.12.1
+[update-gateway] FAILED (exit 1)
+: expected [ 'stop', 'native-admission' ] to deeply equal [ 'stop', 'native-admission', …(1) ]
+
+- Expected
++ Received
+
+  [
+    "stop",
+    "native-admission",
+-   "native-restart",
+  ]
+
+ ❯ Object.stop scripts/lib/source-update-build.mts:165:21
+ ❯ <anonymous> scripts/lib/source-update-build.mts:269:25
+ ❯ <anonymous> scripts/lib/source-update-build.mts:262:23
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ stop test/scripts/fixtures/legacy-source-build.mjs:107:11
+ ❯ Object.stop scripts/lib/source-update-build.mts:128:27
+ ❯ <anonymous> scripts/lib/source-update-build.mts:269:41
+ ❯ <anonymous> scripts/lib/source-update-build.mts:407:7
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:30
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ expectEvents test/scripts-update-gateway-legacy.test.ts:159:39
+    157|       const events = exists("events") ? read("events").trim().split("\…
+    158|       const expectEvents = (sequence: string) =>
+    159|         expect(events, result.stderr).toEqual(sequence.split(" "));
+       |                                       ^
+    160|       const expectError = (message: string) => expect(result.stderr).t…
+    161|       const build = "stop mutation build";
+ ❯ test/scripts-update-gateway-legacy.test.ts:202:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/9]⎯
+
+ FAIL  |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: begin-abort
+AssertionError: From /tmp/oc-classify-sbb8fW/tmp/oc-vt-n9FCcQ/openclaw-legacy-source-template-2vU8De/seed
+ * branch            main       -> FETCH_HEAD
+   9c77fba..9473a7e  main       -> origin/main
+[update-gateway] stopping gateway before replacing hashed build chunks
+/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:423
+        ? new AggregateError([failure.error, error], "Source build and native settlement failed", {
+          ^
+
+AggregateError: Source build and native settlement failed
+    at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:423:11)
+    at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+    ... 2 lines matching cause stack trace ...
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+  [cause]: Error: Source update interrupted; successful restart remains unconfirmed.
+      at assertUninterrupted (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:86:13)
+      at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:229:11)
+      at async settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:7)
+      at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:9)
+      at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+      at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+      at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+      at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24),
+  [errors]: [
+    AggregateError: Source build admission and original-runtime recovery failed.
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:285:19)
+        at async Promise.allSettled (index 0)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+      [cause]: ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+      No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+          at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+          at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+        reason: 'service-manager-unavailable'
+      },
+      [errors]: [
+        UpdateCommandAbort: openclaw-update-abort
+            at stop (/home/figs/classify-129388/base-1129d4c0/test/scripts/fixtures/legacy-source-build.mjs:110:7)
+            at async Object.stop (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:128:21)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:269:25)
+            at async Promise.allSettled (index 0)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+            at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+            at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+            at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24),
+        ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+        No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+            at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+            at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+          reason: 'service-manager-unavailable'
+        }
+      ]
+    },
+    Error: Source update interrupted; successful restart remains unconfirmed.
+        at assertUninterrupted (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:86:13)
+        at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:229:11)
+        at async settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:7)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:9)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24)
+  ]
+}
+
+Node.js v26.12.1
+[update-gateway] FAILED (exit 1)
+: expected [ 'stop', 'mutation', 'enable', …(2) ] to deeply equal [ 'stop', 'mutation', 'enable', …(3) ]
+
+- Expected
++ Received
+
+  [
+    "stop",
+    "mutation",
+    "enable",
+    "native-admission",
+-   "native-restart",
+    "complete:true",
+  ]
+
+ ❯ <anonymous> scripts/lib/source-update-build.mts:423:11
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ assertUninterrupted scripts/lib/source-update-build.mts:86:13
+ ❯ Object.settle scripts/lib/source-update-build.mts:229:11
+ ❯ settle scripts/lib/source-update-build.mts:260:7
+ ❯ <anonymous> scripts/lib/source-update-build.mts:418:9
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ <anonymous> scripts/lib/source-update-build.mts:285:19
+ ❯ <anonymous> scripts/lib/source-update-build.mts:262:23
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ stop test/scripts/fixtures/legacy-source-build.mjs:110:7
+ ❯ Object.stop scripts/lib/source-update-build.mts:128:21
+ ❯ <anonymous> scripts/lib/source-update-build.mts:269:25
+ ❯ <anonymous> scripts/lib/source-update-build.mts:262:23
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ assertUninterrupted scripts/lib/source-update-build.mts:86:13
+ ❯ Object.settle scripts/lib/source-update-build.mts:229:11
+ ❯ settle scripts/lib/source-update-build.mts:260:7
+ ❯ <anonymous> scripts/lib/source-update-build.mts:418:9
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ <anonymous> scripts/build-all.mts:743:24
+ ❯ expectEvents test/scripts-update-gateway-legacy.test.ts:159:39
+    157|       const events = exists("events") ? read("events").trim().split("\…
+    158|       const expectEvents = (sequence: string) =>
+    159|         expect(events, result.stderr).toEqual(sequence.split(" "));
+       |                                       ^
+    160|       const expectError = (message: string) => expect(result.stderr).t…
+    161|       const build = "stop mutation build";
+ ❯ test/scripts-update-gateway-legacy.test.ts:187:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/9]⎯
+
+ FAIL  |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: begin-unjoined
+AssertionError: From /tmp/oc-classify-sbb8fW/tmp/oc-vt-n9FCcQ/openclaw-legacy-source-template-2vU8De/seed
+ * branch            main       -> FETCH_HEAD
+   9c77fba..9473a7e  main       -> origin/main
+[update-gateway] stopping gateway before replacing hashed build chunks
+/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:423
+        ? new AggregateError([failure.error, error], "Source build and native settlement failed", {
+          ^
+
+AggregateError: Source build and native settlement failed
+    at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:423:11)
+    at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+    ... 2 lines matching cause stack trace ...
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+  [cause]: Error: Source update interrupted; successful restart remains unconfirmed.
+      at assertUninterrupted (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:86:13)
+      at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:229:11)
+      at async settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:7)
+      at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:9)
+      at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+      at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+      at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+      at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24),
+  [errors]: [
+    AggregateError: Source build admission and original-runtime recovery failed.
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:285:19)
+        at async Promise.allSettled (index 0)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+      [cause]: ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+      No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+          at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+          at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+        reason: 'service-manager-unavailable'
+      },
+      [errors]: [
+        UpdateCommandAbort: openclaw-update-abort
+            at stop (/home/figs/classify-129388/base-1129d4c0/test/scripts/fixtures/legacy-source-build.mjs:110:7)
+            at async Object.stop (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:128:21)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:269:25)
+            at async Promise.allSettled (index 0)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+            at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+            at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+            at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24),
+        ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+        No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+            at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+            at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+          reason: 'service-manager-unavailable'
+        }
+      ]
+    },
+    Error: Source update interrupted; successful restart remains unconfirmed.
+        at assertUninterrupted (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:86:13)
+        at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:229:11)
+        at async settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:7)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:9)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24)
+  ]
+}
+
+Node.js v26.12.1
+[update-gateway] FAILED (exit 1)
+: expected [ 'stop', 'mutation', 'enable', …(2) ] to deeply equal [ 'stop', 'mutation', 'enable', …(4) ]
+
+- Expected
++ Received
+
+  [
+    "stop",
+    "mutation",
+    "enable",
+    "native-admission",
+-   "restart-unjoined",
+-   "complete:false",
+-   "disable",
++   "complete:true",
+  ]
+
+ ❯ <anonymous> scripts/lib/source-update-build.mts:423:11
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ assertUninterrupted scripts/lib/source-update-build.mts:86:13
+ ❯ Object.settle scripts/lib/source-update-build.mts:229:11
+ ❯ settle scripts/lib/source-update-build.mts:260:7
+ ❯ <anonymous> scripts/lib/source-update-build.mts:418:9
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ <anonymous> scripts/lib/source-update-build.mts:285:19
+ ❯ <anonymous> scripts/lib/source-update-build.mts:262:23
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ stop test/scripts/fixtures/legacy-source-build.mjs:110:7
+ ❯ Object.stop scripts/lib/source-update-build.mts:128:21
+ ❯ <anonymous> scripts/lib/source-update-build.mts:269:25
+ ❯ <anonymous> scripts/lib/source-update-build.mts:262:23
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ assertUninterrupted scripts/lib/source-update-build.mts:86:13
+ ❯ Object.settle scripts/lib/source-update-build.mts:229:11
+ ❯ settle scripts/lib/source-update-build.mts:260:7
+ ❯ <anonymous> scripts/lib/source-update-build.mts:418:9
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ <anonymous> scripts/build-all.mts:743:24
+ ❯ expectEvents test/scripts-update-gateway-legacy.test.ts:159:39
+    157|       const events = exists("events") ? read("events").trim().split("\…
+    158|       const expectEvents = (sequence: string) =>
+    159|         expect(events, result.stderr).toEqual(sequence.split(" "));
+       |                                       ^
+    160|       const expectError = (message: string) => expect(result.stderr).t…
+    161|       const build = "stop mutation build";
+ ❯ test/scripts-update-gateway-legacy.test.ts:189:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/9]⎯
+
+ FAIL  |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: build-throw-settle
+AssertionError: From /tmp/oc-classify-sbb8fW/tmp/oc-vt-n9FCcQ/openclaw-legacy-source-template-2vU8De/seed
+ * branch            main       -> FETCH_HEAD
+   9c77fba..9473a7e  main       -> origin/main
+[update-gateway] stopping gateway before replacing hashed build chunks
+[build-all] native-protocol
+[update-gateway] restoring previous build output
+[update-gateway] restarting gateway on previous build after update failure
+/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:423
+        ? new AggregateError([failure.error, error], "Source build and native settlement failed", {
+          ^
+
+AggregateError: Source build and native settlement failed
+    at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:423:11)
+    at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+    ... 2 lines matching cause stack trace ...
+    at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+  [cause]: AggregateError: Source-update native recovery did not settle.
+      at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:226:17)
+      at async settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:7)
+      at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:9)
+      at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+      at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+      at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+      at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+    [errors]: [
+      Error: fixture native completion failed
+          at Object.complete (/home/figs/classify-129388/base-1129d4c0/test/scripts/fixtures/legacy-source-build.mjs:159:17)
+          at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:221:27)
+          at settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:23)
+          at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:15)
+          at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+          at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+          at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+          at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24)
+    ]
+  },
+  [errors]: [
+    AggregateError: Source build recovery failed: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+    No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+        at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:369:19)
+        at async Promise.allSettled (index 0)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+      [cause]: ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+      No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+          at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+          at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+        reason: 'service-manager-unavailable'
+      },
+      [errors]: [
+        Error: fixture compiler rejected
+            at runManagedCommand (data:text/javascript,%0A%20%20export%20*%20from%20%22file%3A%2F%2F%2Fhome%2Ffigs%2Fclassify-129388%2Fbase-1129d4c0%2Fscripts%2Flib%2Fmanaged-child-process.mts%3Foriginal%22%3B%0A%20%20import%20%7B%20runManagedCommand%20as%20actual%20%7D%20from%20%22file%3A%2F%2F%2Fhome%2Ffigs%2Fclassify-129388%2Fbase-1129d4c0%2Fscripts%2Flib%2Fmanaged-child-process.mts%3Foriginal%22%3B%0A%20%20import%20fs%20from%20'node%3Afs'%3B%0A%20%20import%20path%20from%20'node%3Apath'%3B%0A%20%20import%20%7B%20event%20%7D%20from%20%22file%3A%2F%2F%2Fhome%2Ffigs%2Fclassify-129388%2Fbase-1129d4c0%2Ftest%2Fscripts%2Ffixtures%2Flegacy-source-build.mjs%22%3B%0A%20%20let%20invoked%20%3D%20false%3B%0A%20%20export%20async%20function%20runManagedCommand(options)%20%7B%0A%20%20%20%20if%20(options.bin%20%3D%3D%3D%20'bash')%20%7B%0A%20%20%20%20%20%20return%20actual(options)%3B%0A%20%20%20%20%7D%0A%20%20%20%20if%20(!invoked)%20%7B%0A%20%20%20%20%20%20invoked%20%3D%20true%3B%0A%20%20%20%20%20%20event('build')%3B%0A%20%20%20%20%20%20if%20(%22build-throw-settle%22%20%3D%3D%3D%20'unjoined')%20throw%20Object.assign(new%20Error('fixture%20writers%20unjoined')%2C%20%7BprocessTreeState%3A'indeterminate'%7D)%3B%0A%20%20%20%20%20%20fs.writeFileSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'dist%2Fentry.js')%2C%20'new%20runtime%5Cn')%3B%0A%20%20%20%20%20%20fs.writeFileSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'build-env.json')%2C%20JSON.stringify(%7B%0A%20%20%20%20%20%20%20%20npm_execpath%3A%20options.env%3F.npm_execpath%2C%0A%20%20%20%20%20%20%20%20workspace%3A%20options.env%3F.NPM_CONFIG_WORKSPACE_DIR%2C%0A%20%20%20%20%20%20%7D))%3B%0A%20%20%20%20%20%20if%20(%22build-throw-settle%22%20%3D%3D%3D%20'build-throw-restore')%20%7B%0A%20%20%20%20%20%20%20%20fs.rmSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'dist')%2C%20%7Brecursive%3Atrue%2C%20force%3Atrue%7D)%3B%0A%20%20%20%20%20%20%20%20fs.symlinkSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'foreign%2Fdist')%2C%20path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'dist'))%3B%0A%20%20%20%20%20%20%7D%0A%20%20%20%20%20%20if%20(%22build-throw-settle%22.startsWith('build-throw-'))%20throw%20new%20Error('fixture%20compiler%20rejected')%3B%0A%20%20%20%20%7D%0A%20%20%20%20return%20%22build-throw-settle%22.startsWith('failure')%20%3F%2017%20%3A%200%3B%0A%20%20%7D:25:66)
+            at runStep (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:594:23)
+            at runSteps (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:655:28)
+            at runBuildAllSteps (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:698:22)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:318:26)
+            at async Promise.allSettled (index 0)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
+            at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+            at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+            at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10),
+        ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
+        No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
+            at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
+            at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+          reason: 'service-manager-unavailable'
+        }
+      ]
+    },
+    AggregateError: Source-update native recovery did not settle.
+        at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:226:17)
+        at async settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:7)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:9)
+        at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+        at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+        at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+        at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
+      [errors]: [
+        Error: fixture native completion failed
+            at Object.complete (/home/figs/classify-129388/base-1129d4c0/test/scripts/fixtures/legacy-source-build.mjs:159:17)
+            at Object.settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:221:27)
+            at settle (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:260:23)
+            at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:418:15)
+            at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
+            at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
+            at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
+            at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24)
+      ]
+    }
+  ]
+}
+
+Node.js v26.12.1
+[update-gateway] FAILED (exit 1)
+: expected [ 'stop', 'mutation', 'build', …(4) ] to deeply equal [ 'stop', 'mutation', 'build', …(4) ]
+
+- Expected
++ Received
+
+@@ -2,8 +2,8 @@
+    "stop",
+    "mutation",
+    "build",
+    "enable",
+    "native-admission",
+-   "native-restart",
+-   "complete:true",
++   "complete:false",
++   "disable",
+  ]
+
+ ❯ <anonymous> scripts/lib/source-update-build.mts:423:11
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ Object.settle scripts/lib/source-update-build.mts:226:17
+ ❯ settle scripts/lib/source-update-build.mts:260:7
+ ❯ <anonymous> scripts/lib/source-update-build.mts:418:9
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ Object.complete test/scripts/fixtures/legacy-source-build.mjs:159:17
+ ❯ Object.settle scripts/lib/source-update-build.mts:221:27
+ ❯ settle scripts/lib/source-update-build.mts:260:23
+ ❯ <anonymous> scripts/lib/source-update-build.mts:418:15
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ <anonymous> scripts/build-all.mts:743:24
+ ❯ <anonymous> scripts/lib/source-update-build.mts:369:19
+ ❯ <anonymous> scripts/lib/source-update-build.mts:262:23
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ runManagedCommand data:text/javascript,%0A%20%20export%20*%20from%20%22file%3A%2F%2F%2Fhome%2Ffigs%2Fclassify-129388%2Fbase-1129d4c0%2Fscripts%2Flib%2Fmanaged-child-process.mts%3Foriginal%22%3B%0A%20%20import%20%7B%20runManagedCommand%20as%20actual%20%7D%20from%20%22file%3A%2F%2F%2Fhome%2Ffigs%2Fclassify-129388%2Fbase-1129d4c0%2Fscripts%2Flib%2Fmanaged-child-process.mts%3Foriginal%22%3B%0A%20%20import%20fs%20from%20'node%3Afs'%3B%0A%20%20import%20path%20from%20'node%3Apath'%3B%0A%20%20import%20%7B%20event%20%7D%20from%20%22file%3A%2F%2F%2Fhome%2Ffigs%2Fclassify-129388%2Fbase-1129d4c0%2Ftest%2Fscripts%2Ffixtures%2Flegacy-source-build.mjs%22%3B%0A%20%20let%20invoked%20%3D%20false%3B%0A%20%20export%20async%20function%20runManagedCommand(options)%20%7B%0A%20%20%20%20if%20(options.bin%20%3D%3D%3D%20'bash')%20%7B%0A%20%20%20%20%20%20return%20actual(options)%3B%0A%20%20%20%20%7D%0A%20%20%20%20if%20(!invoked)%20%7B%0A%20%20%20%20%20%20invoked%20%3D%20true%3B%0A%20%20%20%20%20%20event('build')%3B%0A%20%20%20%20%20%20if%20(%22build-throw-settle%22%20%3D%3D%3D%20'unjoined')%20throw%20Object.assign(new%20Error('fixture%20writers%20unjoined')%2C%20%7BprocessTreeState%3A'indeterminate'%7D)%3B%0A%20%20%20%20%20%20fs.writeFileSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'dist%2Fentry.js')%2C%20'new%20runtime%5Cn')%3B%0A%20%20%20%20%20%20fs.writeFileSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'build-env.json')%2C%20JSON.stringify(%7B%0A%20%20%20%20%20%20%20%20npm_execpath%3A%20options.env%3F.npm_execpath%2C%0A%20%20%20%20%20%20%20%20workspace%3A%20options.env%3F.NPM_CONFIG_WORKSPACE_DIR%2C%0A%20%20%20%20%20%20%7D))%3B%0A%20%20%20%20%20%20if%20(%22build-throw-settle%22%20%3D%3D%3D%20'build-throw-restore')%20%7B%0A%20%20%20%20%20%20%20%20fs.rmSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'dist')%2C%20%7Brecursive%3Atrue%2C%20force%3Atrue%7D)%3B%0A%20%20%20%20%20%20%20%20fs.symlinkSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'foreign%2Fdist')%2C%20path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-wO5QOp%2Fcheckout%22%2C%20'dist'))%3B%0A%20%20%20%20%20%20%7D%0A%20%20%20%20%20%20if%20(%22build-throw-settle%22.startsWith('build-throw-'))%20throw%20new%20Error('fixture%20compiler%20rejected')%3B%0A%20%20%20%20%7D%0A%20%20%20%20return%20%22build-throw-settle%22.startsWith('failure')%20%3F%2017%20%3A%200%3B%0A%20%20%7D:25:66
+ ❯ runStep scripts/build-all.mts:594:23
+ ❯ runSteps scripts/build-all.mts:655:28
+ ❯ runBuildAllSteps scripts/build-all.mts:698:22
+ ❯ <anonymous> scripts/lib/source-update-build.mts:318:26
+ ❯ <anonymous> scripts/lib/source-update-build.mts:262:23
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ select src/daemon/systemd-user-transport.ts:228:13
+ ❯ Object.settle scripts/lib/source-update-build.mts:226:17
+ ❯ settle scripts/lib/source-update-build.mts:260:7
+ ❯ <anonymous> scripts/lib/source-update-build.mts:418:9
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ Object.complete test/scripts/fixtures/legacy-source-build.mjs:159:17
+ ❯ Object.settle scripts/lib/source-update-build.mts:221:27
+ ❯ settle scripts/lib/source-update-build.mts:260:23
+ ❯ <anonymous> scripts/lib/source-update-build.mts:418:15
+ ❯ withDistArtifactOwnership scripts/lib/dist-artifact-lock.mts:213:12
+ ❯ runSourceUpdateBuild scripts/lib/source-update-build.mts:255:10
+ ❯ runLegacySourceUpdateBuild scripts/lib/source-update-build.mts:119:10
+ ❯ <anonymous> scripts/build-all.mts:743:24
+ ❯ expectEvents test/scripts-update-gateway-legacy.test.ts:159:39
+    157|       const events = exists("events") ? read("events").trim().split("\…
+    158|       const expectEvents = (sequence: string) =>
+    159|         expect(events, result.stderr).toEqual(sequence.split(" "));
+       |                                       ^
+    160|       const expectError = (message: string) => expect(result.stderr).t…
+    161|       const build = "stop mutation build";
+ ❯ test/scripts-update-gateway-legacy.test.ts:177:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/9]⎯
+
+ FAIL  |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: build-throw-restart
+AssertionError: expected 'From /tmp/oc-classify-sbb8fW/tmp/oc-v…' to contain 'fixture native restart failed'
+
+- Expected
++ Received
+
+- fixture native restart failed
++ From /tmp/oc-classify-sbb8fW/tmp/oc-vt-n9FCcQ/openclaw-legacy-source-template-2vU8De/seed
++  * branch            main       -> FETCH_HEAD
++    9c77fba..9473a7e  main       -> origin/main
++ [update-gateway] stopping gateway before replacing hashed build chunks
++ [build-all] native-protocol
++ [update-gateway] restoring previous build output
++ [update-gateway] restarting gateway on previous build after update failure
++ /home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:369
++             throw new AggregateError(
++                   ^
++
++ AggregateError: Source build recovery failed: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
++ No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
++     at <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:369:19)
++     at async Promise.allSettled (index 0)
++     at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
++     at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
++     at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
++     at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10)
++     at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:743:24) {
++   [cause]: ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
++   No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
++       at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
++       at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
++     reason: 'service-manager-unavailable'
++   },
++   [errors]: [
++     Error: fixture compiler rejected
++         at runManagedCommand (data:text/javascript,%0A%20%20export%20*%20from%20%22file%3A%2F%2F%2Fhome%2Ffigs%2Fclassify-129388%2Fbase-1129d4c0%2Fscripts%2Flib%2Fmanaged-child-process.mts%3Foriginal%22%3B%0A%20%20import%20%7B%20runManagedCommand%20as%20actual%20%7D%20from%20%22file%3A%2F%2F%2Fhome%2Ffigs%2Fclassify-129388%2Fbase-1129d4c0%2Fscripts%2Flib%2Fmanaged-child-process.mts%3Foriginal%22%3B%0A%20%20import%20fs%20from%20'node%3Afs'%3B%0A%20%20import%20path%20from%20'node%3Apath'%3B%0A%20%20import%20%7B%20event%20%7D%20from%20%22file%3A%2F%2F%2Fhome%2Ffigs%2Fclassify-129388%2Fbase-1129d4c0%2Ftest%2Fscripts%2Ffixtures%2Flegacy-source-build.mjs%22%3B%0A%20%20let%20invoked%20%3D%20false%3B%0A%20%20export%20async%20function%20runManagedCommand(options)%20%7B%0A%20%20%20%20if%20(options.bin%20%3D%3D%3D%20'bash')%20%7B%0A%20%20%20%20%20%20return%20actual(options)%3B%0A%20%20%20%20%7D%0A%20%20%20%20if%20(!invoked)%20%7B%0A%20%20%20%20%20%20invoked%20%3D%20true%3B%0A%20%20%20%20%20%20event('build')%3B%0A%20%20%20%20%20%20if%20(%22build-throw-restart%22%20%3D%3D%3D%20'unjoined')%20throw%20Object.assign(new%20Error('fixture%20writers%20unjoined')%2C%20%7BprocessTreeState%3A'indeterminate'%7D)%3B%0A%20%20%20%20%20%20fs.writeFileSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-MumRe9%2Fcheckout%22%2C%20'dist%2Fentry.js')%2C%20'new%20runtime%5Cn')%3B%0A%20%20%20%20%20%20fs.writeFileSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-MumRe9%2Fcheckout%22%2C%20'build-env.json')%2C%20JSON.stringify(%7B%0A%20%20%20%20%20%20%20%20npm_execpath%3A%20options.env%3F.npm_execpath%2C%0A%20%20%20%20%20%20%20%20workspace%3A%20options.env%3F.NPM_CONFIG_WORKSPACE_DIR%2C%0A%20%20%20%20%20%20%7D))%3B%0A%20%20%20%20%20%20if%20(%22build-throw-restart%22%20%3D%3D%3D%20'build-throw-restore')%20%7B%0A%20%20%20%20%20%20%20%20fs.rmSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-MumRe9%2Fcheckout%22%2C%20'dist')%2C%20%7Brecursive%3Atrue%2C%20force%3Atrue%7D)%3B%0A%20%20%20%20%20%20%20%20fs.symlinkSync(path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-MumRe9%2Fcheckout%22%2C%20'foreign%2Fdist')%2C%20path.join(%22%2Ftmp%2Foc-classify-sbb8fW%2Ftmp%2Foc-vt-n9FCcQ%2Fopenclaw-legacy-source-build-MumRe9%2Fcheckout%22%2C%20'dist'))%3B%0A%20%20%20%20%20%20%7D%0A%20%20%20%20%20%20if%20(%22build-throw-restart%22.startsWith('build-throw-'))%20throw%20new%20Error('fixture%20compiler%20rejected')%3B%0A%20%20%20%20%7D%0A%20%20%20%20return%20%22build-throw-restart%22.startsWith('failure')%20%3F%2017%20%3A%200%3B%0A%20%20%7D:25:67)
++         at runStep (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:594:23)
++         at runSteps (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:655:28)
++         at runBuildAllSteps (/home/figs/classify-129388/base-1129d4c0/scripts/build-all.mts:698:22)
++         at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:318:26)
++         at async Promise.allSettled (index 0)
++         at async <anonymous> (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:262:23)
++         at async withDistArtifactOwnership (/home/figs/classify-129388/base-1129d4c0/scripts/lib/dist-artifact-lock.mts:213:12)
++         at async runSourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:255:10)
++         at async runLegacySourceUpdateBuild (/home/figs/classify-129388/base-1129d4c0/scripts/lib/source-update-build.mts:119:10),
++     ServiceInspectionError: busctl --user machine Manager.Version: exit 1; Failed to connect to bus: Permission denied
++     No supported service manager detected. Manage the Gateway through the supervisor or terminal that started it.
++         at select (/home/figs/classify-129388/base-1129d4c0/src/daemon/systemd-user-transport.ts:228:13)
++         at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
++       reason: 'service-manager-unavailable'
++     }
++   ]
++ }
++
++ Node.js v26.12.1
++ [update-gateway] FAILED (exit 1)
++
+
+ ❯ expectError test/scripts-update-gateway-legacy.test.ts:160:70
+    158|       const expectEvents = (sequence: string) =>
+    159|         expect(events, result.stderr).toEqual(sequence.split(" "));
+    160|       const expectError = (message: string) => expect(result.stderr).t…
+       |                                                                      ^
+    161|       const build = "stop mutation build";
+    162|       const recovered = "enable native-admission native-restart";
+ ❯ test/scripts-update-gateway-legacy.test.ts:176:11
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/9]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  9 failed | 19 passed (28)
+   Start at  23:23:34
+   Duration  139.17s (tests 100%)
+
+[test] FAILED (exit 1)
+receipt head=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 config=test/vitest/vitest.tooling.config.ts files=test/scripts-update-gateway-legacy.test.ts
+failing-tests:
+ × |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: failure 8704ms
+ × |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: failure-scheduled 7670ms
+ × |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: partial-stop 7500ms
+ × |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: partial-stop-custom 7551ms
+ × |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: partial-stop-scheduled 7605ms
+ × |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: begin-abort 7952ms
+ × |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: begin-unjoined 8072ms
+ × |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: build-throw-settle 9569ms
+ × |tooling| test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: build-throw-restart 8151ms
+VERDICT RED [Test Files 1 failed (1); Tests 9 failed | 19 passed (28)]
+# exit=1
