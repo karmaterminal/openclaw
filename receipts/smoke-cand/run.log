@@ -1,0 +1,72 @@
+[shard:resources] logicalCpuCount=20 totalMemoryBytes=130661138432 requested plans=2 admitted plans=1
+[shard:resource-snapshot] {"phase":"start","uptimeSeconds":2417332.15,"cpuModel":"unknown","loadAverage":[9.24,7.38,4.17],"freeMemoryBytes":108109582336,"availableMemoryBytes":108110020608,"constrainedMemoryBytes":18446744073709552000,"pressure":{"cpu":"some avg10=0.02 avg60=0.10 avg300=0.26 total=30498681511\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0","memory":"some avg10=0.00 avg60=0.02 avg300=0.37 total=16051848502\nfull avg10=0.00 avg60=0.02 avg300=0.36 total=14920815946","io":"some avg10=4.06 avg60=3.24 avg300=4.38 total=49793271206\nfull avg10=3.95 avg60=3.00 avg300=4.15 total=45041604990"}}
+[shard:extension-database-workers] begin
+[shard:extension-database-workers] [test] inner parallelism 1
+[shard:extension-database-workers] [test] starting test/vitest/vitest.extension-database-workers.config.ts
+[shard:extension-database-workers] 
+[shard:extension-database-workers] [1m[30m[46m RUN [49m[39m[22m [36mv5.0.5 [39m[90m/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-extdbw-local-shard[39m
+[shard:extension-database-workers] 
+[shard:extension-database-workers] [vitest] still running with no output for 30000ms.
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js (48:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js:48:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m48 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js (6:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js:6:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m6 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js (11:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js:11:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m11 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js (12:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js:12:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m12 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js (9:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js:9:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m9 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+[vitest-workers] prepared 3e4c47d3453b in 37946ms (15835 inputs, 25756 outputs)
+[shard:extension-database-workers]  [32m✓[39m [30m[42m extension-database-workers [49m[39m extensions/logbook/src/card-reads.test.ts[2m > [22mserves timeline and status through their bounded store operations[33m 3314[2mms[22m[39m
+[shard:extension-database-workers] 
+[shard:extension-database-workers] [2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[shard:extension-database-workers] [2m      Tests [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[shard:extension-database-workers] [2m   Start at [22m 18:09:22
+[shard:extension-database-workers] [2m   Duration [22m 57.02s[2m (transform 90%, tests 6%, import 3%, setup 1%)[22m
+[shard:extension-database-workers] 
+[shard:extension-database-workers] [test] passed 1 Vitest shard in 58.05s
+[shard:extension-database-workers] end (exit 0)
+[vitest-workers] verifying completed generation before cleanup
+[shard:resource-snapshot] {"phase":"end","uptimeSeconds":2417391.6,"cpuModel":"unknown","loadAverage":[11.25,8.2,4.65],"freeMemoryBytes":106429067264,"availableMemoryBytes":106429067264,"constrainedMemoryBytes":18446744073709552000,"pressure":{"cpu":"some avg10=2.68 avg60=1.60 avg300=0.67 total=30500457562\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0","memory":"some avg10=6.37 avg60=2.93 avg300=1.12 total=16054737342\nfull avg10=6.22 avg60=2.86 avg300=1.09 total=14923553323","io":"some avg10=2.63 avg60=3.34 avg300=4.23 total=49795616557\nfull avg10=2.13 avg60=2.91 avg300=3.94 total=45043640206"}}
+[shard:completion] {"version":1,"planned":1,"completed":1,"invocations":1,"failedInvocations":0}
