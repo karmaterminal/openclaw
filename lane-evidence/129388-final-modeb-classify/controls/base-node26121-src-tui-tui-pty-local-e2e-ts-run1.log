@@ -1,0 +1,580 @@
+# ctl ref=base sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 file=src/tui/tui-pty-local.e2e.test.ts run=1 mode=node26121 start=2026-11-21T10:08:41Z
+# files: 1 runwt=/home/figs/classify-129388/base-1129d4c0 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-3WwCOL/home TMPDIR=/tmp/oc-classify-3WwCOL/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.tui-pty.config.ts
+include-file: /tmp/oc-classify-3WwCOL/tmp/oc-focused.695kiK/include.json
+include-file-contents:
+  [
+    "src/tui/tui-pty-local.e2e.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-3WwCOL/tmp/oc-focused.695kiK/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.tui-pty.config.ts --maxWorkers=1 src/tui/tui-pty-local.e2e.test.ts
+logs: /tmp/oc-classify-3WwCOL/tmp/oc-focused.695kiK
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-1129d4c0
+
+[vitest-workers] local cache hit after 2174ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 70ade47f3938 in 2217ms (20380 inputs, 25474 outputs)
+[vitest] still running with no output for 30000ms.
+[vitest] still running with no output for 60000ms.
+[vitest] still running with no output for 90000ms.
+[vitest] still running with no output for 120000ms.
+ × |tui-pty| src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > launches openclaw chat as local mode through a real PTY 129186ms
+   → expected 1 model requests
+requests=[]
+
+7u openclaw tui - local embedded - agent main - session main                                          
+
+ ⠋ starting up • 0s | subscribing to session events                                                 
+ agent main | session main | unknown | deliver:off | tokens ?                                       
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+──────────────────────────────────────────────────────────────────────────────────────────────────── ⠙ starting up • 0s | subscribing to session events                                                  ⠹ starting up • 0s | subscribing to session events                                                  ⠸ starting up • 0s | subscribing to session events                                                  ⠼ starting up • 0s | subscribing to session events                                                  ⠴ starting up • 0s | subscribing to session events                                                  ⠦ starting up • 0s | subscribing to session events                                                  ⠧ starting up • 0s | subscribing to session events                                                  ⠇ starting up • 1s | subscribing to session events                                                  ⠏ starting up • 1s | subscribing to session events                                                  ⠋ starting up • 1s | subscribing to session events                                                  ⠙ starting up • 1s | subscribing to session events                                                  ⠹ starting up • 1s | subscribing to session events                                                  ⠸ starting up • 1s | subscribing to session events                                                  ⠼ starting up • 1s | subscribing to session events                                                  ⠴ starting up • 1s | subscribing to session events                                                  ⠦ starting up • 1s | subscribing to session events                                                  ⠧ starting up • 1s | subscribing to session events                                                  ⠇ starting up • 1s | subscribing to session events                                                  openclaw tui - local embedded - agent main - session main                                          
+
+ session agent:main:main                                                                            
+ local ready | idle                                                                                 
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ model set to anthropic/claude-sonnet-5                                                             
+ local ready | idle                                                                                 
+ agent main | session main | claude-sonnet-5 | deliver:off | tokens ?/1.0m                          
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ model set to tui-pty-mock/gpt-5.5                                                                  
+ local ready | idle                                                                                 
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+message through chat alias                                                                          
+                                                                                                    
+
+ ⠋ sending • 0s | local ready                                                                       
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+──────────────────────────────────────────────────────────────────────────────────────────────────── ⠋ noodling… • 0s | local ready                                                                      ⠙ noodling… • 0s | local ready                                                                      ⠙ noodling… • 0s | local ready                                                                      ⠹ noodling… • 0s | local ready                                                                      ⠸ noodling… • 0s | local ready                                                                      ⠸ noodling… • 0s | local ready                                                                      ⠼ noodling… • 0s | local ready                                                                      ⠼ noodling… • 0s | local ready                                                                      ⠴ noodling… • 0s | local ready                                                                      ⠦ noodling… • 0s | local ready                                                                      ⠦ noodling… • 0s | local ready                                                                      ⠧ noodling… • 0s | local ready                                                                      ⠧ noodling… • 0s | local ready                                                                      ⠇ noodling… • 0s | local ready                                                                      ⠏ noodling… • 0s | local ready                                                                      ⠏ noodling… • 0s | local ready                                                                      ⠋ noodling… • 0s | local ready                                                                      ⠋ noodling… • 0s | local ready                                                                      ⠙ noodling… • 0s | local ready                                                                      ⠹ noodling… • 0s | local ready                                                                      ⠹ noodling… • 0s | local ready                                                                      ⠸ noodling… • 0s | local ready                                                                      ⠸ noodling… • 1s | local ready                                                                      ⠼ noodling… • 1s | local ready                                                                      ⠴ noodling… • 1s | local ready                                                                      ⠴ noodling… • 1s | local ready                                                                      ⠦ noodling… • 1s | local ready                                                                      ⠦ noodling… • 1s | local ready                                                                      ⠧ noodling… • 1s | local ready                                                                      ⠇ noodling… • 1s | local ready                                                                      ⠏ noodling… • 1s | local ready                                                                      ⠏ noodling… • 1s | local ready                                                                      ⠋ noodling… • 1s | local ready                                                                      ⠙ noodling… • 1s | local ready                                                                      ⠹ noodling… • 1s | local ready                                                                      ⠸ noodling… • 1s | local ready                                                                      ⠸ noodling… • 1s | local ready                                                                      ⠼ noodling… • 1s | local ready                                                                      ⠼ noodling… • 2s | local ready                                                                      ⠴ noodling… • 2s | local ready                                                                      ⠴ noodling… • 2s | local ready                                                                      openclaw tui - local embedded - agent main - session main                                          
+
+ session agent:main:main                                                                            
+
+ model set to anthropic/claude-sonnet-5                                                             
+
+ model set to tui-pty-mock/gpt-5.5                                                                  
+
+                                                                                                    
+message through chat alias                                                                          
+                                                                                                    
+
+ run error: Session MCP runtime scheduler has not been bound by its lifecycle owner                 
+ local ready | error                                                                                
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+[vitest] still running with no output for 30000ms.
+[vitest] still running with no output for 60000ms.
+[vitest] still running with no output for 90000ms.
+[vitest] still running with no output for 120000ms.
+ × |tui-pty| src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > launches openclaw terminal as local mode through a real PTY 127638ms
+   → expected 1 model requests
+requests=[]
+
+7u openclaw tui - local embedded - agent main - session main                                          
+
+ ⠋ starting up • 0s | subscribing to session events                                                 
+ agent main | session main | unknown | deliver:off | tokens ?                                       
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+──────────────────────────────────────────────────────────────────────────────────────────────────── ⠙ starting up • 0s | subscribing to session events                                                  ⠹ starting up • 0s | subscribing to session events                                                  ⠸ starting up • 0s | subscribing to session events                                                  ⠼ starting up • 0s | subscribing to session events                                                  ⠴ starting up • 0s | subscribing to session events                                                  ⠦ starting up • 0s | subscribing to session events                                                  ⠧ starting up • 0s | subscribing to session events                                                  ⠇ starting up • 0s | subscribing to session events                                                  ⠏ starting up • 0s | subscribing to session events                                                  ⠋ starting up • 0s | subscribing to session events                                                  ⠙ starting up • 0s | subscribing to session events                                                  ⠹ starting up • 0s | subscribing to session events                                                  ⠹ starting up • 1s | subscribing to session events                                                  ⠸ starting up • 1s | subscribing to session events                                                  ⠼ starting up • 1s | subscribing to session events                                                  ⠴ starting up • 1s | subscribing to session events                                                  ⠦ starting up • 1s | subscribing to session events                                                  ⠧ starting up • 1s | subscribing to session events                                                  openclaw tui - local embedded - agent main - session main                                          
+
+ session agent:main:main                                                                            
+
+                                                                                                    
+!literal initial message                                                                            
+                                                                                                    
+
+ ⠋ conjuring… • 0s | local ready                                                                    
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+──────────────────────────────────────────────────────────────────────────────────────────────────── ⠙ conjuring… • 0s | local ready                                                                     ⠙ conjuring… • 0s | local ready                                                                     ⠹ conjuring… • 0s | local ready                                                                     ⠸ conjuring… • 0s | local ready                                                                     ⠼ conjuring… • 0s | local ready                                                                     ⠼ conjuring… • 0s | local ready                                                                     ⠴ conjuring… • 0s | local ready                                                                     ⠦ conjuring… • 0s | local ready                                                                     ⠧ conjuring… • 0s | local ready                                                                     ⠧ conjuring… • 0s | local ready                                                                     ⠇ conjuring… • 0s | local ready                                                                     ⠇ conjuring… • 0s | local ready                                                                     ⠏ conjuring… • 0s | local ready                                                                     ⠋ conjuring… • 0s | local ready                                                                     ⠋ conjuring… • 0s | local ready                                                                     ⠙ conjuring… • 0s | local ready                                                                     ⠙ conjuring… • 0s | local ready                                                                     ⠹ conjuring… • 0s | local ready                                                                     ⠸ conjuring… • 0s | local ready                                                                     ⠸ conjuring… • 1s | local ready                                                                     ⠼ conjuring… • 1s | local ready                                                                     ⠼ conjuring… • 1s | local ready                                                                     ⠴ conjuring… • 1s | local ready                                                                     ⠦ conjuring… • 1s | local ready                                                                     ⠦ conjuring… • 1s | local ready                                                                     ⠧ conjuring… • 1s | local ready                                                                     ⠧ conjuring… • 1s | local ready                                                                     ⠇ conjuring… • 1s | local ready                                                                     ⠇ conjuring… • 1s | local ready                                                                     ⠏ conjuring… • 1s | local ready                                                                     ⠏ conjuring… • 1s | local ready                                                                     ⠋ conjuring… • 1s | local ready                                                                     ⠋ conjuring… • 1s | local ready                                                                     ⠙ conjuring… • 1s | local ready                                                                     ⠙ conjuring… • 1s | local ready                                                                     openclaw tui - local embedded - agent main - session main                                          
+
+ session agent:main:main                                                                            
+
+                                                                                                    
+!literal initial message                                                                            
+                                                                                                    
+
+ run error: Session MCP runtime scheduler has not been bound by its lifecycle owner                 
+ local ready | error                                                                                
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ ✓ |tui-pty| src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > rejects Gateway options on a local TUI alias through a real PTY 237ms
+ ✓ |tui-pty| src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > prints local usage costs without submitting a model request 8397ms
+[vitest] still running with no output for 30000ms.
+[vitest] still running with no output for 60000ms.
+[vitest] still running with no output for 90000ms.
+[vitest] still running with no output for 120000ms.
+ × |tui-pty| src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > lists local session history through a real PTY 127695ms
+   → timed out waiting for "T03_HISTORY_FIRST_REPLY"
+7u openclaw tui - local embedded - agent main - session main                                          
+
+ ⠋ starting up • 0s | subscribing to session events                                                 
+ agent main | session main | unknown | deliver:off | tokens ?                                       
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+──────────────────────────────────────────────────────────────────────────────────────────────────── ⠙ starting up • 0s | subscribing to session events                                                  ⠹ starting up • 0s | subscribing to session events                                                  ⠸ starting up • 0s | subscribing to session events                                                  ⠼ starting up • 0s | subscribing to session events                                                  ⠴ starting up • 0s | subscribing to session events                                                  ⠦ starting up • 0s | subscribing to session events                                                  ⠧ starting up • 0s | subscribing to session events                                                  ⠇ starting up • 0s | subscribing to session events                                                  ⠏ starting up • 0s | subscribing to session events                                                  ⠋ starting up • 0s | subscribing to session events                                                  ⠙ starting up • 0s | subscribing to session events                                                  ⠹ starting up • 0s | subscribing to session events                                                  ⠹ starting up • 1s | subscribing to session events                                                  ⠸ starting up • 1s | subscribing to session events                                                  ⠼ starting up • 1s | subscribing to session events                                                  ⠴ starting up • 1s | subscribing to session events                                                  ⠦ starting up • 1s | subscribing to session events                                                  ⠧ starting up • 1s | subscribing to session events                                                  openclaw tui - local embedded - agent main - session main                                          
+
+ session agent:main:main                                                                            
+ local ready | idle                                                                                 
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+T03_HISTORY_FIRST_PROMPT                                                                            
+                                                                                                    
+
+ ⠋ sending • 0s | local ready                                                                       
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+──────────────────────────────────────────────────────────────────────────────────────────────────── ⠋ conjuring… • 0s | local ready                                                                     ⠙ conjuring… • 0s | local ready                                                                     ⠙ conjuring… • 0s | local ready                                                                     ⠹ conjuring… • 0s | local ready                                                                     ⠸ conjuring… • 0s | local ready                                                                     ⠸ conjuring… • 0s | local ready                                                                     ⠼ conjuring… • 0s | local ready                                                                     ⠼ conjuring… • 0s | local ready                                                                     ⠴ conjuring… • 0s | local ready                                                                     ⠦ conjuring… • 0s | local ready                                                                     ⠦ conjuring… • 0s | local ready                                                                     ⠧ conjuring… • 0s | local ready                                                                     ⠧ conjuring… • 0s | local ready                                                                     ⠇ conjuring… • 0s | local ready                                                                     ⠏ conjuring… • 0s | local ready                                                                     ⠏ conjuring… • 0s | local ready                                                                     ⠋ conjuring… • 0s | local ready                                                                     ⠋ conjuring… • 0s | local ready                                                                     ⠙ conjuring… • 0s | local ready                                                                     ⠹ conjuring… • 0s | local ready                                                                     ⠹ conjuring… • 0s | local ready                                                                     ⠸ conjuring… • 0s | local ready                                                                     ⠸ conjuring… • 1s | local ready                                                                     ⠼ conjuring… • 1s | local ready                                                                     ⠴ conjuring… • 1s | local ready                                                                     ⠴ conjuring… • 1s | local ready                                                                     ⠦ conjuring… • 1s | local ready                                                                     ⠦ conjuring… • 1s | local ready                                                                     ⠧ conjuring… • 1s | local ready                                                                     ⠇ conjuring… • 1s | local ready                                                                     ⠇ conjuring… • 1s | local ready                                                                     ⠏ conjuring… • 1s | local ready                                                                     ⠋ conjuring… • 1s | local ready                                                                     ⠋ conjuring… • 1s | local ready                                                                     ⠙ conjuring… • 1s | local ready                                                                     ⠙ conjuring… • 1s | local ready                                                                     ⠹ conjuring… • 1s | local ready                                                                     ⠹ conjuring… • 1s | local ready                                                                     openclaw tui - local embedded - agent main - session main                                          
+
+ session agent:main:main                                                                            
+
+                                                                                                    
+T03_HISTORY_FIRST_PROMPT                                                                            
+                                                                                                    
+
+ run error: Session MCP runtime scheduler has not been bound by its lifecycle owner                 
+ local ready | error                                                                                
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ × |tui-pty| src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > confirms and renders local shell output, then extinguishes descendants before TUI exit 7942ms
+   → timed out waiting for PTY exit
+7u openclaw tui - local embedded - agent main - session main                                          
+
+ ⠋ starting up • 0s | subscribing to session events                                                 
+ agent main | session main | unknown | deliver:off | tokens ?                                       
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+──────────────────────────────────────────────────────────────────────────────────────────────────── ⠙ starting up • 0s | subscribing to session events                                                  ⠹ starting up • 0s | subscribing to session events                                                  ⠸ starting up • 0s | subscribing to session events                                                  ⠼ starting up • 0s | subscribing to session events                                                  ⠴ starting up • 0s | subscribing to session events                                                  ⠦ starting up • 0s | subscribing to session events                                                  ⠧ starting up • 0s | subscribing to session events                                                  ⠇ starting up • 0s | subscribing to session events                                                  ⠏ starting up • 0s | subscribing to session events                                                  ⠋ starting up • 0s | subscribing to session events                                                  ⠙ starting up • 0s | subscribing to session events                                                  ⠹ starting up • 0s | subscribing to session events                                                  ⠹ starting up • 1s | subscribing to session events                                                  ⠸ starting up • 1s | subscribing to session events                                                  ⠼ starting up • 1s | subscribing to session events                                                  ⠴ starting up • 1s | subscribing to session events                                                  ⠦ starting up • 1s | subscribing to session events                                                  ⠧ starting up • 1s | subscribing to session events                                                  openclaw tui - local embedded - agent main - session main                                          
+
+ session agent:main:main                                                                            
+ local ready | idle                                                                                 
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ Allow local shell commands for this session?                                                       
+
+ This runs commands on YOUR machine (not the gateway) and may delete files or reveal secrets.       
+
+ Select Yes/No (arrows + Enter), Esc to cancel.                                                     
+ local ready | idle                                                                                 
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+──────────search: >                                                                       ──────────
+                                                                                                    
+          → No                                                                                      
+            Yes                                                                                     
+
+
+
+
+
+
+
+
+
+
+
+
+
+ local shell: enabled for this session                                                              
+ local ready | idle                                                                                 
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ [local] $ node -e "console.log('T06_STDOUT'); console.error('T06_STDERR');                         
+ console.log('T06_ENV='+process.env.OPENCLAW_SHELL); process.exitCode=7"                            
+ local ready | idle                                                                                 
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ [local] T06_STDOUT                                                                                 
+
+ [local] T06_ENV=tui-local                                                                          
+
+ [local]                                                                                            
+
+ [local] T06_STDERR                                                                                 
+
+ [local] exit 7                                                                                     
+ local ready | idle                                                                                 
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ [local] $ node                                                                                     
+ "/tmp/oc-classify-3WwCOL/tmp/oc-vt-ZKpD7Q/openclaw-tui-pty-local-7aFuOy/state/tui-local-owned-root 
+ .cjs"                                                                                              
+ local ready | idle                                                                                 
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ [local] exit 0                                                                                     
+ local ready | idle                                                                                 
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────u 
+(node:585) Warning: Could not save the discovered model catalog: Error: Database maintenance resource scope is closed
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ ✓ |tui-pty| src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > reports a flooded local-shell control pipe and reclaims its command group 4152ms
+ ↓ |tui-pty| src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > authenticates a manifest-discovered provider and resumes the unchanged local model
+ ✓ |tui-pty| src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > with shared Gateway fixture > authenticates valid tokens and rejects invalid tokens through a real Gateway PTY 2232ms
+ ✓ |tui-pty| src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > with shared Gateway fixture > loads completed Gateway history on a fresh TUI attach before user input 4116ms
+ ✓ |tui-pty| src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > with shared Gateway fixture > preserves a disconnected draft across a real Gateway restart 7962ms
+ ✓ |tui-pty| src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > with shared Gateway fixture > forwards an active-run prompt through the real Gateway followup queue 1790ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/tui/tui-pty-local.e2e.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/tui/tui-pty-local.e2e.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/tui/tui-pty-local.e2e.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/tui/tui-pty-local.e2e.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/tui/tui-pty-local.e2e.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/tui/tui-pty-local.e2e.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/tui/tui-pty-local.e2e.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/tui/tui-pty-local.e2e.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/tui/tui-pty-local.e2e.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/tui/tui-pty-local.e2e.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/tui/tui-pty-local.e2e.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/tui/tui-pty-local.e2e.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/tui/tui-pty-local.e2e.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/tui/tui-pty-local.e2e.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/tui/tui-pty-local.e2e.test.ts: retiring openclaw.sessionStateNotices
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |tui-pty| src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > launches openclaw chat as local mode through a real PTY
+Error: expected 1 model requests
+requests=[]
+
+7u openclaw tui - local embedded - agent main - session main                                          
+
+ ⠋ starting up • 0s | subscribing to session events                                                 
+ agent main | session main | unknown | deliver:off | tokens ?                                       
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+──────────────────────────────────────────────────────────────────────────────────────────────────── ⠙ starting up • 0s | subscribing to session events                                                  ⠹ starting up • 0s | subscribing to session events                                                  ⠸ starting up • 0s | subscribing to session events                                                  ⠼ starting up • 0s | subscribing to session events                                                  ⠴ starting up • 0s | subscribing to session events                                                  ⠦ starting up • 0s | subscribing to session events                                                  ⠧ starting up • 0s | subscribing to session events                                                  ⠇ starting up • 1s | subscribing to session events                                                  ⠏ starting up • 1s | subscribing to session events                                                  ⠋ starting up • 1s | subscribing to session events                                                  ⠙ starting up • 1s | subscribing to session events                                                  ⠹ starting up • 1s | subscribing to session events                                                  ⠸ starting up • 1s | subscribing to session events                                                  ⠼ starting up • 1s | subscribing to session events                                                  ⠴ starting up • 1s | subscribing to session events                                                  ⠦ starting up • 1s | subscribing to session events                                                  ⠧ starting up • 1s | subscribing to session events                                                  ⠇ starting up • 1s | subscribing to session events                                                  openclaw tui - local embedded - agent main - session main                                          
+
+ session agent:main:main                                                                            
+ local ready | idle                                                                                 
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ model set to anthropic/claude-sonnet-5                                                             
+ local ready | idle                                                                                 
+ agent main | session main | claude-sonnet-5 | deliver:off | tokens ?/1.0m                          
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ model set to tui-pty-mock/gpt-5.5                                                                  
+ local ready | idle                                                                                 
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+message through chat alias                                                                          
+                                                                                                    
+
+ ⠋ sending • 0s | local ready                                                                       
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+──────────────────────────────────────────────────────────────────────────────────────────────────── ⠋ noodling… • 0s | local ready                                                                      ⠙ noodling… • 0s | local ready                                                                      ⠙ noodling… • 0s | local ready                                                                      ⠹ noodling… • 0s | local ready                                                                      ⠸ noodling… • 0s | local ready                                                                      ⠸ noodling… • 0s | local ready                                                                      ⠼ noodling… • 0s | local ready                                                                      ⠼ noodling… • 0s | local ready                                                                      ⠴ noodling… • 0s | local ready                                                                      ⠦ noodling… • 0s | local ready                                                                      ⠦ noodling… • 0s | local ready                                                                      ⠧ noodling… • 0s | local ready                                                                      ⠧ noodling… • 0s | local ready                                                                      ⠇ noodling… • 0s | local ready                                                                      ⠏ noodling… • 0s | local ready                                                                      ⠏ noodling… • 0s | local ready                                                                      ⠋ noodling… • 0s | local ready                                                                      ⠋ noodling… • 0s | local ready                                                                      ⠙ noodling… • 0s | local ready                                                                      ⠹ noodling… • 0s | local ready                                                                      ⠹ noodling… • 0s | local ready                                                                      ⠸ noodling… • 0s | local ready                                                                      ⠸ noodling… • 1s | local ready                                                                      ⠼ noodling… • 1s | local ready                                                                      ⠴ noodling… • 1s | local ready                                                                      ⠴ noodling… • 1s | local ready                                                                      ⠦ noodling… • 1s | local ready                                                                      ⠦ noodling… • 1s | local ready                                                                      ⠧ noodling… • 1s | local ready                                                                      ⠇ noodling… • 1s | local ready                                                                      ⠏ noodling… • 1s | local ready                                                                      ⠏ noodling… • 1s | local ready                                                                      ⠋ noodling… • 1s | local ready                                                                      ⠙ noodling… • 1s | local ready                                                                      ⠹ noodling… • 1s | local ready                                                                      ⠸ noodling… • 1s | local ready                                                                      ⠸ noodling… • 1s | local ready                                                                      ⠼ noodling… • 1s | local ready                                                                      ⠼ noodling… • 2s | local ready                                                                      ⠴ noodling… • 2s | local ready                                                                      ⠴ noodling… • 2s | local ready                                                                      openclaw tui - local embedded - agent main - session main                                          
+
+ session agent:main:main                                                                            
+
+ model set to anthropic/claude-sonnet-5                                                             
+
+ model set to tui-pty-mock/gpt-5.5                                                                  
+
+                                                                                                    
+message through chat alias                                                                          
+                                                                                                    
+
+ run error: Session MCP runtime scheduler has not been bound by its lifecycle owner                 
+ local ready | error                                                                                
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ ❯ Object.onTimeout src/tui/tui-pty-local.e2e.test.ts:119:7
+    117|     read: () => (fixture.mockModel.requests().length === count ? true …
+    118|     onTimeout: () =>
+    119|       new Error(
+       |       ^
+    120|         `expected ${count} model requests\nrequests=${JSON.stringify(f…
+    121|       ),
+ ❯ Timeout.tick [as _onTimeout] src/tui/tui-pty-test-support.ts:224:23
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  |tui-pty| src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > launches openclaw terminal as local mode through a real PTY
+Error: expected 1 model requests
+requests=[]
+
+7u openclaw tui - local embedded - agent main - session main                                          
+
+ ⠋ starting up • 0s | subscribing to session events                                                 
+ agent main | session main | unknown | deliver:off | tokens ?                                       
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+──────────────────────────────────────────────────────────────────────────────────────────────────── ⠙ starting up • 0s | subscribing to session events                                                  ⠹ starting up • 0s | subscribing to session events                                                  ⠸ starting up • 0s | subscribing to session events                                                  ⠼ starting up • 0s | subscribing to session events                                                  ⠴ starting up • 0s | subscribing to session events                                                  ⠦ starting up • 0s | subscribing to session events                                                  ⠧ starting up • 0s | subscribing to session events                                                  ⠇ starting up • 0s | subscribing to session events                                                  ⠏ starting up • 0s | subscribing to session events                                                  ⠋ starting up • 0s | subscribing to session events                                                  ⠙ starting up • 0s | subscribing to session events                                                  ⠹ starting up • 0s | subscribing to session events                                                  ⠹ starting up • 1s | subscribing to session events                                                  ⠸ starting up • 1s | subscribing to session events                                                  ⠼ starting up • 1s | subscribing to session events                                                  ⠴ starting up • 1s | subscribing to session events                                                  ⠦ starting up • 1s | subscribing to session events                                                  ⠧ starting up • 1s | subscribing to session events                                                  openclaw tui - local embedded - agent main - session main                                          
+
+ session agent:main:main                                                                            
+
+                                                                                                    
+!literal initial message                                                                            
+                                                                                                    
+
+ ⠋ conjuring… • 0s | local ready                                                                    
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+──────────────────────────────────────────────────────────────────────────────────────────────────── ⠙ conjuring… • 0s | local ready                                                                     ⠙ conjuring… • 0s | local ready                                                                     ⠹ conjuring… • 0s | local ready                                                                     ⠸ conjuring… • 0s | local ready                                                                     ⠼ conjuring… • 0s | local ready                                                                     ⠼ conjuring… • 0s | local ready                                                                     ⠴ conjuring… • 0s | local ready                                                                     ⠦ conjuring… • 0s | local ready                                                                     ⠧ conjuring… • 0s | local ready                                                                     ⠧ conjuring… • 0s | local ready                                                                     ⠇ conjuring… • 0s | local ready                                                                     ⠇ conjuring… • 0s | local ready                                                                     ⠏ conjuring… • 0s | local ready                                                                     ⠋ conjuring… • 0s | local ready                                                                     ⠋ conjuring… • 0s | local ready                                                                     ⠙ conjuring… • 0s | local ready                                                                     ⠙ conjuring… • 0s | local ready                                                                     ⠹ conjuring… • 0s | local ready                                                                     ⠸ conjuring… • 0s | local ready                                                                     ⠸ conjuring… • 1s | local ready                                                                     ⠼ conjuring… • 1s | local ready                                                                     ⠼ conjuring… • 1s | local ready                                                                     ⠴ conjuring… • 1s | local ready                                                                     ⠦ conjuring… • 1s | local ready                                                                     ⠦ conjuring… • 1s | local ready                                                                     ⠧ conjuring… • 1s | local ready                                                                     ⠧ conjuring… • 1s | local ready                                                                     ⠇ conjuring… • 1s | local ready                                                                     ⠇ conjuring… • 1s | local ready                                                                     ⠏ conjuring… • 1s | local ready                                                                     ⠏ conjuring… • 1s | local ready                                                                     ⠋ conjuring… • 1s | local ready                                                                     ⠋ conjuring… • 1s | local ready                                                                     ⠙ conjuring… • 1s | local ready                                                                     ⠙ conjuring… • 1s | local ready                                                                     openclaw tui - local embedded - agent main - session main                                          
+
+ session agent:main:main                                                                            
+
+                                                                                                    
+!literal initial message                                                                            
+                                                                                                    
+
+ run error: Session MCP runtime scheduler has not been bound by its lifecycle owner                 
+ local ready | error                                                                                
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ ❯ Object.onTimeout src/tui/tui-pty-local.e2e.test.ts:119:7
+    117|     read: () => (fixture.mockModel.requests().length === count ? true …
+    118|     onTimeout: () =>
+    119|       new Error(
+       |       ^
+    120|         `expected ${count} model requests\nrequests=${JSON.stringify(f…
+    121|       ),
+ ❯ Timeout.tick [as _onTimeout] src/tui/tui-pty-test-support.ts:224:23
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  |tui-pty| src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > lists local session history through a real PTY
+Error: timed out waiting for "T03_HISTORY_FIRST_REPLY"
+7u openclaw tui - local embedded - agent main - session main                                          
+
+ ⠋ starting up • 0s | subscribing to session events                                                 
+ agent main | session main | unknown | deliver:off | tokens ?                                       
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+──────────────────────────────────────────────────────────────────────────────────────────────────── ⠙ starting up • 0s | subscribing to session events                                                  ⠹ starting up • 0s | subscribing to session events                                                  ⠸ starting up • 0s | subscribing to session events                                                  ⠼ starting up • 0s | subscribing to session events                                                  ⠴ starting up • 0s | subscribing to session events                                                  ⠦ starting up • 0s | subscribing to session events                                                  ⠧ starting up • 0s | subscribing to session events                                                  ⠇ starting up • 0s | subscribing to session events                                                  ⠏ starting up • 0s | subscribing to session events                                                  ⠋ starting up • 0s | subscribing to session events                                                  ⠙ starting up • 0s | subscribing to session events                                                  ⠹ starting up • 0s | subscribing to session events                                                  ⠹ starting up • 1s | subscribing to session events                                                  ⠸ starting up • 1s | subscribing to session events                                                  ⠼ starting up • 1s | subscribing to session events                                                  ⠴ starting up • 1s | subscribing to session events                                                  ⠦ starting up • 1s | subscribing to session events                                                  ⠧ starting up • 1s | subscribing to session events                                                  openclaw tui - local embedded - agent main - session main                                          
+
+ session agent:main:main                                                                            
+ local ready | idle                                                                                 
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+T03_HISTORY_FIRST_PROMPT                                                                            
+                                                                                                    
+
+ ⠋ sending • 0s | local ready                                                                       
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+──────────────────────────────────────────────────────────────────────────────────────────────────── ⠋ conjuring… • 0s | local ready                                                                     ⠙ conjuring… • 0s | local ready                                                                     ⠙ conjuring… • 0s | local ready                                                                     ⠹ conjuring… • 0s | local ready                                                                     ⠸ conjuring… • 0s | local ready                                                                     ⠸ conjuring… • 0s | local ready                                                                     ⠼ conjuring… • 0s | local ready                                                                     ⠼ conjuring… • 0s | local ready                                                                     ⠴ conjuring… • 0s | local ready                                                                     ⠦ conjuring… • 0s | local ready                                                                     ⠦ conjuring… • 0s | local ready                                                                     ⠧ conjuring… • 0s | local ready                                                                     ⠧ conjuring… • 0s | local ready                                                                     ⠇ conjuring… • 0s | local ready                                                                     ⠏ conjuring… • 0s | local ready                                                                     ⠏ conjuring… • 0s | local ready                                                                     ⠋ conjuring… • 0s | local ready                                                                     ⠋ conjuring… • 0s | local ready                                                                     ⠙ conjuring… • 0s | local ready                                                                     ⠹ conjuring… • 0s | local ready                                                                     ⠹ conjuring… • 0s | local ready                                                                     ⠸ conjuring… • 0s | local ready                                                                     ⠸ conjuring… • 1s | local ready                                                                     ⠼ conjuring… • 1s | local ready                                                                     ⠴ conjuring… • 1s | local ready                                                                     ⠴ conjuring… • 1s | local ready                                                                     ⠦ conjuring… • 1s | local ready                                                                     ⠦ conjuring… • 1s | local ready                                                                     ⠧ conjuring… • 1s | local ready                                                                     ⠇ conjuring… • 1s | local ready                                                                     ⠇ conjuring… • 1s | local ready                                                                     ⠏ conjuring… • 1s | local ready                                                                     ⠋ conjuring… • 1s | local ready                                                                     ⠋ conjuring… • 1s | local ready                                                                     ⠙ conjuring… • 1s | local ready                                                                     ⠙ conjuring… • 1s | local ready                                                                     ⠹ conjuring… • 1s | local ready                                                                     ⠹ conjuring… • 1s | local ready                                                                     openclaw tui - local embedded - agent main - session main                                          
+
+ session agent:main:main                                                                            
+
+                                                                                                    
+T03_HISTORY_FIRST_PROMPT                                                                            
+                                                                                                    
+
+ run error: Session MCP runtime scheduler has not been bound by its lifecycle owner                 
+ local ready | error                                                                                
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ ❯ Object.onTimeout src/tui/tui-pty-test-support.ts:406:24
+    404|         return null;
+    405|       },
+    406|       onTimeout: () => new Error(`timed out waiting for ${JSON.stringi…
+       |                        ^
+    407|     });
+    408|   };
+ ❯ Timeout.tick [as _onTimeout] src/tui/tui-pty-test-support.ts:224:23
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  |tui-pty| src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > confirms and renders local shell output, then extinguishes descendants before TUI exit
+Error: timed out waiting for PTY exit
+7u openclaw tui - local embedded - agent main - session main                                          
+
+ ⠋ starting up • 0s | subscribing to session events                                                 
+ agent main | session main | unknown | deliver:off | tokens ?                                       
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+──────────────────────────────────────────────────────────────────────────────────────────────────── ⠙ starting up • 0s | subscribing to session events                                                  ⠹ starting up • 0s | subscribing to session events                                                  ⠸ starting up • 0s | subscribing to session events                                                  ⠼ starting up • 0s | subscribing to session events                                                  ⠴ starting up • 0s | subscribing to session events                                                  ⠦ starting up • 0s | subscribing to session events                                                  ⠧ starting up • 0s | subscribing to session events                                                  ⠇ starting up • 0s | subscribing to session events                                                  ⠏ starting up • 0s | subscribing to session events                                                  ⠋ starting up • 0s | subscribing to session events                                                  ⠙ starting up • 0s | subscribing to session events                                                  ⠹ starting up • 0s | subscribing to session events                                                  ⠹ starting up • 1s | subscribing to session events                                                  ⠸ starting up • 1s | subscribing to session events                                                  ⠼ starting up • 1s | subscribing to session events                                                  ⠴ starting up • 1s | subscribing to session events                                                  ⠦ starting up • 1s | subscribing to session events                                                  ⠧ starting up • 1s | subscribing to session events                                                  openclaw tui - local embedded - agent main - session main                                          
+
+ session agent:main:main                                                                            
+ local ready | idle                                                                                 
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ Allow local shell commands for this session?                                                       
+
+ This runs commands on YOUR machine (not the gateway) and may delete files or reveal secrets.       
+
+ Select Yes/No (arrows + Enter), Esc to cancel.                                                     
+ local ready | idle                                                                                 
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+──────────search: >                                                                       ──────────
+                                                                                                    
+          → No                                                                                      
+            Yes                                                                                     
+
+
+
+
+
+
+
+
+
+
+
+
+
+ local shell: enabled for this session                                                              
+ local ready | idle                                                                                 
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ [local] $ node -e "console.log('T06_STDOUT'); console.error('T06_STDERR');                         
+ console.log('T06_ENV='+process.env.OPENCLAW_SHELL); process.exitCode=7"                            
+ local ready | idle                                                                                 
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ [local] T06_STDOUT                                                                                 
+
+ [local] T06_ENV=tui-local                                                                          
+
+ [local]                                                                                            
+
+ [local] T06_STDERR                                                                                 
+
+ [local] exit 7                                                                                     
+ local ready | idle                                                                                 
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ [local] $ node                                                                                     
+ "/tmp/oc-classify-3WwCOL/tmp/oc-vt-ZKpD7Q/openclaw-tui-pty-local-7aFuOy/state/tui-local-owned-root 
+ .cjs"                                                                                              
+ local ready | idle                                                                                 
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ [local] exit 0                                                                                     
+ local ready | idle                                                                                 
+ agent main | session main | gpt-5.5 | deliver:off | tokens ?/128k                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────u 
+(node:585) Warning: Could not save the discovered model catalog: Error: Database maintenance resource scope is closed
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ ❯ Object.onTimeout src/tui/tui-pty-test-support.ts:387:24
+    385|       timeoutMs,
+    386|       read: () => exitEvent,
+    387|       onTimeout: () => new Error(`timed out waiting for PTY exit\n${ou…
+       |                        ^
+    388|     });
+    389|
+ ❯ Timeout.tick [as _onTimeout] src/tui/tui-pty-test-support.ts:224:23
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 7 passed | 1 skipped (12)
+   Start at  02:08:43
+   Duration  457.00s (tests 94%, transform 5%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 config=test/vitest/vitest.tui-pty.config.ts files=src/tui/tui-pty-local.e2e.test.ts
+failing-tests:
+ × |tui-pty| src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > launches openclaw chat as local mode through a real PTY 129186ms
+ × |tui-pty| src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > launches openclaw terminal as local mode through a real PTY 127638ms
+ × |tui-pty| src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > lists local session history through a real PTY 127695ms
+ × |tui-pty| src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > confirms and renders local shell output, then extinguishes descendants before TUI exit 7942ms
+VERDICT RED [Test Files 1 failed (1); Tests 4 failed | 7 passed | 1 skipped (12)]
+# exit=1
