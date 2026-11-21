@@ -1,0 +1,2045 @@
+{
+  "verdict": "failure",
+  "repo": "karmaterminal/openclaw",
+  "ref": "93a1e356c7aabf0d868560e46790b07449813840",
+  "sha": "93a1e356c7aabf0d868560e46790b07449813840",
+  "workflow_repo": "karmaterminal/openclaw-bootstrap",
+  "workflow_sha": "105e83abf9c3d328695e022779d75cb556fdc275",
+  "shard_jobs_planned": 180,
+  "routed_shards": 130,
+  "routed_job_count": 67,
+  "receipts_valid": true,
+  "receipts_found": 67,
+  "hosted_worker_pools": [
+    "arc:oc-8cpu-32gb"
+  ],
+  "routed_jobs": {
+    "hosted": 33,
+    "self-hosted": 33,
+    "self-hosted-dist": 1
+  },
+  "routing_ruleset_digest": "sha256:22f198a74208f77ceb08368ce400bc195be74dec5e7e968f03567247025fb37a",
+  "routing_planner_digest": "sha256:e1589922229ec157ce61f81d2cecea733cabb487de2a39277fffba2b3114399c",
+  "selection": {
+    "mode": "full",
+    "label": "full: 130 of 130 shards"
+  },
+  "lane_guards": [
+    "2 routed batch(es) ended with blocked/cancelled/skipped terminal receipts",
+    "lane hosted variant test-shard-hosted-arc-early finished failure, not success",
+    "lane self-hosted variant test-shard-arc-early finished failure, not success",
+    "lane self-hosted-dist variant test-shard-arc-dist finished failure, not success",
+    "3 routed shard(s) produced no summary: hosted-batch-014/compact-large-43 (cancelled-in-flight: cancelled-at-3108s), hosted-batch-014/compact-small-3 (never-started), hosted-batch-022/extension-database-workers (cancelled-in-flight: cancelled-at-5184s)"
+  ],
+  "summaries_found": 128,
+  "unreadable_summaries": [],
+  "shard_coverage": {
+    "available": true,
+    "routed_shards": 130,
+    "summarized_shards": 127,
+    "missing_shards": [
+      {
+        "lane": "hosted",
+        "batch_id": "hosted-batch-014",
+        "batch_name": "compact-large-37+3more",
+        "batch_check_name": "hosted(compact-large-37,compact-large-38,…)",
+        "index": 2,
+        "check_name": "checks-node-compact-large-43",
+        "shard_name": "compact-large-43",
+        "results_dir": "node-compact-large-43",
+        "weight_seconds": 210,
+        "last_known_state": "cancelled-at-3108s",
+        "reason_class": "cancelled-in-flight",
+        "detail": "cancelled at 3108s (16099 test output lines; last reported test file src/gateway/server-methods/session-summaries-invited.test.ts; in-flight output kept in gate-test-shard-compact-large-43.in-flight.log)"
+      },
+      {
+        "lane": "hosted",
+        "batch_id": "hosted-batch-014",
+        "batch_name": "compact-large-37+3more",
+        "batch_check_name": "hosted(compact-large-37,compact-large-38,…)",
+        "index": 3,
+        "check_name": "checks-node-compact-small-3",
+        "shard_name": "compact-small-3",
+        "results_dir": "node-compact-small-3",
+        "weight_seconds": 210,
+        "last_known_state": "never-started",
+        "reason_class": "never-started",
+        "detail": "never started: no results directory"
+      },
+      {
+        "lane": "hosted",
+        "batch_id": "hosted-batch-022",
+        "batch_name": "extensions+1more",
+        "batch_check_name": "hosted(extensions,extension-database-workers)",
+        "index": 1,
+        "check_name": "checks-node-extension-database-workers",
+        "shard_name": "extension-database-workers",
+        "results_dir": "supplemental-extension-database-workers",
+        "weight_seconds": 25,
+        "last_known_state": "cancelled-at-5184s",
+        "reason_class": "cancelled-in-flight",
+        "detail": "cancelled at 5184s (9034 test output lines; last reported test file extensions/memory-core/src/memory/manager-active-memory-retrieval.test.ts; last config test/vitest/vitest.extension-database-workers.config.ts; in-flight output kept in gate-test-shard-extension-database-workers.in-flight.log)"
+      }
+    ],
+    "batches_without_artifact": []
+  },
+  "tests": {
+    "passed": 258976,
+    "failed": 128
+  },
+  "flakes_greened": 0,
+  "deterministic_failures": 87,
+  "static_failure_test_fanout": {
+    "enabled": true,
+    "reason": "#129388 final candidate 93a1e356 Gate 3 (single final-head Mode-B per Ronan+Cael; alloc +672 approved); keep dist + tests running past base-carried static rows"
+  },
+  "failed_jobs": [
+    {
+      "name": "static-gates",
+      "result": "failure"
+    },
+    {
+      "name": "test-shard-hosted-arc-early",
+      "result": "failure"
+    },
+    {
+      "name": "test-shard-arc-early",
+      "result": "failure"
+    },
+    {
+      "name": "test-shard-arc-dist",
+      "result": "failure"
+    }
+  ],
+  "failed_details": [
+    {
+      "shard": "compact-small-dist-2",
+      "gate": "test shard (compact-small-dist-2)",
+      "kind": "test",
+      "detail": "tui-pty  src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > authenticates a manifest-discovered provider and resumes the unchanged local model"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins disposal work before honoring SIGINT"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins disposal work before honoring SIGTERM"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins disposal work before honoring SIGINT"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins disposal work before honoring SIGTERM"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins admission work before honoring SIGINT"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins admission work before honoring SIGTERM"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins compilation work before honoring SIGINT"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins compilation work before honoring SIGTERM"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins compilation work before honoring SIGINT"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins compilation work before honoring SIGTERM"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins compilation work before honoring SIGINT"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins compilation work before honoring SIGTERM"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > ci-shared wrapper joins compilation work before honoring SIGINT"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > ci-shared wrapper joins compilation work before honoring SIGTERM"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins admission work before honoring SIGINT"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins admission work before honoring SIGTERM"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins disposal work before honoring SIGINT"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins disposal work before honoring SIGTERM"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > ci-disconnect wrapper joins admission work before honoring SIGTERM"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins deletion work before honoring SIGINT"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > ci wrapper joins deletion work before honoring SIGTERM"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins deletion work before honoring SIGINT"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > direct wrapper joins deletion work before honoring SIGTERM"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins deletion work before honoring SIGINT"
+    },
+    {
+      "shard": "compact-small-30",
+      "gate": "test shard (compact-small-30)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/vitest-worker-shutdown.test.ts > serial wrapper joins deletion work before honoring SIGTERM"
+    },
+    {
+      "shard": "compact-small-33",
+      "gate": "test shard (compact-small-33)",
+      "kind": "test",
+      "detail": "tooling  test/helpers/openclaw-test-instance.test.ts > openclaw test instance > keeps claimed port offset 0 unavailable while its child starts"
+    },
+    {
+      "shard": "compact-small-33",
+      "gate": "test shard (compact-small-33)",
+      "kind": "test",
+      "detail": "tooling  test/helpers/openclaw-test-instance.test.ts > openclaw test instance > keeps claimed port offset 1 unavailable while its child starts"
+    },
+    {
+      "shard": "compact-small-36",
+      "gate": "test shard (compact-small-36)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > captures remaining static programs (//#region)"
+    },
+    {
+      "shard": "compact-small-36",
+      "gate": "test shard (compact-small-36)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > captures remaining static programs (//)"
+    },
+    {
+      "shard": "compact-small-36",
+      "gate": "test shard (compact-small-36)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/bun-standalone-codegen.test.ts > standalone fixed code generation > captures remaining static programs (//!)"
+    },
+    {
+      "shard": "compact-small-40",
+      "gate": "test shard (compact-small-40)",
+      "kind": "test",
+      "detail": "tooling  test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: failure"
+    },
+    {
+      "shard": "compact-small-40",
+      "gate": "test shard (compact-small-40)",
+      "kind": "test",
+      "detail": "tooling  test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: failure-scheduled"
+    },
+    {
+      "shard": "compact-small-40",
+      "gate": "test shard (compact-small-40)",
+      "kind": "test",
+      "detail": "tooling  test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: partial-stop"
+    },
+    {
+      "shard": "compact-small-40",
+      "gate": "test shard (compact-small-40)",
+      "kind": "test",
+      "detail": "tooling  test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: partial-stop-custom"
+    },
+    {
+      "shard": "compact-small-40",
+      "gate": "test shard (compact-small-40)",
+      "kind": "test",
+      "detail": "tooling  test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: partial-stop-scheduled"
+    },
+    {
+      "shard": "compact-small-40",
+      "gate": "test shard (compact-small-40)",
+      "kind": "test",
+      "detail": "tooling  test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: begin-abort"
+    },
+    {
+      "shard": "compact-small-40",
+      "gate": "test shard (compact-small-40)",
+      "kind": "test",
+      "detail": "tooling  test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: begin-unjoined"
+    },
+    {
+      "shard": "compact-small-40",
+      "gate": "test shard (compact-small-40)",
+      "kind": "test",
+      "detail": "tooling  test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: build-throw-settle"
+    },
+    {
+      "shard": "compact-small-40",
+      "gate": "test shard (compact-small-40)",
+      "kind": "test",
+      "detail": "tooling  test/scripts-update-gateway-legacy.test.ts > published source shell reaches candidate build entry: build-throw-restart"
+    },
+    {
+      "shard": "compact-small-40",
+      "gate": "test shard (compact-small-40)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/check-line-cap-ratchet.test.ts > preserves failed child diagnostics for 1//Cannot load oxlint native binding"
+    },
+    {
+      "shard": "compact-small-40",
+      "gate": "test shard (compact-small-40)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/check-line-cap-ratchet.test.ts > preserves failed child diagnostics for 1/invalid report/Cannot load oxlint native binding"
+    },
+    {
+      "shard": "compact-small-40",
+      "gate": "test shard (compact-small-40)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/check-line-cap-ratchet.test.ts > preserves failed child diagnostics for 1/Invalid oxlint configuration/"
+    },
+    {
+      "shard": "compact-small-40",
+      "gate": "test shard (compact-small-40)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/check-line-cap-ratchet.test.ts > rejects bin traversal before executing the oxlint CLI"
+    },
+    {
+      "shard": "compact-small-40",
+      "gate": "test shard (compact-small-40)",
+      "kind": "test",
+      "detail": "tooling  test/scripts/check-line-cap-ratchet.test.ts > rejects bin symlink before executing the oxlint CLI"
+    },
+    {
+      "shard": "compact-large-25",
+      "gate": "test shard (compact-large-25)",
+      "kind": "test",
+      "detail": "ui  ui/src/styles/session-row-tint.node.test.ts [ ui/src/styles/session-row-tint.node.test.ts ]"
+    },
+    {
+      "shard": "compact-large-25",
+      "gate": "test shard (compact-large-25)",
+      "kind": "test",
+      "detail": "ui  ui/src/test-helpers/new-session-page-opener.node.test.ts > captures New Session failures before closing their contexts and starting the next test"
+    },
+    {
+      "shard": "compact-large-27",
+      "gate": "test shard (compact-large-27)",
+      "kind": "test",
+      "detail": "unit-src  src/state/openclaw-database-preflight.artifacts.test.ts > falls back to the private snapshot when the last owner closes during a preserving read"
+    },
+    {
+      "shard": "compact-large-32",
+      "gate": "test shard (compact-large-32)",
+      "kind": "test",
+      "detail": "gateway-core  src/gateway/mcp-http.loopback-real-recovery.test.ts > fences retired warm-turn writes while preserving the successor's bearer"
+    },
+    {
+      "shard": "compact-large-34",
+      "gate": "test shard (compact-large-34)",
+      "kind": "test",
+      "detail": "unit-fast  src/infra/worker-task-pool.memory.test.ts > collects a completed large external payload while keeping the bounded worker warm"
+    },
+    {
+      "shard": "compact-small-6",
+      "gate": "test shard (compact-small-6)",
+      "kind": "test",
+      "detail": "cli  src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > restarts retained A with a real child and keeps both owners until native drain"
+    },
+    {
+      "shard": "compact-small-6",
+      "gate": "test shard (compact-small-6)",
+      "kind": "test",
+      "detail": "cli  src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: unavailable"
+    },
+    {
+      "shard": "compact-small-6",
+      "gate": "test shard (compact-small-6)",
+      "kind": "test",
+      "detail": "cli  src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: A after reset-failed"
+    },
+    {
+      "shard": "compact-small-6",
+      "gate": "test shard (compact-small-6)",
+      "kind": "test",
+      "detail": "cli  src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > rechecks retained authority before restart: B after reset-failed"
+    },
+    {
+      "shard": "compact-small-6",
+      "gate": "test shard (compact-small-6)",
+      "kind": "test",
+      "detail": "cli  src/cli/update-cli/update-command-retained-restart.test.ts > retained POSIX native restart > retains native rejection rather than reporting completed or readiness"
+    },
+    {
+      "shard": "agentic-plugins",
+      "gate": "test shard (agentic-plugins)",
+      "kind": "test",
+      "detail": "plugins  src/plugins/plugin-generation-artifact.native-reference.test.ts > captures native companions into state on another filesystem"
+    },
+    {
+      "shard": "extension-providers",
+      "gate": "test shard (extension-providers)",
+      "kind": "test",
+      "detail": "extension-providers  extensions/anthropic/session-catalog-transcript.test.ts > pages deeply nested Claude content without losing text"
+    },
+    {
+      "shard": "extension-providers",
+      "gate": "test shard (extension-providers)",
+      "kind": "test",
+      "detail": "extension-providers  extensions/anthropic/session-catalog-transcript.test.ts > pages deeply nested Claude metadata without losing text"
+    },
+    {
+      "shard": "extension-browser",
+      "gate": "test shard (extension-browser)",
+      "kind": "test",
+      "detail": "extension-browser  extensions/browser/src/browser/chrome.headless-cleanup.test.ts > cleans up a one-shot darwin cache shell only when ownsProfile=true"
+    },
+    {
+      "shard": "extension-browser",
+      "gate": "test shard (extension-browser)",
+      "kind": "test",
+      "detail": "extension-browser  extensions/browser/src/browser/chrome.headless-cleanup.test.ts > cleans up a one-shot darwin cache shell only when ownsProfile=false"
+    },
+    {
+      "shard": "extension-browser",
+      "gate": "test shard (extension-browser)",
+      "kind": "test",
+      "detail": "extension-browser  extensions/browser/src/browser/chrome.headless-cleanup.test.ts > recovers stale cache browser with configuredHeadless=false, ownsProfile=true, code=websocket_health_command_timeout"
+    },
+    {
+      "shard": "extension-browser",
+      "gate": "test shard (extension-browser)",
+      "kind": "test",
+      "detail": "extension-browser  extensions/browser/src/browser/chrome.headless-cleanup.test.ts > recovers stale cache browser with configuredHeadless=true, ownsProfile=true, code=websocket_health_command_timeout"
+    },
+    {
+      "shard": "compact-large-2",
+      "gate": "test shard (compact-large-2)",
+      "kind": "test",
+      "detail": "infra  src/agents/embedded-agent-runner/compact.queued-successor.test.ts > fences a queued maintenance writer replacement after acceptance: during branch read (captured=undefined)"
+    },
+    {
+      "shard": "compact-large-2",
+      "gate": "test shard (compact-large-2)",
+      "kind": "test",
+      "detail": "gateway-methods-isolated  src/gateway/server-methods/agent.visitor-access.test.ts > visitor access admitted caller > reopens existing profiles and grants and repairs a missing Visitor model policy"
+    },
+    {
+      "shard": "compact-large-10",
+      "gate": "test shard (compact-large-10)",
+      "kind": "test",
+      "detail": "infra  src/agents/openclaw-tools.workshop-authority.test.ts > refuses the write when the caller is revoked during awaited preparation"
+    },
+    {
+      "shard": "compact-large-18",
+      "gate": "test shard (compact-large-18)",
+      "kind": "test",
+      "detail": "infra  src/sessions/user-turn-transcript.recorder.test.ts > createUserTurnTranscriptRecorder > returns the older receipt-free row for an idempotent managed-delivery retry"
+    },
+    {
+      "shard": "compact-large-18",
+      "gate": "test shard (compact-large-18)",
+      "kind": "test",
+      "detail": "infra  src/sessions/user-turn-transcript.recorder.test.ts > createUserTurnTranscriptRecorder > preserves distinct text supplied with late-resolved media"
+    },
+    {
+      "shard": "compact-large-19",
+      "gate": "test shard (compact-large-19)",
+      "kind": "test",
+      "detail": "infra  src/config/sessions/disk-budget.physical-usage.test.ts > physical session disk usage > joins real SDK mutation maintenance before native fixture drainage"
+    },
+    {
+      "shard": "compact-large-35",
+      "gate": "test shard (compact-large-35)",
+      "kind": "test",
+      "detail": "infra  src/infra/package-update-permission-drift.test.ts > publication permission drift > repairs a recursive named-user POSIX ACL"
+    },
+    {
+      "shard": "compact-large-35",
+      "gate": "test shard (compact-large-35)",
+      "kind": "test",
+      "detail": "infra  src/infra/update-retained-runtime-imports.process.test.ts > keeps bun late imports on the old generation through replacement and CLI teardown"
+    },
+    {
+      "shard": "compact-large-35",
+      "gate": "test shard (compact-large-35)",
+      "kind": "test",
+      "detail": "commands  src/commands/doctor-session-transcript-labels.reuse.test.ts > update Doctor retained transcript scan reuse > does not scan unchanged retained history twice across update passes"
+    },
+    {
+      "shard": "compact-large-15",
+      "gate": "test shard (compact-large-15)",
+      "kind": "test",
+      "detail": "gateway-database-workers  src/gateway/mcp-http.completion-lineage.test.ts > MCP loopback completion lineage at the final tool-effect fence > rejects the write at its source guard when the lineage is removed after dispatch"
+    },
+    {
+      "shard": "compact-large-15",
+      "gate": "test shard (compact-large-15)",
+      "kind": "test",
+      "detail": "infra  src/auto-reply/reply/session-event-permissions.test.ts > bounds a production background completion by current and retained permissions: retained-database-replacement"
+    },
+    {
+      "shard": "compact-large-6",
+      "gate": "test shard (compact-large-6)",
+      "kind": "test",
+      "detail": "agents-support  src/agents/subagents/registry/subagent-registry-worker.test.ts > releases serialized payloads while their immutable registry rows remain resident"
+    },
+    {
+      "shard": "compact-large-4",
+      "gate": "test shard (compact-large-4)",
+      "kind": "test",
+      "detail": "agents-support  src/agents/worktrees/filesystem-native.test.ts > preserves native mode across ReFS copies on a reused worker"
+    },
+    {
+      "shard": "compact-large-22",
+      "gate": "test shard (compact-large-22)",
+      "kind": "test",
+      "detail": "infra  src/infra/shell-env.test.ts > shell env fallback > uses interactive Bash login startup before nounset reads PS1"
+    },
+    {
+      "shard": "compact-large-31",
+      "gate": "test shard (compact-large-31)",
+      "kind": "test",
+      "detail": "ui  ui/src/styles/background-invalidation.node.test.ts [ ui/src/styles/background-invalidation.node.test.ts ]"
+    },
+    {
+      "shard": "compact-large-31",
+      "gate": "test shard (compact-large-31)",
+      "kind": "test",
+      "detail": "ui  ui/src/styles/incognito-shade.browser.test.ts [ ui/src/styles/incognito-shade.browser.test.ts ]"
+    },
+    {
+      "shard": "compact-large-31",
+      "gate": "test shard (compact-large-31)",
+      "kind": "test",
+      "detail": "infra  src/agents/openclaw-tools.workshop-contract.test.ts > Workshop through the OpenClaw tool set > T7: captures the invoking source authority before its first await"
+    },
+    {
+      "shard": "compact-large-39",
+      "gate": "test shard (compact-large-39)",
+      "kind": "test",
+      "detail": "agents-support  src/agents/harness/mediated-delegation-effects.test.ts > cli-loopback delegated final effects (stamped visible spawn: false) > rejects revocation at the final exec boundary"
+    },
+    {
+      "shard": "compact-large-39",
+      "gate": "test shard (compact-large-39)",
+      "kind": "test",
+      "detail": "agents-support  src/agents/harness/mediated-delegation-effects.test.ts > cli-loopback delegated final effects (stamped visible spawn: true) > rejects revocation at the final exec boundary"
+    },
+    {
+      "shard": "compact-large-39",
+      "gate": "test shard (compact-large-39)",
+      "kind": "test",
+      "detail": "agents-support  src/agents/harness/mediated-delegation-effects.test.ts > cli-loopback delegated final effects (stamped visible spawn: false) > rejects revocation at the final write boundary"
+    },
+    {
+      "shard": "compact-large-39",
+      "gate": "test shard (compact-large-39)",
+      "kind": "test",
+      "detail": "agents-support  src/agents/harness/mediated-delegation-effects.test.ts > plugin-harness delegated final effects (stamped visible spawn: false) > rejects revocation at the final exec boundary"
+    },
+    {
+      "shard": "compact-large-39",
+      "gate": "test shard (compact-large-39)",
+      "kind": "test",
+      "detail": "agents-support  src/agents/harness/mediated-delegation-effects.test.ts > plugin-harness delegated final effects (stamped visible spawn: true) > rejects revocation at the final exec boundary"
+    },
+    {
+      "shard": "compact-large-39",
+      "gate": "test shard (compact-large-39)",
+      "kind": "test",
+      "detail": "agents-support  src/agents/harness/mediated-delegation-effects.test.ts > plugin-harness delegated final effects (stamped visible spawn: false) > rejects revocation at the final write boundary"
+    },
+    {
+      "shard": "compact-large-39",
+      "gate": "test shard (compact-large-39)",
+      "kind": "test",
+      "detail": "agents-support  src/agents/harness/mediated-delegation-effects.test.ts > cli-loopback delegated final effects (stamped visible spawn: true) > rejects revocation at the final write boundary"
+    },
+    {
+      "shard": "compact-large-39",
+      "gate": "test shard (compact-large-39)",
+      "kind": "test",
+      "detail": "agents-support  src/agents/harness/mediated-delegation-effects.test.ts > plugin-harness delegated final effects (stamped visible spawn: true) > rejects revocation at the final write boundary"
+    }
+  ],
+  "shard_summaries": [
+    {
+      "shard": "compact-small-dist-1",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 126,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-dist-2",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 96,
+        "failed": 1
+      },
+      "failure_count": 1,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-1",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 49,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-15",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 284,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-7",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 327,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-13",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 272,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-14",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 1176,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-16",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 798,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-29",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 1300,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-30",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 996,
+        "failed": 50
+      },
+      "failure_count": 25,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-31",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 1206,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-32",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 1154,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-33",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 1206,
+        "failed": 4
+      },
+      "failure_count": 2,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-34",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 538,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-1",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 2962,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-35",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 704,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-36",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 3732,
+        "failed": 6
+      },
+      "failure_count": 3,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-17",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 412,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-18",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 184,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-2",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 2,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-10",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 132,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-19",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 1884,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-37",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 4503,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-38",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 4266,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-20",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 79,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-39",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 4130,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-40",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 3760,
+        "failed": 28
+      },
+      "failure_count": 14,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-9",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 161,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-24",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 3599,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-21",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 416,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-22",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 206,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-41",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 3992,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-23",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 507,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-23",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 296,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-24",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 302,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-42",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 4480,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-25",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 9981,
+        "failed": 1
+      },
+      "failure_count": 2,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-27",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 3237,
+        "failed": 1
+      },
+      "failure_count": 1,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-28",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 2026,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-29",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 1586,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-32",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 2574,
+        "failed": 1
+      },
+      "failure_count": 1,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-33",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 8179,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-34",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 7180,
+        "failed": 1
+      },
+      "failure_count": 1,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-36",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 8584,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-37",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 1720,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-38",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 2604,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-25",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 24,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-26",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 192,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-27",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 258,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-4",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 15,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-28",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 354,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-5",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 13,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-6",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 6323,
+        "failed": 5
+      },
+      "failure_count": 5,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-8",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 91,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-11",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 136,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-12",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 632,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-small-43",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 2388,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "agentic-plugins",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 5768,
+        "failed": 1
+      },
+      "failure_count": 1,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-providers",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 3794,
+        "failed": 2
+      },
+      "failure_count": 2,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-signal",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 505,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-line",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 437,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-misc",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 1030,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extensions",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 7133,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-active-memory",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 249,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-browser",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 3069,
+        "failed": 4
+      },
+      "failure_count": 4,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "channels",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 791,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-zalo",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 233,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-media",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 328,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-provider-openai",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 1120,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-acpx",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 181,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-qa",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 2950,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "checks-fast-contracts-channels-a",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 113,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-codex-app-server-runtime",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 521,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "checks-fast-contracts-channels-b",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 108,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-codex-app-server-support",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 1795,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-diffs",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 55,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-discord",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 2502,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-irc",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 121,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-codex-surface",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 671,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-matrix",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 1130,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-mattermost",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 467,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-codex-app-server-tools",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 500,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-voice-call",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 623,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-whatsapp",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 855,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "checks-fast-contracts-plugins-a",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 681,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "core-bundled",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 209,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-feishu",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 944,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-imessage",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 297,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "checks-fast-contracts-plugins-b",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 355,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-codex-app-server-attempt-light",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 94,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-codex-app-server-attempt-support",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 37,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-msteams",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 924,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-2",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 1786,
+        "failed": 2
+      },
+      "failure_count": 2,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-3",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 3373,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-13",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 413,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-10",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 2351,
+        "failed": 1
+      },
+      "failure_count": 1,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-11",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 3227,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-12",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 4133,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-14",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 4048,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-17",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 2459,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-18",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 1765,
+        "failed": 2
+      },
+      "failure_count": 2,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-19",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 1632,
+        "failed": 1
+      },
+      "failure_count": 1,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-20",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 2923,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-26",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 3002,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-30",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 6330,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-35",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 12596,
+        "failed": 3
+      },
+      "failure_count": 3,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-40",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 2426,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-42",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 2631,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-44",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 3277,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-5",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 1710,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-7",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 2698,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-8",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 2799,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-9",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 1895,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-15",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 1649,
+        "failed": 2
+      },
+      "failure_count": 2,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-16",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 2709,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-6",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 4597,
+        "failed": 1
+      },
+      "failure_count": 1,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-21",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 1385,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-4",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 6426,
+        "failed": 1
+      },
+      "failure_count": 1,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-22",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 3479,
+        "failed": 1
+      },
+      "failure_count": 1,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-41",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 2751,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-31",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 9964,
+        "failed": 1
+      },
+      "failure_count": 3,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-39",
+      "mode": "test-shard",
+      "conclusion": "fail",
+      "tests": {
+        "passed": 3485,
+        "failed": 8
+      },
+      "failure_count": 8,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "compact-large-45",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 1225,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-memory",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 490,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-slack",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 1976,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-messaging",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 1083,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": "extension-telegram",
+      "mode": "test-shard",
+      "conclusion": "pass",
+      "tests": {
+        "passed": 1359,
+        "failed": 0
+      },
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    },
+    {
+      "shard": null,
+      "mode": "static-gates",
+      "conclusion": "fail",
+      "tests": null,
+      "failure_count": 0,
+      "flakes_greened_count": 0
+    }
+  ]
+}

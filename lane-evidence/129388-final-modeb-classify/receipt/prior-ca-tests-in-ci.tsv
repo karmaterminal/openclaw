@@ -1,0 +1,6 @@
+src/config/sessions/session-entry-deletion.test.ts	pass-lines=8	fail-lines=0	shards=compact-large-6
+src/cli/update-cli/update-command-lease.test.ts	pass-lines=54	fail-lines=0	shards=compact-small-9
+test/scripts/check-extension-package-tsc-boundary.test.ts	pass-lines=12	fail-lines=0	shards=compact-small-12
+src/gateway/agent-turn/agent-request-preflight.test.ts	pass-lines=33	fail-lines=0	shards=compact-large-24
+test/scripts/ci-node-test-plan.test.ts	pass-lines=175	fail-lines=0	shards=compact-small-21
+test/scripts/ci-node-test-plan-hosted-tail.test.ts	pass-lines=3	fail-lines=0	shards=compact-small-32

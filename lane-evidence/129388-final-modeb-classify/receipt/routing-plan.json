@@ -1,0 +1,3734 @@
+{
+  "receipt_kind": "shard-execution-routing-plan",
+  "vehicle": "openclaw-bootstrap#1341",
+  "increment": "routing-B",
+  "routing_contract_version": "2.0.0",
+  "classifier_version": "1.0.0",
+  "ruleset_id": "shard-execution-routing-ruleset-v2",
+  "ruleset_digest": "sha256:22f198a74208f77ceb08368ce400bc195be74dec5e7e968f03567247025fb37a",
+  "planner_digest": "sha256:e1589922229ec157ce61f81d2cecea733cabb487de2a39277fffba2b3114399c",
+  "policy": "routed",
+  "hosted_selection_available": true,
+  "runs_on_unchanged": false,
+  "effective_topology": "hybrid-hosted-and-self-hosted",
+  "assert_mixed_routing_eligible_called": true,
+  "target_repo": "karmaterminal/openclaw",
+  "target_ref": "93a1e356c7aabf0d868560e46790b07449813840",
+  "target_sha": "93a1e356c7aabf0d868560e46790b07449813840",
+  "workflow_repo": "karmaterminal/openclaw-bootstrap",
+  "workflow_sha": "105e83abf9c3d328695e022779d75cb556fdc275",
+  "planner_identity_coverage": {
+    "emitted": 180,
+    "matched": 180,
+    "unknown": 0,
+    "blocked": 0,
+    "matched_ratio": 1
+  },
+  "planner_lane_coverage": {
+    "hosted": 151,
+    "self-hosted": 27,
+    "self-hosted-dist": 2,
+    "unrouted": 0
+  },
+  "identity_coverage": {
+    "emitted": 130,
+    "matched": 130,
+    "unknown": 0,
+    "blocked": 0,
+    "matched_ratio": 1
+  },
+  "lane_coverage": {
+    "hosted": 93,
+    "self-hosted": 35,
+    "self-hosted-dist": 2,
+    "unrouted": 0
+  },
+  "compact": {
+    "status": "applied",
+    "digest": "sha256:3ea79512d5f3ebb385aa1e6a6a0a167cc648f5423051ffc65aa94689bd445093",
+    "contract": "compact-129388-pure-9476c7aa-130",
+    "request": {
+      "compact": true,
+      "compactMode": "pull-request",
+      "compactNodeJobCap": 128,
+      "includePrExemptRuntimeTests": true,
+      "includeProofTests": true,
+      "includeReleaseOnlyPluginShards": false,
+      "includeReleaseOnlyRuntimeTests": true,
+      "includeReleaseOnlyToolingShards": true,
+      "mainValidation": true,
+      "runnerBackend": "github"
+    },
+    "bundles": 90,
+    "kept": 40,
+    "routed": 130,
+    "lane_coverage": {
+      "hosted": 93,
+      "self-hosted": 35,
+      "self-hosted-dist": 2,
+      "unrouted": 0
+    },
+    "job_coverage": {
+      "hosted": 33,
+      "self-hosted": 33,
+      "self-hosted-dist": 1
+    },
+    "coverage": {
+      "full_plan_units": 16470,
+      "bundle_units": 15970,
+      "kept_units": 500,
+      "missing_units": 0,
+      "extra_units": 0,
+      "duplicate_units": 0
+    },
+    "max_bundle_seconds": 851,
+    "deviations": [
+      {
+        "option": "runnerBackend",
+        "upstream": "vars.OPENCLAW_CI_RUNNER_BACKEND, else \"blacksmith\"",
+        "mode_b": "\"github\"",
+        "reason": "The planner prices every bundle for the runner class its profile names. The blacksmith and hybrid profiles price Blacksmith 4 to 32 vCPU machines; the github profile prices GitHub's public ubuntu-24.04, 4 vCPU and 16 GiB. An oc-8cpu-32gb ARC pod is at least that size, so github prices are an upper bound on our pods, not an optimistic guess; the rented hosted lane (2 vCPU for a private repository) is charged the router's hosted slowdown. The blacksmith profile also refuses this target at the main-validation cap (86 jobs planned for 77)."
+      },
+      {
+        "option": "includeReleaseOnlyRuntimeTests",
+        "upstream": "false",
+        "mode_b": "true",
+        "reason": "Upstream's automatic tiers run these runtime-integration files only when the test itself changes, and its Full Release Validation runs them all. Mode-B is the fork's one broad acceptance run and has always run them. Dropping them would buy speed by testing less."
+      },
+      {
+        "option": "compactNodeJobCap",
+        "upstream": "77 (main tier) minus the worker-e2e rows",
+        "mode_b": "130 (upstream's pull-request tier) minus the worker-e2e rows",
+        "reason": "Upstream's 77-row main tier protects its shared runner pool from hourly main. Mode-B runs the bundles on its own runners (hosted bundles packed into jobs, each self-hosted bundle in a job of its own), so the planner's row cap only has to admit the plan, and the pinned compact contract binds the job count that results. With the release-only runtime files kept, the main-tier cap refuses this target (88 bundles planned for 77). 130 is the limit upstream gives the same compactMode in its pull-request tier. The worker-e2e rows are subtracted exactly as upstream does, though Mode-B does not run them."
+      }
+    ],
+    "exclusions": [
+      {
+        "category": "release-only plugin shards",
+        "upstream": "includeReleaseOnlyPluginShards: false in every ci.yml tier; plugin-prerelease.yml runs agentic-plugins hourly instead",
+        "rows": [
+          "agentic-plugins"
+        ],
+        "units": 500,
+        "mode_b": "kept: each runs whole on its own routed row, as before"
+      },
+      {
+        "category": "release-only runtime tests",
+        "upstream": "includeReleaseOnlyRuntimeTests: false in the automatic tiers; Full Release Validation runs them",
+        "rows": [],
+        "units": 95,
+        "mode_b": "kept: planned into the bundles (includeReleaseOnlyRuntimeTests: true)"
+      }
+    ],
+    "upstream_main_validation": {
+      "compact": true,
+      "compactMode": "pull-request",
+      "includePrExemptRuntimeTests": true,
+      "includeProofTests": true,
+      "includeReleaseOnlyPluginShards": false,
+      "includeReleaseOnlyRuntimeTests": false,
+      "includeReleaseOnlyToolingShards": true,
+      "mainValidation": true,
+      "nodeMatrixLimit": 77,
+      "runnerBackend": "blacksmith"
+    },
+    "test_runtime_policy": "node"
+  },
+  "selection": {
+    "mode": "full",
+    "requested": [],
+    "expansions": {},
+    "selected_shards": 130,
+    "total_shards": 130,
+    "label": "full: 130 of 130 shards"
+  },
+  "summary": {
+    "lanes": {
+      "hosted": {
+        "shards": 93,
+        "jobs": 33,
+        "shard_seconds": 17670,
+        "modelled_lane_seconds": 2010,
+        "modelled_lane_seconds_serial": 2010
+      },
+      "self-hosted": {
+        "shards": 35,
+        "jobs": 33,
+        "shard_seconds": 8873,
+        "modelled_lane_seconds": 734,
+        "modelled_lane_seconds_serial": 734
+      },
+      "self-hosted-dist": {
+        "shards": 2,
+        "jobs": 1,
+        "shard_seconds": 766,
+        "modelled_lane_seconds": 846,
+        "modelled_lane_seconds_serial": 846
+      }
+    },
+    "routing": {
+      "hosted_weight_seconds_max": 280,
+      "hosted_slowdown_factor": 2,
+      "hosted_job_overhead_seconds": 210,
+      "self_hosted_job_overhead_seconds": 80,
+      "hosted_job_budget_seconds": 420,
+      "self_hosted_job_budget_seconds": 600,
+      "hosted_max_shards_per_job": 4,
+      "self_hosted_max_shards_per_job": 8,
+      "hosted_max_jobs": 55,
+      "self_hosted_max_jobs": 22,
+      "matrix_max_jobs": 256,
+      "hosted_slots": 2,
+      "self_hosted_planned_slots": 1,
+      "job_timeout_seconds": 5400,
+      "job_timeout_calibration_factor": 2,
+      "pretest_build_overhead_seconds": 540,
+      "compact_job_budget_seconds": 1800
+    },
+    "shards_total": 130,
+    "jobs_total": 67,
+    "planner_plan": {
+      "shards_total": 180,
+      "jobs_total": 79,
+      "lanes": {
+        "hosted": {
+          "shards": 151,
+          "jobs": 55
+        },
+        "self-hosted": {
+          "shards": 27,
+          "jobs": 22
+        },
+        "self-hosted-dist": {
+          "shards": 2,
+          "jobs": 2
+        }
+      }
+    },
+    "compact": {
+      "status": "applied",
+      "digest": "sha256:3ea79512d5f3ebb385aa1e6a6a0a167cc648f5423051ffc65aa94689bd445093",
+      "contract": "compact-129388-pure-9476c7aa-130",
+      "request": {
+        "compact": true,
+        "compactMode": "pull-request",
+        "compactNodeJobCap": 128,
+        "includePrExemptRuntimeTests": true,
+        "includeProofTests": true,
+        "includeReleaseOnlyPluginShards": false,
+        "includeReleaseOnlyRuntimeTests": true,
+        "includeReleaseOnlyToolingShards": true,
+        "mainValidation": true,
+        "runnerBackend": "github"
+      },
+      "bundles": 90,
+      "kept": 40,
+      "routed": 130,
+      "lane_coverage": {
+        "hosted": 93,
+        "self-hosted": 35,
+        "self-hosted-dist": 2,
+        "unrouted": 0
+      },
+      "job_coverage": {
+        "hosted": 33,
+        "self-hosted": 33,
+        "self-hosted-dist": 1
+      },
+      "coverage": {
+        "full_plan_units": 16470,
+        "bundle_units": 15970,
+        "kept_units": 500,
+        "missing_units": 0,
+        "extra_units": 0,
+        "duplicate_units": 0
+      },
+      "max_bundle_seconds": 851
+    },
+    "selection": {
+      "mode": "full",
+      "requested": [],
+      "expansions": {},
+      "selected_shards": 130,
+      "total_shards": 130,
+      "label": "full: 130 of 130 shards"
+    }
+  },
+  "rows": [
+    {
+      "check_name": "checks-node-compact-large-1",
+      "shard_name": "compact-large-1",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-11",
+          "shard_name": "core-tooling-11"
+        },
+        {
+          "check_name": "checks-node-core-tooling-2",
+          "shard_name": "core-tooling-2"
+        },
+        {
+          "check_name": "checks-node-core-tooling-4",
+          "shard_name": "core-tooling-4"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-11, core-tooling-2, core-tooling-4)",
+      "weight_class": "large",
+      "weight_seconds": 293,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-10",
+      "shard_name": "compact-large-10",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-control-plane-runtime-cron",
+          "shard_name": "agentic-control-plane-runtime-cron"
+        },
+        {
+          "check_name": "checks-node-agentic-control-plane-startup-config",
+          "shard_name": "agentic-control-plane-startup-config"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-server-isolated",
+          "shard_name": "agentic-gateway-server-isolated"
+        },
+        {
+          "check_name": "checks-node-core-runtime-config",
+          "shard_name": "core-runtime-config"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-gateway-watch",
+          "shard_name": "core-runtime-infra-gateway-watch"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-misc-dedupe-disk",
+          "shard_name": "core-runtime-infra-misc-dedupe-disk"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-11",
+      "shard_name": "compact-large-11",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-support",
+          "shard_name": "agentic-agents-support"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-methods",
+          "shard_name": "agentic-gateway-methods"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-server-isolated",
+          "shard_name": "agentic-gateway-server-isolated"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-12",
+      "shard_name": "compact-large-12",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-embedded",
+          "shard_name": "agentic-agents-embedded"
+        },
+        {
+          "check_name": "checks-node-agentic-control-plane-agent-chat",
+          "shard_name": "agentic-control-plane-agent-chat"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-core-2",
+          "shard_name": "agentic-gateway-core-2"
+        },
+        {
+          "check_name": "checks-node-core-runtime-hooks",
+          "shard_name": "core-runtime-hooks"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-13",
+      "shard_name": "compact-large-13",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-auto-reply-core-top-level",
+          "shard_name": "auto-reply-core-top-level"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 584,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": "private-qa",
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-14",
+      "shard_name": "compact-large-14",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-tools",
+          "shard_name": "agentic-agents-tools"
+        },
+        {
+          "check_name": "checks-node-agentic-commands-onboard-config",
+          "shard_name": "agentic-commands-onboard-config"
+        },
+        {
+          "check_name": "checks-node-agentic-control-plane-agent-chat",
+          "shard_name": "agentic-control-plane-agent-chat"
+        },
+        {
+          "check_name": "checks-node-auto-reply-reply-session",
+          "shard_name": "auto-reply-reply-session"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-15",
+      "shard_name": "compact-large-15",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-commands-status-tools",
+          "shard_name": "agentic-commands-status-tools"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-server-isolated",
+          "shard_name": "agentic-gateway-server-isolated"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-misc-os",
+          "shard_name": "core-runtime-infra-misc-os"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 209,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-16",
+      "shard_name": "compact-large-16",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-core-tools",
+          "shard_name": "agentic-agents-core-tools"
+        },
+        {
+          "check_name": "checks-node-agentic-commands-doctor-sessions-cron-sqlite-recovery",
+          "shard_name": "agentic-commands-doctor-sessions-cron-sqlite-recovery"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-server-isolated",
+          "shard_name": "agentic-gateway-server-isolated"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 209,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-17",
+      "shard_name": "compact-large-17",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-core-runner-cli-3",
+          "shard_name": "agentic-agents-core-runner-cli-3"
+        },
+        {
+          "check_name": "checks-node-agentic-agents-support",
+          "shard_name": "agentic-agents-support"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-server-isolated",
+          "shard_name": "agentic-gateway-server-isolated"
+        },
+        {
+          "check_name": "checks-node-core-runtime-config",
+          "shard_name": "core-runtime-config"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-18",
+      "shard_name": "compact-large-18",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-control-plane-agent-chat",
+          "shard_name": "agentic-control-plane-agent-chat"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-server-isolated",
+          "shard_name": "agentic-gateway-server-isolated"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-cli-ui",
+          "shard_name": "core-runtime-infra-cli-ui"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-provider-push",
+          "shard_name": "core-runtime-infra-provider-push"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-19",
+      "shard_name": "compact-large-19",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-core-auth",
+          "shard_name": "agentic-agents-core-auth"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-server-isolated",
+          "shard_name": "agentic-gateway-server-isolated"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-channel-plugin",
+          "shard_name": "core-runtime-infra-channel-plugin"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-2",
+      "shard_name": "compact-large-2",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-core-models",
+          "shard_name": "agentic-agents-core-models"
+        },
+        {
+          "check_name": "checks-node-agentic-control-plane-runtime-server",
+          "shard_name": "agentic-control-plane-runtime-server"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-methods",
+          "shard_name": "agentic-gateway-methods"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-server-isolated",
+          "shard_name": "agentic-gateway-server-isolated"
+        },
+        {
+          "check_name": "checks-node-agentic-plugin-sdk",
+          "shard_name": "agentic-plugin-sdk"
+        },
+        {
+          "check_name": "checks-node-core-runtime-config",
+          "shard_name": "core-runtime-config"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-misc",
+          "shard_name": "core-runtime-infra-misc"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-system-runtime",
+          "shard_name": "core-runtime-infra-system-runtime"
+        },
+        {
+          "check_name": "checks-node-core-src-security-2",
+          "shard_name": "core-unit-src-security-2"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 654,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": "runtime",
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-20",
+      "shard_name": "compact-large-20",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-support",
+          "shard_name": "agentic-agents-support"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-methods",
+          "shard_name": "agentic-gateway-methods"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-server-isolated",
+          "shard_name": "agentic-gateway-server-isolated"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-gateway-lock-argv",
+          "shard_name": "core-runtime-infra-gateway-lock-argv"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-21",
+      "shard_name": "compact-large-21",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-gateway-server-isolated",
+          "shard_name": "agentic-gateway-server-isolated"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-outbound-actions",
+          "shard_name": "core-runtime-infra-outbound-actions"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 208,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-22",
+      "shard_name": "compact-large-22",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-gateway-server-isolated",
+          "shard_name": "agentic-gateway-server-isolated"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-core-utils",
+          "shard_name": "core-runtime-infra-core-utils"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-files-commands",
+          "shard_name": "core-runtime-infra-files-commands"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-misc",
+          "shard_name": "core-runtime-infra-misc"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-repo-tooling",
+          "shard_name": "core-runtime-infra-repo-tooling"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 207,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-23",
+      "shard_name": "compact-large-23",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-embedded",
+          "shard_name": "agentic-agents-embedded"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-server-isolated",
+          "shard_name": "agentic-gateway-server-isolated"
+        },
+        {
+          "check_name": "checks-node-core-fast-fake-timers",
+          "shard_name": "core-unit-fast-fake-timers"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (agentic-agents-embedded, agentic-gateway-server-isolated, core-unit-fast-fake-timers)",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-24",
+      "shard_name": "compact-large-24",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-embedded",
+          "shard_name": "agentic-agents-embedded"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-core-3",
+          "shard_name": "agentic-gateway-core-3"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (agentic-agents-embedded, agentic-gateway-core-3)",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-25",
+      "shard_name": "compact-large-25",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-runtime-media-ui-2",
+          "shard_name": "core-runtime-media-ui-2"
+        },
+        {
+          "check_name": "checks-node-core-src-security-1",
+          "shard_name": "core-unit-src-security-1"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-runtime-media-ui-2, core-unit-src-security-1)",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-26",
+      "shard_name": "compact-large-26",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-runtime-cron-parallel-isolated-agent",
+          "shard_name": "core-runtime-cron-parallel-isolated-agent"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        },
+        {
+          "check_name": "checks-node-core-src-security-3",
+          "shard_name": "core-unit-src-security-3"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-27",
+      "shard_name": "compact-large-27",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-fast-isolated",
+          "shard_name": "core-unit-fast-isolated"
+        },
+        {
+          "check_name": "checks-node-core-src-security-2",
+          "shard_name": "core-unit-src-security-2"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-unit-fast-isolated, core-unit-src-security-2)",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-28",
+      "shard_name": "compact-large-28",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-control-plane-auth-node",
+          "shard_name": "agentic-control-plane-auth-node"
+        },
+        {
+          "check_name": "checks-node-auto-reply-reply-continuation",
+          "shard_name": "auto-reply-reply-continuation"
+        },
+        {
+          "check_name": "checks-node-core-fast-isolated",
+          "shard_name": "core-unit-fast-isolated"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (agentic-control-plane-auth-node, auto-reply-reply-continuation, core-unit-fast-isolated)",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-29",
+      "shard_name": "compact-large-29",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-core-models",
+          "shard_name": "agentic-agents-core-models"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-outbound-core",
+          "shard_name": "core-runtime-infra-outbound-core"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (agentic-agents-core-models, core-runtime-infra-outbound-core)",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-3",
+      "shard_name": "compact-large-3",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-embedded",
+          "shard_name": "agentic-agents-embedded"
+        },
+        {
+          "check_name": "checks-node-agentic-control-plane-runtime-config",
+          "shard_name": "agentic-control-plane-runtime-config"
+        },
+        {
+          "check_name": "checks-node-agentic-control-plane-runtime-state",
+          "shard_name": "agentic-control-plane-runtime-state"
+        },
+        {
+          "check_name": "checks-node-auto-reply-reply-dispatch",
+          "shard_name": "auto-reply-reply-dispatch"
+        },
+        {
+          "check_name": "checks-node-core-runtime-config",
+          "shard_name": "core-runtime-config"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-device",
+          "shard_name": "core-runtime-infra-device"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-process",
+          "shard_name": "core-runtime-infra-process"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        },
+        {
+          "check_name": "checks-node-core-fast-1",
+          "shard_name": "core-unit-fast-1"
+        },
+        {
+          "check_name": "checks-node-core-fast-2",
+          "shard_name": "core-unit-fast-2"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 653,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": "runtime",
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-30",
+      "shard_name": "compact-large-30",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-commands-doctor-gateway",
+          "shard_name": "agentic-commands-doctor-gateway"
+        },
+        {
+          "check_name": "checks-node-agentic-commands-doctor-platform",
+          "shard_name": "agentic-commands-doctor-platform"
+        },
+        {
+          "check_name": "checks-node-agentic-commands-models",
+          "shard_name": "agentic-commands-models"
+        },
+        {
+          "check_name": "checks-node-agentic-control-plane-runtime-server",
+          "shard_name": "agentic-control-plane-runtime-server"
+        },
+        {
+          "check_name": "checks-node-auto-reply-reply-commands-1",
+          "shard_name": "auto-reply-reply-commands-1"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-file-safety",
+          "shard_name": "core-runtime-infra-file-safety"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        },
+        {
+          "check_name": "checks-node-core-runtime-media-ui-support",
+          "shard_name": "core-runtime-media-ui-support"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-31",
+      "shard_name": "compact-large-31",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-commands-doctor-whatsapp",
+          "shard_name": "agentic-commands-doctor-whatsapp"
+        },
+        {
+          "check_name": "checks-node-agentic-commands-doctor-workspace",
+          "shard_name": "agentic-commands-doctor-workspace"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-core-1",
+          "shard_name": "agentic-gateway-core-1"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        },
+        {
+          "check_name": "checks-node-core-runtime-media-ui-1",
+          "shard_name": "core-runtime-media-ui-1"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 202,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-32",
+      "shard_name": "compact-large-32",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-control-plane-http-models",
+          "shard_name": "agentic-control-plane-http-models"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-core-1",
+          "shard_name": "agentic-gateway-core-1"
+        },
+        {
+          "check_name": "checks-node-core-runtime-shared",
+          "shard_name": "core-runtime-shared"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (agentic-control-plane-http-models, agentic-gateway-core-1, core-runtime-shared)",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-33",
+      "shard_name": "compact-large-33",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-core-runtime",
+          "shard_name": "agentic-agents-core-runtime"
+        },
+        {
+          "check_name": "checks-node-agentic-agents-core-spawn-production-boundary",
+          "shard_name": "agentic-agents-core-spawn-production-boundary"
+        },
+        {
+          "check_name": "checks-node-core-support",
+          "shard_name": "core-unit-support"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (agentic-agents-core-runtime, agentic-agents-core-spawn-production-boundary, core-unit-support)",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-34",
+      "shard_name": "compact-large-34",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-auto-reply-reply-agent-runner",
+          "shard_name": "auto-reply-reply-agent-runner"
+        },
+        {
+          "check_name": "checks-node-core-markdown",
+          "shard_name": "core-markdown"
+        },
+        {
+          "check_name": "checks-node-core-fast-1",
+          "shard_name": "core-unit-fast-1"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (auto-reply-reply-agent-runner, core-markdown, core-unit-fast-1)",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-35",
+      "shard_name": "compact-large-35",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-commands-doctor-sessions-cron",
+          "shard_name": "agentic-commands-doctor-sessions-cron"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-system-runtime",
+          "shard_name": "core-runtime-infra-system-runtime"
+        },
+        {
+          "check_name": "checks-node-core-fast-2",
+          "shard_name": "core-unit-fast-2"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-36",
+      "shard_name": "compact-large-36",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-embedded",
+          "shard_name": "agentic-agents-embedded"
+        },
+        {
+          "check_name": "checks-node-auto-reply-reply-dispatch-delivery",
+          "shard_name": "auto-reply-reply-dispatch-delivery"
+        },
+        {
+          "check_name": "checks-node-core-runtime-media-ui-3",
+          "shard_name": "core-runtime-media-ui-3"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (agentic-agents-embedded, auto-reply-reply-dispatch-delivery, core-runtime-media-ui-3)",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-37",
+      "shard_name": "compact-large-37",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-embedded",
+          "shard_name": "agentic-agents-embedded"
+        },
+        {
+          "check_name": "checks-node-agentic-commands-doctor-config-state",
+          "shard_name": "agentic-commands-doctor-config-state"
+        },
+        {
+          "check_name": "checks-node-agentic-plugin-sdk",
+          "shard_name": "agentic-plugin-sdk"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (agentic-agents-embedded, agentic-commands-doctor-config-state, agentic-plugin-sdk)",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-38",
+      "shard_name": "compact-large-38",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-command-support",
+          "shard_name": "agentic-command-support"
+        },
+        {
+          "check_name": "checks-node-agentic-control-plane-runtime-state",
+          "shard_name": "agentic-control-plane-runtime-state"
+        },
+        {
+          "check_name": "checks-node-auto-reply-reply-dispatch-core",
+          "shard_name": "auto-reply-reply-dispatch-core"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (agentic-command-support, agentic-control-plane-runtime-state, auto-reply-reply-dispatch-core)",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-39",
+      "shard_name": "compact-large-39",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-support",
+          "shard_name": "agentic-agents-support"
+        },
+        {
+          "check_name": "checks-node-agentic-commands-agent-channel",
+          "shard_name": "agentic-commands-agent-channel"
+        },
+        {
+          "check_name": "checks-node-core-runtime-cron-parallel-service",
+          "shard_name": "core-runtime-cron-parallel-service"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-diagnostics-state",
+          "shard_name": "core-runtime-infra-diagnostics-state"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 196,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-4",
+      "shard_name": "compact-large-4",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-core-runner-commands",
+          "shard_name": "agentic-agents-core-runner-commands"
+        },
+        {
+          "check_name": "checks-node-agentic-agents-support",
+          "shard_name": "agentic-agents-support"
+        },
+        {
+          "check_name": "checks-node-auto-reply-reply-dispatch-lifecycle",
+          "shard_name": "auto-reply-reply-dispatch-lifecycle"
+        },
+        {
+          "check_name": "checks-node-auto-reply-reply-state-routing",
+          "shard_name": "auto-reply-reply-state-routing"
+        },
+        {
+          "check_name": "checks-node-core-runtime-config",
+          "shard_name": "core-runtime-config"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-approval-exec",
+          "shard_name": "core-runtime-infra-approval-exec"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-net-install",
+          "shard_name": "core-runtime-infra-net-install"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-network-platform",
+          "shard_name": "core-runtime-infra-network-platform"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-process",
+          "shard_name": "core-runtime-infra-process"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 208,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-40",
+      "shard_name": "compact-large-40",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-control-plane-startup-core",
+          "shard_name": "agentic-control-plane-startup-core"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-methods",
+          "shard_name": "agentic-gateway-methods"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-server-isolated",
+          "shard_name": "agentic-gateway-server-isolated"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "gateway",
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of agentic-control-plane-startup-core, core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (gateway,sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-41",
+      "shard_name": "compact-large-41",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-support",
+          "shard_name": "agentic-agents-support"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-methods",
+          "shard_name": "agentic-gateway-methods"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-server-isolated",
+          "shard_name": "agentic-gateway-server-isolated"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 207,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-42",
+      "shard_name": "compact-large-42",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-gateway-methods",
+          "shard_name": "agentic-gateway-methods"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-server-isolated",
+          "shard_name": "agentic-gateway-server-isolated"
+        },
+        {
+          "check_name": "checks-node-core-runtime-cron-parallel-core",
+          "shard_name": "core-runtime-cron-parallel-core"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-43",
+      "shard_name": "compact-large-43",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-support",
+          "shard_name": "agentic-agents-support"
+        },
+        {
+          "check_name": "checks-node-agentic-commands-doctor",
+          "shard_name": "agentic-commands-doctor"
+        },
+        {
+          "check_name": "checks-node-agentic-control-plane-http-plugin-ws",
+          "shard_name": "agentic-control-plane-http-plugin-ws"
+        },
+        {
+          "check_name": "checks-node-agentic-control-plane-startup-health-runtime",
+          "shard_name": "agentic-control-plane-startup-health-runtime"
+        },
+        {
+          "check_name": "checks-node-agentic-control-plane-startup-restart-close",
+          "shard_name": "agentic-control-plane-startup-restart-close"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-methods",
+          "shard_name": "agentic-gateway-methods"
+        },
+        {
+          "check_name": "checks-node-auto-reply-reply-commands-2",
+          "shard_name": "auto-reply-reply-commands-2"
+        },
+        {
+          "check_name": "checks-node-core-runtime-config",
+          "shard_name": "core-runtime-config"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (agentic-agents-support, agentic-commands-doctor, agentic-control-plane-http-plugin-ws, agentic-control-plane-startup-health-runtime, agentic-control-plane-startup-restart-close, agentic-gateway-methods, auto-reply-reply-commands-2, core-runtime-config)",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-44",
+      "shard_name": "compact-large-44",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-core-runner-sessions",
+          "shard_name": "agentic-agents-core-runner-sessions"
+        },
+        {
+          "check_name": "checks-node-agentic-agents-support",
+          "shard_name": "agentic-agents-support"
+        },
+        {
+          "check_name": "checks-node-agentic-commands-doctor",
+          "shard_name": "agentic-commands-doctor"
+        },
+        {
+          "check_name": "checks-node-agentic-commands-doctor-plugins-tools",
+          "shard_name": "agentic-commands-doctor-plugins-tools"
+        },
+        {
+          "check_name": "checks-node-agentic-commands-doctor-shared",
+          "shard_name": "agentic-commands-doctor-shared"
+        },
+        {
+          "check_name": "checks-node-agentic-control-plane-runtime-ui-tools",
+          "shard_name": "agentic-control-plane-runtime-ui-tools"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-env-auth",
+          "shard_name": "core-runtime-infra-env-auth"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-events-runtime",
+          "shard_name": "core-runtime-infra-events-runtime"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-heartbeat-core",
+          "shard_name": "core-runtime-infra-heartbeat-core"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-45",
+      "shard_name": "compact-large-45",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-gateway-server-isolated",
+          "shard_name": "agentic-gateway-server-isolated"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "standard",
+      "weight_seconds": 155,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-5",
+      "shard_name": "compact-large-5",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-core-runner-cli-1",
+          "shard_name": "agentic-agents-core-runner-cli-1"
+        },
+        {
+          "check_name": "checks-node-agentic-agents-core-runner-cli-2",
+          "shard_name": "agentic-agents-core-runner-cli-2"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-server-isolated",
+          "shard_name": "agentic-gateway-server-isolated"
+        },
+        {
+          "check_name": "checks-node-core-runtime-config",
+          "shard_name": "core-runtime-config"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-misc-values",
+          "shard_name": "core-runtime-infra-misc-values"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-6",
+      "shard_name": "compact-large-6",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-core-isolated",
+          "shard_name": "agentic-agents-core-isolated"
+        },
+        {
+          "check_name": "checks-node-agentic-agents-support",
+          "shard_name": "agentic-agents-support"
+        },
+        {
+          "check_name": "checks-node-agentic-commands-status-tools",
+          "shard_name": "agentic-commands-status-tools"
+        },
+        {
+          "check_name": "checks-node-agentic-control-plane-agent-chat",
+          "shard_name": "agentic-control-plane-agent-chat"
+        },
+        {
+          "check_name": "checks-node-agentic-control-plane-runtime-shared-token",
+          "shard_name": "agentic-control-plane-runtime-shared-token"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-methods",
+          "shard_name": "agentic-gateway-methods"
+        },
+        {
+          "check_name": "checks-node-auto-reply-reply-commands-3",
+          "shard_name": "auto-reply-reply-commands-3"
+        },
+        {
+          "check_name": "checks-node-core-runtime-config",
+          "shard_name": "core-runtime-config"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        },
+        {
+          "check_name": "checks-node-core-src-security-support",
+          "shard_name": "core-unit-src-security-support"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 209,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-7",
+      "shard_name": "compact-large-7",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-commands-doctor-auth",
+          "shard_name": "agentic-commands-doctor-auth"
+        },
+        {
+          "check_name": "checks-node-agentic-commands-status-tools",
+          "shard_name": "agentic-commands-status-tools"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-server-isolated",
+          "shard_name": "agentic-gateway-server-isolated"
+        },
+        {
+          "check_name": "checks-node-core-runtime-config",
+          "shard_name": "core-runtime-config"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-8",
+      "shard_name": "compact-large-8",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-core-subagents",
+          "shard_name": "agentic-agents-core-subagents"
+        },
+        {
+          "check_name": "checks-node-agentic-control-plane-runtime",
+          "shard_name": "agentic-control-plane-runtime"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-server-isolated",
+          "shard_name": "agentic-gateway-server-isolated"
+        },
+        {
+          "check_name": "checks-node-core-runtime-config",
+          "shard_name": "core-runtime-config"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-network-node",
+          "shard_name": "core-runtime-infra-network-node"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-large-9",
+      "shard_name": "compact-large-9",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-agents-core-runner-embedded",
+          "shard_name": "agentic-agents-core-runner-embedded"
+        },
+        {
+          "check_name": "checks-node-agentic-control-plane-agent-chat",
+          "shard_name": "agentic-control-plane-agent-chat"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-server-isolated",
+          "shard_name": "agentic-gateway-server-isolated"
+        },
+        {
+          "check_name": "checks-node-core-runtime-config",
+          "shard_name": "core-runtime-config"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-gateway-processes",
+          "shard_name": "core-runtime-infra-gateway-processes"
+        },
+        {
+          "check_name": "checks-node-core-runtime-infra-storage-state",
+          "shard_name": "core-runtime-infra-storage-state"
+        }
+      ],
+      "capability_class": "host_local",
+      "local_capabilities": [
+        "sqlite"
+      ],
+      "capability_reason": "compact bundle: host_local because it runs files of core-runtime-infra-storage-state",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "host_local capability (sqlite) of a source shard: a hosted worker cannot satisfy it",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-1",
+      "shard_name": "compact-small-1",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-commands-runtime",
+          "shard_name": "agentic-commands-runtime"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (agentic-commands-runtime)",
+      "weight_class": "large",
+      "weight_seconds": 851,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": "runtime",
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-10",
+      "shard_name": "compact-small-10",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-cli-process",
+          "shard_name": "agentic-cli-process"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (agentic-cli-process)",
+      "weight_class": "standard",
+      "weight_seconds": 115,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-11",
+      "shard_name": "compact-small-11",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-cli-process",
+          "shard_name": "agentic-cli-process"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (agentic-cli-process)",
+      "weight_class": "standard",
+      "weight_seconds": 115,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-12",
+      "shard_name": "compact-small-12",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-gateway-core-inventory",
+          "shard_name": "agentic-gateway-core-inventory"
+        },
+        {
+          "check_name": "checks-node-core-tooling-isolated",
+          "shard_name": "core-tooling-isolated"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (agentic-gateway-core-inventory, core-tooling-isolated)",
+      "weight_class": "standard",
+      "weight_seconds": 81,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-13",
+      "shard_name": "compact-small-13",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-1",
+          "shard_name": "core-tooling-1"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-1)",
+      "weight_class": "large",
+      "weight_seconds": 312,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-14",
+      "shard_name": "compact-small-14",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-2",
+          "shard_name": "core-tooling-2"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-2)",
+      "weight_class": "large",
+      "weight_seconds": 303,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-15",
+      "shard_name": "compact-small-15",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-3",
+          "shard_name": "core-tooling-3"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-3)",
+      "weight_class": "large",
+      "weight_seconds": 288,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-16",
+      "shard_name": "compact-small-16",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-4",
+          "shard_name": "core-tooling-4"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-4)",
+      "weight_class": "large",
+      "weight_seconds": 277,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-17",
+      "shard_name": "compact-small-17",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-5",
+          "shard_name": "core-tooling-5"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-5)",
+      "weight_class": "large",
+      "weight_seconds": 276,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-18",
+      "shard_name": "compact-small-18",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-6",
+          "shard_name": "core-tooling-6"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-6)",
+      "weight_class": "large",
+      "weight_seconds": 263,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-19",
+      "shard_name": "compact-small-19",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-7",
+          "shard_name": "core-tooling-7"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-7)",
+      "weight_class": "large",
+      "weight_seconds": 258,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-2",
+      "shard_name": "compact-small-2",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-commands-doctor-sessions-cron-memory",
+          "shard_name": "agentic-commands-doctor-sessions-cron-memory"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (agentic-commands-doctor-sessions-cron-memory)",
+      "weight_class": "large",
+      "weight_seconds": 268,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-20",
+      "shard_name": "compact-small-20",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-8",
+          "shard_name": "core-tooling-8"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-8)",
+      "weight_class": "large",
+      "weight_seconds": 237,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-21",
+      "shard_name": "compact-small-21",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-9",
+          "shard_name": "core-tooling-9"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-9)",
+      "weight_class": "large",
+      "weight_seconds": 232,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-22",
+      "shard_name": "compact-small-22",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-10",
+          "shard_name": "core-tooling-10"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-10)",
+      "weight_class": "large",
+      "weight_seconds": 229,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-23",
+      "shard_name": "compact-small-23",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-11",
+          "shard_name": "core-tooling-11"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-11)",
+      "weight_class": "large",
+      "weight_seconds": 223,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-24",
+      "shard_name": "compact-small-24",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-12",
+          "shard_name": "core-tooling-12"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-12)",
+      "weight_class": "large",
+      "weight_seconds": 218,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-25",
+      "shard_name": "compact-small-25",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-13",
+          "shard_name": "core-tooling-13"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-13)",
+      "weight_class": "large",
+      "weight_seconds": 208,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-26",
+      "shard_name": "compact-small-26",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-14",
+          "shard_name": "core-tooling-14"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-14)",
+      "weight_class": "large",
+      "weight_seconds": 208,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-27",
+      "shard_name": "compact-small-27",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-15",
+          "shard_name": "core-tooling-15"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-15)",
+      "weight_class": "large",
+      "weight_seconds": 202,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-28",
+      "shard_name": "compact-small-28",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-16",
+          "shard_name": "core-tooling-16"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-16)",
+      "weight_class": "large",
+      "weight_seconds": 197,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-29",
+      "shard_name": "compact-small-29",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-14",
+          "shard_name": "core-tooling-14"
+        },
+        {
+          "check_name": "checks-node-core-tooling-2",
+          "shard_name": "core-tooling-2"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-14, core-tooling-2)",
+      "weight_class": "large",
+      "weight_seconds": 300,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-3",
+      "shard_name": "compact-small-3",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-commands-doctor-sessions-cron-sqlite",
+          "shard_name": "agentic-commands-doctor-sessions-cron-sqlite"
+        },
+        {
+          "check_name": "checks-node-core-runtime-secrets",
+          "shard_name": "core-runtime-secrets"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (agentic-commands-doctor-sessions-cron-sqlite, core-runtime-secrets)",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-30",
+      "shard_name": "compact-small-30",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-3",
+          "shard_name": "core-tooling-3"
+        },
+        {
+          "check_name": "checks-node-core-tooling-4",
+          "shard_name": "core-tooling-4"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-3, core-tooling-4)",
+      "weight_class": "large",
+      "weight_seconds": 300,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-31",
+      "shard_name": "compact-small-31",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-7",
+          "shard_name": "core-tooling-7"
+        },
+        {
+          "check_name": "checks-node-core-tooling-8",
+          "shard_name": "core-tooling-8"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-7, core-tooling-8)",
+      "weight_class": "large",
+      "weight_seconds": 300,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-32",
+      "shard_name": "compact-small-32",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-1",
+          "shard_name": "core-tooling-1"
+        },
+        {
+          "check_name": "checks-node-core-tooling-9",
+          "shard_name": "core-tooling-9"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-1, core-tooling-9)",
+      "weight_class": "large",
+      "weight_seconds": 300,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-33",
+      "shard_name": "compact-small-33",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-12",
+          "shard_name": "core-tooling-12"
+        },
+        {
+          "check_name": "checks-node-core-tooling-13",
+          "shard_name": "core-tooling-13"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-12, core-tooling-13)",
+      "weight_class": "large",
+      "weight_seconds": 300,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-34",
+      "shard_name": "compact-small-34",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-15",
+          "shard_name": "core-tooling-15"
+        },
+        {
+          "check_name": "checks-node-core-tooling-16",
+          "shard_name": "core-tooling-16"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-15, core-tooling-16)",
+      "weight_class": "large",
+      "weight_seconds": 300,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-35",
+      "shard_name": "compact-small-35",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-5",
+          "shard_name": "core-tooling-5"
+        },
+        {
+          "check_name": "checks-node-core-tooling-6",
+          "shard_name": "core-tooling-6"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-5, core-tooling-6)",
+      "weight_class": "large",
+      "weight_seconds": 300,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-36",
+      "shard_name": "compact-small-36",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-1",
+          "shard_name": "core-tooling-1"
+        },
+        {
+          "check_name": "checks-node-core-tooling-2",
+          "shard_name": "core-tooling-2"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-1, core-tooling-2)",
+      "weight_class": "large",
+      "weight_seconds": 300,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-37",
+      "shard_name": "compact-small-37",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-10",
+          "shard_name": "core-tooling-10"
+        },
+        {
+          "check_name": "checks-node-core-tooling-3",
+          "shard_name": "core-tooling-3"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-10, core-tooling-3)",
+      "weight_class": "large",
+      "weight_seconds": 254,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-38",
+      "shard_name": "compact-small-38",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-11",
+          "shard_name": "core-tooling-11"
+        },
+        {
+          "check_name": "checks-node-core-tooling-5",
+          "shard_name": "core-tooling-5"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-11, core-tooling-5)",
+      "weight_class": "large",
+      "weight_seconds": 246,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-39",
+      "shard_name": "compact-small-39",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-12",
+          "shard_name": "core-tooling-12"
+        },
+        {
+          "check_name": "checks-node-core-tooling-16",
+          "shard_name": "core-tooling-16"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-12, core-tooling-16)",
+      "weight_class": "large",
+      "weight_seconds": 239,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-4",
+      "shard_name": "compact-small-4",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-cli-process",
+          "shard_name": "agentic-cli-process"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (agentic-cli-process)",
+      "weight_class": "large",
+      "weight_seconds": 200,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-40",
+      "shard_name": "compact-small-40",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-15",
+          "shard_name": "core-tooling-15"
+        },
+        {
+          "check_name": "checks-node-core-tooling-9",
+          "shard_name": "core-tooling-9"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-15, core-tooling-9)",
+      "weight_class": "large",
+      "weight_seconds": 234,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-41",
+      "shard_name": "compact-small-41",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-7",
+          "shard_name": "core-tooling-7"
+        },
+        {
+          "check_name": "checks-node-core-tooling-8",
+          "shard_name": "core-tooling-8"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-7, core-tooling-8)",
+      "weight_class": "large",
+      "weight_seconds": 225,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-42",
+      "shard_name": "compact-small-42",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-13",
+          "shard_name": "core-tooling-13"
+        },
+        {
+          "check_name": "checks-node-core-tooling-6",
+          "shard_name": "core-tooling-6"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-13, core-tooling-6)",
+      "weight_class": "large",
+      "weight_seconds": 214,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-43",
+      "shard_name": "compact-small-43",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-tooling-14",
+          "shard_name": "core-tooling-14"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-tooling-14)",
+      "weight_class": "standard",
+      "weight_seconds": 106,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-5",
+      "shard_name": "compact-small-5",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-cli-process",
+          "shard_name": "agentic-cli-process"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (agentic-cli-process)",
+      "weight_class": "large",
+      "weight_seconds": 200,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-6",
+      "shard_name": "compact-small-6",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-cli",
+          "shard_name": "agentic-cli"
+        },
+        {
+          "check_name": "checks-node-core-tooling-1",
+          "shard_name": "core-tooling-1"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (agentic-cli, core-tooling-1)",
+      "weight_class": "standard",
+      "weight_seconds": 148,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-7",
+      "shard_name": "compact-small-7",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-cli-process",
+          "shard_name": "agentic-cli-process"
+        },
+        {
+          "check_name": "checks-node-agentic-gateway-core-runtime",
+          "shard_name": "agentic-gateway-core-runtime"
+        },
+        {
+          "check_name": "checks-node-core-tooling-10",
+          "shard_name": "core-tooling-10"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (agentic-cli-process, agentic-gateway-core-runtime, core-tooling-10)",
+      "weight_class": "large",
+      "weight_seconds": 610,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": "runtime",
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-8",
+      "shard_name": "compact-small-8",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-cli-process",
+          "shard_name": "agentic-cli-process"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (agentic-cli-process)",
+      "weight_class": "standard",
+      "weight_seconds": 116,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-9",
+      "shard_name": "compact-small-9",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-agentic-cli-process",
+          "shard_name": "agentic-cli-process"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (agentic-cli-process)",
+      "weight_class": "standard",
+      "weight_seconds": 116,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic compact bundle; upstream sized it for one hosted runner",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-compact-small-dist-1",
+      "shard_name": "compact-small-dist-1",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-support-boundary",
+          "shard_name": "core-support-boundary"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-support-boundary)",
+      "weight_class": "small",
+      "weight_seconds": 40,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": true,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "requires the dist runtime artifact produced by the self-hosted static-gates job",
+      "lane": "self-hosted-dist"
+    },
+    {
+      "check_name": "checks-node-compact-small-dist-2",
+      "shard_name": "compact-small-dist-2",
+      "compact_sources": [
+        {
+          "check_name": "checks-node-core-runtime-tui-pty",
+          "shard_name": "core-runtime-tui-pty"
+        }
+      ],
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "compact bundle: every source shard is hermetic (core-runtime-tui-pty)",
+      "weight_class": "large",
+      "weight_seconds": 726,
+      "weight_source": "upstream-compact-plan",
+      "weight_reason": "upstream createNodeTestShardBundles predictedSeconds (github profile), with Mode-B's measured pretest build in place of upstream's",
+      "requires_dist": true,
+      "pretest_build_mode": "runtime",
+      "execution_class": "self-hosted",
+      "execution_reason": "requires the dist runtime artifact produced by the self-hosted static-gates job",
+      "lane": "self-hosted-dist"
+    },
+    {
+      "check_name": "checks-node-agentic-plugins",
+      "shard_name": "agentic-plugins",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "seed: tip-plan full coverage; provisional hermetic (no declared live gateway/SQLite/journal/SWIM/seat requirement)",
+      "weight_class": "standard",
+      "weight_seconds": 155,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": "runtime",
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 155s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-fast-contracts-plugins-a",
+      "shard_name": "checks-fast-contracts-plugins-a",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=contract declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "small",
+      "weight_seconds": 53,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 53s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-fast-contracts-plugins-b",
+      "shard_name": "checks-fast-contracts-plugins-b",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=contract declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "small",
+      "weight_seconds": 53,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 53s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-fast-contracts-channels-a",
+      "shard_name": "checks-fast-contracts-channels-a",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=contract declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "standard",
+      "weight_seconds": 102,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 102s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-fast-contracts-channels-b",
+      "shard_name": "checks-fast-contracts-channels-b",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=contract declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "standard",
+      "weight_seconds": 102,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 102s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-core-bundled",
+      "shard_name": "core-bundled",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "small",
+      "weight_seconds": 31,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 31s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-channels",
+      "shard_name": "channels",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "small",
+      "weight_seconds": 31,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 31s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-active-memory",
+      "shard_name": "extension-active-memory",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "small",
+      "weight_seconds": 39,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 39s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-acpx",
+      "shard_name": "extension-acpx",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "small",
+      "weight_seconds": 39,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 39s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-codex-app-server-attempt-light",
+      "shard_name": "extension-codex-app-server-attempt-light",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "small",
+      "weight_seconds": 48,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 48s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-codex-app-server-attempt-support",
+      "shard_name": "extension-codex-app-server-attempt-support",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "small",
+      "weight_seconds": 48,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 48s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-codex-app-server-runtime",
+      "shard_name": "extension-codex-app-server-runtime",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "standard",
+      "weight_seconds": 107,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 107s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-codex-app-server-support",
+      "shard_name": "extension-codex-app-server-support",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "standard",
+      "weight_seconds": 107,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 107s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-codex-app-server-tools",
+      "shard_name": "extension-codex-app-server-tools",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "standard",
+      "weight_seconds": 62,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 62s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-codex-surface",
+      "shard_name": "extension-codex-surface",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "standard",
+      "weight_seconds": 62,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 62s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-diffs",
+      "shard_name": "extension-diffs",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "standard",
+      "weight_seconds": 89,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 89s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-discord",
+      "shard_name": "extension-discord",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "standard",
+      "weight_seconds": 89,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 89s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-feishu",
+      "shard_name": "extension-feishu",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "standard",
+      "weight_seconds": 62,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 62s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-imessage",
+      "shard_name": "extension-imessage",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "standard",
+      "weight_seconds": 62,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 62s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-irc",
+      "shard_name": "extension-irc",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "small",
+      "weight_seconds": 27,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 27s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-line",
+      "shard_name": "extension-line",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "small",
+      "weight_seconds": 27,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 27s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-mattermost",
+      "shard_name": "extension-mattermost",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "standard",
+      "weight_seconds": 72,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 72s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-matrix",
+      "shard_name": "extension-matrix",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "standard",
+      "weight_seconds": 72,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 72s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-memory",
+      "shard_name": "extension-memory",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "large",
+      "weight_seconds": 290,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "resource-heavy: weight 290s >= hosted budget 280s (hosted workers are ~2x slower per core)",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-extension-messaging",
+      "shard_name": "extension-messaging",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "large",
+      "weight_seconds": 290,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "resource-heavy: weight 290s >= hosted budget 280s (hosted workers are ~2x slower per core)",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-extension-msteams",
+      "shard_name": "extension-msteams",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "small",
+      "weight_seconds": 47,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 47s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-provider-openai",
+      "shard_name": "extension-provider-openai",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "small",
+      "weight_seconds": 47,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 47s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-providers",
+      "shard_name": "extension-providers",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 210s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-signal",
+      "shard_name": "extension-signal",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "large",
+      "weight_seconds": 210,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 210s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-slack",
+      "shard_name": "extension-slack",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "large",
+      "weight_seconds": 306,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "resource-heavy: weight 306s >= hosted budget 280s (hosted workers are ~2x slower per core)",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-extension-database-workers",
+      "shard_name": "extension-database-workers",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "reviewed dedicated logbook and team-reports extension shard; SQLite and worker-thread ownership remain checkout-local, tests use isolated temporary state and loopback or mocked transports, and no live gateway, database service, journal, SWIM, seat, deployment, or dist capability is required",
+      "weight_class": "small",
+      "weight_seconds": 25,
+      "weight_source": "default",
+      "weight_reason": "no recorded observation, upstream hint, or declared runner class",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 25s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-telegram",
+      "shard_name": "extension-telegram",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "large",
+      "weight_seconds": 306,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "self-hosted",
+      "execution_reason": "resource-heavy: weight 306s >= hosted budget 280s (hosted workers are ~2x slower per core)",
+      "lane": "self-hosted"
+    },
+    {
+      "check_name": "checks-node-extension-voice-call",
+      "shard_name": "extension-voice-call",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "standard",
+      "weight_seconds": 68,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 68s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-whatsapp",
+      "shard_name": "extension-whatsapp",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "standard",
+      "weight_seconds": 68,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 68s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-zalo",
+      "shard_name": "extension-zalo",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "standard",
+      "weight_seconds": 167,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 167s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-browser",
+      "shard_name": "extension-browser",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "standard",
+      "weight_seconds": 167,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 167s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-qa",
+      "shard_name": "extension-qa",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "standard",
+      "weight_seconds": 158,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 158s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-media",
+      "shard_name": "extension-media",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "standard",
+      "weight_seconds": 158,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 158s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extensions",
+      "shard_name": "extensions",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "large",
+      "weight_seconds": 182,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 182s < hosted budget 280s",
+      "lane": "hosted"
+    },
+    {
+      "check_name": "checks-node-extension-misc",
+      "shard_name": "extension-misc",
+      "compact_sources": null,
+      "capability_class": "hermetic",
+      "local_capabilities": [],
+      "capability_reason": "capability carried from planner metadata: kind=supplemental declares no live gateway/SQLite/journal/SWIM/seat requirement",
+      "weight_class": "large",
+      "weight_seconds": 182,
+      "weight_source": "fleet-observed",
+      "weight_reason": "median over runs of (batch_wall_seconds - 75) * min(host_slots,batch_size) / batch_size over runs 31253132297,31256954700,31265097677",
+      "requires_dist": false,
+      "pretest_build_mode": null,
+      "execution_class": "hosted",
+      "execution_reason": "hermetic and small: weight 182s < hosted budget 280s",
+      "lane": "hosted"
+    }
+  ]
+}

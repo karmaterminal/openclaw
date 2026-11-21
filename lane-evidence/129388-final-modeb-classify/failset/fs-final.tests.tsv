@@ -1,0 +1,90 @@
+shard	file	title	sources	subshards
+agentic-plugins	src/plugins/plugin-generation-artifact.native-reference.test.ts	captures native companions into state on another filesystem	summary	plugins
+compact-large-10	src/agents/openclaw-tools.workshop-authority.test.ts	refuses the write when the caller is revoked during awaited preparation	log+summary	core-runtime-infra-storage-state-hosted-12;infra
+compact-large-15	src/auto-reply/reply/session-event-permissions.test.ts	bounds a production background completion by current and retained permissions: retained-database-replacement	log+summary	core-runtime-infra-storage-state-hosted-28;infra
+compact-large-15	src/gateway/mcp-http.completion-lineage.test.ts	MCP loopback completion lineage at the final tool-effect fence > rejects the write at its source guard when the lineage is removed after dispatch	log+summary	agentic-gateway-server-isolated-hosted-12;gateway-database-workers
+compact-large-18	src/sessions/user-turn-transcript.recorder.test.ts	createUserTurnTranscriptRecorder > preserves distinct text supplied with late-resolved media	log+summary	core-runtime-infra-storage-state-hosted-25;infra
+compact-large-18	src/sessions/user-turn-transcript.recorder.test.ts	createUserTurnTranscriptRecorder > returns the older receipt-free row for an idempotent managed-delivery retry	log+summary	core-runtime-infra-storage-state-hosted-25;infra
+compact-large-19	src/config/sessions/disk-budget.physical-usage.test.ts	physical session disk usage > joins real SDK mutation maintenance before native fixture drainage	log+summary	core-runtime-infra-storage-state-hosted-30;infra
+compact-large-2	src/agents/embedded-agent-runner/compact.queued-successor.test.ts	fences a queued maintenance writer replacement after acceptance: during branch read (captured=undefined)	log+summary	core-runtime-infra-storage-state-hosted-20;infra
+compact-large-2	src/gateway/server-methods/agent.visitor-access.test.ts	visitor access admitted caller > reopens existing profiles and grants and repairs a missing Visitor model policy	log+summary	agentic-gateway-methods-hosted-1;gateway-methods-isolated
+compact-large-22	src/infra/shell-env.test.ts	shell env fallback > uses interactive Bash login startup before nounset reads PS1	log+summary	core-runtime-infra-files-commands;infra
+compact-large-25	ui/src/styles/session-row-tint.node.test.ts	(file-level suite failure)	summary	ui
+compact-large-25	ui/src/test-helpers/new-session-page-opener.node.test.ts	captures New Session failures before closing their contexts and starting the next test	log+summary	core-runtime-media-ui-2;ui
+compact-large-27	src/state/openclaw-database-preflight.artifacts.test.ts	falls back to the private snapshot when the last owner closes during a preserving read	log+summary	core-unit-src-security-2-hosted-2;unit-src
+compact-large-31	src/agents/openclaw-tools.workshop-contract.test.ts	Workshop through the OpenClaw tool set > T7: captures the invoking source authority before its first await	log+summary	core-runtime-infra-storage-state-hosted-21;infra
+compact-large-31	ui/src/styles/background-invalidation.node.test.ts	(file-level suite failure)	summary	ui
+compact-large-31	ui/src/styles/incognito-shade.browser.test.ts	(file-level suite failure)	summary	ui
+compact-large-32	src/gateway/mcp-http.loopback-real-recovery.test.ts	fences retired warm-turn writes while preserving the successor's bearer	log+summary	agentic-gateway-core-1-hosted-1;gateway-core
+compact-large-34	src/infra/worker-task-pool.memory.test.ts	collects a completed large external payload while keeping the bounded worker warm	log+summary	core-unit-fast-1-hosted-2;unit-fast
+compact-large-35	src/commands/doctor-session-transcript-labels.reuse.test.ts	update Doctor retained transcript scan reuse > does not scan unchanged retained history twice across update passes	log+summary	agentic-commands-doctor-sessions-cron;commands
+compact-large-35	src/infra/package-update-permission-drift.test.ts	publication permission drift > repairs a recursive named-user POSIX ACL	log+summary	core-runtime-infra-system-runtime-hosted-2;infra
+compact-large-35	src/infra/update-retained-runtime-imports.process.test.ts	keeps bun late imports on the old generation through replacement and CLI teardown	log+summary	core-runtime-infra-system-runtime-hosted-2;infra
+compact-large-39	src/agents/harness/mediated-delegation-effects.test.ts	cli-loopback delegated final effects (stamped visible spawn: false) > rejects revocation at the final exec boundary	log+summary	agentic-agents-support-hosted-2;agents-support
+compact-large-39	src/agents/harness/mediated-delegation-effects.test.ts	cli-loopback delegated final effects (stamped visible spawn: false) > rejects revocation at the final write boundary	log+summary	agentic-agents-support-hosted-2;agents-support
+compact-large-39	src/agents/harness/mediated-delegation-effects.test.ts	cli-loopback delegated final effects (stamped visible spawn: true) > rejects revocation at the final exec boundary	log+summary	agentic-agents-support-hosted-2;agents-support
+compact-large-39	src/agents/harness/mediated-delegation-effects.test.ts	cli-loopback delegated final effects (stamped visible spawn: true) > rejects revocation at the final write boundary	log+summary	agentic-agents-support-hosted-2;agents-support
+compact-large-39	src/agents/harness/mediated-delegation-effects.test.ts	plugin-harness delegated final effects (stamped visible spawn: false) > rejects revocation at the final exec boundary	log+summary	agentic-agents-support-hosted-2;agents-support
+compact-large-39	src/agents/harness/mediated-delegation-effects.test.ts	plugin-harness delegated final effects (stamped visible spawn: false) > rejects revocation at the final write boundary	log+summary	agentic-agents-support-hosted-2;agents-support
+compact-large-39	src/agents/harness/mediated-delegation-effects.test.ts	plugin-harness delegated final effects (stamped visible spawn: true) > rejects revocation at the final exec boundary	log+summary	agentic-agents-support-hosted-2;agents-support
+compact-large-39	src/agents/harness/mediated-delegation-effects.test.ts	plugin-harness delegated final effects (stamped visible spawn: true) > rejects revocation at the final write boundary	log+summary	agentic-agents-support-hosted-2;agents-support
+compact-large-4	src/agents/worktrees/filesystem-native.test.ts	preserves native mode across ReFS copies on a reused worker	log+summary	agentic-agents-support-hosted-8;agents-support
+compact-large-6	src/agents/subagents/registry/subagent-registry-worker.test.ts	releases serialized payloads while their immutable registry rows remain resident	log+summary	agentic-agents-support-hosted-3;agents-support
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	ci wrapper joins admission work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	ci wrapper joins admission work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	ci wrapper joins compilation work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	ci wrapper joins compilation work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	ci wrapper joins deletion work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	ci wrapper joins deletion work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	ci wrapper joins disposal work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	ci wrapper joins disposal work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	ci-disconnect wrapper joins admission work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	ci-shared wrapper joins compilation work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	ci-shared wrapper joins compilation work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	direct wrapper joins admission work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	direct wrapper joins admission work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	direct wrapper joins compilation work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	direct wrapper joins compilation work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	direct wrapper joins deletion work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	direct wrapper joins deletion work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	direct wrapper joins disposal work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	direct wrapper joins disposal work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	serial wrapper joins compilation work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	serial wrapper joins compilation work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	serial wrapper joins deletion work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	serial wrapper joins deletion work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	serial wrapper joins disposal work before honoring SIGINT	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-30	test/scripts/vitest-worker-shutdown.test.ts	serial wrapper joins disposal work before honoring SIGTERM	log+summary	core-tooling-4-hosted-2;tooling
+compact-small-33	test/helpers/openclaw-test-instance.test.ts	openclaw test instance > keeps claimed port offset 0 unavailable while its child starts	log+summary	core-tooling-13-hosted-2;tooling
+compact-small-33	test/helpers/openclaw-test-instance.test.ts	openclaw test instance > keeps claimed port offset 1 unavailable while its child starts	log+summary	core-tooling-13-hosted-2;tooling
+compact-small-36	test/scripts/bun-standalone-codegen.test.ts	standalone fixed code generation > captures remaining static programs (//!)	log+summary	core-tooling-1-hosted-3;tooling
+compact-small-36	test/scripts/bun-standalone-codegen.test.ts	standalone fixed code generation > captures remaining static programs (//#region)	log+summary	core-tooling-1-hosted-3;tooling
+compact-small-36	test/scripts/bun-standalone-codegen.test.ts	standalone fixed code generation > captures remaining static programs (//)	log+summary	core-tooling-1-hosted-3;tooling
+compact-small-40	test/scripts-update-gateway-legacy.test.ts	published source shell reaches candidate build entry: begin-abort	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts-update-gateway-legacy.test.ts	published source shell reaches candidate build entry: begin-unjoined	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts-update-gateway-legacy.test.ts	published source shell reaches candidate build entry: build-throw-restart	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts-update-gateway-legacy.test.ts	published source shell reaches candidate build entry: build-throw-settle	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts-update-gateway-legacy.test.ts	published source shell reaches candidate build entry: failure	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts-update-gateway-legacy.test.ts	published source shell reaches candidate build entry: failure-scheduled	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts-update-gateway-legacy.test.ts	published source shell reaches candidate build entry: partial-stop	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts-update-gateway-legacy.test.ts	published source shell reaches candidate build entry: partial-stop-custom	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts-update-gateway-legacy.test.ts	published source shell reaches candidate build entry: partial-stop-scheduled	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts/check-line-cap-ratchet.test.ts	preserves failed child diagnostics for 1//Cannot load oxlint native binding	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts/check-line-cap-ratchet.test.ts	preserves failed child diagnostics for 1/Invalid oxlint configuration/	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts/check-line-cap-ratchet.test.ts	preserves failed child diagnostics for 1/invalid report/Cannot load oxlint native binding	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts/check-line-cap-ratchet.test.ts	rejects bin symlink before executing the oxlint CLI	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-40	test/scripts/check-line-cap-ratchet.test.ts	rejects bin traversal before executing the oxlint CLI	log+summary	core-tooling-9-hosted-3;tooling
+compact-small-6	src/cli/update-cli/update-command-retained-restart.test.ts	retained POSIX native restart > rechecks retained authority before restart: A after reset-failed	log+summary	agentic-cli;cli
+compact-small-6	src/cli/update-cli/update-command-retained-restart.test.ts	retained POSIX native restart > rechecks retained authority before restart: B after reset-failed	log+summary	agentic-cli;cli
+compact-small-6	src/cli/update-cli/update-command-retained-restart.test.ts	retained POSIX native restart > rechecks retained authority before restart: unavailable	log+summary	agentic-cli;cli
+compact-small-6	src/cli/update-cli/update-command-retained-restart.test.ts	retained POSIX native restart > restarts retained A with a real child and keeps both owners until native drain	log+summary	agentic-cli;cli
+compact-small-6	src/cli/update-cli/update-command-retained-restart.test.ts	retained POSIX native restart > retains native rejection rather than reporting completed or readiness	log+summary	agentic-cli;cli
+compact-small-dist-2	src/tui/tui-pty-local.e2e.test.ts	TUI PTY real backends > authenticates a manifest-discovered provider and resumes the unchanged local model	log+summary	core-runtime-tui-pty;tui-pty
+extension-browser	extensions/browser/src/browser/chrome.headless-cleanup.test.ts	cleans up a one-shot darwin cache shell only when ownsProfile=false	summary	extension-browser
+extension-browser	extensions/browser/src/browser/chrome.headless-cleanup.test.ts	cleans up a one-shot darwin cache shell only when ownsProfile=true	summary	extension-browser
+extension-browser	extensions/browser/src/browser/chrome.headless-cleanup.test.ts	recovers stale cache browser with configuredHeadless=false, ownsProfile=true, code=websocket_health_command_timeout	summary	extension-browser
+extension-browser	extensions/browser/src/browser/chrome.headless-cleanup.test.ts	recovers stale cache browser with configuredHeadless=true, ownsProfile=true, code=websocket_health_command_timeout	summary	extension-browser
+extension-providers	extensions/anthropic/session-catalog-transcript.test.ts	pages deeply nested Claude content without losing text	summary	extension-providers
+extension-providers	extensions/anthropic/session-catalog-transcript.test.ts	pages deeply nested Claude metadata without losing text	summary	extension-providers
+node-compact-large-43	src/gateway/server-http.event-loop-health.test.ts	(file-level: vitest worker killed by SIGKILL)	log	agentic-control-plane-http-plugin-ws
+supplemental-extension-database-workers	extensions/tlon/src/monitor/index.test.ts	monitorTlonProvider shutdown > streams deeply nested poison and capped messages over real HTTP SSE through production handlers and recovers on the next messages	in-flight	extension-database-workers

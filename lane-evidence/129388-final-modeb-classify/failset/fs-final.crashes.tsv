@@ -1,0 +1,2 @@
+batch	shard	log	subshard	error
+openclaw-local-ci-batch-hosted-batch-014-93a1e356c7aa	node-compact-large-43	gate-test-shard-compact-large-43.in-flight.log	agentic-gateway-methods-hosted-7	Error: [vitest] retained temporary namespace /tmp/ocbd8025/.oc-ci-tmp/s47q/t/oc-vt-dkZr49; child/group or nested resource completion was not verified. Stop the remaining writers before removing this exact directory.
