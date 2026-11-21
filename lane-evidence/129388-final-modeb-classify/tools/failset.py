@@ -56,6 +56,11 @@ for batch in sorted(os.listdir(dl)):
                         title = detail[m.end():].split(" > ", 1)[1].strip()
                         add((shard, m.group(0), title), "summary", shard, proj)
                         continue
+                    if m and detail[m.end():].strip().startswith("["):
+                        # `<file> [ <file> ]`: the file failed as a suite, with no test title.
+                        add((shard, m.group(0), "(file-level suite failure)"), "summary", shard,
+                            detail[: m.start()].strip())
+                        continue
                 other.append([batch, shard, str(f.get("kind")), str(f.get("gate")), detail])
         else:
             shards.append([batch, sdir, sdir, "NO-SUMMARY", "", "", "", "", "", ""])
