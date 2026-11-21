@@ -1,0 +1,2 @@
+# Raw test receipts: keep every byte (test names can carry CR); never normalize line endings.
+*.log -text
