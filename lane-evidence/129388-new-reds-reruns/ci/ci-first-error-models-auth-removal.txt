@@ -1,0 +1,35 @@
+# source: run 44932832262 artifact openclaw-local-ci-batch-local-batch-055-16541aa5a8ee/node-compact-large-15/gate-test-shard-compact-large-15.log (ANSI stripped), lines 1288-1321
+[shard:agentic-gateway-server-isolated-hosted-12]  FAIL   gateway-database-workers  src/gateway/server-methods/models-auth-removal.integration.test.ts > models.authLogout with a concurrent registered config set > publishes removal before returning when…
+[shard:agentic-gateway-server-isolated-hosted-12] AssertionError: {"logout":{"provider":"fixture","removedProfiles":["fixture:manual"],"abortedRunIds":[],"warning":"Credentials were removed, but the Gateway has not confirmed applying the change. Run `openclaw gateway restart` to apply it. Model auth changes were saved, but the Gateway could not refresh them. Run `openclaw gateway restart` to apply the saved changes."},"status":{"ts":1795291351684,"providers":[],"unavailable":{"code":"PREPARED_MODEL_AUTH_UNAVAILABLE","message":"Model authentication status is unavailable. Refresh Models after setup finishes; restart the Gateway if it persists."}}}: expected undefined to deeply equal [ Array(3) ]
+[shard:agentic-gateway-server-isolated-hosted-12] Auth refresh warning: credential change saved but auth refresh failed: AbortError: This operation was aborted: code=20
+[shard:agentic-gateway-server-isolated-hosted-12] 
+[shard:agentic-gateway-server-isolated-hosted-12] - Expected:
+[shard:agentic-gateway-server-isolated-hosted-12] [
+[shard:agentic-gateway-server-isolated-hosted-12]   "fixture:oauth",
+[shard:agentic-gateway-server-isolated-hosted-12]   "fixture:ref",
+[shard:agentic-gateway-server-isolated-hosted-12]   "fixture:token",
+[shard:agentic-gateway-server-isolated-hosted-12] ]
+[shard:agentic-gateway-server-isolated-hosted-12] 
+[shard:agentic-gateway-server-isolated-hosted-12] + Received:
+[shard:agentic-gateway-server-isolated-hosted-12] undefined
+[shard:agentic-gateway-server-isolated-hosted-12] 
+[shard:agentic-gateway-server-isolated-hosted-12]  ❯ src/gateway/server-methods/models-auth-removal.integration.test.ts:305:17
+[shard:agentic-gateway-server-isolated-hosted-12]     303|                   .toSorted(),
+[shard:agentic-gateway-server-isolated-hosted-12]     304|                 JSON.stringify({ logout: apiKeyLogout, status }),
+[shard:agentic-gateway-server-isolated-hosted-12]     305|               ).toEqual(["fixture:oauth", "fixture:ref", "fixture:toke…
+[shard:agentic-gateway-server-isolated-hosted-12]        |                 ^
+[shard:agentic-gateway-server-isolated-hosted-12]     306|             } catch (error) {
+[shard:agentic-gateway-server-isolated-hosted-12]     307|               if (error instanceof Error) {
+[shard:agentic-gateway-server-isolated-hosted-12] 
+[shard:agentic-gateway-server-isolated-hosted-12] ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+[shard:agentic-gateway-server-isolated-hosted-12] 
+[shard:agentic-gateway-server-isolated-hosted-12] 
+[shard:agentic-gateway-server-isolated-hosted-12]  Test Files  2 failed | 30 passed (32)
+[shard:agentic-gateway-server-isolated-hosted-12]       Tests  2 failed | 419 passed (421)
+[shard:agentic-gateway-server-isolated-hosted-12]    Start at  19:58:34
+[shard:agentic-gateway-server-isolated-hosted-12]    Duration  277.54s (tests 91%, transform 6%, import 3%)
+[shard:agentic-gateway-server-isolated-hosted-12] 
+[shard:agentic-gateway-server-isolated-hosted-12] [test] failed 2 Vitest shards in 406.25s
+[shard:agentic-gateway-server-isolated-hosted-12] [test] FAILED (exit 1)
+[shard:agentic-gateway-server-isolated#selector-642-896f73e709de#generation-d645aff1c65a#part-12-of-20#include-34-8faf1614b06b] end (exit 1)
+[shard-failure:agentic-gateway-server-isolated-hosted-12] FAILED (exit 1)

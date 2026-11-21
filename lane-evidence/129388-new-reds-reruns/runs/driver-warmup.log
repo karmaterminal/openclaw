@@ -1,0 +1,5 @@
+# pairs3 start=2026-11-21T20:42:31Z iterations=0..0 refs=cand,prior,base files=src/gateway/server-methods/models-auth-removal.integration.test.ts
+cand src/gateway/server-methods/models-auth-removal.integration.test.ts run0 rc=0 113s VERDICT PASS [Test Files 1 passed (1); Tests 5 passed (5)] dirty_max=2183964kB disk=89.512%
+prior src/gateway/server-methods/models-auth-removal.integration.test.ts run0 rc=0 107s VERDICT PASS [Test Files 1 passed (1); Tests 5 passed (5)] dirty_max=6482536kB disk=89.088%
+base src/gateway/server-methods/models-auth-removal.integration.test.ts run0 rc=0 116s VERDICT PASS [Test Files 1 passed (1); Tests 5 passed (5)] dirty_max=5244700kB disk=89.526%
+# pairs3 done=2026-11-21T20:48:07Z

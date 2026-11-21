@@ -1,0 +1,47 @@
+# source: run 44932832262 artifact openclaw-local-ci-batch-hosted-batch-006-16541aa5a8ee/node-compact-small-36/gate-test-shard-compact-small-36.log (ANSI stripped), lines 1390-1435
+[shard:core-tooling-2-hosted-3]  FAIL   tooling  test/scripts/team-shape-fixture.test.ts > preserves existing sessions when seeding offline replay history
+[shard:core-tooling-2-hosted-3] Error: Command failed: /home/runner/_work/_tool/node/26.12.1/arm64/bin/node --import ./scripts/tsx.mjs scripts/perf/transcript-broadcast-measure.ts --state-dir /tmp/oc3f7100/.oc-ci-tmp/s3Tj/t/oc-vt-gKECjw/oc-vt-ELLxCh/team-shape-history-gFQaU2/state --entry src/entry.ts --scenario memory-soak --runs 2 --history-turns 64 --verify-history-replay --reset-every-rounds 0 --seed-history
+[shard:core-tooling-2-hosted-3] /home/runner/_work/_temp/ci-batch-work-44932832262-1-hosted-batch-006/shard-1-compact-small-36/scripts/perf/team-shape-sessions.ts:<redacted len=2>
+[shard:core-tooling-2-hosted-3]       throw new Error("Fixture stopped: Linux Dirty memory is unavailable or reached 2 GiB");
+[shard:core-tooling-2-hosted-3]             ^
+[shard:core-tooling-2-hosted-3] 
+[shard:core-tooling-2-hosted-3] Error: Fixture stopped: Linux Dirty memory is unavailable or reached 2 GiB
+[shard:core-tooling-2-hosted-3]     at waitForTeamShapeWriteBudget (/home/runner/_work/_temp/ci-batch-work-44932832262-1-hosted-batch-006/shard-1-compact-small-36/scripts/perf/team-shape-sessions.ts:<redacted len=6>
+[shard:core-tooling-2-hosted-3]     at async <anonymous> (/home/runner/_work/_temp/ci-batch-work-44932832262-1-hosted-batch-006/shard-1-compact-small-36/scripts/perf/transcript-broadcast-measure.ts:3853:7)
+[shard:core-tooling-2-hosted-3] 
+[shard:core-tooling-2-hosted-3] Node.js v26.12.1
+[shard:core-tooling-2-hosted-3] 
+[shard:core-tooling-2-hosted-3]  ❯ waitForTeamShapeWriteBudget scripts/perf/team-shape-sessions.ts:<redacted len=5>
+[shard:core-tooling-2-hosted-3]      56|     const dirtyKb = Number(/^Dirty:\s+(\d+)/m.exec(await readFile("/pr…
+[shard:core-tooling-2-hosted-3]      57|     if (!Number.isFinite(dirtyKb) || dirtyKb >= 2 * 1024 * 1024) {
+[shard:core-tooling-2-hosted-3]      58|       throw new Error("Fixture stopped: Linux Dirty memory is unavaila…
+[shard:core-tooling-2-hosted-3]        |             ^
+[shard:core-tooling-2-hosted-3]      59|     }
+[shard:core-tooling-2-hosted-3]      60|     if (dirtyKb < 1024 * 1024) {
+[shard:core-tooling-2-hosted-3]  ❯ <anonymous> scripts/perf/transcript-broadcast-measure.ts:3853:7
+[shard:core-tooling-2-hosted-3] 
+[shard:core-tooling-2-hosted-3] ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+[shard:core-tooling-2-hosted-3] Serialized Error: { code: 1, killed: false, signal: null, cmd: '/home/runner/_work/_tool/node/26.12.1/arm64/bin/node --import ./scripts/tsx.mjs scripts/perf/transcript-broadcast-measure.ts --state-dir /tmp/oc3f7100/.oc-ci-tmp/s3Tj/t/oc-vt-gKECjw/oc-vt-ELLxCh/team-shape-history-gFQaU2/state --entry src/entry.ts --scenario memory-soak --runs 2 --history-turns 64 --verify-history-replay --reset-every-rounds 0 --seed-history', stdout: '', stderr: '/home/runner/_work/_temp/ci-batch-work-44932832262-1-hosted-batch-006/shard-1-compact-small-36/scripts/perf/team-shape-sessions.ts:<redacted len=2>
+[shard:core-tooling-2-hosted-3]       throw new Error("Fixture stopped: Linux Dirty memory is unavailable or reached 2 GiB");
+[shard:core-tooling-2-hosted-3]             ^
+[shard:core-tooling-2-hosted-3] 
+[shard:core-tooling-2-hosted-3] Error: Fixture stopped: Linux Dirty memory is unavailable or reached 2 GiB
+[shard:core-tooling-2-hosted-3]     at waitForTeamShapeWriteBudget (/home/runner/_work/_temp/ci-batch-work-44932832262-1-hosted-batch-006/shard-1-compact-small-36/scripts/perf/team-shape-sessions.ts:<redacted len=6>
+[shard:core-tooling-2-hosted-3]     at async <anonymous> (/home/runner/_work/_temp/ci-batch-work-44932832262-1-hosted-batch-006/shard-1-compact-small-36/scripts/perf/transcript-broadcast-measure.ts:3853:7)
+[shard:core-tooling-2-hosted-3] 
+[shard:core-tooling-2-hosted-3] Node.js v26.12.1
+[shard:core-tooling-2-hosted-3] ' }
+[shard:core-tooling-2-hosted-3] ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+[shard:core-tooling-2-hosted-3] 
+[shard:core-tooling-2-hosted-3]  FAIL   tooling  test/scripts/team-shape-fixture.test.ts > adds bounded long histories and an unchanged tracked inventory with a nested checkout
+[shard:core-tooling-2-hosted-3] Error: Fixture stopped: Linux Dirty memory is unavailable or reached 2 GiB
+[shard:core-tooling-2-hosted-3]  ❯ waitForTeamShapeWriteBudget scripts/perf/team-shape-sessions.ts:<redacted len=5>
+[shard:core-tooling-2-hosted-3]      56|     const dirtyKb = Number(/^Dirty:\s+(\d+)/m.exec(await readFile("/pr…
+[shard:core-tooling-2-hosted-3]      57|     if (!Number.isFinite(dirtyKb) || dirtyKb >= 2 * 1024 * 1024) {
+[shard:core-tooling-2-hosted-3]      58|       throw new Error("Fixture stopped: Linux Dirty memory is unavaila…
+[shard:core-tooling-2-hosted-3]        |             ^
+[shard:core-tooling-2-hosted-3]      59|     }
+[shard:core-tooling-2-hosted-3]      60|     if (dirtyKb < 1024 * 1024) {
+[shard:core-tooling-2-hosted-3]  ❯ seedProjects scripts/perf/team-shape-extras.ts:216:11
+[shard:core-tooling-2-hosted-3]  ❯ seedTeamShapeExtras scripts/perf/team-shape-extras.ts:326:28
+[shard:core-tooling-2-hosted-3]  ❯ generateTeamShapeFixture scripts/perf/team-shape-fixture.ts:268:22
