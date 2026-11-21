@@ -1,0 +1,158 @@
+{
+  "totals": {
+    "cand": {
+      "files": 845,
+      "pass": 10731,
+      "fail": 2,
+      "skip": 113,
+      "tests": 10846,
+      "slices": 93,
+      "footer": {
+        "passed": 10731,
+        "failed": 2,
+        "skipped": 113,
+        "todo": 0,
+        "total": 10846,
+        "files": 845,
+        "slicesWithFooter": 93
+      }
+    },
+    "ctrl": null,
+    "ci93": {
+      "files": 423,
+      "pass": 6696,
+      "fail": 1,
+      "skip": 62,
+      "tests": 6759,
+      "slices": 29,
+      "footer": {
+        "passed": 5573,
+        "failed": 1,
+        "skipped": 6,
+        "todo": 0,
+        "total": 5580,
+        "files": 377,
+        "slicesWithFooter": 28
+      }
+    },
+    "ciRegate": {
+      "files": 410,
+      "pass": 6493,
+      "fail": 1,
+      "skip": 54,
+      "tests": 6548,
+      "slices": 29,
+      "footer": {
+        "passed": 5573,
+        "failed": 1,
+        "skipped": 6,
+        "todo": 0,
+        "total": 5580,
+        "files": 377,
+        "slicesWithFooter": 28
+      }
+    }
+  },
+  "countMatch": [
+    {
+      "label": "cand vs CI re-gate 44917878785 @16541aa5 (same SHA)",
+      "ciTotals": {
+        "files": 410,
+        "pass": 6493,
+        "fail": 1,
+        "skip": 54,
+        "tests": 6548
+      },
+      "ciCompletedSlices": 28,
+      "ciCompletedFiles": 377,
+      "ciCompletedTests": 5580,
+      "localTestsOnCiCompletedFiles": 5580,
+      "ciFilesMissingLocally": [],
+      "completedFilesWithDifferentCounts": [],
+      "localFilesNotInCiPartial": 435
+    },
+    {
+      "label": "cand vs CI 44871298969 @93a1e356",
+      "ciTotals": {
+        "files": 423,
+        "pass": 6696,
+        "fail": 1,
+        "skip": 62,
+        "tests": 6759
+      },
+      "ciCompletedSlices": 28,
+      "ciCompletedFiles": 377,
+      "ciCompletedTests": 5580,
+      "localTestsOnCiCompletedFiles": 5580,
+      "ciFilesMissingLocally": [],
+      "completedFilesWithDifferentCounts": [],
+      "localFilesNotInCiPartial": 422
+    }
+  ],
+  "countMatchCtrl": null,
+  "redRows": [
+    {
+      "file": "extensions/memory-core/src/workspace-file-mode.test.ts",
+      "cand": {
+        "counts": {
+          "pass": 5,
+          "fail": 1,
+          "skip": 0
+        },
+        "failing": [
+          "retains inherited named ACL access in the file mask"
+        ]
+      },
+      "ctrl": {
+        "counts": null,
+        "failing": null
+      },
+      "ci93": {
+        "counts": null,
+        "failing": []
+      },
+      "ciRegate": {
+        "counts": null,
+        "failing": []
+      }
+    },
+    {
+      "file": "extensions/tlon/src/monitor/index.test.ts",
+      "cand": {
+        "counts": {
+          "pass": 23,
+          "fail": 1,
+          "skip": 0
+        },
+        "failing": [
+          "monitorTlonProvider shutdown > streams deeply nested poison and capped messages over real HTTP SSE through production handlers and recovers on the next messages"
+        ]
+      },
+      "ctrl": {
+        "counts": null,
+        "failing": null
+      },
+      "ci93": {
+        "counts": {
+          "pass": 23,
+          "fail": 1,
+          "skip": 0
+        },
+        "failing": [
+          "monitorTlonProvider shutdown > streams deeply nested poison and capped messages over real HTTP SSE through production handlers and recovers on the next messages"
+        ]
+      },
+      "ciRegate": {
+        "counts": {
+          "pass": 23,
+          "fail": 1,
+          "skip": 0
+        },
+        "failing": [
+          "monitorTlonProvider shutdown > streams deeply nested poison and capped messages over real HTTP SSE through production handlers and recovers on the next messages"
+        ]
+      }
+    }
+  ],
+  "candVsCtrl": null
+}

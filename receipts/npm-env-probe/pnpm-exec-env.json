@@ -1,0 +1,14 @@
+{
+ "COREPACK_ENABLE_AUTO_PIN": "0",
+ "COREPACK_ENABLE_DOWNLOAD_PROMPT": "1",
+ "COREPACK_ROOT": "/home/figs/.nvm/versions/node/v26.12.1/lib/node_modules/corepack",
+ "INIT_CWD": "/home/figs/lane-runs/129388-extdbw-local-shard/npm-env-probe",
+ "NODE": "/home/figs/.nvm/versions/node/v26.12.1/bin/node",
+ "PNPM_PACKAGE_NAME": "openclaw",
+ "npm_command": "exec",
+ "npm_config_user_agent": "pnpm/12.15.0 npm/? node/? linux arm64",
+ "npm_config_verify_deps_before_run": "false",
+ "npm_execpath": "/home/figs/.cache/node/corepack/v1/pnpm/12.15.0/pnpm-native",
+ "npm_node_execpath": "/home/figs/.nvm/versions/node/v26.12.1/bin/node",
+ "pnpm_config_verify_deps_before_run": "false"
+}

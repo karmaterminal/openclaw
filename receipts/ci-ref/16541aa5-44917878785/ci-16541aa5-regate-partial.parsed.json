@@ -1,0 +1,3007 @@
+{
+  "log": "(private CI artifact, see CI-SOURCES.md) 16541aa5-regate-artifacts/batch-003/supplemental-extension-database-workers/gate-test-shard-extension-database-workers.in-flight.log",
+  "project": "extension-database-workers",
+  "totals": {
+    "files": 410,
+    "pass": 6493,
+    "fail": 1,
+    "skip": 54,
+    "tests": 6548
+  },
+  "footerTotals": {
+    "passed": 5573,
+    "failed": 1,
+    "skipped": 6,
+    "todo": 0,
+    "total": 5580,
+    "files": 377,
+    "slicesWithFooter": 28
+  },
+  "slices": [
+    {
+      "startLine": 145,
+      "results": 1646,
+      "files": [
+        "extensions/a2a/src/inbound.test.ts",
+        "extensions/a2a/src/task-store.persistence.test.ts",
+        "extensions/agentsapi/agentsapi-attempt.test.ts",
+        "extensions/agentsapi/agentsapi-harness.persistence.test.ts",
+        "extensions/agentsapi/agentsapi-harness.startup.test.ts",
+        "extensions/beam/src/beam.test.ts",
+        "extensions/beam/src/guest-upload.test.ts",
+        "extensions/beam/src/handoff.test.ts",
+        "extensions/beam/src/mirror-retry.test.ts",
+        "extensions/beam/src/store.test.ts",
+        "extensions/buzz/src/buzz-bus.lifecycle.test.ts",
+        "extensions/buzz/src/buzz-bus.socket.test.ts",
+        "extensions/buzz/src/gateway.cold-start-recovery.test.ts",
+        "extensions/buzz/src/inbound.test.ts",
+        "extensions/clawrouter/audio-transcription.test.ts",
+        "extensions/clawrouter/media-compatibility.test.ts",
+        "extensions/clawrouter/speech-provider.test.ts",
+        "extensions/clickclack/src/discussions/revoked-channel-store.postgres.test.ts",
+        "extensions/clickclack/src/discussions/service-open.agent-storage.test.ts",
+        "extensions/clickclack/src/discussions/service-state-persistence.test.ts",
+        "extensions/clickclack/src/inbound.mention-gating.test.ts",
+        "extensions/clickclack/src/inbound.test.ts",
+        "extensions/clickclack/src/sender-authority.test.ts",
+        "extensions/copilot/harness.detached.integration.test.ts",
+        "extensions/copilot/harness.test.ts",
+        "extensions/copilot/src/attempt-active-run.test.ts",
+        "extensions/copilot/src/attempt-session.integration.test.ts",
+        "extensions/copilot/src/tool-bridge.test.ts",
+        "extensions/crabbox/doctor-contract-api.test.ts",
+        "extensions/crabbox/index.test.ts",
+        "extensions/crabbox/src/crabbox-gateway-methods.test.ts",
+        "extensions/crabbox/src/crabbox-worker-capture-nonblocking.test.ts",
+        "extensions/crabbox/src/crabbox-worker-coordinator-retry.test.ts",
+        "extensions/crabbox/src/crabbox-worker-enrollment-overlap.test.ts",
+        "extensions/crabbox/src/crabbox-worker-heartbeat.test.ts",
+        "extensions/crabbox/src/crabbox-worker-node-enrollment.test.ts",
+        "extensions/crabbox/src/crabbox-worker-prepared-image.test.ts",
+        "extensions/crabbox/src/crabbox-worker-project.test.ts",
+        "extensions/crabbox/src/crabbox-worker-provider-desktop.test.ts",
+        "extensions/crabbox/src/crabbox-worker-provider-platforms.test.ts",
+        "extensions/crabbox/src/crabbox-worker-provider.test.ts",
+        "extensions/crabbox/src/crabbox-worker-provision-cancellation.test.ts",
+        "extensions/crabbox/src/crabbox-worker-resource-receipt.test.ts",
+        "extensions/crabbox/src/crabbox-worker-stop-lifetime.test.ts",
+        "extensions/crabbox/src/crabbox-worker-stop.test.ts",
+        "extensions/crabbox/src/crabbox-worker-warm-image-allocation.test.ts",
+        "extensions/crabbox/src/crabbox-worker-warm-image-cli.test.ts",
+        "extensions/crabbox/src/crabbox-worker-warm-image-lifecycle.test.ts",
+        "extensions/crabbox/src/crabbox-worker-warm-image-maintenance.test.ts",
+        "extensions/crabbox/src/crabbox-worker-warm-image-reconciliation.test.ts",
+        "extensions/crabbox/src/crabbox-worker-warm-image-recovery.test.ts",
+        "extensions/crabbox/src/crabbox-worker-warm-image-retirement.test.ts",
+        "extensions/crabbox/src/crabbox-worker-warm-image.test.ts",
+        "extensions/crabbox/src/doctor.test.ts",
+        "extensions/deep-research/src/jobs.cancel.test.ts",
+        "extensions/deep-research/src/jobs.control.test.ts",
+        "extensions/deep-research/src/jobs.test.ts",
+        "extensions/deep-research/src/jobs.wake.test.ts",
+        "extensions/facetime/tests/runtime-admission.test.ts",
+        "extensions/facetime/tests/runtime-authority-boundary.test.ts",
+        "extensions/facetime/tests/runtime-persistence.test.ts",
+        "extensions/facetime/tests/runtime-reconciliation.test.ts",
+        "extensions/facetime/tests/runtime.test.ts",
+        "extensions/google-meet/index.test.ts",
+        "extensions/google-meet/participation-runtime-registration.test.ts",
+        "extensions/google-meet/src/oauth-owner.test.ts",
+        "extensions/mcp-events/src/service.test.ts",
+        "extensions/migrate-hermes/files-and-skills.test.ts",
+        "extensions/migrate-hermes/secrets.test.ts",
+        "extensions/omlx/setup.test.ts",
+        "extensions/onepassword/index.worker.test.ts",
+        "extensions/onepassword/src/tool-list.test.ts",
+        "extensions/raft/src/gateway.test.ts",
+        "extensions/reef/doctor-contract-api.test.ts",
+        "extensions/reef/src/audit-state.test.ts",
+        "extensions/reef/src/channel.test.ts",
+        "extensions/reef/src/flow-receipts.test.ts",
+        "extensions/reef/src/flow-send.test.ts",
+        "extensions/reef/src/flow.pending-review.test.ts",
+        "extensions/reef/src/flow.source-authority.test.ts",
+        "extensions/reef/src/flow.test.ts",
+        "extensions/reef/src/flow.worker-outbound.test.ts",
+        "extensions/reef/src/friends.test.ts",
+        "extensions/reef/src/inbox-cursor.test.ts",
+        "extensions/reef/src/outbound.test.ts",
+        "extensions/reef/src/replay-state.test.ts",
+        "extensions/reef/src/setup.test.ts",
+        "extensions/reef/src/state.test.ts",
+        "extensions/reef/src/transport-capacity-recovery.test.ts",
+        "extensions/reef/src/trust-store.test.ts",
+        "extensions/sms/src/ingress-spool.test.ts",
+        "extensions/sms/src/media-limits.test.ts",
+        "extensions/sms/src/media.test.ts",
+        "extensions/teams-meetings/index.test.ts",
+        "extensions/teams-meetings/src/runtime.test.ts",
+        "extensions/x/src/client.test.ts",
+        "extensions/x/src/guest-usage.test.ts",
+        "extensions/zoom-meetings/index.test.ts",
+        "extensions/zoom-meetings/src/runtime.test.ts"
+      ],
+      "footer": {
+        "testFiles": "98 passed | 1 skipped (99)",
+        "tests": "1645 passed | 1 skipped (1646)"
+      }
+    },
+    {
+      "startLine": 1971,
+      "results": 57,
+      "files": [
+        "extensions/acpx/doctor-contract-api.test.ts",
+        "extensions/acpx/src/process-lease.test.ts",
+        "extensions/acpx/src/runtime-argv.process.test.ts",
+        "extensions/acpx/src/runtime-owner.process.test.ts",
+        "extensions/acpx/src/runtime-preactive-cancellation.process.test.ts",
+        "extensions/acpx/src/runtime-process-cleanup.process.test.ts",
+        "extensions/acpx/src/service.test.ts",
+        "extensions/acpx/src/session-owner-migration.test.ts"
+      ],
+      "footer": {
+        "testFiles": "8 passed (8)",
+        "tests": "57 passed (57)"
+      }
+    },
+    {
+      "startLine": 2043,
+      "results": 96,
+      "files": [
+        "extensions/active-memory/index.test.ts"
+      ],
+      "footer": {
+        "testFiles": "1 passed (1)",
+        "tests": "96 passed (96)"
+      }
+    },
+    {
+      "startLine": 2151,
+      "results": 7,
+      "files": [
+        "extensions/alibaba/video-generation-provider.test.ts"
+      ],
+      "footer": {
+        "testFiles": "1 passed (1)",
+        "tests": "7 passed (7)"
+      }
+    },
+    {
+      "startLine": 2168,
+      "results": 158,
+      "files": [
+        "extensions/browser/browser-maintenance.cold.test.ts",
+        "extensions/browser/browser-maintenance.transport.test.ts",
+        "extensions/browser/plugin-registration.dashboard-discovery.test.ts",
+        "extensions/browser/src/browser-dashboard.concurrency.test.ts",
+        "extensions/browser/src/browser-dashboard.test.ts",
+        "extensions/browser/src/browser/routes/agent.act.dashboard-ownership.test.ts",
+        "extensions/browser/src/browser/session-tab-registry.extension-cleanup.test.ts",
+        "extensions/browser/src/browser/session-tab-registry.membership.test.ts",
+        "extensions/browser/src/browser/session-tab-registry.sqlite.test.ts",
+        "extensions/browser/src/browser/session-tab-storage-compat.sqlite.test.ts"
+      ],
+      "footer": {
+        "testFiles": "10 passed (10)",
+        "tests": "158 passed (158)"
+      }
+    },
+    {
+      "startLine": 2356,
+      "results": 146,
+      "files": [
+        "extensions/codex/auth-profile-health.test.ts",
+        "extensions/codex/doctor-contract-api.native-assignments.test.ts",
+        "extensions/codex/doctor-contract-api.test.ts",
+        "extensions/codex/harness.test.ts",
+        "extensions/codex/index-services.test.ts",
+        "extensions/codex/index.test.ts",
+        "extensions/codex/session-history-worker-runtime.test.ts",
+        "extensions/codex/src/account-usage.worker-read.test.ts",
+        "extensions/codex/src/app-server/attempt-startup-computer-use.test.ts",
+        "extensions/codex/src/app-server/attempt-startup-lifetime.test.ts",
+        "extensions/codex/src/app-server/attempt-startup-retry.test.ts",
+        "extensions/codex/src/app-server/attempt-startup.test.ts"
+      ],
+      "footer": {
+        "testFiles": "12 passed (12)",
+        "tests": "146 passed (146)"
+      }
+    },
+    {
+      "startLine": 2545,
+      "results": 230,
+      "files": [
+        "extensions/codex/src/app-server/auth-bridge.test.ts",
+        "extensions/codex/src/app-server/auth-profile-runtime-contract.test.ts",
+        "extensions/codex/src/app-server/auth-refresh-authority.integration.test.ts",
+        "extensions/codex/src/app-server/auth-requirement-matrix.test.ts",
+        "extensions/codex/src/app-server/compact.cancellation.test.ts",
+        "extensions/codex/src/app-server/compact.model-policy.test.ts",
+        "extensions/codex/src/app-server/compact.native.test.ts",
+        "extensions/codex/src/app-server/compact.test.ts",
+        "extensions/codex/src/app-server/dynamic-tool-build.gateway-policy.test.ts",
+        "extensions/codex/src/app-server/dynamic-tool-build.test.ts",
+        "extensions/codex/src/app-server/event-projector.output-fidelity.native.test.ts",
+        "extensions/codex/src/app-server/host-credential-execution.test.ts"
+      ],
+      "footer": {
+        "testFiles": "12 passed (12)",
+        "tests": "230 passed (230)"
+      }
+    },
+    {
+      "startLine": 2814,
+      "results": 37,
+      "files": [
+        "extensions/codex/src/app-server/inference-proxy.native.test.ts",
+        "extensions/codex/src/app-server/isolated-completion.auth-boundary.test.ts",
+        "extensions/codex/src/app-server/isolated-completion.native.test.ts",
+        "extensions/codex/src/app-server/mcp-app-first-reply.test.ts",
+        "extensions/codex/src/app-server/model-catalog.process.test.ts",
+        "extensions/codex/src/app-server/native-command-auth.native.test.ts",
+        "extensions/codex/src/app-server/native-execution-policy.authority-chain.test.ts",
+        "extensions/codex/src/app-server/native-execution-policy.incognito.test.ts",
+        "extensions/codex/src/app-server/native-provenance.test.ts",
+        "extensions/codex/src/app-server/native-subagent-completion-delivery.contention.test.ts",
+        "extensions/codex/src/app-server/native-subagent-completion-publication.test.ts",
+        "extensions/codex/src/app-server/native-subagent-inventory.retirement.test.ts"
+      ],
+      "footer": {
+        "testFiles": "12 passed (12)",
+        "tests": "36 passed | 1 skipped (37)"
+      }
+    },
+    {
+      "startLine": 2885,
+      "results": 178,
+      "files": [
+        "extensions/codex/src/app-server/native-subagent-inventory.settlement.test.ts",
+        "extensions/codex/src/app-server/native-subagent-inventory.test.ts",
+        "extensions/codex/src/app-server/native-subagent-monitor.completion-delivery.test.ts",
+        "extensions/codex/src/app-server/native-subagent-monitor.direct-authority.test.ts",
+        "extensions/codex/src/app-server/native-subagent-monitor.test.ts",
+        "extensions/codex/src/app-server/native-subagent-submission-store.test.ts",
+        "extensions/codex/src/app-server/reasoning-effort.native.test.ts",
+        "extensions/codex/src/app-server/remote-workspace-media.test.ts",
+        "extensions/codex/src/app-server/responses-oauth.authority.test.ts",
+        "extensions/codex/src/app-server/run-attempt-connection.environment.test.ts",
+        "extensions/codex/src/app-server/run-attempt-continuity.test.ts",
+        "extensions/codex/src/app-server/run-attempt-lifecycle-controller.steering.test.ts"
+      ],
+      "footer": {
+        "testFiles": "12 passed (12)",
+        "tests": "178 passed (178)"
+      }
+    },
+    {
+      "startLine": 3097,
+      "results": 131,
+      "files": [
+        "extensions/codex/src/app-server/run-attempt-lifecycle-controller.test.ts",
+        "extensions/codex/src/app-server/run-attempt-native-process-authority.test.ts",
+        "extensions/codex/src/app-server/run-attempt-one-shot-cleanup.test.ts",
+        "extensions/codex/src/app-server/run-attempt-parent-continuation.test.ts",
+        "extensions/codex/src/app-server/run-attempt-runtime.authority.test.ts",
+        "extensions/codex/src/app-server/run-attempt-thread-cleanup.test.ts",
+        "extensions/codex/src/app-server/run-attempt.activation.test.ts",
+        "extensions/codex/src/app-server/run-attempt.agent-end-context.test.ts",
+        "extensions/codex/src/app-server/run-attempt.auth-context.test.ts",
+        "extensions/codex/src/app-server/run-attempt.bounded-continuity.test.ts",
+        "extensions/codex/src/app-server/run-attempt.channel-tool-progress.test.ts"
+      ],
+      "footer": {
+        "testFiles": "11 passed (11)",
+        "tests": "131 passed (131)"
+      }
+    },
+    {
+      "startLine": 3267,
+      "results": 101,
+      "files": [
+        "extensions/codex/src/app-server/run-attempt.checkpoint.test.ts",
+        "extensions/codex/src/app-server/run-attempt.compaction-closeout.test.ts",
+        "extensions/codex/src/app-server/run-attempt.computer-use.test.ts",
+        "extensions/codex/src/app-server/run-attempt.configured-mcp.test.ts",
+        "extensions/codex/src/app-server/run-attempt.context-budget.test.ts",
+        "extensions/codex/src/app-server/run-attempt.context-engine-overflow.test.ts",
+        "extensions/codex/src/app-server/run-attempt.context-engine.test.ts",
+        "extensions/codex/src/app-server/run-attempt.continuity-media.test.ts",
+        "extensions/codex/src/app-server/run-attempt.durable-context.test.ts",
+        "extensions/codex/src/app-server/run-attempt.dynamic-tools.test.ts",
+        "extensions/codex/src/app-server/run-attempt.final-media.test.ts"
+      ],
+      "footer": {
+        "testFiles": "11 passed (11)",
+        "tests": "101 passed (101)"
+      }
+    },
+    {
+      "startLine": 3421,
+      "results": 113,
+      "files": [
+        "extensions/codex/src/app-server/run-attempt.generation-finalization.test.ts",
+        "extensions/codex/src/app-server/run-attempt.history-seed.test.ts",
+        "extensions/codex/src/app-server/run-attempt.hooks.test.ts",
+        "extensions/codex/src/app-server/run-attempt.media-lifetime.test.ts",
+        "extensions/codex/src/app-server/run-attempt.model-attribution.test.ts",
+        "extensions/codex/src/app-server/run-attempt.native-authority.test.ts",
+        "extensions/codex/src/app-server/run-attempt.native-background-outcome.test.ts",
+        "extensions/codex/src/app-server/run-attempt.native-config.test.ts",
+        "extensions/codex/src/app-server/run-attempt.native-followup-custody.test.ts",
+        "extensions/codex/src/app-server/run-attempt.native-hook-fallback.test.ts",
+        "extensions/codex/src/app-server/run-attempt.native-hook-relay-retention.test.ts"
+      ],
+      "footer": {
+        "testFiles": "11 passed (11)",
+        "tests": "113 passed (113)"
+      }
+    },
+    {
+      "startLine": 3579,
+      "results": 42,
+      "files": [
+        "extensions/codex/src/app-server/run-attempt.native-hook-relay.test.ts",
+        "extensions/codex/src/app-server/run-attempt.native-observation.test.ts",
+        "extensions/codex/src/app-server/run-attempt.plugin-refresh.test.ts",
+        "extensions/codex/src/app-server/run-attempt.plugin-steering.test.ts",
+        "extensions/codex/src/app-server/run-attempt.prompt-continuity.test.ts",
+        "extensions/codex/src/app-server/run-attempt.prompt-projection.test.ts",
+        "extensions/codex/src/app-server/run-attempt.protocol-validation.test.ts",
+        "extensions/codex/src/app-server/run-attempt.question-refresh.test.ts",
+        "extensions/codex/src/app-server/run-attempt.question-tool.test.ts",
+        "extensions/codex/src/app-server/run-attempt.reasoning-effort.test.ts",
+        "extensions/codex/src/app-server/run-attempt.remote-skills.test.ts"
+      ],
+      "footer": {
+        "testFiles": "11 passed (11)",
+        "tests": "42 passed (42)"
+      }
+    },
+    {
+      "startLine": 3665,
+      "results": 77,
+      "files": [
+        "extensions/codex/src/app-server/run-attempt.restricted-context-continuity.test.ts",
+        "extensions/codex/src/app-server/run-attempt.retry-continuation.test.ts",
+        "extensions/codex/src/app-server/run-attempt.session-fork.test.ts",
+        "extensions/codex/src/app-server/run-attempt.settlement.test.ts",
+        "extensions/codex/src/app-server/run-attempt.skills.native.test.ts",
+        "extensions/codex/src/app-server/run-attempt.steering-authority.test.ts",
+        "extensions/codex/src/app-server/run-attempt.steering-media.test.ts",
+        "extensions/codex/src/app-server/run-attempt.steering-settlement.test.ts",
+        "extensions/codex/src/app-server/run-attempt.steering.test.ts",
+        "extensions/codex/src/app-server/run-attempt.subscription.test.ts",
+        "extensions/codex/src/app-server/run-attempt.subsession-delivery.test.ts"
+      ],
+      "footer": {
+        "testFiles": "11 passed (11)",
+        "tests": "77 passed (77)"
+      }
+    },
+    {
+      "startLine": 3787,
+      "results": 277,
+      "files": [
+        "extensions/codex/src/app-server/run-attempt.test.ts",
+        "extensions/codex/src/app-server/run-attempt.turn-watches.test.ts",
+        "extensions/codex/src/app-server/run-attempt.warnings.test.ts",
+        "extensions/codex/src/app-server/run-attempt.workspace-snapshot.test.ts",
+        "extensions/codex/src/app-server/session-binding.reads.test.ts",
+        "extensions/codex/src/app-server/session-binding.test.ts",
+        "extensions/codex/src/app-server/session-history-control.test.ts",
+        "extensions/codex/src/app-server/session-history.test.ts",
+        "extensions/codex/src/app-server/session-warnings.test.ts",
+        "extensions/codex/src/app-server/settled-turn-finalizer.native.test.ts",
+        "extensions/codex/src/app-server/shared-client-git-policy.native.test.ts"
+      ],
+      "footer": {
+        "testFiles": "11 passed (11)",
+        "tests": "277 passed (277)"
+      }
+    },
+    {
+      "startLine": 4129,
+      "results": 229,
+      "files": [
+        "extensions/codex/src/app-server/side-question.app-consent.test.ts",
+        "extensions/codex/src/app-server/side-question.continuation.test.ts",
+        "extensions/codex/src/app-server/side-question.fork.test.ts",
+        "extensions/codex/src/app-server/side-question.test.ts",
+        "extensions/codex/src/app-server/thread-lifecycle.adoption.test.ts",
+        "extensions/codex/src/app-server/thread-lifecycle.assignment-rotation.test.ts",
+        "extensions/codex/src/app-server/thread-lifecycle.binding.test.ts",
+        "extensions/codex/src/app-server/thread-lifecycle.handoff.native.test.ts",
+        "extensions/codex/src/app-server/thread-lifecycle.native-config.test.ts",
+        "extensions/codex/src/app-server/thread-lifecycle.native.test.ts",
+        "extensions/codex/src/app-server/thread-lifecycle.remote-hooks.test.ts"
+      ],
+      "footer": {
+        "testFiles": "11 passed (11)",
+        "tests": "229 passed (229)"
+      }
+    },
+    {
+      "startLine": 4407,
+      "results": 74,
+      "files": [
+        "extensions/codex/src/app-server/thread-lifecycle.restricted-continuation.test.ts",
+        "extensions/codex/src/app-server/thread-lifecycle.warm-cleanup.native.test.ts",
+        "extensions/codex/src/app-server/thread-lifecycle.warm-cleanup.test.ts",
+        "extensions/codex/src/app-server/thread-shell-environment.native.test.ts",
+        "extensions/codex/src/app-server/trajectory.test.ts",
+        "extensions/codex/src/app-server/transcript-mirror.admission.test.ts",
+        "extensions/codex/src/app-server/transcript-mirror.user-idempotency.test.ts",
+        "extensions/codex/src/app-server/transport-process-registration.procfs.test.ts",
+        "extensions/codex/src/app-server/transport-process-registration.test.ts",
+        "extensions/codex/src/app-server/transport-startup.test.ts",
+        "extensions/codex/src/app-server/transport-stdio.config.test.ts"
+      ],
+      "footer": {
+        "testFiles": "11 passed (11)",
+        "tests": "74 passed (74)"
+      }
+    },
+    {
+      "startLine": 4521,
+      "results": 220,
+      "files": [
+        "extensions/codex/src/app-server/transport-stdio.sandbox.test.ts",
+        "extensions/codex/src/command-account.test.ts",
+        "extensions/codex/src/command-diagnostics.worker-read.test.ts",
+        "extensions/codex/src/command-handler-scope.worker.test.ts",
+        "extensions/codex/src/command-plugins-runtime.test.ts",
+        "extensions/codex/src/command-rpc.test.ts",
+        "extensions/codex/src/commands.detach.test.ts",
+        "extensions/codex/src/commands.native-subagent-retention.test.ts",
+        "extensions/codex/src/commands.test.ts",
+        "extensions/codex/src/conversation-binding.test.ts",
+        "extensions/codex/src/conversation-control.test.ts"
+      ],
+      "footer": {
+        "testFiles": "10 passed | 1 skipped (11)",
+        "tests": "217 passed | 3 skipped (220)"
+      }
+    },
+    {
+      "startLine": 4773,
+      "results": 148,
+      "files": [
+        "extensions/codex/src/migration/provider.auth.test.ts",
+        "extensions/codex/src/migration/provider.test.ts",
+        "extensions/codex/src/node-app-server.runtime.test.ts",
+        "extensions/codex/src/node-exec-server.readiness.test.ts",
+        "extensions/codex/src/node-exec-server.test.ts",
+        "extensions/codex/src/session-catalog-adoption.test.ts",
+        "extensions/codex/src/session-catalog-cold-native.test.ts",
+        "extensions/codex/src/session-catalog-ephemeral.test.ts",
+        "extensions/codex/src/session-catalog-native-performance.test.ts",
+        "extensions/codex/src/session-catalog-resident-state.test.ts",
+        "extensions/codex/src/supervision-tools.test.ts"
+      ],
+      "footer": {
+        "testFiles": "11 passed (11)",
+        "tests": "148 passed (148)"
+      }
+    },
+    {
+      "startLine": 4948,
+      "results": 33,
+      "files": [
+        "extensions/device-pair/notify.test.ts",
+        "extensions/diagnostics-otel/src/codex-dynamic-tool-origin.integration.test.ts",
+        "extensions/diagnostics-otel/src/continuation-tracer-adapter.integration.test.ts",
+        "extensions/litellm/index.test.ts"
+      ],
+      "footer": {
+        "testFiles": "4 passed (4)",
+        "tests": "33 passed (33)"
+      }
+    },
+    {
+      "startLine": 4997,
+      "results": 38,
+      "files": [
+        "extensions/diffs/src/store.cleanup.test.ts",
+        "extensions/diffs/src/store.test.ts",
+        "extensions/diffs/src/tool.test.ts"
+      ],
+      "footer": {
+        "testFiles": "3 passed (3)",
+        "tests": "38 passed (38)"
+      }
+    },
+    {
+      "startLine": 5045,
+      "results": 147,
+      "files": [
+        "extensions/discord/src/durable-delivery.test.ts",
+        "extensions/discord/src/monitor/ingress.test.ts",
+        "extensions/discord/src/monitor/listeners.thread-delete.session-store.integration.test.ts",
+        "extensions/discord/src/monitor/message-handler.context-history.test.ts",
+        "extensions/discord/src/monitor/message-handler.ingress-recovery.test.ts",
+        "extensions/discord/src/monitor/model-picker-preferences.test.ts",
+        "extensions/discord/src/monitor/monitor.test.ts",
+        "extensions/discord/src/monitor/native-command.guild-guards.test.ts",
+        "extensions/discord/src/monitor/native-command.interaction-boundary.test.ts",
+        "extensions/discord/src/monitor/presence-cooldown-store.test.ts",
+        "extensions/discord/src/monitor/thread-bindings.authority.test.ts",
+        "extensions/discord/src/monitor/thread-bindings.creation.test.ts",
+        "extensions/discord/src/monitor/thread-bindings.lifecycle.test.ts",
+        "extensions/discord/src/monitor/thread-bindings.state.test.ts",
+        "extensions/discord/src/monitor/thread-bindings.worker.test.ts"
+      ],
+      "footer": {
+        "testFiles": "15 passed (15)",
+        "tests": "147 passed (147)"
+      }
+    },
+    {
+      "startLine": 5244,
+      "results": 260,
+      "files": [
+        "extensions/feishu/src/bot.broadcast.test.ts",
+        "extensions/feishu/src/bot.card-action.test.ts",
+        "extensions/feishu/src/bot.test.ts",
+        "extensions/feishu/src/dedup.test.ts",
+        "extensions/feishu/src/doctor.test.ts",
+        "extensions/feishu/src/feishu-ingress.test.ts",
+        "extensions/feishu/src/monitor.dedupe-lifecycle.test.ts",
+        "extensions/feishu/src/monitor.lifecycle.test.ts",
+        "extensions/feishu/src/monitor.message-handler.ingress.test.ts",
+        "extensions/feishu/src/monitor.post-replay.test.ts",
+        "extensions/feishu/src/monitor.reaction.test.ts",
+        "extensions/feishu/src/monitor.startup.test.ts",
+        "extensions/feishu/src/monitor.vc-meeting-invited-handler.test.ts",
+        "extensions/feishu/src/monitor.webhook-e2e.test.ts",
+        "extensions/feishu/src/outbound-delivery.test.ts",
+        "extensions/feishu/src/outbound.send-authority.test.ts"
+      ],
+      "footer": {
+        "testFiles": "16 passed (16)",
+        "tests": "260 passed (260)"
+      }
+    },
+    {
+      "startLine": 6252,
+      "results": 267,
+      "files": [
+        "extensions/github-copilot/index.test.ts",
+        "extensions/google/embedding-provider.test.ts",
+        "extensions/google/research-gateway.test.ts",
+        "extensions/google/transport-stream.test.ts",
+        "extensions/google/vertex-adc-refresh.test.ts",
+        "extensions/microsoft/speech-provider.test.ts",
+        "extensions/minimax/speech-provider.test.ts",
+        "extensions/minimax/tts.test.ts"
+      ],
+      "footer": {
+        "testFiles": "8 passed (8)",
+        "tests": "267 passed (267)"
+      }
+    },
+    {
+      "startLine": 6542,
+      "results": 260,
+      "files": [
+        "extensions/googlechat/src/api.fetchok.transport.test.ts",
+        "extensions/googlechat/src/monitor-ingress.test.ts",
+        "extensions/googlechat/src/monitor.test.ts",
+        "extensions/googlechat/src/sender-authority.transport.test.ts",
+        "extensions/nextcloud-talk/src/doctor.test.ts",
+        "extensions/nextcloud-talk/src/inbound-media.mentions.test.ts",
+        "extensions/nextcloud-talk/src/inbound.authz.test.ts",
+        "extensions/nextcloud-talk/src/inbound.behavior.test.ts",
+        "extensions/nextcloud-talk/src/inbound.room-info-retry.test.ts",
+        "extensions/nextcloud-talk/src/webhook-spool.test.ts",
+        "extensions/nostr/src/nostr-bus.inbound.test.ts",
+        "extensions/nostr/src/nostr-bus.outbound.test.ts",
+        "extensions/nostr/src/nostr-state-store.test.ts",
+        "extensions/synology-chat/src/outbound-media.test.ts",
+        "extensions/synology-chat/src/webhook-ingress.test.ts",
+        "extensions/tlon/src/monitor/index.test.ts",
+        "extensions/tlon/src/monitor/ingress.test.ts",
+        "extensions/twitch/src/monitor.test.ts",
+        "extensions/twitch/src/oauth-owner.test.ts",
+        "extensions/twitch/src/twitch-ingress.test.ts"
+      ],
+      "footer": {
+        "testFiles": "1 failed | 19 passed (20)",
+        "tests": "1 failed | 259 passed (260)"
+      }
+    },
+    {
+      "startLine": 7053,
+      "results": 486,
+      "files": [
+        "extensions/imessage/src/approval-reactions.persistence.test.ts",
+        "extensions/imessage/src/chat-db.admission.test.ts",
+        "extensions/imessage/src/message-resource.test.ts",
+        "extensions/imessage/src/monitor-reply-cache.test.ts",
+        "extensions/imessage/src/monitor.approval-poll-ingress.test.ts",
+        "extensions/imessage/src/monitor.approval-reaction-replay.test.ts",
+        "extensions/imessage/src/monitor.behavior.test.ts",
+        "extensions/imessage/src/monitor.debounce-policy.test.ts",
+        "extensions/imessage/src/monitor.last-route.test.ts",
+        "extensions/imessage/src/monitor.plugin-payload.test.ts",
+        "extensions/imessage/src/monitor.reaction-owner.test.ts",
+        "extensions/imessage/src/monitor.watch-subscribe-retry.test.ts",
+        "extensions/imessage/src/monitor/cache-lifecycle.test.ts",
+        "extensions/imessage/src/monitor/catchup-startup.test.ts",
+        "extensions/imessage/src/monitor/inbound-processing.route.test.ts",
+        "extensions/imessage/src/monitor/inbound-processing.test.ts",
+        "extensions/imessage/src/monitor/ingress.test.ts",
+        "extensions/imessage/src/monitor/recovery-cursor.postgres.test.ts",
+        "extensions/imessage/src/monitor/recovery-cursor.test.ts",
+        "extensions/imessage/src/monitor/self-chat-dedupe.test.ts",
+        "extensions/imessage/src/send.sqlite.test.ts",
+        "extensions/imessage/src/send.test.ts",
+        "extensions/imessage/src/test-plugin.test.ts"
+      ],
+      "footer": {
+        "testFiles": "22 passed | 1 skipped (23)",
+        "tests": "485 passed | 1 skipped (486)"
+      }
+    },
+    {
+      "startLine": 7624,
+      "results": 29,
+      "files": [
+        "extensions/irc/src/inbound.behavior.test.ts",
+        "extensions/irc/src/irc-ingress.test.ts",
+        "extensions/irc/src/monitor.test.ts"
+      ],
+      "footer": {
+        "testFiles": "3 passed (3)",
+        "tests": "29 passed (29)"
+      }
+    },
+    {
+      "startLine": 7663,
+      "results": 93,
+      "files": [
+        "extensions/line/doctor-contract-api.test.ts",
+        "extensions/line/src/bot-mention-context.test.ts",
+        "extensions/line/src/bot-message-context.test.ts",
+        "extensions/line/src/inbound-image-set.test.ts",
+        "extensions/line/src/monitor.lifecycle.test.ts",
+        "extensions/line/src/webhook-spool-migration.test.ts",
+        "extensions/line/src/webhook-spool.image-set.test.ts",
+        "extensions/line/src/webhook-spool.test.ts"
+      ],
+      "footer": {
+        "testFiles": "8 passed (8)",
+        "tests": "93 passed (93)"
+      }
+    },
+    {
+      "startLine": 7766,
+      "results": 968,
+      "files": [
+        "extensions/logbook/src/postgres-store.test.ts",
+        "extensions/memory-core/doctor-contract-api.test.ts",
+        "extensions/memory-core/index.test.ts",
+        "extensions/memory-core/src/cli.test.ts",
+        "extensions/memory-core/src/dreaming-dreams-file.test.ts",
+        "extensions/memory-core/src/dreaming-phases.test.ts",
+        "extensions/memory-core/src/memory-forget-recovery.test.ts",
+        "extensions/memory-core/src/memory/file-watcher.lifecycle.test.ts",
+        "extensions/memory-core/src/memory/generic-embedding-provider.integration.test.ts",
+        "extensions/memory-core/src/memory/index.test.ts",
+        "extensions/memory-core/src/memory/manager-embedding-policy.test.ts",
+        "extensions/memory-core/src/memory/manager-publication-transfer.test.ts",
+        "extensions/memory-core/src/memory/manager-publication.postgres.test.ts",
+        "extensions/memory-core/src/memory/manager-search-orchestration.test.ts",
+        "extensions/memory-core/src/memory/manager-search-vector.test.ts",
+        "extensions/memory-core/src/memory/manager-search.postgres.test.ts",
+        "extensions/memory-core/src/memory/manager-session-update-race.test.ts",
+        "extensions/memory-core/src/memory/manager-source-index-kernel.test.ts",
+        "extensions/memory-core/src/memory/manager-sync-ops.startup-catchup.test.ts",
+        "extensions/memory-core/src/memory/manager.borrowed-connection.test.ts",
+        "extensions/memory-core/src/memory/manager.fts-only-reindex.test.ts",
+        "extensions/memory-core/src/memory/manager.reindex-recovery.test.ts",
+        "extensions/memory-core/src/session-backfill.test.ts",
+        "extensions/memory-core/src/short-term-promotion.test.ts",
+        "extensions/memory-core/src/standing-intents.async.test.ts",
+        "extensions/team-reports/src/http.test.ts",
+        "extensions/team-reports/src/scheduler.test.ts",
+        "extensions/workboard/src/gateway.test.ts",
+        "extensions/workboard/src/lifecycle-sync.test.ts",
+        "extensions/workboard/src/sessions-board.test.ts",
+        "extensions/workboard/src/sqlite-store-batch-read.test.ts",
+        "extensions/workboard/src/store.test.ts",
+        "extensions/workboard/src/tools.test.ts"
+      ],
+      "footer": {
+        "testFiles": null,
+        "tests": null
+      }
+    }
+  ],
+  "failedFiles": [
+    "extensions/tlon/src/monitor/index.test.ts"
+  ],
+  "fails": [
+    {
+      "file": "extensions/tlon/src/monitor/index.test.ts",
+      "test": "monitorTlonProvider shutdown > streams deeply nested poison and capped messages over real HTTP SSE through production handlers and recovers on the next messages"
+    }
+  ],
+  "failSummary": [
+    {
+      "file": "extensions/tlon/src/monitor/index.test.ts",
+      "test": "monitorTlonProvider shutdown > streams deeply nested poison and capped messages over real HTTP SSE through production handlers and recovers on the next messages"
+    }
+  ],
+  "skips": [
+    {
+      "file": "extensions/clickclack/src/discussions/revoked-channel-store.postgres.test.ts",
+      "test": "ClickClack revoked channels on PostgreSQL state > records, reads, and clears a revoked discussion channel"
+    },
+    {
+      "file": "extensions/codex/src/app-server/inference-proxy.native.test.ts",
+      "test": "native inference admission > streams through the real relay with isolated native API-key auth"
+    },
+    {
+      "file": "extensions/codex/src/app-server/transport-stdio.sandbox.test.ts",
+      "test": "native Codex turn sandbox > keeps temporary-root exclusions at the native execution boundary: raw true"
+    },
+    {
+      "file": "extensions/codex/src/app-server/transport-stdio.sandbox.test.ts",
+      "test": "native Codex turn sandbox > keeps temporary-root exclusions at the native execution boundary: commented true"
+    },
+    {
+      "file": "extensions/codex/src/app-server/transport-stdio.sandbox.test.ts",
+      "test": "native Codex turn sandbox > keeps temporary-root exclusions at the native execution boundary: commented false wins last"
+    },
+    {
+      "file": "extensions/imessage/src/monitor/recovery-cursor.postgres.test.ts",
+      "test": "iMessage recovery cursor on PostgreSQL state > loads, advances, and reloads the cursor at channel start (#184862)"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-publication.postgres.test.ts",
+      "test": "PostgreSQL memory publication worker > publishes inline and streamed sources, then re-admits their projections after restart"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-publication.postgres.test.ts",
+      "test": "PostgreSQL memory publication worker > advances once per grouped replacement, refresh, and deletion, including rollback"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-publication.postgres.test.ts",
+      "test": "PostgreSQL memory publication worker > batches ten sources into one write per row family through group publication"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-publication.postgres.test.ts",
+      "test": "PostgreSQL memory publication worker > batches ten sources into one write per row family through staged publication"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-publication.postgres.test.ts",
+      "test": "PostgreSQL memory publication worker > preserves fragment order across the PostgreSQL bind-parameter limit"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-publication.postgres.test.ts",
+      "test": "PostgreSQL memory publication worker > routes PostgreSQL indexing reads through the publication owner"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-publication.postgres.test.ts",
+      "test": "PostgreSQL memory publication worker > reports a committed publication when its subsequent facts read fails"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-publication.postgres.test.ts",
+      "test": "PostgreSQL memory publication worker > atomically resets derived rows while retaining admitted search schema and revision"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-publication.postgres.test.ts",
+      "test": "PostgreSQL memory publication worker > promotes legacy identity and cache atomically without replacing canonical vectors"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-publication.postgres.test.ts",
+      "test": "PostgreSQL memory publication worker > retains a private full reindex across short bindings and rolls back a refused commit"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-publication.postgres.test.ts",
+      "test": "PostgreSQL memory publication worker > rejects a staged reindex after publication"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-publication.postgres.test.ts",
+      "test": "PostgreSQL memory publication worker > rejects a staged reindex after forget"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-publication.postgres.test.ts",
+      "test": "PostgreSQL memory publication worker > retains cache sizing without refreshing index facts across bindings, rollback, and other writers"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-publication.postgres.test.ts",
+      "test": "PostgreSQL memory publication worker > reuses exact cache counts across capacity writes and bounded prune batches"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-publication.postgres.test.ts",
+      "test": "PostgreSQL memory publication worker > evicts superseded cache rows first through both PostgreSQL cache paths"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-publication.postgres.test.ts",
+      "test": "PostgreSQL memory publication worker > keeps the cache bounded when another owner commits before its transaction starts"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-publication.postgres.test.ts",
+      "test": "PostgreSQL memory publication worker > invalidates cache sizing when another owner commits during post-commit facts"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-publication.postgres.test.ts",
+      "test": "PostgreSQL memory publication worker > replays a multi-request cache through bounded connection-local staging"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-search.postgres.test.ts",
+      "test": "PostgreSQL memory search worker > applies model, source and candidate eligibility before exact nearest limit"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-search.postgres.test.ts",
+      "test": "PostgreSQL memory search worker > excludes session paths before keyword, path, and vector limits without excluding ordinary memory"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-search.postgres.test.ts",
+      "test": "PostgreSQL memory search worker > uses unaccented full text with source filtering and calibrated 0.7/0.3 hybrid scores"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-search.postgres.test.ts",
+      "test": "PostgreSQL memory search worker > uses exact-path indexes for 50,000 sources before and after ANALYZE"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-search.postgres.test.ts",
+      "test": "PostgreSQL memory search worker > preserves predecessor rows, order, and scores for exact path edges with unicode61"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-search.postgres.test.ts",
+      "test": "PostgreSQL memory search worker > preserves predecessor rows, order, and scores for exact path edges with trigram"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-search.postgres.test.ts",
+      "test": "PostgreSQL memory search worker > retains rare fallback hits without letting weak lexical evidence outrank vector neighbors"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-search.postgres.test.ts",
+      "test": "PostgreSQL memory search worker > settles keyword fallback for cafe absentword (disabled=undefined)"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-search.postgres.test.ts",
+      "test": "PostgreSQL memory search worker > settles keyword fallback for absentword (disabled=undefined)"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-search.postgres.test.ts",
+      "test": "PostgreSQL memory search worker > settles keyword fallback for cafe absentword (disabled=undefined)"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-search.postgres.test.ts",
+      "test": "PostgreSQL memory search worker > settles keyword fallback for cafe (disabled=true)"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-search.postgres.test.ts",
+      "test": "PostgreSQL memory search worker > retains each keyword branch's ranking and limit before combining paths"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-search.postgres.test.ts",
+      "test": "PostgreSQL memory search worker > preserves the other keyword result when the body search projection fails"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-search.postgres.test.ts",
+      "test": "PostgreSQL memory search worker > preserves the other keyword result when the path search projection fails"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-search.postgres.test.ts",
+      "test": "PostgreSQL memory search worker > ranks trigram similarity before limits for body and path substring queries"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-search.postgres.test.ts",
+      "test": "PostgreSQL memory search worker > keeps keyword-only publication/search usable without pgvector and names semantic capability failure"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-search.postgres.test.ts",
+      "test": "PostgreSQL memory search worker > re-admits persisted search projections after closing and reopening the worker store"
+    },
+    {
+      "file": "extensions/memory-core/src/memory/manager-search.postgres.test.ts",
+      "test": "PostgreSQL memory search worker > reports PostgreSQL counts and storage"
+    },
+    {
+      "file": "extensions/logbook/src/postgres-store.test.ts",
+      "test": "PostgreSQL logbook operations > upgrades version 1 index ordering once while retaining standups and nullable indexes"
+    },
+    {
+      "file": "extensions/logbook/src/postgres-store.test.ts",
+      "test": "PostgreSQL logbook operations > upgrades version 2 by rebuilding only the two non-null partial indexes"
+    },
+    {
+      "file": "extensions/logbook/src/postgres-store.test.ts",
+      "test": "PostgreSQL logbook operations > returns identities, rolls back failed claims, and truncates sampling with timestamp ties"
+    },
+    {
+      "file": "extensions/logbook/src/postgres-store.test.ts",
+      "test": "PostgreSQL logbook operations > replaces observations, cards, and standups without duplicate or partial results"
+    },
+    {
+      "file": "extensions/logbook/src/postgres-store.test.ts",
+      "test": "PostgreSQL logbook operations > prune transaction boundary > prunes 0 frames without holding a transaction during filesystem work"
+    },
+    {
+      "file": "extensions/logbook/src/postgres-store.test.ts",
+      "test": "PostgreSQL logbook operations > prune transaction boundary > prunes 129 frames without holding a transaction during filesystem work"
+    },
+    {
+      "file": "extensions/logbook/src/postgres-store.test.ts",
+      "test": "PostgreSQL logbook operations > prune transaction boundary > retains retryable metadata when initial admission fails"
+    },
+    {
+      "file": "extensions/logbook/src/postgres-store.test.ts",
+      "test": "PostgreSQL logbook operations > prune transaction boundary > retains retryable metadata when renewed admission fails"
+    },
+    {
+      "file": "extensions/logbook/src/postgres-store.test.ts",
+      "test": "PostgreSQL logbook operations > prune transaction boundary > retains retryable metadata when commit admission fails"
+    },
+    {
+      "file": "extensions/logbook/src/postgres-store.test.ts",
+      "test": "PostgreSQL logbook operations > prune transaction boundary > retains all metadata after a partial unlink failure and retries absent files"
+    },
+    {
+      "file": "extensions/logbook/src/postgres-store.test.ts",
+      "test": "PostgreSQL logbook operations > prune transaction boundary > counts only metadata still present after competing prune work"
+    },
+    {
+      "file": "extensions/logbook/src/postgres-store.test.ts",
+      "test": "PostgreSQL logbook operations > prunes file artifacts and foreign keys, then reopens the same PostgreSQL store"
+    }
+  ],
+  "files": {
+    "extensions/a2a/src/inbound.test.ts": {
+      "pass": 19,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/a2a/src/task-store.persistence.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/acpx/doctor-contract-api.test.ts": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/acpx/src/process-lease.test.ts": {
+      "pass": 6,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/acpx/src/runtime-argv.process.test.ts": {
+      "pass": 8,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/acpx/src/runtime-owner.process.test.ts": {
+      "pass": 5,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/acpx/src/runtime-preactive-cancellation.process.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/acpx/src/runtime-process-cleanup.process.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/acpx/src/service.test.ts": {
+      "pass": 16,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/acpx/src/session-owner-migration.test.ts": {
+      "pass": 15,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/active-memory/index.test.ts": {
+      "pass": 96,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/agentsapi/agentsapi-attempt.test.ts": {
+      "pass": 13,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/agentsapi/agentsapi-harness.persistence.test.ts": {
+      "pass": 29,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/agentsapi/agentsapi-harness.startup.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/alibaba/video-generation-provider.test.ts": {
+      "pass": 7,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/beam/src/beam.test.ts": {
+      "pass": 17,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/beam/src/guest-upload.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/beam/src/handoff.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/beam/src/mirror-retry.test.ts": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/beam/src/store.test.ts": {
+      "pass": 10,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/browser/browser-maintenance.cold.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/browser/browser-maintenance.transport.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/browser/plugin-registration.dashboard-discovery.test.ts": {
+      "pass": 10,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/browser/src/browser-dashboard.concurrency.test.ts": {
+      "pass": 20,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/browser/src/browser-dashboard.test.ts": {
+      "pass": 26,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/browser/src/browser/routes/agent.act.dashboard-ownership.test.ts": {
+      "pass": 52,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/browser/src/browser/session-tab-registry.extension-cleanup.test.ts": {
+      "pass": 5,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/browser/src/browser/session-tab-registry.membership.test.ts": {
+      "pass": 19,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/browser/src/browser/session-tab-registry.sqlite.test.ts": {
+      "pass": 23,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/browser/src/browser/session-tab-storage-compat.sqlite.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/buzz/src/buzz-bus.lifecycle.test.ts": {
+      "pass": 19,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/buzz/src/buzz-bus.socket.test.ts": {
+      "pass": 5,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/buzz/src/gateway.cold-start-recovery.test.ts": {
+      "pass": 9,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/buzz/src/inbound.test.ts": {
+      "pass": 23,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/clawrouter/audio-transcription.test.ts": {
+      "pass": 21,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/clawrouter/media-compatibility.test.ts": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/clawrouter/speech-provider.test.ts": {
+      "pass": 35,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/clickclack/src/discussions/revoked-channel-store.postgres.test.ts": {
+      "pass": 0,
+      "fail": 0,
+      "skip": 1
+    },
+    "extensions/clickclack/src/discussions/service-open.agent-storage.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/clickclack/src/discussions/service-state-persistence.test.ts": {
+      "pass": 22,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/clickclack/src/inbound.mention-gating.test.ts": {
+      "pass": 54,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/clickclack/src/inbound.test.ts": {
+      "pass": 23,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/clickclack/src/sender-authority.test.ts": {
+      "pass": 9,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/auth-profile-health.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/doctor-contract-api.native-assignments.test.ts": {
+      "pass": 18,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/doctor-contract-api.test.ts": {
+      "pass": 27,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/harness.test.ts": {
+      "pass": 37,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/index-services.test.ts": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/index.test.ts": {
+      "pass": 16,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/session-history-worker-runtime.test.ts": {
+      "pass": 5,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/account-usage.worker-read.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/attempt-startup-computer-use.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/attempt-startup-lifetime.test.ts": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/attempt-startup-retry.test.ts": {
+      "pass": 9,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/attempt-startup.test.ts": {
+      "pass": 20,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/auth-bridge.test.ts": {
+      "pass": 53,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/auth-profile-runtime-contract.test.ts": {
+      "pass": 9,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/auth-refresh-authority.integration.test.ts": {
+      "pass": 7,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/auth-requirement-matrix.test.ts": {
+      "pass": 21,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/compact.cancellation.test.ts": {
+      "pass": 6,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/compact.model-policy.test.ts": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/compact.native.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/compact.test.ts": {
+      "pass": 37,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/dynamic-tool-build.gateway-policy.test.ts": {
+      "pass": 8,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/dynamic-tool-build.test.ts": {
+      "pass": 76,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/event-projector.output-fidelity.native.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/host-credential-execution.test.ts": {
+      "pass": 8,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/inference-proxy.native.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 1
+    },
+    "extensions/codex/src/app-server/isolated-completion.auth-boundary.test.ts": {
+      "pass": 5,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/isolated-completion.native.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/mcp-app-first-reply.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/model-catalog.process.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/native-command-auth.native.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/native-execution-policy.authority-chain.test.ts": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/native-execution-policy.incognito.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/native-provenance.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/native-subagent-completion-delivery.contention.test.ts": {
+      "pass": 5,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/native-subagent-completion-publication.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/native-subagent-inventory.retirement.test.ts": {
+      "pass": 7,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/native-subagent-inventory.settlement.test.ts": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/native-subagent-inventory.test.ts": {
+      "pass": 40,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/native-subagent-monitor.completion-delivery.test.ts": {
+      "pass": 17,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/native-subagent-monitor.direct-authority.test.ts": {
+      "pass": 19,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/native-subagent-monitor.test.ts": {
+      "pass": 20,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/native-subagent-submission-store.test.ts": {
+      "pass": 29,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/reasoning-effort.native.test.ts": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/remote-workspace-media.test.ts": {
+      "pass": 18,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/responses-oauth.authority.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt-connection.environment.test.ts": {
+      "pass": 18,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt-continuity.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt-lifecycle-controller.steering.test.ts": {
+      "pass": 8,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt-lifecycle-controller.test.ts": {
+      "pass": 46,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt-native-process-authority.test.ts": {
+      "pass": 13,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt-one-shot-cleanup.test.ts": {
+      "pass": 11,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt-parent-continuation.test.ts": {
+      "pass": 7,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt-runtime.authority.test.ts": {
+      "pass": 25,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt-thread-cleanup.test.ts": {
+      "pass": 14,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.activation.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.agent-end-context.test.ts": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.auth-context.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.bounded-continuity.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.channel-tool-progress.test.ts": {
+      "pass": 6,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.checkpoint.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.compaction-closeout.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.computer-use.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.configured-mcp.test.ts": {
+      "pass": 23,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.context-budget.test.ts": {
+      "pass": 8,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.context-engine-overflow.test.ts": {
+      "pass": 7,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.context-engine.test.ts": {
+      "pass": 19,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.continuity-media.test.ts": {
+      "pass": 13,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.durable-context.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.dynamic-tools.test.ts": {
+      "pass": 17,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.final-media.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.generation-finalization.test.ts": {
+      "pass": 7,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.history-seed.test.ts": {
+      "pass": 19,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.hooks.test.ts": {
+      "pass": 18,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.media-lifetime.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.model-attribution.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.native-authority.test.ts": {
+      "pass": 13,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.native-background-outcome.test.ts": {
+      "pass": 10,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.native-config.test.ts": {
+      "pass": 19,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.native-followup-custody.test.ts": {
+      "pass": 6,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.native-hook-fallback.test.ts": {
+      "pass": 13,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.native-hook-relay-retention.test.ts": {
+      "pass": 6,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.native-hook-relay.test.ts": {
+      "pass": 12,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.native-observation.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.plugin-refresh.test.ts": {
+      "pass": 5,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.plugin-steering.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.prompt-continuity.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.prompt-projection.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.protocol-validation.test.ts": {
+      "pass": 7,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.question-refresh.test.ts": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.question-tool.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.reasoning-effort.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.remote-skills.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.restricted-context-continuity.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.retry-continuation.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.session-fork.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.settlement.test.ts": {
+      "pass": 9,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.skills.native.test.ts": {
+      "pass": 6,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.steering-authority.test.ts": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.steering-media.test.ts": {
+      "pass": 15,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.steering-settlement.test.ts": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.steering.test.ts": {
+      "pass": 15,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.subscription.test.ts": {
+      "pass": 15,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.subsession-delivery.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.test.ts": {
+      "pass": 131,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.turn-watches.test.ts": {
+      "pass": 15,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.warnings.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/run-attempt.workspace-snapshot.test.ts": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/session-binding.reads.test.ts": {
+      "pass": 17,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/session-binding.test.ts": {
+      "pass": 38,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/session-history-control.test.ts": {
+      "pass": 7,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/session-history.test.ts": {
+      "pass": 44,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/session-warnings.test.ts": {
+      "pass": 9,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/settled-turn-finalizer.native.test.ts": {
+      "pass": 10,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/shared-client-git-policy.native.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/side-question.app-consent.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/side-question.continuation.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/side-question.fork.test.ts": {
+      "pass": 8,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/side-question.test.ts": {
+      "pass": 47,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/thread-lifecycle.adoption.test.ts": {
+      "pass": 10,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/thread-lifecycle.assignment-rotation.test.ts": {
+      "pass": 21,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/thread-lifecycle.binding.test.ts": {
+      "pass": 108,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/thread-lifecycle.handoff.native.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/thread-lifecycle.native-config.test.ts": {
+      "pass": 27,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/thread-lifecycle.native.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/thread-lifecycle.remote-hooks.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/thread-lifecycle.restricted-continuation.test.ts": {
+      "pass": 18,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/thread-lifecycle.warm-cleanup.native.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/thread-lifecycle.warm-cleanup.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/thread-shell-environment.native.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/trajectory.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/transcript-mirror.admission.test.ts": {
+      "pass": 5,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/transcript-mirror.user-idempotency.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/transport-process-registration.procfs.test.ts": {
+      "pass": 15,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/transport-process-registration.test.ts": {
+      "pass": 9,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/transport-startup.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/transport-stdio.config.test.ts": {
+      "pass": 7,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/app-server/transport-stdio.sandbox.test.ts": {
+      "pass": 0,
+      "fail": 0,
+      "skip": 3
+    },
+    "extensions/codex/src/command-account.test.ts": {
+      "pass": 5,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/command-diagnostics.worker-read.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/command-handler-scope.worker.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/command-plugins-runtime.test.ts": {
+      "pass": 11,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/command-rpc.test.ts": {
+      "pass": 8,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/commands.detach.test.ts": {
+      "pass": 25,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/commands.native-subagent-retention.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/commands.test.ts": {
+      "pass": 96,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/conversation-binding.test.ts": {
+      "pass": 52,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/conversation-control.test.ts": {
+      "pass": 15,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/migration/provider.auth.test.ts": {
+      "pass": 28,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/migration/provider.test.ts": {
+      "pass": 40,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/node-app-server.runtime.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/node-exec-server.readiness.test.ts": {
+      "pass": 8,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/node-exec-server.test.ts": {
+      "pass": 8,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/session-catalog-adoption.test.ts": {
+      "pass": 21,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/session-catalog-cold-native.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/session-catalog-ephemeral.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/session-catalog-native-performance.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/session-catalog-resident-state.test.ts": {
+      "pass": 8,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/codex/src/supervision-tools.test.ts": {
+      "pass": 30,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/copilot/harness.detached.integration.test.ts": {
+      "pass": 5,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/copilot/harness.test.ts": {
+      "pass": 43,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/copilot/src/attempt-active-run.test.ts": {
+      "pass": 19,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/copilot/src/attempt-session.integration.test.ts": {
+      "pass": 5,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/copilot/src/tool-bridge.test.ts": {
+      "pass": 21,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/doctor-contract-api.test.ts": {
+      "pass": 9,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/index.test.ts": {
+      "pass": 7,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/crabbox-gateway-methods.test.ts": {
+      "pass": 13,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/crabbox-worker-capture-nonblocking.test.ts": {
+      "pass": 18,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/crabbox-worker-coordinator-retry.test.ts": {
+      "pass": 15,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/crabbox-worker-enrollment-overlap.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/crabbox-worker-heartbeat.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/crabbox-worker-node-enrollment.test.ts": {
+      "pass": 33,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/crabbox-worker-prepared-image.test.ts": {
+      "pass": 14,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/crabbox-worker-project.test.ts": {
+      "pass": 51,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/crabbox-worker-provider-desktop.test.ts": {
+      "pass": 10,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/crabbox-worker-provider-platforms.test.ts": {
+      "pass": 10,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/crabbox-worker-provider.test.ts": {
+      "pass": 67,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/crabbox-worker-provision-cancellation.test.ts": {
+      "pass": 11,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/crabbox-worker-resource-receipt.test.ts": {
+      "pass": 38,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/crabbox-worker-stop-lifetime.test.ts": {
+      "pass": 13,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/crabbox-worker-stop.test.ts": {
+      "pass": 5,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/crabbox-worker-warm-image-allocation.test.ts": {
+      "pass": 29,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/crabbox-worker-warm-image-cli.test.ts": {
+      "pass": 5,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/crabbox-worker-warm-image-lifecycle.test.ts": {
+      "pass": 12,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/crabbox-worker-warm-image-maintenance.test.ts": {
+      "pass": 28,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/crabbox-worker-warm-image-reconciliation.test.ts": {
+      "pass": 23,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/crabbox-worker-warm-image-recovery.test.ts": {
+      "pass": 8,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/crabbox-worker-warm-image-retirement.test.ts": {
+      "pass": 28,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/crabbox-worker-warm-image.test.ts": {
+      "pass": 19,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/crabbox/src/doctor.test.ts": {
+      "pass": 22,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/deep-research/src/jobs.cancel.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/deep-research/src/jobs.control.test.ts": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/deep-research/src/jobs.test.ts": {
+      "pass": 34,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/deep-research/src/jobs.wake.test.ts": {
+      "pass": 27,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/device-pair/notify.test.ts": {
+      "pass": 16,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/diagnostics-otel/src/codex-dynamic-tool-origin.integration.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/diagnostics-otel/src/continuation-tracer-adapter.integration.test.ts": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/diffs/src/store.cleanup.test.ts": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/diffs/src/store.test.ts": {
+      "pass": 21,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/diffs/src/tool.test.ts": {
+      "pass": 14,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/discord/src/durable-delivery.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/discord/src/monitor/ingress.test.ts": {
+      "pass": 11,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/discord/src/monitor/listeners.thread-delete.session-store.integration.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/discord/src/monitor/message-handler.context-history.test.ts": {
+      "pass": 13,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/discord/src/monitor/message-handler.ingress-recovery.test.ts": {
+      "pass": 16,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/discord/src/monitor/model-picker-preferences.test.ts": {
+      "pass": 6,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/discord/src/monitor/monitor.test.ts": {
+      "pass": 24,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/discord/src/monitor/native-command.guild-guards.test.ts": {
+      "pass": 5,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/discord/src/monitor/native-command.interaction-boundary.test.ts": {
+      "pass": 16,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/discord/src/monitor/presence-cooldown-store.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/discord/src/monitor/thread-bindings.authority.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/discord/src/monitor/thread-bindings.creation.test.ts": {
+      "pass": 22,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/discord/src/monitor/thread-bindings.lifecycle.test.ts": {
+      "pass": 9,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/discord/src/monitor/thread-bindings.state.test.ts": {
+      "pass": 15,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/discord/src/monitor/thread-bindings.worker.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/facetime/tests/runtime-admission.test.ts": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/facetime/tests/runtime-authority-boundary.test.ts": {
+      "pass": 5,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/facetime/tests/runtime-persistence.test.ts": {
+      "pass": 14,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/facetime/tests/runtime-reconciliation.test.ts": {
+      "pass": 5,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/facetime/tests/runtime.test.ts": {
+      "pass": 25,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/feishu/src/bot.broadcast.test.ts": {
+      "pass": 13,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/feishu/src/bot.card-action.test.ts": {
+      "pass": 22,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/feishu/src/bot.test.ts": {
+      "pass": 60,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/feishu/src/dedup.test.ts": {
+      "pass": 5,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/feishu/src/doctor.test.ts": {
+      "pass": 11,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/feishu/src/feishu-ingress.test.ts": {
+      "pass": 20,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/feishu/src/monitor.dedupe-lifecycle.test.ts": {
+      "pass": 8,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/feishu/src/monitor.lifecycle.test.ts": {
+      "pass": 11,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/feishu/src/monitor.message-handler.ingress.test.ts": {
+      "pass": 12,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/feishu/src/monitor.post-replay.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/feishu/src/monitor.reaction.test.ts": {
+      "pass": 20,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/feishu/src/monitor.startup.test.ts": {
+      "pass": 12,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/feishu/src/monitor.vc-meeting-invited-handler.test.ts": {
+      "pass": 6,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/feishu/src/monitor.webhook-e2e.test.ts": {
+      "pass": 22,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/feishu/src/outbound-delivery.test.ts": {
+      "pass": 8,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/feishu/src/outbound.send-authority.test.ts": {
+      "pass": 29,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/github-copilot/index.test.ts": {
+      "pass": 39,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/google-meet/index.test.ts": {
+      "pass": 56,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/google-meet/participation-runtime-registration.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/google-meet/src/oauth-owner.test.ts": {
+      "pass": 17,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/google/embedding-provider.test.ts": {
+      "pass": 36,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/google/research-gateway.test.ts": {
+      "pass": 18,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/google/transport-stream.test.ts": {
+      "pass": 122,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/google/vertex-adc-refresh.test.ts": {
+      "pass": 6,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/googlechat/src/api.fetchok.transport.test.ts": {
+      "pass": 7,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/googlechat/src/monitor-ingress.test.ts": {
+      "pass": 9,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/googlechat/src/monitor.test.ts": {
+      "pass": 16,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/googlechat/src/sender-authority.transport.test.ts": {
+      "pass": 13,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/imessage/src/approval-reactions.persistence.test.ts": {
+      "pass": 5,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/imessage/src/chat-db.admission.test.ts": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/imessage/src/message-resource.test.ts": {
+      "pass": 13,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/imessage/src/monitor-reply-cache.test.ts": {
+      "pass": 23,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/imessage/src/monitor.approval-poll-ingress.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/imessage/src/monitor.approval-reaction-replay.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/imessage/src/monitor.behavior.test.ts": {
+      "pass": 249,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/imessage/src/monitor.debounce-policy.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/imessage/src/monitor.last-route.test.ts": {
+      "pass": 29,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/imessage/src/monitor.plugin-payload.test.ts": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/imessage/src/monitor.reaction-owner.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/imessage/src/monitor.watch-subscribe-retry.test.ts": {
+      "pass": 6,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/imessage/src/monitor/cache-lifecycle.test.ts": {
+      "pass": 37,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/imessage/src/monitor/catchup-startup.test.ts": {
+      "pass": 7,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/imessage/src/monitor/inbound-processing.route.test.ts": {
+      "pass": 5,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/imessage/src/monitor/inbound-processing.test.ts": {
+      "pass": 16,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/imessage/src/monitor/ingress.test.ts": {
+      "pass": 9,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/imessage/src/monitor/recovery-cursor.postgres.test.ts": {
+      "pass": 0,
+      "fail": 0,
+      "skip": 1
+    },
+    "extensions/imessage/src/monitor/recovery-cursor.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/imessage/src/monitor/self-chat-dedupe.test.ts": {
+      "pass": 14,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/imessage/src/send.sqlite.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/imessage/src/send.test.ts": {
+      "pass": 38,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/imessage/src/test-plugin.test.ts": {
+      "pass": 14,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/irc/src/inbound.behavior.test.ts": {
+      "pass": 9,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/irc/src/irc-ingress.test.ts": {
+      "pass": 7,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/irc/src/monitor.test.ts": {
+      "pass": 13,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/line/doctor-contract-api.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/line/src/bot-mention-context.test.ts": {
+      "pass": 12,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/line/src/bot-message-context.test.ts": {
+      "pass": 23,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/line/src/inbound-image-set.test.ts": {
+      "pass": 8,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/line/src/monitor.lifecycle.test.ts": {
+      "pass": 22,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/line/src/webhook-spool-migration.test.ts": {
+      "pass": 7,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/line/src/webhook-spool.image-set.test.ts": {
+      "pass": 7,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/line/src/webhook-spool.test.ts": {
+      "pass": 10,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/litellm/index.test.ts": {
+      "pass": 13,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/logbook/src/postgres-store.test.ts": {
+      "pass": 0,
+      "fail": 0,
+      "skip": 12
+    },
+    "extensions/mcp-events/src/service.test.ts": {
+      "pass": 24,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/memory-core/doctor-contract-api.test.ts": {
+      "pass": 42,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/memory-core/index.test.ts": {
+      "pass": 33,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/memory-core/src/cli.test.ts": {
+      "pass": 58,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/memory-core/src/dreaming-dreams-file.test.ts": {
+      "pass": 28,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/memory-core/src/dreaming-phases.test.ts": {
+      "pass": 25,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/memory-core/src/memory-forget-recovery.test.ts": {
+      "pass": 15,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/memory-core/src/memory/file-watcher.lifecycle.test.ts": {
+      "pass": 29,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/memory-core/src/memory/generic-embedding-provider.integration.test.ts": {
+      "pass": 12,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/memory-core/src/memory/index.test.ts": {
+      "pass": 32,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/memory-core/src/memory/manager-embedding-policy.test.ts": {
+      "pass": 59,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/memory-core/src/memory/manager-publication-transfer.test.ts": {
+      "pass": 21,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/memory-core/src/memory/manager-publication.postgres.test.ts": {
+      "pass": 0,
+      "fail": 0,
+      "skip": 18
+    },
+    "extensions/memory-core/src/memory/manager-search-orchestration.test.ts": {
+      "pass": 23,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/memory-core/src/memory/manager-search-vector.test.ts": {
+      "pass": 13,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/memory-core/src/memory/manager-search.postgres.test.ts": {
+      "pass": 0,
+      "fail": 0,
+      "skip": 18
+    },
+    "extensions/memory-core/src/memory/manager-session-update-race.test.ts": {
+      "pass": 15,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/memory-core/src/memory/manager-source-index-kernel.test.ts": {
+      "pass": 25,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/memory-core/src/memory/manager-sync-ops.startup-catchup.test.ts": {
+      "pass": 14,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/memory-core/src/memory/manager.borrowed-connection.test.ts": {
+      "pass": 22,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/memory-core/src/memory/manager.fts-only-reindex.test.ts": {
+      "pass": 21,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/memory-core/src/memory/manager.reindex-recovery.test.ts": {
+      "pass": 26,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/memory-core/src/session-backfill.test.ts": {
+      "pass": 23,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/memory-core/src/short-term-promotion.test.ts": {
+      "pass": 91,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/memory-core/src/standing-intents.async.test.ts": {
+      "pass": 23,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/microsoft/speech-provider.test.ts": {
+      "pass": 10,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/migrate-hermes/files-and-skills.test.ts": {
+      "pass": 21,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/migrate-hermes/secrets.test.ts": {
+      "pass": 21,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/minimax/speech-provider.test.ts": {
+      "pass": 22,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/minimax/tts.test.ts": {
+      "pass": 14,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/nextcloud-talk/src/doctor.test.ts": {
+      "pass": 10,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/nextcloud-talk/src/inbound-media.mentions.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/nextcloud-talk/src/inbound.authz.test.ts": {
+      "pass": 9,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/nextcloud-talk/src/inbound.behavior.test.ts": {
+      "pass": 32,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/nextcloud-talk/src/inbound.room-info-retry.test.ts": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/nextcloud-talk/src/webhook-spool.test.ts": {
+      "pass": 18,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/nostr/src/nostr-bus.inbound.test.ts": {
+      "pass": 15,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/nostr/src/nostr-bus.outbound.test.ts": {
+      "pass": 21,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/nostr/src/nostr-state-store.test.ts": {
+      "pass": 15,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/omlx/setup.test.ts": {
+      "pass": 31,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/onepassword/index.worker.test.ts": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/onepassword/src/tool-list.test.ts": {
+      "pass": 5,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/raft/src/gateway.test.ts": {
+      "pass": 8,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/reef/doctor-contract-api.test.ts": {
+      "pass": 30,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/reef/src/audit-state.test.ts": {
+      "pass": 14,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/reef/src/channel.test.ts": {
+      "pass": 24,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/reef/src/flow-receipts.test.ts": {
+      "pass": 9,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/reef/src/flow-send.test.ts": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/reef/src/flow.pending-review.test.ts": {
+      "pass": 5,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/reef/src/flow.source-authority.test.ts": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/reef/src/flow.test.ts": {
+      "pass": 20,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/reef/src/flow.worker-outbound.test.ts": {
+      "pass": 16,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/reef/src/friends.test.ts": {
+      "pass": 25,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/reef/src/inbox-cursor.test.ts": {
+      "pass": 9,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/reef/src/outbound.test.ts": {
+      "pass": 10,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/reef/src/replay-state.test.ts": {
+      "pass": 9,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/reef/src/setup.test.ts": {
+      "pass": 11,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/reef/src/state.test.ts": {
+      "pass": 26,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/reef/src/transport-capacity-recovery.test.ts": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/reef/src/trust-store.test.ts": {
+      "pass": 31,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/sms/src/ingress-spool.test.ts": {
+      "pass": 12,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/sms/src/media-limits.test.ts": {
+      "pass": 8,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/sms/src/media.test.ts": {
+      "pass": 104,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/synology-chat/src/outbound-media.test.ts": {
+      "pass": 26,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/synology-chat/src/webhook-ingress.test.ts": {
+      "pass": 7,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/team-reports/src/http.test.ts": {
+      "pass": 32,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/team-reports/src/scheduler.test.ts": {
+      "pass": 22,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/teams-meetings/index.test.ts": {
+      "pass": 9,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/teams-meetings/src/runtime.test.ts": {
+      "pass": 5,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/tlon/src/monitor/index.test.ts": {
+      "pass": 23,
+      "fail": 1,
+      "skip": 0
+    },
+    "extensions/tlon/src/monitor/ingress.test.ts": {
+      "pass": 8,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/twitch/src/monitor.test.ts": {
+      "pass": 6,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/twitch/src/oauth-owner.test.ts": {
+      "pass": 8,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/twitch/src/twitch-ingress.test.ts": {
+      "pass": 9,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/workboard/src/gateway.test.ts": {
+      "pass": 30,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/workboard/src/lifecycle-sync.test.ts": {
+      "pass": 39,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/workboard/src/sessions-board.test.ts": {
+      "pass": 23,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/workboard/src/sqlite-store-batch-read.test.ts": {
+      "pass": 16,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/workboard/src/store.test.ts": {
+      "pass": 86,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/workboard/src/tools.test.ts": {
+      "pass": 22,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/x/src/client.test.ts": {
+      "pass": 12,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/x/src/guest-usage.test.ts": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/zoom-meetings/index.test.ts": {
+      "pass": 10,
+      "fail": 0,
+      "skip": 0
+    },
+    "extensions/zoom-meetings/src/runtime.test.ts": {
+      "pass": 15,
+      "fail": 0,
+      "skip": 0
+    }
+  }
+}

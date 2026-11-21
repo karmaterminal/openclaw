@@ -1,0 +1,14 @@
+label=cand-16541aa5
+tree=/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-extdbw-local-shard
+head=16541aa5a8ee81f1e505a414e2d21a758c43cbc2
+status_before=0 lines
+node=v26.12.1
+host=ronan arch=aarch64 nproc=20
+start_utc=2026-11-21T18:10:48Z
+start_epoch=1795284648
+disk_start_pct=89.301
+wrap_pid=638774
+end_utc=2026-11-21T20:48:37Z
+end_epoch=1795294117
+disk_end_pct=89.635
+rc=1

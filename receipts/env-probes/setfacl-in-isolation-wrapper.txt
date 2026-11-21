@@ -1,0 +1,15 @@
+# setfacl probe, 2026-11-21T20:50:30Z, host ronan 7.0.0-1019-nvidia, wrapper /home/figs/flesh_beast_best_beast/source/frond-scribe/skills/pr-drift-cure-gates/run-isolated-from-live-gateways.sh (frond-scribe aa68c548a37566bdd87cbc0cee53e03caa6b4eb4)
+# the failing test's own command: setfacl -m d:u:65534:rwX,d:m::rwx <workspace>
+$ setfacl -m d:u:65534:rwX,d:m::rwx <host on-disk dir>
+rc=0
+$ <wrapper> bash -c '…'
+uid_map:  1000 0 1
+$ setfacl -m d:u:65534:rwX,d:m::rwx <on-disk dir, inside wrapper>
+setfacl: /home/figs/lane-runs/129388-extdbw-local-shard/acl-probe2/iso-disk-uOTc: Invalid argument
+rc=1
+/tmp/openclaw inside wrapper: tmpfs  rw,relatime,mode=700,uid=1000,gid=1000,inode64
+$ setfacl -m d:u:65534:rwX,d:m::rwx <dir under /tmp/openclaw, inside wrapper>
+setfacl: /tmp/openclaw/acl-probe-i2Wh: Invalid argument
+rc=1
+$ setfacl -m d:u:1000:rwX,d:m::rwx <same dir: own uid, which the map contains>
+rc=0
