@@ -1,0 +1,11 @@
+# instr start=2026-11-21T21:52:19Z
+rv-instr src/gateway/server-methods/models-auth-removal.integration.test.ts run0 rc=0 113s VERDICT PASS [Test Files 1 passed (1); Tests 5 passed (5)] dirty_max=414448kB disk=89.642%
+rv-instr src/gateway/server-methods/models-auth-removal.integration.test.ts run1 rc=0 45s VERDICT PASS [Test Files 1 passed (1); Tests 5 passed (5)] dirty_max=110536kB disk=89.659%
+rv-instr src/gateway/server-methods/models-auth-removal.integration.test.ts run2 rc=0 47s VERDICT PASS [Test Files 1 passed (1); Tests 5 passed (5)] dirty_max=144108kB disk=89.663%
+rv-instr src/gateway/server-methods/models-auth-removal.integration.test.ts run3 rc=0 45s VERDICT PASS [Test Files 1 passed (1); Tests 5 passed (5)] dirty_max=244944kB disk=89.662%
+rv-instr src/gateway/server-methods/models-auth-removal.integration.test.ts run4 rc=0 44s VERDICT PASS [Test Files 1 passed (1); Tests 5 passed (5)] dirty_max=132204kB disk=89.667%
+rv-instr src/gateway/server-methods/models-auth-removal.integration.test.ts run5 rc=0 45s VERDICT PASS [Test Files 1 passed (1); Tests 5 passed (5)] dirty_max=210852kB disk=89.671%
+rv-instr src/gateway/server-methods/models-auth-removal.integration.test.ts run6 rc=0 44s VERDICT PASS [Test Files 1 passed (1); Tests 5 passed (5)] dirty_max=320064kB disk=89.671%
+rv-instr src/gateway/server-methods/models-auth-removal.integration.test.ts run7 rc=1 43s VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 4 passed (5)] dirty_max=1552972kB disk=89.522%
+# first red at run 7
+# instr done=2026-11-21T21:59:31Z

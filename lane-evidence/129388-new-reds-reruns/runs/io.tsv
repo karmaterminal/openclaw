@@ -68,3 +68,11 @@ start	ref	file	run	run_write_bytes	run_cancelled_write_bytes	dirty_before_kb	dir
 2026-11-21T21:49:54Z	cand+fakedirty0	test/scripts/team-shape-fixture.test.ts	3	177176576	34856960	29296	516756
 2026-11-21T21:50:38Z	prior+fakedirty0	test/scripts/team-shape-fixture.test.ts	3	177364992	34811904	422532	423736
 2026-11-21T21:51:21Z	base+fakedirty0	test/scripts/team-shape-fixture.test.ts	3	176586752	34570240	376016	449024
+2026-11-21T21:52:19Z	rv-instr	src/gateway/server-methods/models-auth-removal.integration.test.ts	0	594563072	6225920	46624	414448
+2026-11-21T21:54:14Z	rv-instr	src/gateway/server-methods/models-auth-removal.integration.test.ts	1	65798144	11694080	79316	110536
+2026-11-21T21:54:59Z	rv-instr	src/gateway/server-methods/models-auth-removal.integration.test.ts	2	66105344	11812864	69524	144108
+2026-11-21T21:55:46Z	rv-instr	src/gateway/server-methods/models-auth-removal.integration.test.ts	3	65916928	11694080	150312	244944
+2026-11-21T21:56:32Z	rv-instr	src/gateway/server-methods/models-auth-removal.integration.test.ts	4	65957888	11694080	122808	132204
+2026-11-21T21:57:16Z	rv-instr	src/gateway/server-methods/models-auth-removal.integration.test.ts	5	66224128	11931648	120732	210852
+2026-11-21T21:58:02Z	rv-instr	src/gateway/server-methods/models-auth-removal.integration.test.ts	6	66072576	11812864	217912	320064
+2026-11-21T21:58:47Z	rv-instr	src/gateway/server-methods/models-auth-removal.integration.test.ts	7	65814528	12009472	366188	1552972

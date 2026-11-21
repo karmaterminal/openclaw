@@ -1,0 +1,77 @@
+# ctl3 ref=rv-instr sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 file=src/gateway/server-methods/models-auth-removal.integration.test.ts run=1 start=2026-11-21T21:54:14Z host=ronan arch=aarch64
+# before: dirty_kb/writeback_kb=79316/0 load1=8.08 disk=89.659% extdbw_procs=0
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-nrr-yq0ASu/home TMPDIR=/tmp/oc-nrr-yq0ASu/tmp umask=0022
+# argv: /home/figs/flesh_beast_best_beast/source/frond-scribe/skills/pr-drift-cure-gates/run-isolated-from-live-gateways.sh /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr env ... oc-focused  --worktree /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr src/gateway/server-methods/models-auth-removal.integration.test.ts
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.gateway-database-workers.config.ts
+include-file: /tmp/oc-nrr-yq0ASu/tmp/oc-focused.iCc9oC/include.json
+include-file-contents:
+  [
+    "src/gateway/server-methods/models-auth-removal.integration.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-nrr-yq0ASu/tmp/oc-focused.iCc9oC/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.gateway-database-workers.config.ts --maxWorkers=1 src/gateway/server-methods/models-auth-removal.integration.test.ts
+logs: /tmp/oc-nrr-yq0ASu/tmp/oc-focused.iCc9oC
+
+ RUN  v5.0.5 /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr
+
+[vitest-workers] local cache hit after 2311ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 56f44435811c in 2377ms (20380 inputs, 25474 outputs)
+[gateway] startup phase: gateway.server-start-import starting total=11127.9ms
+[gateway] startup phase: gateway.server-start-import 2064.3ms total=13192.2ms start=11127.9ms rssMb=593.4 heapUsedMb=426.5 workers=0 workerHeapSamples=0/0 workerHeapMb=0.0 workerHeapSource=cached
+ ✓ |gateway-database-workers| src/gateway/server-methods/models-auth-removal.integration.test.ts > models.authLogout with a concurrent registered config set > preserves a replacement key and refuses… 11287ms
+[gateway] startup phase: gateway.server-start-import starting total=21063.0ms
+[gateway] startup phase: gateway.server-start-import 0.1ms total=21063.2ms start=21063.0ms rssMb=1723.2 heapUsedMb=645.0 workers=0 workerHeapSamples=0/0 workerHeapMb=0.0 workerHeapSource=cached
+ ✓ |gateway-database-workers| src/gateway/server-methods/models-auth-removal.integration.test.ts > models.authLogout with a concurrent registered config set > removes the selected key after an unrel… 4480ms
+[gateway] startup phase: gateway.server-start-import starting total=25549.8ms
+[gateway] startup phase: gateway.server-start-import 0.1ms total=25549.9ms start=25549.8ms rssMb=1802.6 heapUsedMb=650.4 workers=0 workerHeapSamples=0/0 workerHeapMb=0.0 workerHeapSource=cached
+ ✓ |gateway-database-workers| src/gateway/server-methods/models-auth-removal.integration.test.ts > models.authLogout with a concurrent registered config set > preserves a replacement secret referenc… 4433ms
+[gateway] startup phase: gateway.server-start-import starting total=29968.2ms
+[gateway] startup phase: gateway.server-start-import 0.1ms total=29968.3ms start=29968.2ms rssMb=1820.2 heapUsedMb=665.2 workers=0 workerHeapSamples=0/0 workerHeapMb=0.0 workerHeapSource=cached
+ ✓ |gateway-database-workers| src/gateway/server-methods/models-auth-removal.integration.test.ts > models.authLogout with a concurrent registered config set > preserves a replacement env reference w… 4258ms
+[gateway] startup phase: gateway.server-start-import starting total=34234.7ms
+[gateway] startup phase: gateway.server-start-import 0.1ms total=34234.8ms start=34234.7ms rssMb=1835.7 heapUsedMb=673.8 workers=0 workerHeapSamples=0/0 workerHeapMb=0.0 workerHeapSource=cached
+(node:169) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: upsertAuthProfile is deprecated; use upsertAuthProfileAsync instead. The legacy contract remains supported during its deprecation period. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:169) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: ensureAuthProfileStoreForLocalUpdate is deprecated; use ensureAuthProfileStoreForLocalUpdateAsync instead. The legacy contract remains supported during its deprecation period. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+(node:169) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: saveAuthProfileStore is deprecated; use updateAuthProfileStoreWithLock from openclaw/plugin-sdk/provider-auth instead. The legacy contract remains supported during its deprecation period. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+stderr | unknown test
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.stateDomainPublication.sandbox-registry
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.devicePairSetupChanges
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.devicePairingPublications
+
+ ✓ |gateway-database-workers| src/gateway/server-methods/models-auth-removal.integration.test.ts > models.authLogout with a concurrent registered config set > publishes removal before returning when… 7907ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  13:54:16
+   Duration  42.19s (tests 78%, transform 16%, import 5%, worker 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 config=test/vitest/vitest.gateway-database-workers.config.ts files=src/gateway/server-methods/models-auth-removal.integration.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 5 passed (5)]
+# exit=0
+# after: dirty_kb/writeback_kb=69376/4 max_during_dirty_kb=110536 max_during_writeback_kb=120 load1=9.33 extdbw_procs=0 run_write_bytes=65798144 run_cancelled_write_bytes=11694080

@@ -1,0 +1,12 @@
+Auth refresh warning: credential change saved but auth refresh failed: AbortError: This operation was aborted: code=20 [instr-stack] AbortError: This operation was aborted
+    at new DOMException (node:internal/per_context/domexception:79:18)
+    at AbortController.abort (node:internal/abort_controller:581:18)
+    at retirePreparedModelRuntimeGeneration (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/prepared-model-runtime.lifecycle.ts:27:15)
+    at invalidatePreparedModelRuntimeOwnersForAuthMutation (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/prepared-model-runtime-auth-publication.ts:481:5)
+    at invalidateForAuthMutation (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/prepared-model-runtime.ts:678:5)
+    at notify (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/auth-profiles/runtime-snapshots.ts:256:7)
+    at notifyRuntimeAuthStoreMutation (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/auth-profiles/runtime-snapshots.ts:262:5)
+    at noteRuntimeAuthProfileStorePersistedMutation (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/auth-profiles/runtime-snapshots.ts:653:5)
+    at publishAuthProfileStoreUpdate (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/auth-profiles/store-update-publication.ts:197:24)
+    at Object.publish (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/auth-profiles/profiles.ts:512:19)
+

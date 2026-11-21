@@ -1,0 +1,137 @@
+# ctl3 ref=rv-instr sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 file=src/gateway/server-methods/models-auth-removal.integration.test.ts run=7 start=2026-11-21T21:58:47Z host=ronan arch=aarch64
+# before: dirty_kb/writeback_kb=366188/0 load1=7.60 disk=89.522% extdbw_procs=0
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-nrr-jJzbsV/home TMPDIR=/tmp/oc-nrr-jJzbsV/tmp umask=0022
+# argv: /home/figs/flesh_beast_best_beast/source/frond-scribe/skills/pr-drift-cure-gates/run-isolated-from-live-gateways.sh /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr env ... oc-focused  --worktree /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr src/gateway/server-methods/models-auth-removal.integration.test.ts
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.gateway-database-workers.config.ts
+include-file: /tmp/oc-nrr-jJzbsV/tmp/oc-focused.wSDO12/include.json
+include-file-contents:
+  [
+    "src/gateway/server-methods/models-auth-removal.integration.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-nrr-jJzbsV/tmp/oc-focused.wSDO12/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.gateway-database-workers.config.ts --maxWorkers=1 src/gateway/server-methods/models-auth-removal.integration.test.ts
+logs: /tmp/oc-nrr-jJzbsV/tmp/oc-focused.wSDO12
+
+ RUN  v5.0.5 /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr
+
+[vitest-workers] local cache hit after 2330ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 2c8307feef48 in 2423ms (20380 inputs, 25474 outputs)
+[gateway] startup phase: gateway.server-start-import starting total=11199.1ms
+[gateway] startup phase: gateway.server-start-import 2114.5ms total=13313.6ms start=11199.1ms rssMb=596.1 heapUsedMb=425.0 workers=0 workerHeapSamples=0/0 workerHeapMb=0.0 workerHeapSource=cached
+ ✓ |gateway-database-workers| src/gateway/server-methods/models-auth-removal.integration.test.ts > models.authLogout with a concurrent registered config set > preserves a replacement key and refuses… 11059ms
+[gateway] startup phase: gateway.server-start-import starting total=20945.6ms
+[gateway] startup phase: gateway.server-start-import 0.1ms total=20945.7ms start=20945.6ms rssMb=1646.2 heapUsedMb=640.9 workers=0 workerHeapSamples=0/0 workerHeapMb=0.0 workerHeapSource=cached
+ ✓ |gateway-database-workers| src/gateway/server-methods/models-auth-removal.integration.test.ts > models.authLogout with a concurrent registered config set > removes the selected key after an unrel… 4473ms
+[gateway] startup phase: gateway.server-start-import starting total=25421.1ms
+[gateway] startup phase: gateway.server-start-import 0.1ms total=25421.2ms start=25421.1ms rssMb=1774.1 heapUsedMb=652.7 workers=0 workerHeapSamples=0/0 workerHeapMb=0.0 workerHeapSource=cached
+ ✓ |gateway-database-workers| src/gateway/server-methods/models-auth-removal.integration.test.ts > models.authLogout with a concurrent registered config set > preserves a replacement secret referenc… 4309ms
+[gateway] startup phase: gateway.server-start-import starting total=29750.6ms
+[gateway] startup phase: gateway.server-start-import 0.1ms total=29750.7ms start=29750.6ms rssMb=1810.4 heapUsedMb=664.4 workers=0 workerHeapSamples=0/0 workerHeapMb=0.0 workerHeapSource=cached
+ ✓ |gateway-database-workers| src/gateway/server-methods/models-auth-removal.integration.test.ts > models.authLogout with a concurrent registered config set > preserves a replacement env reference w… 4365ms
+[gateway] startup phase: gateway.server-start-import starting total=34106.4ms
+[gateway] startup phase: gateway.server-start-import 0.1ms total=34106.5ms start=34106.4ms rssMb=1815.4 heapUsedMb=671.4 workers=0 workerHeapSamples=0/0 workerHeapMb=0.0 workerHeapSource=cached
+(node:168) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: upsertAuthProfile is deprecated; use upsertAuthProfileAsync instead. The legacy contract remains supported during its deprecation period. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:168) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: ensureAuthProfileStoreForLocalUpdate is deprecated; use ensureAuthProfileStoreForLocalUpdateAsync instead. The legacy contract remains supported during its deprecation period. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+(node:168) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: saveAuthProfileStore is deprecated; use updateAuthProfileStoreWithLock from openclaw/plugin-sdk/provider-auth instead. The legacy contract remains supported during its deprecation period. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+stderr | unknown test
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.stateDomainPublication.sandbox-registry
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.devicePairSetupChanges
+[sqlite-test-lifecycle] src/gateway/server-methods/models-auth-removal.integration.test.ts: retiring openclaw.devicePairingPublications
+
+ × |gateway-database-workers| src/gateway/server-methods/models-auth-removal.integration.test.ts > models.authLogout with a concurrent registered config set > publishes removal before returning when… 6743ms
+   → {"logout":{"provider":"fixture","removedProfiles":["fixture:manual"],"abortedRunIds":[],"warning":"Credentials were removed, but the Gateway has not confirmed applying the change. Run `openclaw gateway restart` to apply it. Model auth changes were saved, but the Gateway could not refresh them. Run `openclaw gateway restart` to apply the saved changes."},"status":{"ts":1795298369264,"providers":[],"unavailable":{"code":"PREPARED_MODEL_AUTH_UNAVAILABLE","message":"Model authentication status is unavailable. Refresh Models after setup finishes; restart the Gateway if it persists."}}}: expected undefined to deeply equal [ Array(3) ]
+Auth refresh warning: credential change saved but auth refresh failed: AbortError: This operation was aborted: code=20 [instr-stack] AbortError: This operation was aborted
+    at new DOMException (node:internal/per_context/domexception:79:18)
+    at AbortController.abort (node:internal/abort_controller:581:18)
+    at retirePreparedModelRuntimeGeneration (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/prepared-model-runtime.lifecycle.ts:27:15)
+    at invalidatePreparedModelRuntimeOwnersForAuthMutation (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/prepared-model-runtime-auth-publication.ts:481:5)
+    at invalidateForAuthMutation (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/prepared-model-runtime.ts:678:5)
+    at notify (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/auth-profiles/runtime-snapshots.ts:256:7)
+    at notifyRuntimeAuthStoreMutation (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/auth-profiles/runtime-snapshots.ts:262:5)
+    at noteRuntimeAuthProfileStorePersistedMutation (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/auth-profiles/runtime-snapshots.ts:653:5)
+    at publishAuthProfileStoreUpdate (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/auth-profiles/store-update-publication.ts:197:24)
+    at Object.publish (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/auth-profiles/profiles.ts:512:19)
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |gateway-database-workers| src/gateway/server-methods/models-auth-removal.integration.test.ts > models.authLogout with a concurrent registered config set > publishes removal before returning when…
+AssertionError: {"logout":{"provider":"fixture","removedProfiles":["fixture:manual"],"abortedRunIds":[],"warning":"Credentials were removed, but the Gateway has not confirmed applying the change. Run `openclaw gateway restart` to apply it. Model auth changes were saved, but the Gateway could not refresh them. Run `openclaw gateway restart` to apply the saved changes."},"status":{"ts":1795298369264,"providers":[],"unavailable":{"code":"PREPARED_MODEL_AUTH_UNAVAILABLE","message":"Model authentication status is unavailable. Refresh Models after setup finishes; restart the Gateway if it persists."}}}: expected undefined to deeply equal [ Array(3) ]
+Auth refresh warning: credential change saved but auth refresh failed: AbortError: This operation was aborted: code=20 [instr-stack] AbortError: This operation was aborted
+    at new DOMException (node:internal/per_context/domexception:79:18)
+    at AbortController.abort (node:internal/abort_controller:581:18)
+    at retirePreparedModelRuntimeGeneration (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/prepared-model-runtime.lifecycle.ts:27:15)
+    at invalidatePreparedModelRuntimeOwnersForAuthMutation (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/prepared-model-runtime-auth-publication.ts:481:5)
+    at invalidateForAuthMutation (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/prepared-model-runtime.ts:678:5)
+    at notify (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/auth-profiles/runtime-snapshots.ts:256:7)
+    at notifyRuntimeAuthStoreMutation (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/auth-profiles/runtime-snapshots.ts:262:5)
+    at noteRuntimeAuthProfileStorePersistedMutation (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/auth-profiles/runtime-snapshots.ts:653:5)
+    at publishAuthProfileStoreUpdate (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/auth-profiles/store-update-publication.ts:197:24)
+    at Object.publish (/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-rv-instr/src/agents/auth-profiles/profiles.ts:512:19)
+
+- Expected:
+[
+  "fixture:oauth",
+  "fixture:ref",
+  "fixture:token",
+]
+
++ Received:
+undefined
+
+ ❯ retirePreparedModelRuntimeGeneration src/agents/prepared-model-runtime.lifecycle.ts:27:15
+     25|   const retirement = owner.generationRetirement;
+     26|   owner.generationRetirement = undefined;
+     27|   retirement?.abort();
+       |               ^
+     28|   if (retirement?.signal.reason instanceof Error) {
+     29|     // Retained signals must not keep the retiring caller's lazy stack…
+ ❯ invalidatePreparedModelRuntimeOwnersForAuthMutation src/agents/prepared-model-runtime-auth-publication.ts:481:5
+ ❯ invalidateForAuthMutation src/agents/prepared-model-runtime.ts:678:5
+ ❯ notify src/agents/auth-profiles/runtime-snapshots.ts:256:7
+ ❯ notifyRuntimeAuthStoreMutation src/agents/auth-profiles/runtime-snapshots.ts:262:5
+ ❯ noteRuntimeAuthProfileStorePersistedMutation src/agents/auth-profiles/runtime-snapshots.ts:653:5
+ ❯ publishAuthProfileStoreUpdate src/agents/auth-profiles/store-update-publication.ts:197:24
+ ❯ Object.publish src/agents/auth-profiles/profiles.ts:512:19
+ ❯ src/gateway/server-methods/models-auth-removal.integration.test.ts:305:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 passed (5)
+   Start at  13:58:48
+   Duration  40.92s (tests 77%, transform 17%, import 5%, worker 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 config=test/vitest/vitest.gateway-database-workers.config.ts files=src/gateway/server-methods/models-auth-removal.integration.test.ts
+failing-tests:
+ × |gateway-database-workers| src/gateway/server-methods/models-auth-removal.integration.test.ts > models.authLogout with a concurrent registered config set > publishes removal before returning when… 6743ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 4 passed (5)]
+# exit=1
+# after: dirty_kb/writeback_kb=759764/0 max_during_dirty_kb=1552972 max_during_writeback_kb=2632 load1=8.27 extdbw_procs=0 run_write_bytes=65814528 run_cancelled_write_bytes=12009472
