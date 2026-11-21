@@ -1,0 +1,6 @@
+# knip ref=cand sha=93a1e356c7aabf0d868560e46790b07449813840 scan=exp-full start=2026-11-21T06:40:24Z knip=6.40.0 node=v26.12.1
+# argv: knip --config config/knip.all-exports.config.ts --no-progress --reporter compact --include exports,nsExports,types,nsTypes,enumMembers,namespaceMembers --no-config-hints
+Unused exports (2)
+src/agents/subagents/spawn/subagent-spawn.authority.test-support.ts: installSpawnThreadBindingFixture, installSpawnAttachmentFixture
+ui/src/lib/settings-navigation.ts: settingsParentRoute
+# exit=1

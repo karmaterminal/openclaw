@@ -1,0 +1,3 @@
+# knip ref=cand sha=93a1e356c7aabf0d868560e46790b07449813840 scan=exp-script start=2026-11-21T06:45:36Z knip=6.40.0 node=v26.12.1
+# argv: knip --config config/knip.scripts-exports.config.ts --include-entry-exports --no-progress --reporter compact --include exports,nsExports,types,nsTypes,enumMembers,namespaceMembers --no-config-hints
+# exit=0

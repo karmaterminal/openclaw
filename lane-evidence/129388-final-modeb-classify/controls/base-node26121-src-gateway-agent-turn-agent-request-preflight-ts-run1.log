@@ -1,0 +1,59 @@
+# ctl ref=base sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 file=src/gateway/agent-turn/agent-request-preflight.test.ts run=1 mode=node26121 start=2026-11-21T06:13:00Z
+# files: 1 runwt=/home/figs/classify-129388/base-1129d4c0 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-lEhpnn/home TMPDIR=/tmp/oc-classify-lEhpnn/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.gateway.config.ts
+include-file: /tmp/oc-classify-lEhpnn/tmp/oc-focused.Ynzutz/include.json
+include-file-contents:
+  [
+    "src/gateway/agent-turn/agent-request-preflight.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-lEhpnn/tmp/oc-focused.Ynzutz/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.gateway.config.ts --maxWorkers=1 src/gateway/agent-turn/agent-request-preflight.test.ts
+logs: /tmp/oc-classify-lEhpnn/tmp/oc-focused.Ynzutz
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-1129d4c0
+
+[vitest-workers] local cache hit after 4963ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared ed4adc366e60 in 5022ms (20380 inputs, 25474 outputs)
+[vitest] still running with no output for 30000ms.
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent database admission preflight > reports pending admission with the appropriate retry contract 25ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent database admission preflight > reports failed admission with the appropriate retry contract 5ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent database admission preflight > reports mismatch admission with the appropriate retry contract 8ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > carries the admitted scheduler group and cap without trusting saved launch settings 11ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects malformed or non-object output schema {"type":"array","items":{"type":"string"}} 9ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects malformed or non-object output schema {"type":"object","properties":"invalid"} 3ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects disabled collector requests 4ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects unregistered collector requests 6ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects non-backend collector requests 6ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects declared-backend collector requests 5ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects ordinary turn collector requests 4ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects mismatched launch collector requests 10ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > rejects terminal with a pending launch collector requests 5ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > keeps a retained collector session reserved from its persisted marker 4ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > allows exact disabled collector replay 6ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > allows exact provisional collector replay 5ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > allows exact completed collector replay 5ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > keeps completed collector sessions closed 4ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > agent request Swarm preflight > uses the effective requester override when its session key names another agent 5ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > checks explicit bare-key ownership (ops) 5ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > checks explicit bare-key ownership (undefined) 4ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > reserves exec completion for backend callers 4ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > reserves restart for backend callers 4ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > reserves progress refresh for backend callers 4ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > reserves prompt suppression for backend callers 4ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > reserves internal session effects for backend callers 3ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > reserves expected session for backend callers 4ms
+ ✓ |gateway-core| src/gateway/agent-turn/agent-request-preflight.test.ts > reserves exec approval follow-up key for backend callers 3ms
+
+ Test Files  1 passed (1)
+      Tests  28 passed (28)
+   Start at  22:13:03
+   Duration  41.83s (transform 87%, import 9%, worker 3%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 config=test/vitest/vitest.gateway.config.ts files=src/gateway/agent-turn/agent-request-preflight.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 28 passed (28)]
+# exit=0

@@ -1,0 +1,4 @@
+# ratchets ref=cand sha=93a1e356c7aabf0d868560e46790b07449813840 base=7ce2d10eced5f379e31a0b01a96fbcbf9741ccbe script=scripts/check-test-lines-ratchet.mts start=2026-11-21T06:48:06Z host=ronan nproc=20
+Net test lines: +164492; allowance: 400; allocation credit: 127069.
+Delete or consolidate tests to remove 37023 lines, or add a justified config/test-lines-allocations/<change>.txt record of 164092 and state the reason in the PR.
+# exit=1 wall=2s

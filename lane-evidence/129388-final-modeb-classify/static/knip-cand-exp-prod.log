@@ -1,0 +1,5 @@
+# knip ref=cand sha=93a1e356c7aabf0d868560e46790b07449813840 scan=exp-prod start=2026-11-21T06:44:03Z knip=6.40.0 node=v26.12.1
+# argv: knip --config config/knip.config.ts --production --no-progress --reporter compact --include exports,nsExports,types,nsTypes,enumMembers,namespaceMembers --no-config-hints
+Unused exports (1)
+ui/src/lib/settings-navigation.ts: settingsParentRoute
+# exit=1

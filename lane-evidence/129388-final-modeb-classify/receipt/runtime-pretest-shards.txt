@@ -1,0 +1,6 @@
+compact-large-2 self-hosted agentic-agents-core-models,agentic-control-plane-runtime-server,agentic-gateway-methods,agentic-gateway-server-isolated,agentic-plugin-sdk,core-runtime-config,core-runtime-infra-misc,core-runtime-infra-storage-state,core-runtime-infra-system-runtime,core-unit-src-security-2
+compact-large-3 self-hosted agentic-agents-embedded,agentic-control-plane-runtime-config,agentic-control-plane-runtime-state,auto-reply-reply-dispatch,core-runtime-config,core-runtime-infra-device,core-runtime-infra-process,core-runtime-infra-storage-state,core-unit-fast-1,core-unit-fast-2
+compact-small-1 hosted agentic-commands-runtime
+compact-small-7 hosted agentic-cli-process,agentic-gateway-core-runtime,core-tooling-10
+compact-small-dist-2 self-hosted-dist core-runtime-tui-pty
+agentic-plugins hosted 

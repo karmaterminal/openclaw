@@ -1,0 +1,5 @@
+# knip ref=base sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 scan=dep-prod start=2026-11-21T06:35:11Z knip=6.40.0 node=v26.12.1
+# argv: knip --config config/knip.config.ts --production --no-progress --reporter compact --no-config-hints --exclude duplicates
+Unused exports (1)
+ui/src/lib/settings-navigation.ts: settingsParentRoute
+# exit=1

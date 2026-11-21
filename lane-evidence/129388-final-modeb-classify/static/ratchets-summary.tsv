@@ -1,0 +1,9 @@
+2026-11-21T06:47:53Z	base	1129d4c0716c	7ce2d10eced5	scripts/check-session-identity-ratchet.mts	0	4s	see-log
+2026-11-21T06:47:57Z	cand	93a1e356c7aa	7ce2d10eced5	scripts/check-session-identity-ratchet.mts	1	4s	see-log
+2026-11-21T06:48:01Z	cand	93a1e356c7aa	1129d4c0716c	scripts/check-session-identity-ratchet.mts	1	4s	see-log
+2026-11-21T06:48:05Z	base	1129d4c0716c	7ce2d10eced5	scripts/check-test-lines-ratchet.mts	1	1s	see-log
+2026-11-21T06:48:06Z	cand	93a1e356c7aa	7ce2d10eced5	scripts/check-test-lines-ratchet.mts	1	2s	see-log
+2026-11-21T06:48:08Z	cand	93a1e356c7aa	1129d4c0716c	scripts/check-test-lines-ratchet.mts	0	0s	see-log
+2026-11-21T06:48:08Z	base	1129d4c0716c	7ce2d10eced5	scripts/check-database-dialect-ratchet.mts	0	11s	see-log
+2026-11-21T06:48:19Z	cand	93a1e356c7aa	7ce2d10eced5	scripts/check-database-dialect-ratchet.mts	0	11s	see-log
+2026-11-21T06:48:30Z	base	1129d4c0716c	7ce2d10eced5	scripts/check-database-worker-ratchet.mts	0	142s	see-log

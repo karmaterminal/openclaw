@@ -1,0 +1,42 @@
+# ctl ref=base sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 file=test/scripts/check-extension-package-tsc-boundary.test.ts run=1 mode=node26121 start=2026-11-21T06:32:22Z
+# files: 1 runwt=/home/figs/classify-129388/base-1129d4c0 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-eRWOmk/home TMPDIR=/tmp/oc-classify-eRWOmk/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.tooling-isolated.config.ts
+include-file: /tmp/oc-classify-eRWOmk/tmp/oc-focused.CFN5Pa/include.json
+include-file-contents:
+  [
+    "test/scripts/check-extension-package-tsc-boundary.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-eRWOmk/tmp/oc-focused.CFN5Pa/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.tooling-isolated.config.ts --maxWorkers=1 test/scripts/check-extension-package-tsc-boundary.test.ts
+logs: /tmp/oc-classify-eRWOmk/tmp/oc-focused.CFN5Pa
+
+ RUN  v5.0.5 /home/figs/classify-129388/base-1129d4c0
+
+[vitest-workers] local cache hit after 2081ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 405024cb8bed in 2165ms (20380 inputs, 25474 outputs)
+ ✓ |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > compiles packaged roots and invalidates them when exports or inherited paths change 7211ms
+ ✓ |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > cleans stale artifacts for every extension id passed to the cleanup hook 4ms
+ ✓ |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > parses extension boundary compile concurrency strictly 3ms
+ ✓ |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > formats a success summary with counts and elapsed time 2ms
+ ✓ |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > formats skipped compile progress concisely 2ms
+ ✓ |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > formats the slowest plugin compiles in descending order 2ms
+ ✓ |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > keeps full failure output on the thrown error for canary detection 41ms
+ ✓ |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > keeps async node step failure output bounded 51ms
+ ✓ |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > waits for async node step descendants after timeout 5136ms
+ ✓ |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > waits for async node step descendants after sibling abort 124ms
+ ✓ |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > cleans active async node step descendants before forwarding parent SIGTERM 3340ms
+ ✓ |tooling-isolated| test/scripts/check-extension-package-tsc-boundary.test.ts > clamps oversized step timers and passes successful output and timing to onSuccess 145ms
+
+ Test Files  1 passed (1)
+      Tests  12 passed (12)
+   Start at  22:32:25
+   Duration  22.54s (tests 72%, transform 25%, setup 2%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 config=test/vitest/vitest.tooling-isolated.config.ts files=test/scripts/check-extension-package-tsc-boundary.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 12 passed (12)]
+# exit=0

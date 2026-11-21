@@ -1,0 +1,36 @@
+# ratchets ref=cand sha=93a1e356c7aabf0d868560e46790b07449813840 base=7ce2d10eced5f379e31a0b01a96fbcbf9741ccbe script=scripts/check-database-dialect-ratchet.mts start=2026-11-21T06:48:19Z host=ronan nproc=20
+SQL portability: 0 violations in 21743 production files (9948 parsed).
+SQLite dialect scope: 1757 differing production files; use --full-tree for totals.
+SQLite dialect mechanical (changed files): 9 -> 9.
+SQLite dialect design (changed files): 59 -> 59.
+SQLite dialect engine-maintenance (changed files): 31 -> 31.
+SQLite string-set owner: 0 mechanical occurrences in changed files (included above).
+SQLite primitive owners: 26 engine-maintenance matches in changed files (excluded from comparison).
+src/daemon/runtime-pin-store.ts:161:19 sqlite-catalog (owner)
+src/daemon/runtime-pin-store.ts:166:15 pragma (owner)
+src/daemon/runtime-pin-store.ts:166:15 pragma (owner)
+src/infra/update-doctor-migration-attribution.ts:184:27 pragma (owner)
+src/infra/update-doctor-migration-attribution.ts:253:20 pragma (owner)
+src/infra/update-doctor-migration-attribution.ts:253:20 schema-version (owner)
+src/infra/update-doctor-migration-attribution.ts:255:15 pragma (owner)
+src/infra/update-doctor-migration-attribution.ts:255:15 transaction-mode (owner)
+src/infra/update-doctor-migration-attribution.ts:332:17 pragma (owner)
+src/infra/update-doctor-migration-attribution.ts:332:17 pragma (owner)
+src/infra/update-doctor-migration-attribution.ts:378:27 pragma (owner)
+src/state/openclaw-agent-schema.sql:59:11 without-rowid (owner)
+src/state/openclaw-agent-schema.sql:59:19 rowid (owner)
+src/state/openclaw-agent-schema.sql:576:11 without-rowid (owner)
+src/state/openclaw-agent-schema.sql:576:19 rowid (owner)
+src/state/openclaw-agent-schema.sql:754:11 without-rowid (owner)
+src/state/openclaw-agent-schema.sql:754:19 rowid (owner)
+src/state/openclaw-agent-schema.sql:874:11 without-rowid (owner)
+src/state/openclaw-agent-schema.sql:874:19 rowid (owner)
+src/state/openclaw-state-schema.sql:295:11 without-rowid (owner)
+src/state/openclaw-state-schema.sql:295:19 rowid (owner)
+src/state/openclaw-state-schema.sql:2461:11 without-rowid (owner)
+src/state/openclaw-state-schema.sql:2461:19 rowid (owner)
+src/state/state-upgrade.ts:250:15 pragma (owner)
+src/state/state-upgrade.ts:250:15 wal-checkpoint (owner)
+src/state/state-upgrade.ts:250:15 pragma (owner)
+SQLite dialect ratchet OK: no construct-group growth against 7ce2d10eced5f379e31a0b01a96fbcbf9741ccbe.
+# exit=0 wall=11s

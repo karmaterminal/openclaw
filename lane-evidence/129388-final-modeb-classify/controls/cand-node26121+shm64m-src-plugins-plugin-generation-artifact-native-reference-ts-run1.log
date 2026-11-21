@@ -1,0 +1,77 @@
+# ctl ref=cand sha=93a1e356c7aabf0d868560e46790b07449813840 file=src/plugins/plugin-generation-artifact.native-reference.test.ts run=1 mode=node26121+shm64m start=2026-11-21T06:52:09Z
+# files: 1 runwt=/home/figs/classify-129388/cand-93a1e356 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-rsh7RT/home TMPDIR=/tmp/oc-classify-rsh7RT/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.plugins.config.ts
+include-file: /tmp/oc-classify-rsh7RT/tmp/oc-focused.u5FCL2/include.json
+include-file-contents:
+  [
+    "src/plugins/plugin-generation-artifact.native-reference.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-rsh7RT/tmp/oc-focused.u5FCL2/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.plugins.config.ts --maxWorkers=1 src/plugins/plugin-generation-artifact.native-reference.test.ts
+logs: /tmp/oc-classify-rsh7RT/tmp/oc-focused.u5FCL2
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-93a1e356
+
+[vitest-workers] local cache hit after 2127ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 233d6c64753d in 2200ms (20558 inputs, 25754 outputs)
+ ✓ |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > records a native host mismatch while preserving unrelated channel accounts 1592ms
+ ✓ |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > validates hardlink placements through recovery 178ms
+ ✓ |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > validates copy placements through recovery 376ms
+ ✓ |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > handles cross-device npm native artifacts (hoisted: false, aliased: false) 42ms
+(node:172) Warning: Plugin source capture cleanup: Error: Plugin source capture refused: 67104768 bytes available at /dev/shm/openclaw-native-state-Ztfx4B/tmp/plugin-captures/ec0b3ec4-3b67-4d8a-89e8-ff7f5073ec1b/captures; at least 512 MiB required. Free space on this volume and retry the plugin load.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > handles cross-device archive native artifacts (hoisted: false, aliased: false) 28ms
+ ✓ |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > handles cross-device npm native artifacts (hoisted: true, aliased: true) 39ms
+ × |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > captures native companions into state on another filesystem 41ms
+   → expected 66306 to be 1048673 // Object.is equality
+ ✓ |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > keeps temporary native inspections from hardlinking rehearsal companions 46ms
+ ✓ |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > keeps native admission in its selected state root within one cache 967ms
+ ✓ |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > keeps native admission in its selected temporary placement within one cache 907ms
+ ✓ |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > keeps native admission in its selected publication root within one cache 1267ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > captures native companions into state on another filesystem
+AssertionError: expected 66306 to be 1048673 // Object.is equality
+
+- Expected
++ Received
+
+- 1048673
++ 66306
+
+ ❯ src/plugins/plugin-generation-artifact.native-reference.test.ts:345:41
+    343|       const captured = artifact.resolve(companion);
+    344|       expect(readText(captured)).toBe("native companion sentinel");
+    345|       expect(fs.statSync(captured).dev).toBe(fs.statSync(captureState)…
+       |                                         ^
+    346|       expect(fs.statSync(companion).nlink).toBe(1);
+    347|       expect(fs.realpathSync(captured)).not.toBe(companion);
+ ❯ src/test-utils/openclaw-test-state.ts:468:64
+ ❯ src/shared/async-work-scope.ts:63:14
+ ❯ AsyncLocalStorage.enterAsyncStore src/shared/async-store.ts:9:10
+ ❯ runWithAsyncStore src/shared/async-store.ts:21:50
+ ❯ AsyncWorkScope.enter src/shared/async-work-scope.ts:61:12
+ ❯ AsyncWorkScope.track src/shared/async-work-scope.ts:106:30
+ ❯ withOpenClawTestState src/test-utils/openclaw-test-state.ts:468:52
+ ❯ src/plugins/plugin-generation-artifact.native-reference.test.ts:302:3
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 10 passed (11)
+   Start at  22:52:11
+   Duration  15.01s (transform 49%, tests 37%, import 11%, setup 3%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=93a1e356c7aabf0d868560e46790b07449813840 config=test/vitest/vitest.plugins.config.ts files=src/plugins/plugin-generation-artifact.native-reference.test.ts
+failing-tests:
+ × |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > captures native companions into state on another filesystem 41ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 10 passed (11)]
+# exit=1

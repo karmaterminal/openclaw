@@ -1,0 +1,8 @@
+2026-11-21T06:35:11Z	base	1129d4c0716c	dep-prod	1	87s	ui/src/lib/settings-navigation.ts: settingsParentRoute
+2026-11-21T06:36:42Z	cand	93a1e356c7aa	dep-prod	1	88s	ui/src/lib/settings-navigation.ts: settingsParentRoute
+2026-11-21T06:38:10Z	base	1129d4c0716c	exp-full	1	130s	src/agents/subagents/spawn/subagent-spawn.authority.test-support.ts: installSpawnThreadBindingFixture, installSpawnAttachmentFixture;ui/src/lib/settings-navigation.ts: settingsParentRoute
+2026-11-21T06:40:24Z	cand	93a1e356c7aa	exp-full	1	116s	src/agents/subagents/spawn/subagent-spawn.authority.test-support.ts: installSpawnThreadBindingFixture, installSpawnAttachmentFixture;ui/src/lib/settings-navigation.ts: settingsParentRoute
+2026-11-21T06:42:20Z	base	1129d4c0716c	exp-prod	1	103s	ui/src/lib/settings-navigation.ts: settingsParentRoute
+2026-11-21T06:44:03Z	cand	93a1e356c7aa	exp-prod	1	75s	ui/src/lib/settings-navigation.ts: settingsParentRoute
+2026-11-21T06:45:25Z	base	1129d4c0716c	exp-script	0	11s	no-findings
+2026-11-21T06:45:36Z	cand	93a1e356c7aa	exp-script	0	10s	no-findings

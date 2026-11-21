@@ -1,0 +1,41 @@
+# ctl ref=cand sha=93a1e356c7aabf0d868560e46790b07449813840 file=src/plugins/plugin-generation-artifact.native-reference.test.ts run=1 mode=node26121 start=2026-11-21T06:51:21Z
+# files: 1 runwt=/home/figs/classify-129388/cand-93a1e356 (40 chars)
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-classify-k3rr5F/home TMPDIR=/tmp/oc-classify-k3rr5F/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.plugins.config.ts
+include-file: /tmp/oc-classify-k3rr5F/tmp/oc-focused.VABSMc/include.json
+include-file-contents:
+  [
+    "src/plugins/plugin-generation-artifact.native-reference.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-classify-k3rr5F/tmp/oc-focused.VABSMc/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.plugins.config.ts --maxWorkers=1 src/plugins/plugin-generation-artifact.native-reference.test.ts
+logs: /tmp/oc-classify-k3rr5F/tmp/oc-focused.VABSMc
+
+ RUN  v5.0.5 /home/figs/classify-129388/cand-93a1e356
+
+[vitest-workers] local cache hit after 2127ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared a580ffd8f71d in 2218ms (20558 inputs, 25754 outputs)
+ ✓ |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > records a native host mismatch while preserving unrelated channel accounts 5325ms
+ ✓ |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > validates hardlink placements through recovery 231ms
+ ✓ |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > validates copy placements through recovery 480ms
+ ✓ |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > handles cross-device npm native artifacts (hoisted: false, aliased: false) 43ms
+ ✓ |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > handles cross-device archive native artifacts (hoisted: false, aliased: false) 28ms
+ ✓ |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > handles cross-device npm native artifacts (hoisted: true, aliased: true) 36ms
+ ✓ |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > captures native companions into state on another filesystem 23ms
+ ✓ |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > keeps temporary native inspections from hardlinking rehearsal companions 34ms
+ ✓ |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > keeps native admission in its selected state root within one cache 1027ms
+ ✓ |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > keeps native admission in its selected temporary placement within one cache 925ms
+ ✓ |plugins| src/plugins/plugin-generation-artifact.native-reference.test.ts > keeps native admission in its selected publication root within one cache 1443ms
+
+ Test Files  1 passed (1)
+      Tests  11 passed (11)
+   Start at  22:51:22
+   Duration  28.45s (transform 57%, tests 34%, import 7%, setup 2%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=93a1e356c7aabf0d868560e46790b07449813840 config=test/vitest/vitest.plugins.config.ts files=src/plugins/plugin-generation-artifact.native-reference.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 11 passed (11)]
+# exit=0

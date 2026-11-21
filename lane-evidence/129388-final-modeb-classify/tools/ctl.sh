@@ -46,6 +46,8 @@ if [[ -n "${CTL_CPU_STARVE:-}" ]]; then
   for _ in $(seq "$CTL_CPU_STARVE"); do taskset -c 19 sh -c 'while :; do :; done' & starve+=($!); done
   wrap=(taskset -c 19 "${wrap[@]}"); mode="$mode+starve$CTL_CPU_STARVE"
 fi
+# CTL_SHM_SIZE=SIZE mounts a fresh SIZE tmpfs over /dev/shm (small-shm.sh); the ARC pod's is 64 MiB.
+if [[ -n "${CTL_SHM_SIZE:-}" ]]; then wrap=("$(dirname "$0")/small-shm.sh" "$CTL_SHM_SIZE" "${wrap[@]}"); mode="$mode+shm$CTL_SHM_SIZE"; fi
 if [[ -n "${CTL_ROOT_LEN:-}" ]]; then wrap=("$(dirname "$0")/long-root.sh" "$wt" "$runwt" "${wrap[@]}"); mode="$mode+rootlen$CTL_ROOT_LEN"; fi
 slug=$(printf '%s' "$file" | sed -E 's#[/.]+#-#g; s#-(test|ts)-?#-#g; s#-+$##')
 # FILE may be @LIST: run every file named in LIST (one per line, files absent at REF dropped) in one
