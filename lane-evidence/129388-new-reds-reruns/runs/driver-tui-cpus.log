@@ -1,0 +1,19 @@
+# pairs3 start=2026-11-21T22:31:34Z iterations=1..2 refs=cand,prior,base files=src/tui/tui-console-pty.e2e.test.ts
+cand+cpus19 src/tui/tui-console-pty.e2e.test.ts run1 rc=0 24s VERDICT PASS [Test Files 1 passed (1); Tests 1 passed (1)] dirty_max=53792kB disk=88.708%
+prior+cpus19 src/tui/tui-console-pty.e2e.test.ts run1 rc=0 24s VERDICT PASS [Test Files 1 passed (1); Tests 1 passed (1)] dirty_max=53056kB disk=88.708%
+base+cpus19 src/tui/tui-console-pty.e2e.test.ts run1 rc=0 23s VERDICT PASS [Test Files 1 passed (1); Tests 1 passed (1)] dirty_max=52924kB disk=88.708%
+cand+cpus19 src/tui/tui-console-pty.e2e.test.ts run2 rc=0 23s VERDICT PASS [Test Files 1 passed (1); Tests 1 passed (1)] dirty_max=50468kB disk=88.708%
+prior+cpus19 src/tui/tui-console-pty.e2e.test.ts run2 rc=0 24s VERDICT PASS [Test Files 1 passed (1); Tests 1 passed (1)] dirty_max=53536kB disk=88.708%
+base+cpus19 src/tui/tui-console-pty.e2e.test.ts run2 rc=0 23s VERDICT PASS [Test Files 1 passed (1); Tests 1 passed (1)] dirty_max=52480kB disk=88.708%
+# pairs3 done=2026-11-21T22:33:55Z
+# pairs3 start=2026-11-21T22:34:18Z iterations=1..3 refs=cand,prior,base files=src/tui/tui-console-pty.e2e.test.ts
+cand+cpus0 src/tui/tui-console-pty.e2e.test.ts run1 rc=1 37s VERDICT RED [Test Files 1 failed (1); Tests 1 failed (1)] dirty_max=36260kB disk=88.708%
+prior+cpus0 src/tui/tui-console-pty.e2e.test.ts run1 rc=1 37s VERDICT RED [Test Files 1 failed (1); Tests 1 failed (1)] dirty_max=42064kB disk=88.708%
+base+cpus0 src/tui/tui-console-pty.e2e.test.ts run1 rc=1 36s VERDICT RED [Test Files 1 failed (1); Tests 1 failed (1)] dirty_max=44608kB disk=88.708%
+cand+cpus0 src/tui/tui-console-pty.e2e.test.ts run2 rc=1 37s VERDICT RED [Test Files 1 failed (1); Tests 1 failed (1)] dirty_max=45560kB disk=88.708%
+prior+cpus0 src/tui/tui-console-pty.e2e.test.ts run2 rc=1 37s VERDICT RED [Test Files 1 failed (1); Tests 1 failed (1)] dirty_max=49208kB disk=88.707%
+base+cpus0 src/tui/tui-console-pty.e2e.test.ts run2 rc=1 36s VERDICT RED [Test Files 1 failed (1); Tests 1 failed (1)] dirty_max=42364kB disk=88.709%
+cand+cpus0 src/tui/tui-console-pty.e2e.test.ts run3 rc=1 36s VERDICT RED [Test Files 1 failed (1); Tests 1 failed (1)] dirty_max=39624kB disk=88.708%
+prior+cpus0 src/tui/tui-console-pty.e2e.test.ts run3 rc=1 36s VERDICT RED [Test Files 1 failed (1); Tests 1 failed (1)] dirty_max=54940kB disk=88.708%
+base+cpus0 src/tui/tui-console-pty.e2e.test.ts run3 rc=1 37s VERDICT RED [Test Files 1 failed (1); Tests 1 failed (1)] dirty_max=75980kB disk=88.709%
+# pairs3 done=2026-11-21T22:39:48Z

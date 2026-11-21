@@ -1,0 +1,33 @@
+# ctl3 ref=base sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 file=src/tui/tui-console-pty.e2e.test.ts run=6 start=2026-11-21T22:25:12Z host=ronan arch=aarch64
+# before: dirty_kb/writeback_kb=185584/444 load1=3.92 disk=88.712% extdbw_procs=0
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-nrr-HvqLd4/home TMPDIR=/tmp/oc-nrr-HvqLd4/tmp umask=0022
+# argv: /home/figs/flesh_beast_best_beast/source/frond-scribe/skills/pr-drift-cure-gates/run-isolated-from-live-gateways.sh /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-base-1129d4c0 env ... oc-focused  --worktree /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-base-1129d4c0 src/tui/tui-console-pty.e2e.test.ts
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.tui-pty.config.ts
+include-file: /tmp/oc-nrr-HvqLd4/tmp/oc-focused.US8Zmu/include.json
+include-file-contents:
+  [
+    "src/tui/tui-console-pty.e2e.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-nrr-HvqLd4/tmp/oc-focused.US8Zmu/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.tui-pty.config.ts --maxWorkers=1 src/tui/tui-console-pty.e2e.test.ts
+logs: /tmp/oc-nrr-HvqLd4/tmp/oc-focused.US8Zmu
+
+ RUN  v5.0.5 /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-base-1129d4c0
+
+[vitest-workers] local cache hit after 2227ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 51fc7bd6c465 in 2288ms (20380 inputs, 25474 outputs)
+ ✓ |tui-pty| src/tui/tui-console-pty.e2e.test.ts > keeps subsystem warnings off a remote terminal while retaining file logs and restoring console output 19476ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  14:25:14
+   Duration  23.92s (tests 82%, transform 15%, worker 2%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 config=test/vitest/vitest.tui-pty.config.ts files=src/tui/tui-console-pty.e2e.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 1 passed (1)]
+# exit=0
+# after: dirty_kb/writeback_kb=20060/344 max_during_dirty_kb=204972 max_during_writeback_kb=5864 load1=3.79 extdbw_procs=0 run_write_bytes=68771840 run_cancelled_write_bytes=43868160

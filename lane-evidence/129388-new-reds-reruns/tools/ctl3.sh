@@ -38,6 +38,14 @@ if [[ -n "${CTL_FAKE_DIRTY_KB:-}" ]]; then
   summary="$here/runs/controls.tsv"
   tag="$ref+fakedirty$CTL_FAKE_DIRTY_KB"
 fi
+# CTL_TASKSET=CORES: one-variable control, the whole run (Vitest and its children) limited to the
+# CPU list CORES with taskset; nothing else changes. Rows go to runs/controls.tsv.
+if [[ -n "${CTL_TASKSET:-}" ]]; then
+  [[ "$CTL_TASKSET" =~ ^[0-9,-]+$ ]] || { echo "CTL_TASKSET must be a CPU list" >&2; exit 2; }
+  wrap=(taskset -c "$CTL_TASKSET" "${wrap[@]}")
+  summary="$here/runs/controls.tsv"
+  tag="$tag+cpus${CTL_TASKSET//,/_}"
+fi
 log="$here/runs/${tag}-${slug}-run${run}.log"
 mem="$here/runs/${tag}-${slug}-run${run}.meminfo.tsv"
 

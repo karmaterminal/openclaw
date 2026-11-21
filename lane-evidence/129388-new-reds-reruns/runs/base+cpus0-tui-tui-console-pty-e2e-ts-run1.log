@@ -1,0 +1,55 @@
+# ctl3 ref=base+cpus0 sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 file=src/tui/tui-console-pty.e2e.test.ts run=1 start=2026-11-21T22:35:32Z host=ronan arch=aarch64
+# before: dirty_kb/writeback_kb=9012/0 load1=3.51 disk=88.708% extdbw_procs=0
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-nrr-8VbiuZ/home TMPDIR=/tmp/oc-nrr-8VbiuZ/tmp umask=0022
+# argv: taskset -c 0 /home/figs/flesh_beast_best_beast/source/frond-scribe/skills/pr-drift-cure-gates/run-isolated-from-live-gateways.sh /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-base-1129d4c0 env ... oc-focused  --worktree /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-base-1129d4c0 src/tui/tui-console-pty.e2e.test.ts
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.tui-pty.config.ts
+include-file: /tmp/oc-nrr-8VbiuZ/tmp/oc-focused.JAxDJD/include.json
+include-file-contents:
+  [
+    "src/tui/tui-console-pty.e2e.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-nrr-8VbiuZ/tmp/oc-focused.JAxDJD/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.tui-pty.config.ts --maxWorkers=1 src/tui/tui-console-pty.e2e.test.ts
+logs: /tmp/oc-nrr-8VbiuZ/tmp/oc-focused.JAxDJD
+
+ RUN  v5.0.5 /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-base-1129d4c0
+
+[vitest-workers] local cache hit after 5931ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared f9c97acc2cdb in 6034ms (20380 inputs, 25474 outputs)
+ × |tui-pty| src/tui/tui-console-pty.e2e.test.ts > keeps subsystem warnings off a remote terminal while retaining file logs and restoring console output 20273ms
+   → timed out waiting for "gateway connected"
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |tui-pty| src/tui/tui-console-pty.e2e.test.ts > keeps subsystem warnings off a remote terminal while retaining file logs and restoring console output
+Error: timed out waiting for "gateway connected"
+
+ ❯ Object.onTimeout src/tui/tui-pty-test-support.ts:406:24
+    404|         return null;
+    405|       },
+    406|       onTimeout: () => new Error(`timed out waiting for ${JSON.stringi…
+       |                        ^
+    407|     });
+    408|   };
+ ❯ Timeout.tick [as _onTimeout] src/tui/tui-pty-test-support.ts:224:23
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  14:35:35
+   Duration  30.80s (tests 68%, transform 29%, worker 2%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 config=test/vitest/vitest.tui-pty.config.ts files=src/tui/tui-console-pty.e2e.test.ts
+failing-tests:
+ × |tui-pty| src/tui/tui-console-pty.e2e.test.ts > keeps subsystem warnings off a remote terminal while retaining file logs and restoring console output 20273ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed (1)]
+# exit=1
+# after: dirty_kb/writeback_kb=9148/0 max_during_dirty_kb=44608 max_during_writeback_kb=312 load1=3.42 extdbw_procs=0 run_write_bytes=59314176 run_cancelled_write_bytes=37421056

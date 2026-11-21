@@ -1,0 +1,35 @@
+# ctl3 ref=base sha=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 file=src/tui/tui-console-pty.e2e.test.ts run=0 start=2026-11-21T22:17:10Z host=ronan arch=aarch64
+# before: dirty_kb/writeback_kb=28624/0 load1=3.37 disk=88.708% extdbw_procs=0
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-nrr-ijXPz5/home TMPDIR=/tmp/oc-nrr-ijXPz5/tmp umask=0022
+# argv: /home/figs/flesh_beast_best_beast/source/frond-scribe/skills/pr-drift-cure-gates/run-isolated-from-live-gateways.sh /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-base-1129d4c0 env ... oc-focused --link-deps-from /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-final-fix --worktree /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-base-1129d4c0 src/tui/tui-console-pty.e2e.test.ts
+pnpm-lock.yaml sha256: 2873a286fde987bf7e3c55dbb9322a607b1d0995a4264de4236bc632e8191517 (matches /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-final-fix)
+linked node_modules dirs: 0
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.tui-pty.config.ts
+include-file: /tmp/oc-nrr-ijXPz5/tmp/oc-focused.atyM8e/include.json
+include-file-contents:
+  [
+    "src/tui/tui-console-pty.e2e.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-nrr-ijXPz5/tmp/oc-focused.atyM8e/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.tui-pty.config.ts --maxWorkers=1 src/tui/tui-console-pty.e2e.test.ts
+logs: /tmp/oc-nrr-ijXPz5/tmp/oc-focused.atyM8e
+
+ RUN  v5.0.5 /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-nrr-base-1129d4c0
+
+[vitest-workers] local cache hit after 2323ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 35356a007c6f in 2382ms (20380 inputs, 25474 outputs)
+ ✓ |tui-pty| src/tui/tui-console-pty.e2e.test.ts > keeps subsystem warnings off a remote terminal while retaining file logs and restoring console output 19329ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  14:17:11
+   Duration  25.20s (tests 78%, transform 17%, worker 4%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=1129d4c0716c7dcc6fba86753ec214584ec8ebd1 config=test/vitest/vitest.tui-pty.config.ts files=src/tui/tui-console-pty.e2e.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 1 passed (1)]
+# exit=0
+# after: dirty_kb/writeback_kb=26044/0 max_during_dirty_kb=61388 max_during_writeback_kb=1392 load1=3.33 extdbw_procs=0 run_write_bytes=78876672 run_cancelled_write_bytes=43868160

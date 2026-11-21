@@ -1,0 +1,16 @@
+# source: run 44932832262 artifact openclaw-local-ci-batch-dist-batch-067-16541aa5a8ee/dist-compact-small-dist-2/gate-test-shard-compact-small-dist-2.log (ANSI stripped), lines 419-433; routing: ARM64 pod oc-8cpu-32gb-dx6fd-runner-gqqr4 (totalMemoryBytes 130661138432 = ronan), started 2026-11-21T21:43:45Z
+[shard:core-runtime-tui-pty]  FAIL   tui-pty  src/tui/tui-console-pty.e2e.test.ts > keeps subsystem warnings off a remote terminal while retaining file logs and restoring console output
+[shard:core-runtime-tui-pty] Error: timed out waiting for "gateway connected"
+[shard:core-runtime-tui-pty] 
+[shard:core-runtime-tui-pty]  ❯ Object.onTimeout src/tui/tui-pty-test-support.ts:406:24
+[shard:core-runtime-tui-pty]     404|         return null;
+[shard:core-runtime-tui-pty]     405|       },
+[shard:core-runtime-tui-pty]     406|       onTimeout: () => new Error(`timed out waiting for ${JSON.stringi…
+[shard:core-runtime-tui-pty]        |                        ^
+[shard:core-runtime-tui-pty]     407|     });
+[shard:core-runtime-tui-pty]     408|   };
+[shard:core-runtime-tui-pty]  ❯ Timeout.tick [as _onTimeout] src/tui/tui-pty-test-support.ts:224:23
+[shard:core-runtime-tui-pty] 
+[shard:core-runtime-tui-pty] ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+[shard:core-runtime-tui-pty] 
+[shard:core-runtime-tui-pty]  FAIL   tui-pty  src/tui/tui-pty-local.e2e.test.ts > TUI PTY real backends > authenticates a manifest-discovered provider and resumes the unchanged local model
