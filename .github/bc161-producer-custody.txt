@@ -1,0 +1,122 @@
+BC161 OpenClaw producer/custody lane -- first-gate receipt
+Date: 2026-11-22
+Issue: https://github.com/karmaterminal/binary-canticle/issues/161
+Status: BLOCKED AT DESIGN GATE; not an implementation or review candidate.
+
+Dispatch and isolation
+The mandatory agent-authored atomic copy/move of work-init.expected.json to
+work-init.json completed before any file reads. The JSON was not modified.
+Control surface: tmux bc161-openclaw-producer-v2:1.1 on ronan.
+Product worktree: /tmp/oc-bc161-producer-custody-fe29ae00
+Lane: codeagent/bc161-openclaw-producer-custody
+The unchanged lane base was published before investigation.
+
+Exact inputs at lane start
+Product server main, local HEAD, origin/main, local lane, lane tracking ref,
+and server lane all equaled:
+7ce2d10eced5f379e31a0b01a96fbcbf9741ccbe
+BC draft #162 live head and separate contract checkout HEAD equaled:
+452c54336d05048b3e0e2fd83bafb16d98065891
+Installed-source checkout HEAD observed read-only:
+ab5a30ea79b776f149e24b1fccab9e79b0a5d299
+The installed build is not the product base. No installation was attempted.
+CI/workflow head: N/A -- no candidate review or Mode-B acceptance.
+Presentation/PR head: N/A -- no PR opened or presentation ref changed.
+
+Initial plan and authority seam
+1. Resolve and publish the frozen base, read BC #161 in full including comments,
+   inspect live #162 source, and distinguish production owners from fixtures.
+2. Establish exact admitted reader/incarnation, trusted complete-history origin,
+   and the candidate's supported binding/route contract before implementation.
+3. Only if gate 2 succeeds: bind the existing toolBindings transport to the
+   session/run owner, await durable selected-source pending writes before return,
+   and settle only an exact host result/model-input handoff. Preserve pending
+   custody on cancellation/restart and cover the sibling tool-return path.
+4. Obtain the mandatory RED-to-GREEN and exact-worktree GitNexus receipts, then
+   submit the bounded source candidate to Ronan. Do not dispatch broad CI before
+   that review gate. After authorized acceptance use blessed hybrid CI with
+   routing_overrides and record both full product/workflow SHAs and aggregate.
+
+Current source observations
+OpenClawSharedToolsOptions.toolBindings exists at
+src/agents/openclaw-tools.types.ts:46. The embedded attempt carries it unchanged
+at src/agents/embedded-agent-runner/run/attempt-tool-run-context.ts:95.
+resolveOpenClawPluginToolInputs forwards it at
+src/agents/openclaw-tools.plugin-context.ts:137. Plugin resolution composes
+current request/caller assertions in src/agents/openclaw-plugin-tools.ts:499-527.
+The real existing run authority is bindHarnessHostSourceAuthority in
+src/agents/harness/host-source-authority.ts:29: it binds admitted source,
+delegated authority, exact caller/worker claim, and host lifetime.
+OperationalRunInstanceRef explicitly is correlation, NOT identity/authorization
+(src/agents/operational-run-instance.ts:3).
+These are reusable host owners, not an attested Canticle history origin.
+
+Concrete blockers
+1. The exact BC candidate's exposure port requires LocalReader. Its real
+   parseConfig rejects a continuing Discord reader: config.ts:95-103 requires
+   an exact local subagent. Binding.exactLocalCaller at binding.ts:550-557 also
+   requires subagent, exact session ID, sandboxed=true, and a current assertion.
+   Its entry at index.ts:22 expects api.session.state.resolveLocalSessionRoute.
+   At the frozen OpenClaw main, git grep over src/packages/extensions finds no
+   resolvePluginLocalSessionRoute, resolveLocalSessionRoute, canticle.exposure,
+   or canticle-exposure-port implementation. The old audited host resolver is
+   not a current-main continuing-reader contract. Broadening BC or restoring
+   a retired API is not authorized by silently editing this OpenClaw lane.
+2. No trusted complete prior-exposure origin, owner-ledger identity, or
+   host-to-station verifier provisioning is supplied for the continuing prince.
+   Ronan's #161 inventory explicitly reports records_lost, legacy taint-only
+   reception, and unattested history. Creating an empty SQLite ledger cannot
+   change that fact. Current run identity assertions alone do not attest history.
+3. Exact result custody remains unproved. The BC port only begins pending;
+   it exposes no host settlement API. Current tool-result middleware may
+   normalize/change/withhold output (harness/tool-result-middleware.ts:265-289).
+   Plugin return, successful begin, messaging-delivery facts, and a passive
+   llm_input observation are not interchangeable with exact provider handoff.
+   No confirmation has been synthesized.
+
+Verification and its limits
+Ran the real #162 parseConfig in Node v26.12.1 with synthetic identities:
+an isolated subagent control was accepted; a continuing Discord key was refused
+with "exact local subagent key and nonempty bounded row identity required".
+Control script retained in the Copilot session files as bc161-binding-control.mjs.
+No daemon, real session, private transcript, provider, or room I/O was involved.
+This is a deterministic design-blocker control, not a pre-fix product failure,
+post-fix passing regression, complete host proof, or RED-to-GREEN receipt.
+No implementation tests/typecheck/Mode-B aggregate exist for this blocked lane.
+
+GitNexus evidence
+Installed gnx: /home/figs/.local/bin/gnx, CLI 1.6.5.
+Installed fork checkout /home/figs/src/gitnexus:
+3c1e686edfc1acaac882927cada121ddd7c47bcc
+gnx pick HEAD -- src/agents src/plugins src/config/sessions found no fresh index.
+Nearest readable index: openclaw-absorb51ff-4b9f10dd at 4b9f10dd11,
+/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-gn-4b9f10dd.
+Verdict STALE for product 7ce2d10eced5f379e31a0b01a96fbcbf9741ccbe:
+4208 repo-wide files and 955 initially scoped files differ.
+Query/context were leads only, byte-checked against the product checkout.
+No exact-worktree review receipt is available; no production symbols edited.
+detect_changes(scope=all, worktree=this isolated checkout) was attempted and
+rejected because the available index belongs to a different Git common dir.
+That refusal receives no scope/review credit. Plain Git verifies this receipt
+is the only changed file; no production-code commit is being made.
+No expensive/shared-host index rebuild was started. This is not a candidate.
+
+Required owner decisions before this lane can resume
+Establish a reviewed current-host continuing-reader/route contract coordinated
+with BC #162; supply the actual ledger/history origin and explicit treatment of
+unknown prior history; name the authenticated station/issuer settlement contract
+that consumes full source/item/scope/payload-hash authority. Then implement and
+prove the real pending-before-exposure and exact custody seam, including denied
+and stale reader, write failure, cancellation, restart/replay, and sibling return.
+Do not use an isolated child, fabricated sandbox Boolean, or empty ledger as
+substitute authority. Ronan's review and exact-worktree GitNexus remain gates.
+
+Separate work remains separate
+BC #161 continuation/output fences, child-parent inherited history if enabled,
+ordinary-room/message/announcement/replay enforcement, station/issuer source-use
+authority, frond-ear publication, and disposable composed acceptance remain
+separate integration work. A #161 comment reports frond-ear adapter work closed;
+this lane neither reimplements nor treats that as publication/acceptance proof.
+No all-history-fresh/all-chatter candidate policy was adopted.
+No Gateway restart/install, radio/derived enablement, frond-ear edit, src/skills
+change, merge, presentation fast-forward, or PR creation occurred.
