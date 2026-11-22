@@ -34,11 +34,13 @@ import {
   pairedOperator,
   persistDevices,
 } from "../../../gateway/operator-run-recovery.test-support.js";
+import type { OperatorScope } from "../../../gateway/operator-scopes.js";
 import type { GatewayLifecycleRuntime } from "../../../gateway/server-instance-runtime.types.js";
 import type {
   GatewayClient,
   GatewayRequestContext,
 } from "../../../gateway/server-methods/shared-types.js";
+import { dispatchGatewayMethodInProcess } from "../../../gateway/server-plugin-in-process-dispatch.js";
 import { createContext } from "../../../gateway/server-plugin-in-process-dispatch.test-support.js";
 import { GatewayDispatchUnavailableError } from "../../../infra/restart-recovery-errors.js";
 import { loadPendingSessionDeliveries } from "../../../infra/session-delivery-queue-storage.js";
@@ -46,6 +48,7 @@ import { peekSystemEvents, resetSystemEventsForTest } from "../../../infra/syste
 import { withPluginRuntimeGatewayRequestScope } from "../../../plugins/runtime/gateway-request-scope.js";
 import { resetGatewayWorkAdmission } from "../../../process/gateway-work-admission.js";
 import { closeOpenClawStateDatabaseAsync } from "../../../state/openclaw-state-db.js";
+import { setUserProfileRole } from "../../../state/user-profile-writes.worker.js";
 import { ensureProfileForEmail } from "../../../state/user-profiles.js";
 import { createTestRegistry } from "../../../test-utils/channel-plugins.js";
 import { captureEnv, setTestEnvValue } from "../../../test-utils/env.js";
@@ -106,11 +109,14 @@ const OWNER = "agent:main:main";
 const OTHER = "agent:main:other";
 const INTERRUPTED_NOTICE = "[continuation:delegate-spawn-interrupted]";
 const CHILD_RESULT = "the crane is folded";
+const ADMIN: OperatorScope[] = ["operator.admin"];
+const MEMBER: OperatorScope[] = ["operator.read", "operator.write"];
 const envSnapshot = captureEnv(["OPENCLAW_CONFIG_PATH", "OPENCLAW_STATE_DIR"]);
 const persistRegistryRows = vi.fn<MockSubagentRegistryRows>();
 let stateDir = "";
 
-type ChildLaunch = { sessionKey: string; client: GatewayClient };
+/** A child turn, and what an admin-only method answers under the client it is admitted with. */
+type ChildLaunch = { sessionKey: string; client: GatewayClient; admin: string };
 
 function runtimeConfig(): OpenClawConfig {
   return {
@@ -134,7 +140,19 @@ function gatewayInstance(config: OpenClawConfig) {
   context.resolveGatewayContext = () => context;
   context.createAgentTurnFacade = ({ client }) => ({
     dispatch: async <T>(request: { sessionKey?: string; idempotencyKey?: string }) => {
-      launches.push({ sessionKey: expectDefined(request.sessionKey, "child key"), client });
+      const admin = await withPluginRuntimeGatewayRequestScope(
+        {
+          context,
+          resolveGatewayContext: context.resolveGatewayContext,
+          client,
+          isWebchatConnect: () => false,
+        },
+        () => dispatchGatewayMethodInProcess("exec.approvals.get", {}),
+      ).then(
+        () => "allowed",
+        (error: unknown) => (error instanceof Error ? error.message : String(error)),
+      );
+      launches.push({ sessionKey: expectDefined(request.sessionKey, "child key"), client, admin });
       return { runId: request.idempotencyKey, status: "accepted" } as T;
     },
     dispatchRaw: async () => {
@@ -190,7 +208,7 @@ function turnScope(gateway: ReturnType<typeof gatewayInstance>, client?: Gateway
 async function operatorConnection(
   gateway: ReturnType<typeof gatewayInstance>,
   scopes: string[],
-  options: { retainable?: false; email?: string } = {},
+  options: { retainable?: false; email?: string; config?: OpenClawConfig } = {},
 ) {
   const profile = ensureProfileForEmail(options.email ?? "elector@example.test");
   const device = pairedOperator();
@@ -198,7 +216,7 @@ async function operatorConnection(
     stateDir,
     context: gateway.context,
     profileId: profile.id,
-    config: runtimeConfig(),
+    config: options.config ?? runtimeConfig(),
     device,
     scopes,
     sourceIngress: "internal",
@@ -437,6 +455,53 @@ describe("continuation delegate dispatch under the elector's bounded grant", () 
 
     await expectRefused(gateway, recordId, /operator dispatch grant was revoked/);
   });
+
+  it.for([
+    // A widening is not a revocation: the delegate spawns, but never past the saved grant.
+    { grant: "member", change: "role widened to admin", expected: MEMBER },
+    { grant: "admin", change: "unchanged", expected: ADMIN },
+  ] as const)(
+    "spawns under the saved $grant grant, never the operator's current role ($change)",
+    async ({ grant, change, expected }) => {
+      const config: OpenClawConfig = {
+        ...runtimeConfig(),
+        gateway: {
+          roles: {
+            default: "member",
+            definitions: {
+              admin: { scopes: ADMIN, agents: "*", sessions: { others: "write" } },
+              member: { scopes: MEMBER, agents: "*", sessions: { others: "view" } },
+            },
+          },
+        },
+      };
+      await configure(config);
+      const gateway = gatewayInstance(config);
+      // The paired device's token holds admin; the role is what bounds the connection.
+      setUserProfileRole(ensureProfileForEmail("elector@example.test").id, grant);
+      const operator = await operatorConnection(gateway, [...expected], { config });
+      const recordId = await operator.elect(0.5);
+      if (change === "role widened to admin") {
+        setUserProfileRole(operator.profileId, "admin");
+      }
+
+      const record = await settledDelegate(recordId);
+
+      expect(record).toMatchObject({ status: "succeeded", handoff: { target: "subagent_runs" } });
+      expect(gateway.launches).toHaveLength(1);
+      const child = expectDefined(gateway.launches[0], "the delegate's child turn");
+      const authority = child.client.internal?.operatorRunAuthority;
+      expect(authority?.profileId).toBe(operator.profileId);
+      expect(authority?.scopes).toEqual(expected);
+      // The launch request carries the agent method's scope, plus admin only where the grant has it.
+      expect(child.client.connect.scopes?.includes("operator.admin")).toBe(grant === "admin");
+      expect(child.admin).toEqual(
+        grant === "admin" ? "allowed" : expect.stringContaining("missing scope: operator.admin"),
+      );
+      await expectReturnsToOwner(1);
+      expect(await interruptedNotices()).toEqual([]);
+    },
+  );
 
   it("never lets a grant authorize a spawn under another session", async () => {
     const gateway = gatewayInstance(runtimeConfig());
