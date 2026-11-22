@@ -1,0 +1,172 @@
+# ctl ref=up sha=5a3e6b1cb09bb886c4f9760d5d155353131e823a file=extensions/browser/src/browser/chrome.headless-cleanup.test.ts run=1 mode=node26121 start=2026-11-22T14:16:45Z
+# runwt=/home/figs/classify-129388-bhc/up-5a3e6b1c (42 chars) link=--link-deps-from /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-stage4-config-readiness-up arch=aarch64
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-bhc-bsb8uG/home TMPDIR=/tmp/oc-bhc-bsb8uG/tmp  (timeout 570s)
+pnpm-lock.yaml sha256: 8fb9f6aa1ebf045ad3d042ce4fdacc28f23872a1049f1f1568fc6acc43b25c5e (matches /home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-stage4-config-readiness-up)
+linked node_modules dirs: 208
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.extension-browser.config.ts
+include-file: /tmp/oc-bhc-bsb8uG/tmp/oc-focused.6hiXhZ/include.json
+include-file-contents:
+  [
+    "extensions/browser/src/browser/chrome.headless-cleanup.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-bhc-bsb8uG/tmp/oc-focused.6hiXhZ/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.extension-browser.config.ts --maxWorkers=1 extensions/browser/src/browser/chrome.headless-cleanup.test.ts
+logs: /tmp/oc-bhc-bsb8uG/tmp/oc-focused.6hiXhZ
+
+ RUN  v5.0.5 /home/figs/classify-129388-bhc/up-5a3e6b1c
+
+[vitest-workers] local cache miss after 1236ms
+[vitest-workers] prepared f748572231c7 in 25420ms (16527 inputs, 8100 outputs)
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > cleans up a one-shot darwin explicit shell only when ownsProfile=true 1083ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > cleans up a one-shot darwin explicit shell only when ownsProfile=false 8ms
+ × |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > cleans up a one-shot darwin cache shell only when ownsProfile=true 6ms
+   → expected undefined to be '/tmp/oc-bhc-bsb8uG/tmp/oc-vt-O2AgAV/o…' // Object.is equality
+ × |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > cleans up a one-shot darwin cache shell only when ownsProfile=false 3ms
+   → expected undefined to be '/tmp/oc-bhc-bsb8uG/tmp/oc-vt-O2AgAV/o…' // Object.is equality
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > cleans up a one-shot linux explicit shell only when ownsProfile=true 7ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > cleans up a one-shot linux explicit shell only when ownsProfile=false 6ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > cleans up a one-shot linux cache shell only when ownsProfile=true 6ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > cleans up a one-shot linux cache shell only when ownsProfile=false 6ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > identifies a live linux shell after removed-cache only when ownsProfile=true 6ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > identifies a live linux shell after removed-cache only when ownsProfile=false 6ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > identifies a live linux shell after changed-executable only when ownsProfile=true 8ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > identifies a live linux shell after changed-executable only when ownsProfile=false 5ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > identifies a live linux shell after removed-explicit only when ownsProfile=true 6ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > identifies a live linux shell after removed-explicit only when ownsProfile=false 18ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > identifies a live darwin shell after removed-cache only when ownsProfile=true 6ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > identifies a live darwin shell after removed-cache only when ownsProfile=false 6ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > identifies a live darwin shell after changed-executable only when ownsProfile=true 6ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > identifies a live darwin shell after changed-executable only when ownsProfile=false 6ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > identifies a live darwin shell after removed-explicit only when ownsProfile=true 6ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > identifies a live darwin shell after removed-explicit only when ownsProfile=false 5ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > recovers a linux shell behind a dead local lock 11ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > recovers a darwin shell behind a dead local lock 7ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > does not signal a shell when listener discovery is unavailable 9ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > does not signal a shell when listener discovery is ambiguous 5ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > does not release a lockless full Chrome profile while its CDP port is occupied 7ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > fails closed for an explicit Windows shell across runtimes with headless=true 5ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > fails closed for an explicit Windows shell across runtimes with headless=false 5ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > rejects managed Windows shell launch without spawning or seeding profile data 7ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > keeps empty Windows full-Chromium profiles releasable 5ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > reports not running only after proving the lockless CDP port is free 5ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > preserves data when shell process discovery fails despite a free CDP port 5ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > preserves a live linux shell profile on stop after the configured CDP port changes 5ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > preserves a live linux shell profile on launch after the configured CDP port changes 4ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > preserves a live darwin shell profile on stop after the configured CDP port changes 5ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > preserves a live darwin shell profile on launch after the configured CDP port changes 5ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > preserves a shell profile when its process is alive but no longer listening 13ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > preserves a shell profile with duplicate directory flags after the port changes 5ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > does not signal a lockless shell after its process identity changes 6ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > does not release shell profile data when the CDP port remains occupied after shutdown 5ms
+stderr | unknown test
+[sqlite-test-lifecycle] extensions/browser/src/browser/chrome.headless-cleanup.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] extensions/browser/src/browser/chrome.headless-cleanup.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] extensions/browser/src/browser/chrome.headless-cleanup.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] extensions/browser/src/browser/chrome.headless-cleanup.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] extensions/browser/src/browser/chrome.headless-cleanup.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] extensions/browser/src/browser/chrome.headless-cleanup.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] extensions/browser/src/browser/chrome.headless-cleanup.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] extensions/browser/src/browser/chrome.headless-cleanup.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] extensions/browser/src/browser/chrome.headless-cleanup.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] extensions/browser/src/browser/chrome.headless-cleanup.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] extensions/browser/src/browser/chrome.headless-cleanup.test.ts: retiring openclaw.pluginStateNamespaceOwner
+
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > excludes an independent lock owner while launch is pending 372ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > holds cross-runtime exclusion through reset's trash operation, with nested stop ownership 11ms
+ × |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > recovers stale cache browser with configuredHeadless=false, ownsProfile=true, code=websocket_health_command_timeout 7ms
+   → promise rejected "Error: No supported browser found (Chrome…" instead of resolving
+ × |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > recovers stale cache browser with configuredHeadless=true, ownsProfile=true, code=websocket_health_command_timeout 5ms
+   → promise rejected "PortInUseError: Port is already in use." instead of resolving
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > recovers stale cache browser with configuredHeadless=false, ownsProfile=false, code=websocket_health_command_timeout 5ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > recovers stale cache browser with configuredHeadless=false, ownsProfile=true, code=websocket_health_command_failed 4ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > cleans up a one-shot darwin cache shell only when ownsProfile=true
+AssertionError: expected undefined to be '/tmp/oc-bhc-bsb8uG/tmp/oc-vt-O2AgAV/o…' // Object.is equality
+
+- Expected:
+"/tmp/oc-bhc-bsb8uG/tmp/oc-vt-O2AgAV/openclaw-headless-cleanup-pBvvrG/browsers/chromium-100/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
+
++ Received:
+undefined
+
+ ❯ extensions/browser/src/browser/chrome.headless-cleanup.test.ts:238:75
+    236|       platform,
+    237|     );
+    238|     expect(resolveBrowserExecutableForPlatform(resolved, platform)?.pa…
+       |                                                                           ^
+    239|       mode === "cache" ? chrome : shell,
+    240|     );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > cleans up a one-shot darwin cache shell only when ownsProfile=false
+AssertionError: expected undefined to be '/tmp/oc-bhc-bsb8uG/tmp/oc-vt-O2AgAV/o…' // Object.is equality
+
+- Expected:
+"/tmp/oc-bhc-bsb8uG/tmp/oc-vt-O2AgAV/openclaw-headless-cleanup-vkwVVA/browsers/chromium-100/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
+
++ Received:
+undefined
+
+ ❯ extensions/browser/src/browser/chrome.headless-cleanup.test.ts:238:75
+    236|       platform,
+    237|     );
+    238|     expect(resolveBrowserExecutableForPlatform(resolved, platform)?.pa…
+       |                                                                           ^
+    239|       mode === "cache" ? chrome : shell,
+    240|     );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > recovers stale cache browser with configuredHeadless=false, ownsProfile=true, code=websocket_health_command_timeout
+AssertionError: promise rejected "Error: No supported browser found (Chrome…" instead of resolving
+ ❯ extensions/browser/src/browser/chrome.headless-cleanup.test.ts:581:27
+    579|     });
+    580|     if (recovers) {
+    581|       await expect(launch).resolves.toMatchObject({ exe: { path: chrom…
+       |                           ^
+    582|       expect(fixture.spawn).toHaveBeenCalledTimes(1);
+    583|       const stopOrder = kill.mock.invocationCallOrder[0]!;
+
+Caused by: Error: No supported browser found (Chrome/Brave/Edge/Chromium on macOS, Linux, or Windows).
+ ❯ launchOpenClawChromeLocked extensions/browser/src/browser/chrome.ts:596:11
+ ❯ extensions/browser/src/browser/chrome.profile-lifecycle-lock.ts:28:17
+ ❯ Object.onRequest extensions/browser/profile-filesystem.ts:32:32
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > recovers stale cache browser with configuredHeadless=true, ownsProfile=true, code=websocket_health_command_timeout
+AssertionError: promise rejected "PortInUseError: Port is already in use." instead of resolving
+ ❯ extensions/browser/src/browser/chrome.headless-cleanup.test.ts:581:27
+    579|     });
+    580|     if (recovers) {
+    581|       await expect(launch).resolves.toMatchObject({ exe: { path: chrom…
+       |                           ^
+    582|       expect(fixture.spawn).toHaveBeenCalledTimes(1);
+    583|       const stopOrder = kill.mock.invocationCallOrder[0]!;
+
+Caused by: PortInUseError: Port is already in use.
+ ❯ extensions/browser/src/browser/chrome.headless-cleanup.test.ts:562:36
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 41 passed (45)
+   Start at  06:16:48
+   Duration  45.20s (transform 90%, tests 4%, import 3%, worker 2%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+[test] FAILED (exit 1)
+receipt head=5a3e6b1cb09bb886c4f9760d5d155353131e823a config=test/vitest/vitest.extension-browser.config.ts files=extensions/browser/src/browser/chrome.headless-cleanup.test.ts
+failing-tests:
+ × |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > cleans up a one-shot darwin cache shell only when ownsProfile=true 6ms
+ × |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > cleans up a one-shot darwin cache shell only when ownsProfile=false 3ms
+ × |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > recovers stale cache browser with configuredHeadless=false, ownsProfile=true, code=websocket_health_command_timeout 7ms
+ × |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.test.ts > recovers stale cache browser with configuredHeadless=true, ownsProfile=true, code=websocket_health_command_timeout 5ms
+VERDICT RED [Test Files 1 failed (1); Tests 4 failed | 41 passed (45)]
+# exit=1

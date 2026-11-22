@@ -1,0 +1,88 @@
+# ctl ref=cand sha=a329243bd1aa4e8677517a5eaf4a67aa30ca8647 file=extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts run=2 mode=node26121+cpu-Apple_M2 start=2026-11-22T14:27:22Z
+# runwt=/home/figs/classify-129388-bhc/cand-a329243b (44 chars) link=<present> arch=aarch64
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-bhc-lLmu6R/home TMPDIR=/tmp/oc-bhc-lLmu6R/tmp  (timeout 570s)
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.extension-browser.config.ts
+include-file: /tmp/oc-bhc-lLmu6R/tmp/oc-focused.eS5b8r/include.json
+include-file-contents:
+  [
+    "extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-bhc-lLmu6R/tmp/oc-focused.eS5b8r/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.extension-browser.config.ts --maxWorkers=1 extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts
+logs: /tmp/oc-bhc-lLmu6R/tmp/oc-focused.eS5b8r
+
+ RUN  v5.0.5 /home/figs/classify-129388-bhc/cand-a329243b
+
+[vitest-workers] local cache hit after 1676ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 74a753489086 in 1716ms (16696 inputs, 8202 outputs)
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > cleans up a one-shot darwin explicit shell only when ownsProfile=true 1154ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > cleans up a one-shot darwin explicit shell only when ownsProfile=false 12ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > cleans up a one-shot darwin cache shell only when ownsProfile=true 14ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > cleans up a one-shot darwin cache shell only when ownsProfile=false 12ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > cleans up a one-shot linux explicit shell only when ownsProfile=true 12ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > cleans up a one-shot linux explicit shell only when ownsProfile=false 9ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > cleans up a one-shot linux cache shell only when ownsProfile=true 11ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > cleans up a one-shot linux cache shell only when ownsProfile=false 11ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > identifies a live linux shell after removed-cache only when ownsProfile=true 21ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > identifies a live linux shell after removed-cache only when ownsProfile=false 11ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > identifies a live linux shell after changed-executable only when ownsProfile=true 11ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > identifies a live linux shell after changed-executable only when ownsProfile=false 10ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > identifies a live linux shell after removed-explicit only when ownsProfile=true 11ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > identifies a live linux shell after removed-explicit only when ownsProfile=false 9ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > identifies a live darwin shell after removed-cache only when ownsProfile=true 9ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > identifies a live darwin shell after removed-cache only when ownsProfile=false 8ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > identifies a live darwin shell after changed-executable only when ownsProfile=true 10ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > identifies a live darwin shell after changed-executable only when ownsProfile=false 10ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > identifies a live darwin shell after removed-explicit only when ownsProfile=true 10ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > identifies a live darwin shell after removed-explicit only when ownsProfile=false 8ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > recovers a linux shell behind a dead local lock 12ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > recovers a darwin shell behind a dead local lock 9ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > does not signal a shell when listener discovery is unavailable 6ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > does not signal a shell when listener discovery is ambiguous 11ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > does not release a lockless full Chrome profile while its CDP port is occupied 7ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > fails closed for an explicit Windows shell across runtimes with headless=true 7ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > fails closed for an explicit Windows shell across runtimes with headless=false 6ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > rejects managed Windows shell launch without spawning or seeding profile data 10ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > keeps empty Windows full-Chromium profiles releasable 9ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > reports not running only after proving the lockless CDP port is free 9ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > preserves data when shell process discovery fails despite a free CDP port 7ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > preserves a live linux shell profile on stop after the configured CDP port changes 7ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > preserves a live linux shell profile on launch after the configured CDP port changes 7ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > preserves a live darwin shell profile on stop after the configured CDP port changes 8ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > preserves a live darwin shell profile on launch after the configured CDP port changes 7ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > preserves a shell profile when its process is alive but no longer listening 15ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > preserves a shell profile with duplicate directory flags after the port changes 8ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > does not signal a lockless shell after its process identity changes 8ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > does not release shell profile data when the CDP port remains occupied after shutdown 10ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > excludes an independent lock owner while launch is pending 367ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > holds cross-runtime exclusion through reset's trash operation, with nested stop ownership 20ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > recovers stale cache browser with configuredHeadless=false, ownsProfile=true, code=websocket_health_command_timeout 34ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > recovers stale cache browser with configuredHeadless=true, ownsProfile=true, code=websocket_health_command_timeout 37ms
+stderr | unknown test
+[sqlite-test-lifecycle] extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts: retiring openclaw.pluginStateNamespaceOwner
+
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > recovers stale cache browser with configuredHeadless=false, ownsProfile=false, code=websocket_health_command_timeout 12ms
+ ✓ |extension-browser| extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts > recovers stale cache browser with configuredHeadless=false, ownsProfile=true, code=websocket_health_command_failed 8ms
+
+ Test Files  1 passed (1)
+      Tests  45 passed (45)
+   Start at  06:27:24
+   Duration  11.53s (transform 62%, tests 18%, import 15%, worker 4%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=a329243bd1aa4e8677517a5eaf4a67aa30ca8647 config=test/vitest/vitest.extension-browser.config.ts files=extensions/browser/src/browser/chrome.headless-cleanup.cpu-probe.probe.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 45 passed (45)]
+# exit=0
