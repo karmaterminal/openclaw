@@ -255,7 +255,7 @@ if (isMainThread) appendFileSync(process.env.EXEC_ARGV_LOG, JSON.stringify([proc
 import { pathToFileURL } from "node:url";
 import { workerData } from "node:worker_threads";
 const { resolveRuntimeWorkerArgv } = await import(pathToFileURL(workerData.src + "/infra/runtime-worker-url.ts").href);
-execFileSync(process.execPath, resolveRuntimeWorkerArgv(pathToFileURL(workerData.dir + "/thread-child.mjs")));`;
+execFileSync(process.execPath, resolveRuntimeWorkerArgv(pathToFileURL(workerData.dir + "/" + workerData.child)));`;
   const driver = `import { execFileSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
@@ -268,9 +268,19 @@ const threadUrl = pathToFileURL(dir + "/thread.mts");
 const { createCpuTrackedWorker } = await load("infra/worker-cpu.ts");
 const worker = createCpuTrackedWorker(threadUrl, {
   execArgv: resolveRuntimeWorkerArgv(threadUrl).slice(0, -1),
-  workerData: { dir, src },
+  workerData: { dir, src, child: "thread-child.mjs" },
 });
 await new Promise((resolve, reject) => worker.once("exit", resolve).once("error", reject));
+// An updater's process generation moves the launch to its retained copy; the policy follows it.
+const { setProcessRuntimeWorkerResolver } = await load("infra/runtime-worker-process-generation.ts");
+const installedUrl = pathToFileURL(dir + "/installed/thread.mts");
+setProcessRuntimeWorkerResolver((url) => (url.href === installedUrl.href ? threadUrl : url));
+const retained = createCpuTrackedWorker(installedUrl, {
+  execArgv: resolveRuntimeWorkerArgv(installedUrl).slice(0, -1),
+  workerData: { dir, src, child: "retained-thread-child.mjs" },
+});
+await new Promise((resolve, reject) => retained.once("exit", resolve).once("error", reject));
+setProcessRuntimeWorkerResolver(undefined);
 // The SDK's documented thread execArgv for workspace workers must stay free of V8 flags.
 const { resolveWorkspaceWorkerExecArgv } = await load("agents/workspace-worker.ts");
 const { Worker } = await import("node:worker_threads");
@@ -303,6 +313,7 @@ console.log(JSON.stringify(outputs));`;
           "thread.mts": thread,
           "child.mjs": "",
           "thread-child.mjs": "",
+          "retained-thread-child.mjs": "",
           "cli.mjs": "",
         })) {
           await writeFile(path.join(dir, name), source);
@@ -342,6 +353,7 @@ console.log(JSON.stringify(outputs));`;
         // Exact for plain children: --no-warnings and the parent's loader stay behind.
         expect(children.get("child.mjs")).toEqual(flags);
         expect(children.get("thread-child.mjs")).toEqual(flags);
+        expect(children.get("retained-thread-child.mjs")).toEqual(flags);
         expect(children.get("cli.mjs")).toEqual(flags);
         expect(children.get("update-state-sizes.mjs")).toEqual(flags);
         expect(children.get("daemon-runtime-probe.mjs")).toEqual(flags);
