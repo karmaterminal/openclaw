@@ -4,6 +4,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { expect, test, vi } from "vitest";
+import { NO_MODEL_CONFIGURED_MESSAGE } from "../agents/model-selection-config.js";
 import { resetContinuationCustodyProjection } from "../auto-reply/continuation/custody/custody-projection.js";
 import { hydrateContinuationCustody } from "../auto-reply/continuation/custody/custody-store.js";
 import {
@@ -22,6 +23,7 @@ import { closeOpenClawStateDatabaseAsync } from "../state/openclaw-state-db.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import { normalizeSessionDeliveryState } from "../utils/delivery-context.shared.js";
 import { rpcReq, writeSessionStore } from "./test-helpers.js";
+import { testState } from "./test-helpers.runtime-state.js";
 import {
   setupGatewaySessionsTestHarness,
   sessionStoreEntry,
@@ -32,7 +34,25 @@ import {
 // the decision itself reads real custody and releases for real.
 const postCompactionReleaseSeams = vi.hoisted(() => ({
   releaseCalls: [] as string[],
+  warnings: [] as string[],
 }));
+
+// The handler's subsystem warnings, recorded: vitest logs at silent.
+vi.mock("../logging/subsystem.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../logging/subsystem.js")>();
+  return {
+    ...actual,
+    createSubsystemLogger: (...args: Parameters<typeof actual.createSubsystemLogger>) => {
+      const logger = actual.createSubsystemLogger(...args);
+      return args[0] === "gateway/sessions"
+        ? {
+            ...logger,
+            warn: (message: string) => postCompactionReleaseSeams.warnings.push(message),
+          }
+        : logger;
+    },
+  };
+});
 
 vi.mock("../auto-reply/reply/agent-runner-post-compaction-release.js", async (importOriginal) => {
   const actual =
@@ -439,6 +459,39 @@ test("sessions.compact keeps delegates staged when the post-trim row no longer m
     expect(stagedPostCompactionDelegateCount("agent:main:main")).toBe(1);
   } finally {
     trimSeams.afterTrim = undefined;
+    await rehydrateContinuationCustodyAfterStateSettles();
+  }
+});
+
+test("sessions.compact keeps delegates staged and names the missing model", async () => {
+  await rehydrateContinuationCustodyAfterStateSettles();
+  const agentConfig = testState.agentConfig;
+  // No configured model is no default provider (#203271), so nothing can run the release.
+  testState.agentConfig = { ...agentConfig, model: undefined };
+  try {
+    await seedMaxLinesCompactionSession("sess-post-compaction-no-model");
+    const staged = stagedPostCompactionDelegateCount("agent:main:main");
+    await stagePostCompactionDelegate("agent:main:main", {
+      task: "release needs a model",
+      createdAt: Date.now(),
+    });
+    postCompactionReleaseSeams.releaseCalls.length = 0;
+    postCompactionReleaseSeams.warnings.length = 0;
+    const compacted = await directSessionReq<{ ok: true; compacted: boolean; kept?: number }>(
+      "sessions.compact",
+      { key: "main", maxLines: 50 },
+      { inProcessRequestAuthority: true },
+    );
+
+    expect(compacted.ok).toBe(true);
+    expect(compacted.payload?.compacted).toBe(true);
+    expect(postCompactionReleaseSeams.releaseCalls).toEqual([]);
+    expect(stagedPostCompactionDelegateCount("agent:main:main")).toBe(staged + 1);
+    expect(postCompactionReleaseSeams.warnings).toEqual([
+      expect.stringContaining(`reason=${NO_MODEL_CONFIGURED_MESSAGE}`),
+    ]);
+  } finally {
+    testState.agentConfig = agentConfig;
     await rehydrateContinuationCustodyAfterStateSettles();
   }
 });

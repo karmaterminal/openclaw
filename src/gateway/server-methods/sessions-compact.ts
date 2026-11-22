@@ -7,6 +7,7 @@ import {
 } from "../../../packages/gateway-protocol/src/index.js";
 import { resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
 import type { PreparedCompactionSession } from "../../agents/embedded-agent-runner/run/compaction-accounting-bridge.js";
+import { NO_MODEL_CONFIGURED_MESSAGE } from "../../agents/model-selection-config.js";
 import { resolveQueuedDelegateCounts } from "../../auto-reply/continuation/delegate-store.js";
 import type { FollowupRun } from "../../auto-reply/reply/queue.js";
 import {
@@ -113,7 +114,7 @@ async function releaseManualPostCompactionDelegatesIfNeeded(params: {
   cfg: OpenClawConfig;
   compactionCount: number | undefined;
   entry: SessionEntry;
-  model: { provider: string; model: string };
+  model: { provider: string; model: string } | undefined;
   sessionFile: string;
   sessionId: string;
   sessionKey: string;
@@ -126,12 +127,17 @@ async function releaseManualPostCompactionDelegatesIfNeeded(params: {
     return;
   }
   try {
+    // No configured model is no default provider (#203271): the delegates stay staged.
+    const model = params.model;
+    if (!model) {
+      throw new Error(NO_MODEL_CONFIGURED_MESSAGE);
+    }
     const { releasePostCompactionDelegatesAfterCompaction } =
       await import("../../auto-reply/reply/agent-runner-post-compaction-release.js");
     await releasePostCompactionDelegatesAfterCompaction({
       activeSessionStore: params.store,
       compactionCount: params.compactionCount,
-      followupRun: buildManualCompactionReleaseFollowupRun(params),
+      followupRun: buildManualCompactionReleaseFollowupRun({ ...params, model }),
       sessionEntry: params.entry,
       sessionKey: params.sessionKey,
       storePath: params.storePath,
