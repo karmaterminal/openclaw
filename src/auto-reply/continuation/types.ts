@@ -234,10 +234,9 @@ export type ContinueWorkRequest = {
   traceparent?: string;
   /** Live, non-serializable policy custody captured when the tool was accepted. */
   operatorContinuation?: {
-    /** Present for a host-issued operator source, which every wake must re-admit. */
+    /** Present for a host-issued operator source, which each wake re-admits once. */
     operatorAuthority?: object;
     assertCurrent: () => void;
-    /** Starts work under the retained source, admitted once against its current policy. */
     runWithRequester: <T>(run: () => Promise<T>, agentId?: string) => Promise<T>;
     release: () => void;
   };
