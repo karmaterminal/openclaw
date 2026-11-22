@@ -503,11 +503,19 @@ it("returns a bare CONTINUE_WORK child's next-turn answer to its parent, running
 // The fix schedules post-turn continue_work outside the tool caller and operator tool
 // frames. An operator's own agent RPC turn keeps its request-scope custody (#1489).
 // The chained gates arm hop 3 from hop 2's wake turn; "chained-revoked" revokes between them.
+// "narrowed" drops the role's write scope between the turn and its wake (🌊/🩸 wake admission).
 it("keeps a restricted operator's agent-RPC continue_work custody through its wake", async () => {
   const id = randomUUID().slice(0, 8);
   const scopes: OperatorScope[] = ["operator.read", "operator.write"];
   const roleError = 'Your operator role cannot create sessions for agent "forbidden"';
-  const gates = ["retained", "revoked", "reassigned", "chained", "chained-revoked"] as const;
+  const gates = [
+    "retained",
+    "revoked",
+    "reassigned",
+    "chained",
+    "chained-revoked",
+    "narrowed",
+  ] as const;
   const scenarios = gates.map((gate, index) => ({
     gate,
     email: `wake-operator-${gate}-${id}@example.test`,
@@ -569,10 +577,11 @@ it("keeps a restricted operator's agent-RPC continue_work custody through its wa
         reply("Unexpected request.");
       } else if (body.includes(WAKE_MARKER) && !body.includes(scenario.forbiddenTask)) {
         scenario.hopTwoTurns++;
-        // The role admits agent "main" only; ambient authority would admit this spawn.
+        // The role admits agent "main" only; ambient authority would admit this spawn. A narrowed
+        // wake spawns on the admitted agent, so only its lost write scope can refuse it.
         writeToolCall(response, "sessions_spawn", {
           task: scenario.forbiddenTask,
-          agentId: "forbidden",
+          agentId: scenario.gate === "narrowed" ? "main" : "forbidden",
           runtime: "subagent",
           context: "isolated",
           cleanup: "keep",
@@ -627,6 +636,7 @@ it("keeps a restricted operator's agent-RPC continue_work custody through its wa
         definitions: {
           scoped: { sessions: { others: "write" }, agents: ["main"], scopes },
           revoked: { sessions: { others: "none" }, agents: [], scopes: ["operator.read"] },
+          reader: { sessions: { others: "view" }, agents: ["main"], scopes: ["operator.read"] },
         },
       },
     },
@@ -706,7 +716,9 @@ it("keeps a restricted operator's agent-RPC continue_work custody through its wa
           return rows[0]?.status === "succeeded" && rows[1]?.status === "queued";
         }, WAKE_TURN_BOUND_MS);
       }
-      if (scenario.gate === "revoked" || scenario.gate === "chained-revoked") {
+      if (scenario.gate === "narrowed") {
+        setUserProfileRole(scenario.profileId, "reader");
+      } else if (scenario.gate === "revoked" || scenario.gate === "chained-revoked") {
         scenario.requestsAtRevocation = scenario.requests;
         setUserProfileRole(scenario.profileId, "revoked");
       } else if (scenario.gate === "reassigned") {
@@ -719,7 +731,8 @@ it("keeps a restricted operator's agent-RPC continue_work custody through its wa
         return (
           rows.length === (scenario.chained ? 2 : 1) &&
           rows.every((row) => row.status !== "queued" && row.status !== "running") &&
-          (scenario.gate !== "retained" || scenario.spawnResult !== undefined)
+          ((scenario.gate !== "retained" && scenario.gate !== "narrowed") ||
+            scenario.spawnResult !== undefined)
         );
       };
       await waitFor(settled, WAKE_TURN_BOUND_MS);
@@ -809,6 +822,24 @@ it("keeps a restricted operator's agent-RPC continue_work custody through its wa
         expect(result.chainedCustody).toEqual(
           result.settledRows.map((row) => ({ flowId: row.recordId, ...restricted })),
         );
+      } else if (result.gate === "narrowed") {
+        // The wake's start admitted the narrowed role: its real turn holds only the read scope,
+        // and its spawn on the admitted agent cannot use the write scope the role lost.
+        expect(result).toMatchObject({
+          order: ["run-ended", "wake-prepared"],
+          hopTwoTurns: 1,
+          wakes: [
+            {
+              preparedRunStarted: true,
+              operatorAuthority: { ...restricted, scopes: ["operator.read"] },
+            },
+          ],
+          spawnResult: {
+            status: "error",
+            error: expect.stringContaining("missing scope: operator.write"),
+          },
+        });
+        expect(result.settledRows).toEqual([expect.objectContaining({ status: "succeeded" })]);
       } else if (result.gate === "retained") {
         // The wake ran under the operator's own role, which refused the forbidden agent.
         expect(result).toMatchObject({
