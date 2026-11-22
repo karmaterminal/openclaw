@@ -8,7 +8,6 @@
  * the rest of the continuation surface is built on.
  */
 
-import type { AdmittedRunOperatorAuthority } from "../../agents/admitted-run-operator-authority.types.js";
 import type { ContinuationRecipientAuthorityBinding } from "../../config/sessions/session-recipient-authority-types.js";
 import type { InlineAttachment, InlineAttachmentMount } from "../../shared/inline-attachments.js";
 import type { ContinuationRecord } from "./custody/custody-store.types.js";
@@ -235,10 +234,11 @@ export type ContinueWorkRequest = {
   traceparent?: string;
   /** Live, non-serializable policy custody captured when the tool was accepted. */
   operatorContinuation?: {
-    /** The host-issued operator authority; each wake re-checks its current admission once. */
-    operatorAuthority?: Pick<AdmittedRunOperatorAuthority, "reauthorize">;
+    /** Present for a host-issued operator source, which every wake must re-admit. */
+    operatorAuthority?: object;
     assertCurrent: () => void;
-    run: <T>(run: () => T) => T;
+    /** Starts work under the retained source, admitted once against its current policy. */
+    runWithRequester: <T>(run: () => Promise<T>, agentId?: string) => Promise<T>;
     release: () => void;
   };
 };

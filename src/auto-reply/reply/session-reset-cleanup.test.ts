@@ -597,7 +597,7 @@ describe("clearSessionResetRuntimeState", () => {
       retainWorkOperatorContinuation(work.flowId!, sessionKey, {
         operatorAuthority: {},
         assertCurrent: () => {},
-        run: (run) => run(),
+        runWithRequester: (run) => run(),
         release,
       });
       try {

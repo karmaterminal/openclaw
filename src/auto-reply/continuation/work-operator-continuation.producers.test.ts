@@ -1,10 +1,9 @@
 // Continuation (karmaterminal): a continue_work wake re-checks its retained operator custody once
-// (🌊's O4 ruling on #129388). A channel source sets no `reauthorize`, so the wake's refusal rests
-// on `custody.assertCurrent()` being live. A restored scheduled source keeps its admission fixed
-// once started (upstream #201377) and re-checks the owner's current policy through `reauthorize`,
-// which the wake calls once. These cases arm the real continue_work tool under a channel
-// operator's and a scheduled operator's own authority, change that authority after the turn, then
-// run the real wake.
+// (🌊's O4 ruling on #129388). A started run keeps its admission fixed (upstream #201377); the wake
+// is a new start, so it admits the retained source against the owner's current policy once, through
+// the custody's runWithRequester (upstream #202513). These cases arm the real continue_work tool
+// under a channel operator's and a scheduled operator's own authority, change that authority after
+// the turn, then run the real wake.
 // Real: the channel ingress and host context, the scheduled source restore, the continue_work
 // tool, the in-process custody capture and the wake. Observed only: the turn the wake would start
 // and the failed row it would write.
@@ -15,10 +14,10 @@ import { createContinueWorkTool } from "../../agents/tools/continue-work-tool.js
 import { withGatewayToolCallerIdentity } from "../../agents/tools/gateway-caller-context.js";
 import { withAdminIngress } from "../../channels/message-access/operator-authority.test-support.js";
 import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
-import { invalidateGatewayDeviceRevocation } from "../../gateway/device-revocation.js";
 import { captureQueuedOperatorRecoverySource } from "../../gateway/operator-run-recovery-source.js";
 import { withRecovery } from "../../gateway/operator-run-recovery.test-support.js";
 import type { GatewayRequestContext } from "../../gateway/server-methods/types.js";
+import { removePairedDevice } from "../../infra/device-pairing.js";
 import { getPluginRuntimeGatewayRequestScope } from "../../plugins/runtime/gateway-request-scope.js";
 import { changeCanonicalUserChannelIdentity } from "../../state/user-channel-identity-operations.js";
 import { setUserProfileRole } from "../../state/user-profile-writes.worker.js";
@@ -180,15 +179,8 @@ it.for(
         authority,
         context: gateway,
       });
-      if (source === "saved") {
-        expect(retained).not.toBe(authority);
-        expect(retained.channelRecoverySource).toBeDefined();
-      } else {
-        expect(retained).toBe(authority);
-      }
-      // Upstream #202318: a captured continuation re-checks its origin's device and restored
-      // policy when the wake starts; a live source has no start re-check of its own.
-      expect(typeof retained.reauthorize).toBe(source === "saved" ? "function" : "undefined");
+      // The custody retains the arming authority; the wake's start restores and admits it.
+      expect(retained).toBe(authority);
 
       if (change === "role demoted") {
         setUserProfileRole(admin.profile.id, "member");
@@ -199,10 +191,10 @@ it.for(
     }),
 );
 
-it.each(["authorized", "role changed", "device revoked"] as const)(
+it.each(["authorized", "role changed", "device removed"] as const)(
   "a scheduled operator's continue_work wake checks the restored source live (%s)",
   (change) =>
-    withRecovery(async (fixture, _stateDir, profile) => {
+    withRecovery(async (fixture, stateDir, profile) => {
       setRuntimeConfigSnapshot({});
       // A scheduled run's authority: restoreCronOperatorSource restores its saved source here.
       const scheduled = expectDefined(await fixture.restore(), "scheduled operator authority");
@@ -212,18 +204,17 @@ it.each(["authorized", "role changed", "device revoked"] as const)(
           authority: scheduled.authority,
           context: fixture.context,
         });
-        // The custody restores the run's saved source again, without the occurrence's checks.
-        expect(retained).not.toBe(scheduled.authority);
+        // The custody retains the run's authority past the occurrence; the wake restores it.
+        expect(retained).toBe(scheduled.authority);
         expect(retained.recoverySnapshot).toBeDefined();
-        // Its admission is fixed after start; the wake's re-check reads the current policy.
-        expect(retained.reauthorize).toBeTypeOf("function");
         fixture.retire();
         scheduled.release();
 
         if (change === "role changed") {
           setUserProfileRole(profile.id, "viewer");
-        } else if (change === "device revoked") {
-          invalidateGatewayDeviceRevocation(fixture.context, "recovery-device", "operator");
+        } else if (change === "device removed") {
+          // Upstream #202513: a start reads the paired-device record, not the revocation index.
+          expect(await removePairedDevice("recovery-device", stateDir)).not.toBeNull();
         }
         expectWake(await wake(), profile.id, change !== "authorized");
       } finally {

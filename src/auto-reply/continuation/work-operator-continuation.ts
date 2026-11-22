@@ -1,5 +1,6 @@
 import { captureOperatorToolGatewayContinuationContext } from "../../gateway/server-plugin-in-process-authority.js";
 import { formatErrorMessage } from "../../infra/errors.js";
+import { parseAgentSessionKey } from "../../routing/session-key.js";
 // Continuation (karmaterminal): detached re-entries re-admit on the current plugin generation.
 import { runOnCurrentPluginGeneration } from "./detached-generation.js";
 import type { ContinueWorkRequest } from "./types.js";
@@ -86,32 +87,34 @@ async function runWithWorkOperatorContinuation<T>(
     await markPendingWorkFailed(work, "Retained operator authority unavailable; wake refused.");
     return undefined;
   }
+  if (!custody) {
+    return await run();
+  }
+  let started = false;
   try {
-    custody?.assertCurrent();
     // A wake starts a new turn. Operator authority stays fixed for the arming request (#201334),
-    // so the wake re-checks the operator's current admission once, as queued and returned starts do.
-    custody?.operatorAuthority?.reauthorize?.();
+    // so the wake admits the retained source against current policy once, for the session's agent,
+    // as queued and returned starts do (#202513).
+    return await custody.runWithRequester(() => {
+      started = true;
+      // Continuation (karmaterminal): the retained scope still carries the arming turn's registry.
+      return runOnCurrentPluginGeneration(run);
+    }, parseAgentSessionKey(work.sessionKey)?.agentId);
   } catch (error) {
     if (!work.operatorAuthorityRequired) {
       throw error;
     }
-    await markPendingWorkFailed(
-      work,
-      `Retained operator authority revoked: ${formatErrorMessage(error)}`,
-    );
-    return undefined;
-  }
-  try {
-    // Continuation (karmaterminal): the retained scope still carries the arming turn's registry.
-    return await (custody ? custody.run(() => runOnCurrentPluginGeneration(run)) : run());
-  } catch (error) {
-    if (!work.operatorAuthorityRequired) {
-      throw error;
+    if (!started) {
+      await markPendingWorkFailed(
+        work,
+        `Retained operator authority revoked: ${formatErrorMessage(error)}`,
+      );
+      return undefined;
     }
     // A product/provider failure inside a valid operator run is not a policy
     // revocation. Preserve the dispatcher's normal failure handling for it.
     try {
-      custody?.assertCurrent();
+      custody.assertCurrent();
     } catch {
       await markPendingWorkFailed(
         work,

@@ -741,15 +741,12 @@ it("keeps a restricted operator's agent-RPC continue_work custody through its wa
         chainedCustody: describeCustody(
           retained.filter((entry) => entry.sessionKey === scenario.sessionKey),
         ),
-        // Evidence only: which producer built each custody (a saved source sets no reauthorize).
+        // Evidence only: whether each custody's producer saved its source.
         custodyProducers: retained
           .filter((entry) => entry.sessionKey === scenario.sessionKey)
           .map((entry) => {
             assertAdmittedRunOperatorAuthority(entry.authority);
-            return {
-              reauthorize: entry.authority.reauthorize !== undefined,
-              savedSource: entry.authority.recoverySnapshot !== undefined,
-            };
+            return { savedSource: entry.authority.recoverySnapshot !== undefined };
           }),
         wakesBeforeRevocation: pendingWakes,
         order: order.sequence(scenario.sessionKey, turn.runId),

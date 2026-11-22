@@ -931,7 +931,8 @@ describe("durable continuation_work dispatch", () => {
           operatorAuthority: {},
           assertCurrent: vi.fn(),
           release: vi.fn(),
-          run: <T>(run: () => T): T => withPluginRuntimeGatewayRequestScope(continuationScope, run),
+          runWithRequester: <T>(run: () => Promise<T>): Promise<T> =>
+            withPluginRuntimeGatewayRequestScope(continuationScope, run),
         };
         return scheduleContinuationWork({
           sessionKey,
@@ -972,7 +973,7 @@ describe("durable continuation_work dispatch", () => {
       operatorAuthority: {},
       assertCurrent: () => controller.signal.throwIfAborted(),
       release: vi.fn(),
-      run: <T>(run: () => T): T =>
+      runWithRequester: <T>(run: () => Promise<T>): Promise<T> =>
         runWithOperatorToolGatewayAuthority(
           {
             scopes: ["operator.read"],
@@ -1005,7 +1006,11 @@ describe("durable continuation_work dispatch", () => {
       operatorAuthority: {},
       assertCurrent: () => controller.signal.throwIfAborted(),
       release: vi.fn(),
-      run: <T>(run: () => T): T => run(),
+      // As the in-process custody does, re-admit the source before the wake's work starts.
+      runWithRequester: async <T>(run: () => Promise<T>): Promise<T> => {
+        controller.signal.throwIfAborted();
+        return await run();
+      },
     };
     await scheduleContinuationWork({
       sessionKey,
@@ -1028,7 +1033,7 @@ describe("durable continuation_work dispatch", () => {
       operatorAuthority: {},
       assertCurrent: vi.fn(),
       release: vi.fn(),
-      run: <T>(run: () => T): T => run(),
+      runWithRequester: <T>(run: () => Promise<T>): Promise<T> => run(),
     };
     await scheduleContinuationWork({
       sessionKey,

@@ -28,7 +28,7 @@ import {
 import { upsertSessionEntryCore } from "../../../config/sessions/session-accessor.js";
 import { captureAgentTurnPrincipal } from "../../../gateway/agent-turn/principal.js";
 import { invalidateGatewayDeviceRevocation } from "../../../gateway/device-revocation.js";
-import { captureGatewayOperatorRunAuthority } from "../../../gateway/operator-run-authority.js";
+import { prepareGatewayOperatorRunAuthority } from "../../../gateway/operator-run-authority.js";
 import {
   createOperatorRecoveryFixture,
   pairedOperator,
@@ -213,7 +213,7 @@ async function operatorConnection(
     ...turn,
     /** The run's admitted operator authority, retained by run admission beyond its request. */
     admitRun: () =>
-      captureGatewayOperatorRunAuthority({
+      prepareGatewayOperatorRunAuthority({
         client: expectDefined(captureAgentTurnPrincipal(fixture.client), "operator principal"),
         context: gateway.context,
         sourceAuthority: null,
