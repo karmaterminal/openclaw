@@ -208,3 +208,8 @@ $L/tools/sync-evidence.sh
   `"unknown"` arm shows the mock alone changes nothing.
 - **GitNexus:** not used. Every cross-module claim was read from source at the named SHAs. The
   `os.cpus()` caller scan is a plain search of `extensions/browser/src`.
+- **The first evidence commit (`0b0d2f4073`) skipped the pre-commit hook** (`core.hooksPath=/dev/null`).
+  I then ran the hook's guard (`scripts/pre-commit/guard-staged-content.mjs`) on exactly that
+  commit's 48 files, staged on the `cand-a329243b` control worktree: rc=0. This seat sets no
+  `hooks.blockedLiteralsFile`, so the guard's literal scan had no rules. A separate scan for
+  token, webhook and private-key patterns found 0 matches. Later commits ran with the hook on.
