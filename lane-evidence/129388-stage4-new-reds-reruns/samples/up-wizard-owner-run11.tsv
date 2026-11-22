@@ -1,0 +1,66 @@
+first_seen	host_pid	nspid	ppid	comm	cwd	cmdline
+14:02:20.964	1665272	1665272	1665271	unshare	/home/figs/classify-129388-s4nr	unshare --user --map-root-user --mount --pid --fork --mount-proc --propagation private bash -c 
+    set -e
+    uid=$1; gid=$2; wd=$3; shift 3
+    mount -t tmpfs tmpfs /run/systemd
+    mount -t tmpfs tmpfs /run/user/$uid
+    [ -d /run/dbus ] && mount -t tmpfs tmpfs /run/dbus
+    [ -d "$HOME/.config/systemd" ] && mount -t tmpfs tmpfs "$HOME/.config/systemd"
+    # Mounted only where it exists: creating it here would create it on the host.
+    [ -d /tmp/openclaw ] && mount -t tmpfs -o mode=0700 tmpfs /tmp/openclaw
+    cd "$wd"
+    # bash stays PID 1 (no exec) so orphaned descendants are reaped and
+14:02:20.964	1665259	1665259	1665258	bash	/home/figs/classify-129388-s4nr	bash tools/ctl.sh up src/wizard/setup.memory-import.owner.test.ts 11
+14:02:20.964	1665271	1665271	1665259	timeout	/home/figs/classify-129388-s4nr	timeout --kill-after=20 570 /home/figs/flesh_beast_best_beast/source/frond-scribe/skills/pr-drift-cure-gates/run-isolated-from-live-gateways.sh /home/figs/classify-129388-s4nr/up-5a3e6b1c env PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:/home/figs/.nvm/versions/node/v26.9.0/bin:/home/figs/.local/bin:/usr/local/bin:/usr/bin:/bin:/home/figs/.claude/plugins/cache/scribe-prince-shared/gitnexus/0.2.7/bin OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-s4nr-QvDnF0/home TMPDIR=/tmp/oc-s4nr-QvDnF0/tmp /home/figs/.local/bin/oc-focused --worktree /home/figs/classify-129388-s4nr/up-5a3e6b1c src/wizard/setup
+14:02:21.078	1665281	1665281,7	1665275	bash	/home/figs/classify-129388-s4nr/up-5a3e6b1c	bash /home/figs/.local/bin/oc-focused --worktree /home/figs/classify-129388-s4nr/up-5a3e6b1c src/wizard/setup.memory-import.owner.test.ts
+14:02:21.078	1665287	1665287,13	1665281	node-MainThread	/home/figs/classify-129388-s4nr/up-5a3e6b1c	node --import ./scripts/tsx.mjs --input-type=module -e 
+const { pathToFileURL } = await import("node:url");
+const fs = await import("node:fs");
+const [planPath, includePath, ...files] = process.argv.slice(1);
+const fail = (message) => { process.stderr.write(`oc-focused: planner: ${message}\n`); process.exit(1); };
+const cwd = process.cwd();
+const source = "scripts/test-projects.test-support.mts";
+const planner = await import(pathToFileURL(`${cwd}/${source}`).href);
+for (const name of ["createVitestRunSpecs", "writeVitestIncludeFile", "isTestFileTarget"]) {
+  if (typeof planner[name] !== "funct
+14:02:21.078	1665295	1665295,21	1665287	esbuild	/home/figs/classify-129388-s4nr/up-5a3e6b1c	/home/figs/classify-129388-s4nr/up-5a3e6b1c/node_modules/.pnpm/@esbuild+linux-arm64@0.28.2/node_modules/@esbuild/linux-arm64/bin/esbuild --service=0.28.2 --ping
+14:02:21.078	1665275	1665275,1	1665272	bash	/home/figs/classify-129388-s4nr/up-5a3e6b1c	bash -c 
+    set -e
+    uid=$1; gid=$2; wd=$3; shift 3
+    mount -t tmpfs tmpfs /run/systemd
+    mount -t tmpfs tmpfs /run/user/$uid
+    [ -d /run/dbus ] && mount -t tmpfs tmpfs /run/dbus
+    [ -d "$HOME/.config/systemd" ] && mount -t tmpfs tmpfs "$HOME/.config/systemd"
+    # Mounted only where it exists: creating it here would create it on the host.
+    [ -d /tmp/openclaw ] && mount -t tmpfs -o mode=0700 tmpfs /tmp/openclaw
+    cd "$wd"
+    # bash stays PID 1 (no exec) so orphaned descendants are reaped and process groups drain.
+    unshare --user --map-user=$uid --map-group=$gid -- env -u DB
+14:02:21.299	1665330	1665330,36	1665287	git	/home/figs/classify-129388-s4nr/up-5a3e6b1c	git ls-files --cached --others --deleted --exclude-standard -t -z -- :(literal)extensions/qa-lab/src
+14:02:21.408	1665342	1665342,41	1665281	node-MainThread	/home/figs/classify-129388-s4nr/up-5a3e6b1c	node scripts/run-vitest.mjs run --config test/vitest/vitest.wizard.config.ts --maxWorkers=1 src/wizard/setup.memory-import.owner.test.ts
+14:02:21.516	1665349	1665349,48	1665342	node-MainThread	/home/figs/classify-129388-s4nr/up-5a3e6b1c	/home/figs/.nvm/versions/node/v26.12.1/bin/node /home/figs/classify-129388-s4nr/up-5a3e6b1c/scripts/run-vitest-child.mts run --config test/vitest/vitest.wizard.config.ts --maxWorkers=1 src/wizard/setup.memory-import.owner.test.ts
+14:02:21.624	1665357	1665357,56	1665349	esbuild	/home/figs/classify-129388-s4nr/up-5a3e6b1c	/home/figs/classify-129388-s4nr/up-5a3e6b1c/node_modules/.pnpm/@esbuild+linux-arm64@0.28.2/node_modules/@esbuild/linux-arm64/bin/esbuild --service=0.28.2 --ping
+14:02:21.732	1665370	1665370,69	1665349	git	/home/figs/classify-129388-s4nr/up-5a3e6b1c	
+14:02:22.187	1665429	1665429,101	1665349	node-MainThread	/home/figs/classify-129388-s4nr/up-5a3e6b1c	/home/figs/.nvm/versions/node/v26.12.1/bin/node --no-maglev --no-concurrent-sparkplug --js-base-64 --expose-gc /home/figs/classify-129388-s4nr/up-5a3e6b1c/scripts/lib/vitest-worker-bootstrap.mts /home/figs/classify-129388-s4nr/up-5a3e6b1c/.artifacts/vitest-workers/run-cache-0 /home/figs/classify-129388-s4nr/up-5a3e6b1c/node_modules/.pnpm/vitest@5.0.5_patch_hash=af34f8b20f312ef2483070dc17cd9ca5127e14947d9a8a190682daca360c13f_a95c5f5ede1b0700c94d8c2babe271d5/node_modules/vitest/vitest.mjs run --config test/vitest/vitest.wizard.config.ts --maxWorkers=1 src/wizard/setup.memory-import.owner.test.ts
+14:02:22.527	1665509	1665509,167	1665429	git	/home/figs/classify-129388-s4nr/up-5a3e6b1c	git ls-files --cached --others --deleted --exclude-standard -t -z -- :(literal)ui/src
+14:02:22.755	1665527	1665527,172	1665429	esbuild	/home/figs/classify-129388-s4nr/up-5a3e6b1c	/home/figs/classify-129388-s4nr/up-5a3e6b1c/node_modules/.pnpm/@esbuild+linux-arm64@0.28.2/node_modules/@esbuild/linux-arm64/bin/esbuild --service=0.28.2 --ping
+14:02:23.750	1665578	1665578,185	1665349	node-MainThread	/home/figs/classify-129388-s4nr/up-5a3e6b1c	/home/figs/.nvm/versions/node/v26.12.1/bin/node /home/figs/classify-129388-s4nr/up-5a3e6b1c/scripts/lib/vitest-worker-compiler.mts /home/figs/classify-129388-s4nr/up-5a3e6b1c/.artifacts/vitest-workers/run-cache-0
+14:02:35.188	1666127	1666127,202	1665429	node-MainThread	/home/figs/classify-129388-s4nr/up-5a3e6b1c	/home/figs/.nvm/versions/node/v26.12.1/bin/node /home/figs/classify-129388-s4nr/up-5a3e6b1c/.artifacts/vitest-workers/run-cache-0/dist/infra/sqlite-header-probe.worker.js
+# last-seen
+# 1665259	248891215	14:02:37.107
+# 1665271	248891216	14:02:36.993
+# 1665272	248891216	14:02:36.993
+# 1665275	248891216	14:02:36.993
+# 1665281	248891217	14:02:36.993
+# 1665287	248891218	14:02:21.299
+# 1665295	248891227	14:02:21.299
+# 1665330	248891250	14:02:21.299
+# 1665342	248891258	14:02:36.993
+# 1665349	248891264	14:02:36.993
+# 1665357	248891272	14:02:36.993
+# 1665370	248891293	14:02:21.732
+# 1665429	248891331	14:02:36.193
+# 1665509	248891371	14:02:22.527
+# 1665527	248891392	14:02:36.193
+# 1665578	248891490	14:02:25.996
+# 1666127	248892638	14:02:35.188

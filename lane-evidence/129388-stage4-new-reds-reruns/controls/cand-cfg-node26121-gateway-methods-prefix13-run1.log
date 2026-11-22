@@ -1,0 +1,678 @@
+# ctlcfg ref=cand sha=a329243bd1aa4e8677517a5eaf4a67aa30ca8647 config=test/vitest/vitest.gateway-methods.config.ts include=/home/figs/classify-129388-s4nr/lists/prefix13.include.json run=1 mode=cfg-node26121 start=2026-11-22T12:49:12Z
+# runwt=/home/figs/classify-129388-s4nr/cand-a329243b (45 chars) include-sha256=30daca872da07319 files=13
+# dropped-vitest-cache=89d6ddc8388601a34066afe135ffbcf7c0dff47a
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-s4nr-nWmeMH/home TMPDIR=/tmp/oc-s4nr-nWmeMH/tmp umask=0022  (timeout 3300s)
+
+ RUN  v5.0.5 /home/figs/classify-129388-s4nr/cand-a329243b
+
+[vitest-workers] local cache hit after 2090ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 15d529a1a7fd in 2168ms (20607 inputs, 25850 outputs)
+(node:138) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: getMany is deprecated; use getManyAsync instead. Synchronous reads use committed in-process receipts; cold or inventory reads require the async replacement. Removal requires an announced ordinary stable release window.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > lets a session-only guest look up and send a mention through the dispatcher 3739ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > keeps session-only mention lookup and sending within current authority 2665ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > leaves transcript fencing to the commit owner while rechecking invitation permission 1470ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > invites a guest at the original human commit and never regrants a removed membership on replay 2485ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > does not invite from plain text mentions 2421ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > does not invite from rewritten mentions 2216ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > does not invite from non-manager mentions 2053ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > keeps a queued invitation when the run finishes before Inbox delivery 2564ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > refuses the original message when invitation preparation fails (queued: false) 2506ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > refuses the original message when invitation preparation fails (queued: true) 2626ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > rolls back an invitation when the sender loses admin authority at the original commit 2238ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > reports notification failure while preserving the posted message and invitation (queued: false) 2370ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > reports notification failure while preserving the posted message and invitation (queued: true) 2427ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > reports a recipient revoked after posting instead of silently committing a partial mention 2355ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > creates recipient-only mentions at original message commit, never at the queued ACK 2434ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > includes an idle first commit in the Inbox before ACK without waiting for the agent 2283ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > does not notify when approval replaces the selected token 2203ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > rejects changed recipients with retained RAM identity while preserving the queued original 2502ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > rejects changed recipients with expired RAM identity while preserving the queued original 2552ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > restores a queued human invitation with its original offsets (notification failure: false) 4190ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > restores a queued human invitation with its original offsets (notification failure: true) 3858ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > never re-adopts recorded input when its sender changes 2559ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > never re-adopts recorded input when its payload changes 2667ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.stateDomainPublication.sandbox-registry
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-mentions.test.ts: retiring openclaw.devicePairSetupChanges
+
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-mentions.test.ts > committed human mentions > never re-adopts recorded input when its cancelled changes 2547ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patch rejects non-admin sandbox=off 1580ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patch rejects non-admin sandbox=null 52ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patchMany rejects non-admin sandbox=off 37ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patchMany rejects non-admin sandbox=null 38ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patch rejects mandatory containment 344ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patchMany rejects mandatory containment 43ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patch rejects stale expectedSessionId 40ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patch rejects stale expectedLifecycleRevision 38ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > keeps opt-out local and restores inheritance with CAS 727ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > batch reset uses per-target sandbox expectations 262ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > rejects sandbox=off during embedded runs 47ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > rejects sandbox=null during embedded runs 36ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patch rechecks run-started at the final sandbox write fence 35ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patch rechecks scope-revoked at the final sandbox write fence 41ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patchMany rechecks run-started at the final sandbox write fence 51ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patchMany rechecks scope-revoked at the final sandbox write fence 41ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patch > saves and reads dashboard defaults through the agent tool without connected clients 1585ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patch > rechecks dashboard tool authority at the actual session commit admission 72ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patch > persists preference clears with an agent model rollback marker 197ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patch > keeps live permission changes in the selected physical store (selected active=true) 190ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patch > keeps live permission changes in the selected physical store (selected active=false) 188ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patch > preserves the correct saved mode after a failed live permission update 39ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patch > preserves the correct saved mode after a unsupported live permission update 38ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patch > serializes permission changes through live-runtime acknowledgement (catalog preparation=false) 191ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patch > serializes permission changes through live-runtime acknowledgement (catalog preparation=true) 212ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patch > releases provisional batch permissions while a later target prepares its catalog (restore=false, revoked=false) 158ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patch > releases provisional batch permissions while a later target prepares its catalog (restore=false, revoked=true) 125ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patch > releases provisional batch permissions while a later target prepares its catalog (restore=true, revoked=true) 113ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.patch > keeps a newly created session visible to its identified non-admin creator 209ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.assignOwner > serializes assignment and checks queued requester authority (revoked=false) 61ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.assignOwner > serializes assignment and checks queued requester authority (revoked=true) 37ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.assignOwner > assigns an agent-created session to a human without changing its provenance 47ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.assignOwner > lets a write-scoped viewer assign a shared session without changing sharing authority 68ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.assignOwner > lets a write-scoped viewer assign a read-only session without changing sharing authority 74ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.assignOwner > lets a write-scoped viewer assign a suggest session without changing sharing authority 91ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions-mutations.owner.test.ts > sessions.assignOwner > rejects hidden viewers, unidentified callers, and unknown owner targets 77ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.stateDomainPublication.sandbox-registry
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions-mutations.owner.test.ts: retiring openclaw.devicePairSetupChanges
+
+(node:138) [DEP_SESSION_PERSISTENCE] DeprecationWarning: Plugin SDK: onAgentRunStart is deprecated; use onPreparedAgentRunStart instead. The legacy contract remains supported during its deprecation period. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-session-binding.test.ts > keeps prepared-session binding with its exact admission: removed 2476ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-session-binding.test.ts > keeps prepared-session binding with its exact admission: aborted 1582ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-session-binding.test.ts > keeps prepared-session binding with its exact admission: released 1421ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-session-binding.test.ts > keeps prepared-session binding with its exact admission: terminal 1778ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-session-binding.test.ts > keeps prepared-session binding with its exact admission: rotated 1551ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-session-binding.test.ts > keeps prepared-session binding with its exact admission: queued 1559ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-session-binding.test.ts > keeps prepared-session binding with its exact admission: narrow-first-send 1533ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-session-binding.test.ts > keeps prepared-session binding with its exact admission: dashboard 1529ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-session-binding.test.ts > keeps prepared-session binding with its exact admission: dashboard-writer 1550ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-session-binding.test.ts > keeps prepared-session binding with its exact admission: dashboard-handed-off 1754ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-session-binding.test.ts > keeps prepared-session binding with its exact admission: dashboard-credential-revoked 1700ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-session-binding.test.ts > keeps prepared-session binding with its exact admission: dashboard-member-revoked 1538ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-session-binding.test.ts > keeps prepared-session binding with its exact admission: dashboard-unattested 1441ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-session-binding.test.ts > keeps prepared-session binding with its exact admission: dashboard-internal 1338ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-session-binding.test.ts > keeps authenticated queued prompt reactions scoped through SQLite (allowed) 1959ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-session-binding.test.ts > keeps authenticated queued prompt reactions scoped through SQLite (credential-revoked) 1937ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-session-binding.test.ts > keeps authenticated queued prompt reactions scoped through SQLite (member-revoked) 1791ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-session-binding.test.ts > keeps authenticated steered prompt reactions scoped through SQLite (allowed) 1913ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-session-binding.test.ts > keeps authenticated steered prompt reactions scoped through SQLite (credential-revoked) 1959ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.stateDomainPublication.sandbox-registry
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-session-binding.test.ts: retiring openclaw.devicePairSetupChanges
+
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-session-binding.test.ts > keeps authenticated steered prompt reactions scoped through SQLite (member-revoked) 1945ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > returns a progressive detail overview without loading optional endpoints 9ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > rejects invalid detail section "invalid" before upstream access 4ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > rejects invalid detail section null before upstream access 3ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > rejects invalid detail section 1 before upstream access 3ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > rejects revoked requests before GitHub 126ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > rejects copied requests before GitHub 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > rejects aborted requests before GitHub 3ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > rejects aborted-after-preparation requests before GitHub 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > reads controlUi.githubPreview as managed 4ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > reads controlUi.githubDetail as managed 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > reads controlUi.githubDetail as service 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > reads controlUi.githubPreview as anonymous 4ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > routes public controlUi.githubPreview with Enterprise selected 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > routes public controlUi.githubDetail with Enterprise selected 4ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > revalidates cached preview credentials 4ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > rechecks agent fallback identity before delivery 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > rechecks system fallback identity before delivery 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > validates explicit refresh 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > validates malformed refresh 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > validates malformed owner 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > preserves the managed identity unavailable diagnostic 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > preserves the managed identity unverified diagnostic 1ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > preserves the managed identity rate_limited diagnostic 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.githubPreview > preserves the GitHub quota diagnostic 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.sessionPullRequests.subscribe > acknowledges pending preparation and preserves refresh through a sidebar replacement 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.sessionPullRequests.subscribe > reports subscription preparation failures without rejecting the request 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.sessionPullRequests.subscribe > validates subscriptions: [ ' agent:main:main ', …(2) ] 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.sessionPullRequests.subscribe > validates subscriptions: [] 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.sessionPullRequests.subscribe > validates subscriptions: [ ' ' ] 1ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.sessionPullRequests.checks > rejects malformed check params: {"sessionKey":"<redacted len=21>","owner":"openclaw","repo":"openclaw","number":103469,"headSha":"main"} 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.sessionPullRequests.checks > rejects malformed check params: {"sessionKey":"<redacted len=21>","owner":"../other","repo":"openclaw","number":103469,"headSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"} 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.sessionPullRequests.checks > rejects malformed check params: {"sessionKey":"<redacted len=21>","owner":"openclaw","repo":"openclaw","number":-1,"headSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"} 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.sessionPullRequests.checks > rejects malformed check params: {"sessionKey":"<redacted len=21>","owner":"openclaw","repo":"openclaw","number":103469,"headSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","url":"https://github.com/other/repo"} 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.sessionPullRequests.checks > rejects malformed check params: {"sessionKey":"<redacted len=0>","owner":"openclaw","repo":"openclaw","number":103469,"headSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"} 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.sessionPullRequests.checks > denies missing session sessions before GitHub loading 310ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.sessionPullRequests.checks > denies unavailable projection sessions before GitHub loading 1005ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.sessionPullRequests.checks > denies incognito sessions before GitHub loading 941ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.sessionPullRequests.checks > denies draft sessions before GitHub loading 938ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.sessionPullRequests.checks > rechecks session generation before delivery 1299ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.sessionPullRequests.checks > enforces roles before loading 994ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.sessionPullRequests.checks > enforces roles during loading 900ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/gateway/server-methods/control-ui.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/gateway/server-methods/control-ui.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/control-ui.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/gateway/server-methods/control-ui.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/control-ui.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/gateway/server-methods/control-ui.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/gateway/server-methods/control-ui.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/control-ui.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/control-ui.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/gateway/server-methods/control-ui.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/control-ui.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/gateway/server-methods/control-ui.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/gateway/server-methods/control-ui.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/gateway/server-methods/control-ui.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/gateway/server-methods/control-ui.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/control-ui.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/gateway/server-methods/control-ui.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/gateway/server-methods/control-ui.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/control-ui.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/gateway/server-methods/control-ui.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/gateway/server-methods/control-ui.test.ts: retiring openclaw.devicePairingPublications
+
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.sessionPullRequests.checks > pins qualified global session ownership 965ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.linkPreview > rejects malformed or private targets {"url":"http://127.0.0.1/private"} 25ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.linkPreview > rejects malformed or private targets {"url":"https://public.example","token":"<redacted len=13>"} 3ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.linkPreview > rejects malformed or private targets {} 4ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.linkPreview > rechecks authority during fetch 14ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.linkPreview > rechecks config during fetch 7ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.linkPreview > rechecks principal during fetch 6ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.linkPreview > honors automatic fetching: true 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/control-ui.test.ts > controlUi.linkPreview > honors automatic fetching: false 4ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > allows operator.admin clients to see re… 84ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > does not trust gateway-client ids witho… 68ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > does not allow reviewer devices without approval scope to see approvals 66ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > does not widen explicitly reviewer-bound approvals to another device 69ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > reports an active approval client inste… 561ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > counts an instance-local approval subsc… 545ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > checks plugin turn-source routes with p… 542ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > keeps register-only approval requests p… 576ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > targets requested approval events to vi… 544ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > routes backend-runtime approval events … 595ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > targets requester-bound approval events… 544ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > does not target no-device approvals by … 525ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > does not forward a request resolved during async native eligibility 579ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > returns a concurrent first answer when no-route denial loses after delivery 533ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > retains a concurrent approval binding through a delayed requester handoff 559ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > expires suppressed requests instead of retaining a hidden turn-source route 560ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > keeps clients-only requests pending for approval clients without chat delivery 543ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > expires clients-only requests as no-route when no approval client is connected 537ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > does not wait on decisions for approvals hidden from the caller 521ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > releases run-aborted waiters without changing timeout terminal state 552ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > does not resolve no-device approvals by… 542ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > does not allow approval-scoped clients … 582ms
+(node:138) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: GatewayRequestHandlerOptions.sessionMutationCommitGuard (approval persistence) is deprecated; use api.runtime.gateway.request approval methods with host-bound authority instead. The legacy contract remains supported during its deprecation period. Removal requires an announced ordinary stable release window.
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > allows gateway-client approval runtimes… 550ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > targets resolved approval events to vis… 534ms
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > filters legacy prefix candidates by channel custody before resolving 562ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/gateway/server-methods/approval-shared.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/gateway/server-methods/approval-shared.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/approval-shared.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/gateway/server-methods/approval-shared.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/gateway/server-methods/approval-shared.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/gateway/server-methods/approval-shared.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/approval-shared.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/approval-shared.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/approval-shared.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/gateway/server-methods/approval-shared.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/approval-shared.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/gateway/server-methods/approval-shared.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/gateway/server-methods/approval-shared.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/gateway/server-methods/approval-shared.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/gateway/server-methods/approval-shared.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/approval-shared.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/gateway/server-methods/approval-shared.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/gateway/server-methods/approval-shared.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/gateway/server-methods/approval-shared.test.ts: retiring openclaw.devicePairingPublications
+
+ ✓ |gateway-methods| src/gateway/server-methods/approval-shared.test.ts > handlePendingApprovalRequest > closes a plugin approval immediately when its exact Slack request has no route 526ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-direct-followup.test.ts > delivers a queued followup after its turn's plugin invocation scope closes 9956ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-direct-followup.test.ts > shows a reply-initialization queue until the active turn is completed 3031ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-direct-followup.test.ts > shows a reply-initialization queue until the active turn is failed 2876ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-direct-followup.test.ts > shows a reply-initialization queue until the active turn is cancelled 2886ms
+(node:138) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: replyOperation.bindToolAuthoritySnapshot is deprecated; use await bindToolAuthoritySnapshotAsync() instead. The legacy contract remains supported during its deprecation period. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+(node:138) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: replyOperation.bindToolAuthorityRoute is deprecated; use await bindToolAuthorityRouteAsync() instead. The legacy contract remains supported during its deprecation period. Final compatibility day: 2026-12-31. Removal ships in the first January 2027 stable release; no SDK major is required.
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-direct-followup.test.ts > quietly queues another requester and drains once with their current policy 2878ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-direct-followup.test.ts > preserves opt-in strict refusal and admits an explicit fresh followup 3062ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-direct-followup.test.ts > preserves chat.send behind a direct announce (tool_authority_mismatch, cancel=false) 2817ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.stateDomainPublication.sandbox-registry
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-direct-followup.test.ts: retiring openclaw.devicePairSetupChanges
+
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-direct-followup.test.ts > preserves chat.send behind a direct announce (tool_authority_mismatch, cancel=true) 2716ms
+ ✓ |gateway-methods| src/gateway/server-methods/templates-add-authority.integration.test.ts > retains original templates.add.apply administrator through final owners: allowed 11447ms
+ ✓ |gateway-methods| src/gateway/server-methods/templates-add-authority.integration.test.ts > retains original templates.add.apply administrator through final owners: source 4801ms
+ ✓ |gateway-methods| src/gateway/server-methods/templates-add-authority.integration.test.ts > retains original templates.add.apply administrator through final owners: admission-runtime 4471ms
+ ✓ |gateway-methods| src/gateway/server-methods/templates-add-authority.integration.test.ts > retains original templates.add.apply administrator through final owners: initialization-runtime 9420ms
+ ✓ |gateway-methods| src/gateway/server-methods/templates-add-authority.integration.test.ts > retains original templates.add.apply administrator through final owners: source-retry 11263ms
+ ✓ |gateway-methods| src/gateway/server-methods/templates-add-authority.integration.test.ts > retains original templates.add.apply administrator through final owners: initialization-retry 12945ms
+ ✓ |gateway-methods| src/gateway/server-methods/templates-add-authority.integration.test.ts > retains original templates.add.apply administrator through final owners: instruction-retry 15885ms
+ ✓ |gateway-methods| src/gateway/server-methods/templates-add-authority.integration.test.ts > retains original templates.add.apply administrator through final owners: instruction-edited 9004ms
+ ✓ |gateway-methods| src/gateway/server-methods/templates-add-authority.integration.test.ts > retains original templates.add.apply administrator through final owners: checkpoint-retry 12644ms
+ ✓ |gateway-methods| src/gateway/server-methods/templates-add-authority.integration.test.ts > retains original templates.add.apply administrator through final owners: checkpoint-workspace-edited 10361ms
+ ✓ |gateway-methods| src/gateway/server-methods/templates-add-authority.integration.test.ts > retains original templates.add.apply administrator through final owners: checkpoint-config-edited 10219ms
+ ✓ |gateway-methods| src/gateway/server-methods/templates-add-authority.integration.test.ts > retains original templates.add.apply administrator through final owners: intent-retry 12302ms
+(node:138) [FS_SAFE_UNMAPPED_TEMP_ANCESTOR] FsSafeWarning: Temp workspace ancestor ownership is unverifiable in this user namespace; trusting the host directory hierarchy while enforcing ancestor modes and a process-owned private root.
+ ✓ |gateway-methods| src/gateway/server-methods/templates-add-authority.integration.test.ts > retains original templates.add.apply administrator through final owners: instruction-interrupted 14804ms
+ ✓ |gateway-methods| src/gateway/server-methods/templates-add-authority.integration.test.ts > retains original Template requester at real plugin artifact publication: allowed 14087ms
+ ✓ |gateway-methods| src/gateway/server-methods/templates-add-authority.integration.test.ts > retains original Template requester at real plugin artifact publication: revoked 9444ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.stateDomainPublication.sandbox-registry
+[sqlite-test-lifecycle] src/gateway/server-methods/templates-add-authority.integration.test.ts: retiring openclaw.devicePairSetupChanges
+
+ ✓ |gateway-methods| src/gateway/server-methods/templates-add-authority.integration.test.ts > loads pre-Template stored session bytes without pending fields and permits ordinary work 1255ms
+ ✓ |gateway-methods| src/gateway/server-methods/artifacts.images.test.ts > bounded Activity image discovery > pages canonical uploaded images from mixed user media with Chat's path preference 2397ms
+ ✓ |gateway-methods| src/gateway/server-methods/artifacts.images.test.ts > bounded Activity image discovery > honors assistant image filters and binds pagination to the same role 1573ms
+ ✓ |gateway-methods| src/gateway/server-methods/artifacts.images.test.ts > bounded Activity image discovery > pages newest images within one message and includes Markdown local images without reading files 1527ms
+ ✓ |gateway-methods| src/gateway/server-methods/artifacts.images.test.ts > bounded Activity image discovery > bounds a sparse image scan and continues from its cursor 1862ms
+ ✓ |gateway-methods| src/gateway/server-methods/artifacts.images.test.ts > bounded Activity image discovery > bounds a oversized image scan and continues from its cursor 1563ms
+ ✓ |gateway-methods| src/gateway/server-methods/artifacts.images.test.ts > bounded Activity image discovery > bounds inline previews for images without transcript download references 1507ms
+ ✓ |gateway-methods| src/gateway/server-methods/artifacts.images.test.ts > bounded Activity image discovery > rejects copied, retargeted, and reset cursors while rechecking current session access 1710ms
+ ✓ |gateway-methods| src/gateway/server-methods/artifacts.images.test.ts > keeps an admitted run on its stored main row when the public alias becomes global 1055ms
+ ✓ |gateway-methods| src/gateway/server-methods/artifacts.images.test.ts > keeps cached run owners and physical global namespaces in artifact queries 1076ms
+ ✓ |gateway-methods| src/gateway/server-methods/artifacts.images.test.ts > persisted chat image artifact recovery > recovers each visible legacy image when transcript rows reuse a message id 1844ms
+ ✓ |gateway-methods| src/gateway/server-methods/artifacts.images.test.ts > persisted chat image artifact recovery > downloads the exact image bytes referenced by history and committed live messages 1761ms
+ ✓ |gateway-methods| src/gateway/server-methods/artifacts.images.test.ts > persisted chat image artifact recovery > does not retarget references across sessions or replacement incarnations with the same message id 1462ms
+ ✓ |gateway-methods| src/gateway/server-methods/artifacts.images.test.ts > persisted chat image artifact recovery > rechecks sharing after the read await 1107ms
+ ✓ |gateway-methods| src/gateway/server-methods/artifacts.images.test.ts > persisted chat image artifact recovery > rechecks sharing after the response await 973ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/gateway/server-methods/artifacts.images.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/gateway/server-methods/artifacts.images.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/artifacts.images.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/gateway/server-methods/artifacts.images.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/artifacts.images.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/gateway/server-methods/artifacts.images.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/gateway/server-methods/artifacts.images.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/artifacts.images.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/artifacts.images.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/artifacts.images.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/gateway/server-methods/artifacts.images.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/artifacts.images.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/gateway/server-methods/artifacts.images.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/gateway/server-methods/artifacts.images.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/gateway/server-methods/artifacts.images.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/gateway/server-methods/artifacts.images.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/artifacts.images.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/gateway/server-methods/artifacts.images.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/gateway/server-methods/artifacts.images.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/artifacts.images.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/gateway/server-methods/artifacts.images.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/gateway/server-methods/artifacts.images.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/gateway/server-methods/artifacts.images.test.ts: retiring openclaw.devicePairSetupChanges
+
+ ✓ |gateway-methods| src/gateway/server-methods/artifacts.images.test.ts > persisted chat image artifact recovery > rechecks runtime policy after the read await 1018ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > delete drain records cancellation before settling a retained controller reply 1859ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > delete drain records cancellation before settling a retained reply-only reply 1366ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > chat.abort stops a live embedded turn and persists cancellation before responding 1615ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > sessions.abort stops a live embedded turn and persists cancellation before responding 1418ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > controller-backed stops a live embedded turn and persists cancellation before responding 1480ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > archive drain fences embedded cancellation persistence (authority revoked) 1392ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > archive drain fences embedded cancellation persistence (authority current) 1648ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > worker placement cancellation preserves controller-less embedded work 1402ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > chat.abort enforces session access before embedded Stop effects (forbidden) 1610ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > chat.abort enforces session access before embedded Stop effects (allowed) 1474ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > chat.abort fences embedded Stop effects when authority is revoked before signal 1502ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > chat.abort fences embedded Stop effects when authority is revoked after signal 1509ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > narrow chat.abort qualifies the exact matched embedded producer before effects 1555ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > narrow chat.abort qualifies the exact old-incarnation embedded producer before effects 1454ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > narrow chat.abort qualifies the exact foreign-key embedded producer before effects 1516ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > narrow sessions.abort qualifies the exact matched embedded producer before effects 1457ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > narrow sessions.abort qualifies the exact old-incarnation embedded producer before effects 1437ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > narrow sessions.abort qualifies the exact foreign-key embedded producer before effects 1470ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > narrow sessions.abort qualifies the exact missing-row embedded producer before effects 622ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > session-wide Stop does not retarget a successor created during cancellation (broad=false) 1514ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > session-wide Stop does not retarget a successor created during cancellation (broad=true) 1441ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > exact embedded Stop cancels running and queued collectors without dispatching the queued sibling 2021ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > missing embedded Stop applies parent acceptance to descendants 1460ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > replaced embedded Stop applies parent acceptance to descendants 1767ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > finalizing embedded Stop applies parent acceptance to descendants 1528ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > throwing embedded Stop applies parent acceptance to descendants 1667ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > unreadable child embedded Stop applies parent acceptance to descendants 1582ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > sessions.abort controller-backed Stop respects parent acceptance (finalizing=true) 1571ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.stateDomainPublication.sandbox-registry
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.abort-embedded.test.ts: retiring openclaw.devicePairSetupChanges
+
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.abort-embedded.test.ts > sessions.abort controller-backed Stop respects parent acceptance (finalizing=false) 1793ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > does not replace a retained wizard session through openclaw.setup.activate.start 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > does not replace a retained wizard session through openclaw.setup.auth.start 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > does not replace a retained wizard session through openclaw.setup.prepare.start 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > does not replace a retained wizard session through openclaw.setup.runtime.start 4ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > keeps runtime capability consent server-owned through activation (true) 8ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > keeps runtime capability consent server-owned through activation (false) 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > keeps runtime capability consent server-owned through activation (cancel) 7ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > keeps an activation alive for its provider's full device-code window 7ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > locks cancellation before an accepted runtime install can start 8ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > retains install ownership but permits cancel at credentials 7ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > retains install ownership but permits expire during installation 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > retains install ownership but permits expire at credentials 4ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > retains install ownership but permits expire before provider note 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > retains install ownership but permits expire before final commit 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > retains install ownership but permits cancel after final commit 4ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > retains install ownership but permits expire after final commit 3ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > permits cancellation during verification after an install without another prompt 3ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > returns actionable doctor guidance when provider setup is retryable 7ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > returns verified utility provider auth and restart through wizard transport 4ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/gateway/server-methods/system-agent-setup-resolution.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/gateway/server-methods/system-agent-setup-resolution.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/system-agent-setup-resolution.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/gateway/server-methods/system-agent-setup-resolution.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/gateway/server-methods/system-agent-setup-resolution.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/system-agent-setup-resolution.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/system-agent-setup-resolution.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/gateway/server-methods/system-agent-setup-resolution.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/system-agent-setup-resolution.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/gateway/server-methods/system-agent-setup-resolution.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/gateway/server-methods/system-agent-setup-resolution.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/gateway/server-methods/system-agent-setup-resolution.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/gateway/server-methods/system-agent-setup-resolution.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/system-agent-setup-resolution.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/gateway/server-methods/system-agent-setup-resolution.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/gateway/server-methods/system-agent-setup-resolution.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/system-agent-setup-resolution.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/gateway/server-methods/system-agent-setup-resolution.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/gateway/server-methods/system-agent-setup-resolution.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/gateway/server-methods/system-agent-setup-resolution.test.ts: retiring openclaw.stateDomainPublication.sandbox-registry
+[sqlite-test-lifecycle] src/gateway/server-methods/system-agent-setup-resolution.test.ts: retiring openclaw.devicePairSetupChanges
+
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > publishes a finalized auth probe rejection after capability consent 6ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > preserves the host shutdown outcome across activation (committed=false) 7ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > preserves the host shutdown outcome across activation (committed=true) 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > returns finalized rejection instead of buffered progress on the first wizard.next 4ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > reports only proven rejection without verified activation for failed provider auth 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > reports only proven rejection without verified activation for rejected provider auth 4ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > reports only proven rejection without verified activation for thrown provider auth 4ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > reports only proven rejection without verified activation for retention-indeterminate provider auth 4ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > reports only proven rejection without verified activation for application-error provider auth 4ms
+ ✓ |gateway-methods| src/gateway/server-methods/system-agent-setup-resolution.test.ts > openclaw.setup provider resolution > reports only proven rejection without verified activation for cancelled provider auth 4ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > returns recorded cancellation instead of cached success (user-stop) 3ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > returns recorded cancellation instead of cached success (restart-unrecoverable) 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > returns recorded cancellation instead of cached success (undefined) 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > reports durable queued input in flight instead of a cached terminal response 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > rejects replay of a canceled steer before cleanup writes the receipt (pending state: undefined) 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > rejects replay of a canceled steer before cleanup writes the receipt (pending state: queued) 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > rejects replay of a canceled steer after cleanup writes the receipt (pending state: cancelled) 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > stops admitted session work while preserving a detached producer 1799ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > stops selected-agent work without cancelling the compatibility owner's run 11ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > requires accepted custody and rejects changed mention recipients for a pending retry 4ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > requires accepted custody and rejects changed mention recipients for a active retry 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > requires accepted custody and rejects changed mention recipients for a accepted retry 3ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > requires accepted custody and rejects changed mention recipients for a terminal retry 3ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > requires accepted custody and rejects changed mention recipients for a metadata retry 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > replays explicit cancellation before a retained accepted input marker 4ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > readmits a retained queued input only from its admitted physical store 1979ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > settles only the original input when aborting a pending reservation 4ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > settles only the original input when aborting a evicted reservation 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > settles only the original input when aborting a superseded reservation 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > compares unchanged selections to the original source after RAM identity expires 3ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > compares removed selections to the original source after RAM identity expires 3ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > does not acknowledge an unverifiable missing source without RAM fingerprints 3ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > does not acknowledge an unverifiable work context source without RAM fingerprints 3ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > does not acknowledge an unverifiable redacted source without RAM fingerprints 3ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > refuses stale projection evidence before replaying a cached response 3ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > rejects a competing identity published while submitted comparison yields 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > revalidates new-input policy after the indexed receipt read (ready) 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > revalidates new-input policy after the indexed receipt read (routing changed) 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > revalidates new-input policy after the indexed receipt read (archived) 2ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > rechecks the canonical profile after submitted-input comparison (unchanged) 1046ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-pre-admission.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-pre-admission.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-pre-admission.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-pre-admission.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-pre-admission.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-pre-admission.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-pre-admission.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-pre-admission.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-pre-admission.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-pre-admission.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-pre-admission.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-pre-admission.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-pre-admission.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-pre-admission.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-pre-admission.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-pre-admission.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-pre-admission.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-pre-admission.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-pre-admission.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-pre-admission.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-pre-admission.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-pre-admission.test.ts: retiring openclaw.stateDomainPublication.sandbox-registry
+[sqlite-test-lifecycle] src/gateway/server-methods/chat-send-pre-admission.test.ts: retiring openclaw.devicePairSetupChanges
+
+ ✓ |gateway-methods| src/gateway/server-methods/chat-send-pre-admission.test.ts > rechecks the canonical profile after submitted-input comparison (profile merged) 955ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > commits an already-cancelled parent partial when revocation fences later worker cancellation 1875ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > keeps placement-abandon append failure at its owning abort boundary 675ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > keeps rpc append failure at its owning abort boundary 194ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > rejects an abandoned partial after its exact transcript session is replaced 73ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > rejects placement partials when captured revision undefined changes without SID rotation 168ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > rejects placement partials when captured revision original-revision changes without SID rotation 197ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > persists run-scoped abort partial with rpc metadata and idempotency 211ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > saves an exact-run partial in its own session when the paired device stops it from another session 235ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > deduplicates committed replies by run, not text (sameRun=false) 179ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > deduplicates committed replies by run, not text (sameRun=true) 148ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > does not let non-assistant idempotency collisions suppress abort partial persistence 146ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > persists a session-scoped active partial while cancelling queued input 129ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > does not persist partials from finalizing runs that reject a session abort 98ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > plain stop aborts raw-alias runs for the same backing session 302ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > scopes global stop commands to the selected agent 293ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > scopes bare global stop commands to the migrated default agent 268ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > scopes global chat.abort to its selected owner: {"sessionKey":"<redacted len=6>","agentId":"work","exact":false,"legacy":false} 6ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > scopes global chat.abort to its selected owner: {"sessionKey":"<redacted len=6>","exact":false,"legacy":false} 6ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > scopes global chat.abort to its selected owner: {"sessionKey":"<redacted len=15>","exact":false,"legacy":false} 6ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > scopes global chat.abort to its selected owner: {"sessionKey":"<redacted len=15>","exact":true,"legacy":false} 6ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > scopes global chat.abort to its selected owner: {"sessionKey":"<redacted len=6>","agentId":"work","exact":true,"legacy":true} 6ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > rejects selected global chat.abort when agentId conflicts with the key agent 6ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > does not match stop targets by client-supplied session id without a stored entry 121ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat abort transcript persistence > skips run-scoped transcript persistence for hidden internal runs 131ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat.abort session identity matching > matches only the stored session identity (matches=true) 7ms
+ ✓ |gateway-methods| src/gateway/server-methods/chat.abort-persistence.test.ts > chat.abort session identity matching > matches only the stored session identity (matches=false) 5ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/gateway/server-methods/chat.abort-persistence.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/gateway/server-methods/chat.abort-persistence.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/chat.abort-persistence.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/gateway/server-methods/chat.abort-persistence.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/chat.abort-persistence.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/gateway/server-methods/chat.abort-persistence.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/gateway/server-methods/chat.abort-persistence.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/chat.abort-persistence.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/chat.abort-persistence.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/gateway/server-methods/chat.abort-persistence.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/chat.abort-persistence.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/gateway/server-methods/chat.abort-persistence.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/gateway/server-methods/chat.abort-persistence.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/gateway/server-methods/chat.abort-persistence.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/gateway/server-methods/chat.abort-persistence.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/chat.abort-persistence.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/gateway/server-methods/chat.abort-persistence.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/gateway/server-methods/chat.abort-persistence.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/chat.abort-persistence.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/gateway/server-methods/chat.abort-persistence.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/gateway/server-methods/chat.abort-persistence.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/gateway/server-methods/chat.abort-persistence.test.ts: retiring openclaw.stateDomainPublication.sandbox-registry
+[sqlite-test-lifecycle] src/gateway/server-methods/chat.abort-persistence.test.ts: retiring openclaw.devicePairSetupChanges
+
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > admits a named native device profile with admin authority and preserves its provider snapshot 1539ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > synthesizes the core device-provider target for a connected session-capable node 1753ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > reports live unpaired refusal instead of stale full capacity 352ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > reports live reconnected refusal instead of stale full capacity 438ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > rejects automatic selection combined with an explicit target: {"autoDevice":true,"deviceId":"device-1"} 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > spreads six concurrent Auto dispatches across three two-slot nodes 2589ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > explains how to recover when no paired node can host sessions 394ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > tries the next host when the first disconnects before dispatch 1747ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > tries the next host when the first fills its worker slots before dispatch 1727ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > rotates the first host only after cleanup when it disconnects after dispatch starts 2533ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > rotates the first host only after cleanup when it loses capacity and cleanup succeeds 2389ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > rotates the first host only after cleanup when it loses capacity and cleanup fails 2365ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > runtime-owned paired-node command authority > rejects a missing required paired-node command before dispatch 367ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > runtime-owned paired-node command authority > rejects a declared but denied required paired-node command before dispatch 476ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > runtime-owned paired-node command authority > dispatches an opted-in runtime to a paired device 1777ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > runtime-owned paired-node command authority > rejects a runtime without opt-in to a paired device 404ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > rejects a full node before mutating placement or provisioning 993ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.sessionGroupCatalog
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.sandbox-registry
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.devicePairSetupChanges
+
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > rejects a disconnected node before mutating placement or provisioning 974ms
+
+ Test Files  13 passed (13)
+      Tests  328 passed (328)
+   Start at  04:49:14
+   Duration  441.33s (tests 95%, transform 2%, import 2%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+# exit=0

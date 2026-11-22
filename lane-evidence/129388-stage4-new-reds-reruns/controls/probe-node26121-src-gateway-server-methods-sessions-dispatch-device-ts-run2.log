@@ -1,0 +1,76 @@
+# ctl ref=probe sha=8fbf29f25f3fba75a2ed964f4fabc611598b9e52 file=src/gateway/server-methods/sessions.dispatch.device.test.ts run=2 mode=node26121 start=2026-11-22T12:31:55Z
+# files: 1 runwt=/home/figs/classify-129388-s4nr/probe (37 chars) link=<present>
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-s4nr-qOWaAe/home TMPDIR=/tmp/oc-s4nr-qOWaAe/tmp  (timeout 570s)
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.gateway.config.ts
+include-file: /tmp/oc-s4nr-qOWaAe/tmp/oc-focused.BZF2Rs/include.json
+include-file-contents:
+  [
+    "src/gateway/server-methods/sessions.dispatch.device.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-s4nr-qOWaAe/tmp/oc-focused.BZF2Rs/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.gateway.config.ts --maxWorkers=1 src/gateway/server-methods/sessions.dispatch.device.test.ts
+logs: /tmp/oc-s4nr-qOWaAe/tmp/oc-focused.BZF2Rs
+
+ RUN  v5.0.5 /home/figs/classify-129388-s4nr/probe
+
+[vitest-workers] local cache hit after 2039ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared a74b67fd5419 in 2122ms (20607 inputs, 25850 outputs)
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > admits a named native device profile with admin authority and preserves its provider snapshot 1605ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > synthesizes the core device-provider target for a connected session-capable node 1699ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > reports live unpaired refusal instead of stale full capacity 160ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > reports live reconnected refusal instead of stale full capacity 135ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > rejects automatic selection combined with an explicit target: {"autoDevice":true,"deviceId":"device-1"} 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > spreads six concurrent Auto dispatches across three two-slot nodes 2037ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > explains how to recover when no paired node can host sessions 174ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > tries the next host when the first disconnects before dispatch 1453ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > tries the next host when the first fills its worker slots before dispatch 1453ms
+(node:185) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: get is deprecated; use getAsync instead. Synchronous reads use committed in-process receipts; cold or inventory reads require the async replacement. Removal requires an announced ordinary stable release window.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > rotates the first host only after cleanup when it disconnects after dispatch starts 2472ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > rotates the first host only after cleanup when it loses capacity and cleanup succeeds 2286ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > rotates the first host only after cleanup when it loses capacity and cleanup fails 2121ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > runtime-owned paired-node command authority > rejects a missing required paired-node command before dispatch 508ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > runtime-owned paired-node command authority > rejects a declared but denied required paired-node command before dispatch 159ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > runtime-owned paired-node command authority > dispatches an opted-in runtime to a paired device 1531ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > runtime-owned paired-node command authority > rejects a runtime without opt-in to a paired device 180ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > rejects a full node before mutating placement or provisioning 840ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > rejects a disconnected node before mutating placement or provisioning 743ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.devicePairSetupChanges
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.sandbox-registry
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.sessionGroupCatalog
+
+
+ Test Files  1 passed (1)
+      Tests  18 passed (18)
+   Start at  04:31:58
+   Duration  32.19s (tests 62%, transform 27%, import 10%, worker 1%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=8fbf29f25f3fba75a2ed964f4fabc611598b9e52 config=test/vitest/vitest.gateway.config.ts files=src/gateway/server-methods/sessions.dispatch.device.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 18 passed (18)]
+# exit=0

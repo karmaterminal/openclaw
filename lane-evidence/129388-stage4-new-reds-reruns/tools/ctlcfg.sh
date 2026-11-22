@@ -13,7 +13,8 @@ case "$ref" in
   cand) wt=$R/cand-a329243b ;;
   prior) wt=$R/prior-16541aa5 ;;
   up) wt=$R/up-5a3e6b1c ;;
-  *) echo "ref must be cand|prior|up" >&2; exit 2 ;;
+  probe) wt=$R/probe ;; # CI product SHA 8fbf29f2
+  *) echo "ref must be cand|prior|up|probe" >&2; exit 2 ;;
 esac
 [[ -e "$wt/node_modules" ]] || { echo "no node_modules at $wt; run ctl.sh there first" >&2; exit 2; }
 iso=/home/figs/flesh_beast_best_beast/source/frond-scribe/skills/pr-drift-cure-gates/run-isolated-from-live-gateways.sh
