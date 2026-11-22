@@ -140,7 +140,7 @@ async function configure(cfg: OpenClawConfig) {
 
 function workspaceAgents(...ids: string[]): NonNullable<OpenClawConfig["agents"]> {
   return {
-    defaults: { workspace: stateDir },
+    defaults: { workspace: stateDir, model: { primary: "openai/gpt-6-astra" } },
     entries: Object.fromEntries(ids.map((id) => [id, { workspace: stateDir }])),
   };
 }

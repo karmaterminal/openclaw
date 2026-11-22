@@ -6,15 +6,13 @@ import type { WorkerRetirementReason } from "@openclaw/worker-runtime";
 import { createRetainedOperation } from "@openclaw/worker-runtime/lifecycle";
 import { prepareWorkerCompilerPolicy } from "../bootstrap/node-compiler-args.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
-import type {
-  DiagnosticMemoryUsage,
-  WorkerGcStorm,
-  WorkerMemorySample,
-} from "./diagnostic-process-types.js";
+import type { DiagnosticMemoryUsage, WorkerMemorySample } from "./diagnostic-process-types.js";
 import type { GcSample } from "./gc-observer.js";
 import { runWithMainThreadTask } from "./main-thread-stall.js";
+import { resolveProcessRuntimeWorkerFile } from "./runtime-worker-process-generation.js";
 import * as sqliteReaderMetrics from "./sqlite-reader-metrics.js";
 import { buildWorkerCensus, type WorkerPoolPolicy } from "./worker-census.js";
+import type { WorkerCpuHandle, WorkerMemoryMessage } from "./worker-cpu-types.js";
 import { MAX_DIAGNOSTIC_WORKER_SLOTS, workerScriptName } from "./worker-diagnostic-script.js";
 import {
   canObserveWorkerMessages,
@@ -32,19 +30,6 @@ import {
 
 const gcStorm = channel("openclaw.code-mode.gc-storm");
 
-type WorkerCpuHandle = Pick<Worker, "threadId" | "cpuUsage" | "getHeapStatistics"> & {
-  once(event: "exit", listener: () => void): unknown;
-};
-
-type WorkerMemoryMessage =
-  | WorkerMemorySample
-  | { flushed: true; heapUsed: number }
-  | { gc: GcSample[] }
-  | { gcStorm: WorkerGcStorm }
-  | { postgresBridgeCounters: PostgresBridgeCounter[] }
-  | { sqliteReaderCounter: sqliteReaderMetrics.SqliteReaderCounter }
-  | { retireWorkerId: string };
-
 type WorkerSource = {
   script: string;
   internalMessages?: true;
@@ -54,6 +39,8 @@ type WorkerSource = {
   policy?: WorkerPoolPolicy;
   taskMetrics?: NonNullable<DiagnosticMemoryUsage["workerTaskMetrics"]>[number];
   workerSlot?: number;
+  /** Live logical endpoints served by this one physical shared worker host. */
+  hostedEndpoints?: () => number;
   started?: boolean;
   retirementReason?: WorkerRetirementReason;
   cpuUsage: () => Promise<NodeJS.CpuUsage | undefined>;
@@ -104,7 +91,11 @@ export function createCpuTrackedWorker(
   const worker = runWithMainThreadTask(
     `worker:${workerScriptName(filename, options?.eval)}`,
     // Plugins pass resolveRuntimeWorkerArgv's child launch prefix as thread execArgv.
-    () => new Worker(filename, prepareWorkerCompilerPolicy(options)),
+    () =>
+      new Worker(
+        options?.eval ? filename : resolveProcessRuntimeWorkerFile(filename),
+        prepareWorkerCompilerPolicy(options),
+      ),
   );
   trackNativeWorkerForCpu(worker, filename, options?.eval);
   Object.assign(trackedWorkers.workers.get(worker)!, { internalMessages: true, requestClass });
@@ -188,6 +179,30 @@ function receivePostgresBridgeCounters(source: WorkerSource, value: unknown): vo
   publishPostgresBridgeCounters();
 }
 
+/** The shared worker host stays one physical worker; its endpoints add no isolates. */
+export function setTrackedWorkerHostedEndpoints(worker: WorkerCpuHandle, count: () => number) {
+  const source = trackedWorkers.workers.get(worker);
+  if (source) {
+    source.hostedEndpoints = count;
+  }
+}
+
+/** Stable census identity for a pool, assigned on first use. */
+export function getWorkerPoolId(pool: object): number {
+  let poolId = trackedWorkers.poolIds.get(pool);
+  if (poolId === undefined) {
+    poolId = ++trackedWorkers.nextPoolId;
+    trackedWorkers.poolIds.set(pool, poolId);
+  }
+  return poolId;
+}
+
+/** Visit live native workers, including pending retirement. */
+export function forEachTrackedWorker(visit: (script: string, poolId?: number) => void): void {
+  pruneExitedWorkers();
+  trackedWorkers.workers.forEach((source) => visit(source.script, source.poolId));
+}
+
 /** Pool identity follows its live Workers without retaining the pool itself. */
 export function attributeWorkerToPool(
   worker: WorkerCpuHandle,
@@ -199,12 +214,7 @@ export function attributeWorkerToPool(
   if (!source) {
     return;
   }
-  let poolId = trackedWorkers.poolIds.get(pool);
-  if (poolId === undefined) {
-    poolId = ++trackedWorkers.nextPoolId;
-    trackedWorkers.poolIds.set(pool, poolId);
-  }
-  source.poolId = poolId;
+  source.poolId = getWorkerPoolId(pool);
   source.policy = policy;
   attributeWorkerMetrics(source, workerClass, 0);
 }
