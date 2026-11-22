@@ -113,7 +113,8 @@ describe("spawnSubagentDirect continuation launch key at the Gateway boundary", 
       `${JSON.stringify({
         session: { mainKey: "main", scope: "per-sender" },
         agents: {
-          defaults: { workspace: stateDir },
+          // Upstream #203271: a spawn needs a configured model; none defaults to a provider.
+          defaults: { workspace: stateDir, model: { primary: "openai/gpt-6-astra" } },
           entries: { main: { workspace: stateDir } },
         },
       })}\n`,

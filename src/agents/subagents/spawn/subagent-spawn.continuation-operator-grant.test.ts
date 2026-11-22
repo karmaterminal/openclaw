@@ -118,6 +118,8 @@ function runtimeConfig(): OpenClawConfig {
     agents: {
       defaults: {
         workspace: stateDir,
+        // Upstream #203271: a delegate's spawn needs a configured model; none defaults to a provider.
+        model: { primary: "openai/gpt-6-astra" },
         continuation: { enabled: true, minDelayMs: 50, defaultDelayMs: 50 },
       },
       entries: { main: { workspace: stateDir } },
