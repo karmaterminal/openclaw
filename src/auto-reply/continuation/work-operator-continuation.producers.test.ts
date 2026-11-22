@@ -158,8 +158,6 @@ function expectWake(
   expect(observed.turns).toHaveLength(1);
   const turn = expectDefined(observed.turns[0], "the wake's turn");
   const authority = expectDefined(turn.authority, "the wake's admitted operator authority");
-  // Admitted at start for the arming requester, not the arming turn's authority reused.
-  expect(authority).not.toBe(arming.retained);
   expect(authority.profileId).toBe(arming.profileId);
   expect(authority.scopes).toEqual(expected.dispatched);
   expect(turn.scopes).toEqual(expected.dispatched);
@@ -169,6 +167,8 @@ function expectWake(
       ? "allowed"
       : expect.stringContaining("missing scope: operator.admin"),
   );
+  // Admitted at start for the arming requester, not the arming turn's authority reused.
+  expect(authority).not.toBe(arming.retained);
 }
 
 // The custody restores a saved channel source at the wake's start; a source past its recovery
