@@ -24,6 +24,8 @@ import {
   loadSharedRunIntegrationHarness,
 } from "./run.shared-integration-harness.test-support.js";
 
+// Upstream #203271: a run needs a configured model; this matches the shared harness's mocked default.
+const TEST_MODEL = { primary: "anthropic/test-model" };
 let runEmbeddedAgent: typeof import("./run.js").runEmbeddedAgent;
 let fixture: Awaited<ReturnType<typeof createSharedRunIntegrationSession>> | undefined;
 let overflowBaseRunParams: Awaited<
@@ -97,6 +99,7 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
     const config = {
       agents: {
         defaults: {
+          model: TEST_MODEL,
           continuation: {
             enabled: true,
             contextPressureThreshold: 0.8,
@@ -145,6 +148,7 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
     const config = {
       agents: {
         defaults: {
+          model: TEST_MODEL,
           continuation: {
             enabled: false,
             contextPressureThreshold: 0.8,
@@ -176,6 +180,7 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
     const config = {
       agents: {
         defaults: {
+          model: TEST_MODEL,
           continuation: {
             enabled: true,
             contextPressureThreshold: 0.8,
