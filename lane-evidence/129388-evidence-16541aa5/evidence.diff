@@ -1,0 +1,141 @@
+--- openclaw/openclaw#129388 body (live, sha256 e04b6162…)
++++ proposed
+@@ -356,3 +356,138 @@
+ 
+ 
+ 
++## Evidence
++
++**What this PR solves.** Persistent agents act only when something prompts
++them, and what survives compaction is whatever the summarizer kept. This PR
++lets a session elect its own next turn (`continue_work`), send work to
++background sub-agents whose results return to it (`continue_delegate`), and ask
++for compaction once it has saved its state (`request_compaction`). It is
++designed so that accepted work survives restart, compaction and session
++rollover. The checks below cover regressions at this exact head; its live
++behavior proofs are still pending (see the end of this section).
++
++**Head checked:** `16541aa5a8ee81f1e505a414e2d21a758c43cbc2`, which carries
++upstream `main` at `1129d4c0716c7dcc6fba86753ec214584ec8ebd1`. It replaces the
++earlier presented head `9bfc4d31` by a non-fast-forward update. The 22
++continuation commits on `9bfc4d31` that this head doesn't share by SHA each
++have a patch-identical commit here (`git patch-id --stable`). The other
++commits it no longer carries are either from the fork's deployment line,
++outside this feature, or merges of older upstream `main`, which this head
++already contains. "Previous candidate" below means `93a1e356`, the gated
++candidate before this one, which this PR never presented.
++
++**Result: not green, and no failing test is attributable to this change.**
++
++- **Full CI run** (the fork's Mode-B, run `44932832262`, 2026-11-21): 258,978
++  tests passed and 130 failed. The failed count includes confirmation retries;
++  87 failures are deterministic. All 88 failing tests in the run's full failset
++  (33 files) are classified:
++  - 38 tests in 15 files also fail at upstream `1129d4c0`;
++  - 50 tests in 18 files fail because of the CI host environment, for example
++    no Chromium, no systemd user bus, a 64 MiB `/dev/shm`, no `bun` or
++    `setfacl`, or a checkout path long enough to overflow one `exec` argument.
++    Four of these tests (3 files) have no reproduced trigger; they pass in local
++    runs at the previous candidate and at upstream.
++- **Two failures found at the previous candidate are fixed here.** Classifying
++  the previous candidate's full CI run found two failures caused by this
++  change: a session disk-budget test that started a second maintenance scan
++  after a module reload, and a Gateway test whose reopened Gateway failed its
++  first request. Commits `2218b2b7`, `abc9ce5b` and `ae47d143` fix them in the
++  owning code. Each fix is pinned by a test that fails with only that fix
++  reverted and passes with it. Both original tests pass in this run.
++- **Shards the full run didn't finish were covered separately at this head:**
++  - the shard that never started ran in a targeted CI run (`44917878785`):
++    873 passed, 0 failed;
++  - `extension-database-workers`, which CI's time limit has cut off in every
++    run so far, ran in full locally with CI's per-shard environment variables
++    and one worker, paired with upstream. Here: 10,731 passed, 2 failed, 113
++    skipped (845 files). Upstream `1129d4c0`: 10,725 passed, 2 failed, 113
++    skipped (842 files), with the same 2 failing tests. The 3 extra files are
++    this change's own tests, and they pass.
++- **Static checks:** 3 of 41 fail, the same 3 rows as at the previous
++  candidate.
++  - The two dead-code reports are identical to upstream's.
++  - The baseline-ratchet row times out in CI. Two ratchets inside it fail:
++    - **session-identity** reports 31 files over its allowlist. Run locally, it
++      reports the same 31 files against upstream `1129d4c0`, while upstream
++      `1129d4c0` passes against the fork's base. So the excess comes from this
++      branch's changes. It is unchanged from the previous candidate and open for
++      review.
++    - **test-lines** fails against the fork's `main` (`7ce2d10e`), which CI uses
++      as the base, and so does upstream `1129d4c0` against that base. Against
++      upstream `1129d4c0`, this head passes.
++- **Focused checks at this head:** core type checks are clean, a clean full
++  build succeeds, and there are no import cycles. The session-store, Gateway
++  agent-method and touched-module suites (482 files) pass with 0 failures on
++  both Bun and Node 24.21.
++
++**Not yet run at this head:** the live proof rows (real agent turns through a
++running Gateway). They're pending and will be added to this PR once they've
++run. The Real behavior proof section still describes earlier heads.
++
++<details>
++<summary>Run identities, the new failures, and coverage details</summary>
++
++- **Identities.** Product `16541aa5a8ee81f1e505a414e2d21a758c43cbc2`, upstream
++  base `1129d4c0716c7dcc6fba86753ec214584ec8ebd1`, CI workflow
++  `105e83abf9c3d328695e022779d75cb556fdc275`. The full run `44932832262`
++  (dispatched 2026-11-21 17:57Z) and the targeted run `44917878785` (15:11Z)
++  live in the fork's private CI repository, so they aren't linked. The full
++  run's receipt was validated against the product and workflow SHAs. The
++  targeted run is an 8-shard diagnostic subset, not an acceptance run. The
++  previous candidate's full run, `44871298969` at
++  `93a1e356c7aabf0d868560e46790b07449813840`, had 258,976 passed, 128 failed
++  and 87 deterministic failures.
++- **How failures were classified.** The failset is the union of the shard
++  summaries, the logs' failure lines, the in-flight output of cancelled shards,
++  and worker kills. 84 of its 88 tests are the previous candidate's classified
++  failures, with the same test and, wherever CI printed one, the same first
++  error. That classification used paired local runs at the previous candidate
++  and at upstream `1129d4c0` (one worker, Node 26.12.1, isolated from any live
++  Gateway), plus one-variable controls for the environment rows that have a
++  reproduced trigger.
++- **New in this run (4 tests in 3 files).** Each ran 10 times, interleaved, at
++  this head, the previous candidate and upstream:
++  - `src/gateway/server-methods/models-auth-removal.integration.test.ts` (1):
++    upstream-carried. Upstream fails it with CI's exact error
++    (`AbortError … code=20`, then `PREPARED_MODEL_AUTH_UNAVAILABLE`), about 1
++    run in 10. Every file on the abort stack is unchanged by this PR.
++  - `test/scripts/team-shape-fixture.test.ts` (2): environment. A fixture guard
++    stops when the host's `/proc/meminfo` `Dirty:` reaches 2 GiB. With only that
++    line changed, the test fails at all three refs at 2,200,000 kB and passes at
++    all three at 0.
++  - `src/tui/tui-console-pty.e2e.test.ts` (1): environment. Its cold start takes
++    about 19.5 s against a fixed 20 s budget. Pinned to one small core it fails
++    3 of 3 at all three refs with CI's exact timeout; unpinned it passes 10 of
++    10 at each.
++- **The two fixes.** `2218b2b7` keeps one disk-budget kick owner per store
++  across module loads. `abc9ce5b` reads the maintenance pins snapshot after the
++  preserve providers prepare. `ae47d143` has continuation custody maintenance
++  ask the shared state reader first, so maintenance preparation starts the
++  state worker only when a session delivery is pending or live custody exists.
++  The disk-budget fix is pinned by the original failing test; the other two add
++  tests.
++- **Shard coverage in the full run.** `compact-small-3` never started; the
++  targeted run above covers it. `extension-database-workers` was cancelled at
++  5,262 s with 4,585 passed and 0 failed so far; the local paired run above
++  covers it. That run went through the shard runner rather than CI's legacy
++  path, on arm64, inside a single-uid sandbox. Its 2 failures:
++  - `extensions/tlon/src/monitor/index.test.ts` fails the same way at upstream;
++  - `extensions/memory-core/src/workspace-file-mode.test.ts` runs `setfacl` for
++    uid 65534, which the single-uid sandbox can't represent, at both trees. It
++    still needs a run outside such a sandbox.
++
++  `compact-large-43` completed all 8 sub-shards in its first attempt. The
++  batch's stop signal cut its second attempt short.
++- **Ratchets, run locally.** Against the fork's `main` (`7ce2d10e`) this head is
++  37,023 test lines over, and upstream `1129d4c0` is 36,904 over. Against
++  upstream `1129d4c0`, this head passes the test-lines ratchet: +114,322 lines
++  against an allowance of 114,203 + 400.
++- **Not covered:** the 113 tests that skip in the local
++  `extension-database-workers` run at both trees (the PostgreSQL suites, with
++  no PostgreSQL service there, a Windows-only file, and native Codex sandbox
++  and inference tests), the live proof rows, and failure rates on the x64 CI
++  hosts (the local controls ran on arm64 with one worker).
++
++</details>
