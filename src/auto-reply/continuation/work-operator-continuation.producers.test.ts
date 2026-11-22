@@ -20,6 +20,7 @@ import { captureQueuedOperatorRecoverySource } from "../../gateway/operator-run-
 import { withRecovery } from "../../gateway/operator-run-recovery.test-support.js";
 import type { OperatorScope } from "../../gateway/operator-scopes.js";
 import type { GatewayRequestContext } from "../../gateway/server-methods/types.js";
+import { dispatchGatewayMethodInProcess } from "../../gateway/server-plugin-in-process-dispatch.js";
 import { removePairedDevice } from "../../infra/device-pairing.js";
 import { getPluginRuntimeGatewayRequestScope } from "../../plugins/runtime/gateway-request-scope.js";
 import { trackAsyncWork } from "../../shared/async-work-scope.js";
@@ -48,8 +49,6 @@ vi.mock("./work-dispatch-execution.js", async (importOriginal) => ({
   executePendingContinuationWork: async () => {
     // The scope the wake's turn and its tools run in (what its reply runtime reads).
     const client = getPluginRuntimeGatewayRequestScope()?.client;
-    const { dispatchGatewayMethodInProcess } =
-      await import("../../gateway/server-plugin-in-process-dispatch.js");
     const admin = await dispatchGatewayMethodInProcess("exec.approvals.get", {}).then(
       () => "allowed",
       (error: unknown) => (error instanceof Error ? error.message : String(error)),
