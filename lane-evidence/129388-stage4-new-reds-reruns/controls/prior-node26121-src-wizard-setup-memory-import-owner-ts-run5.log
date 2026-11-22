@@ -1,0 +1,60 @@
+# ctl ref=prior sha=16541aa5a8ee81f1e505a414e2d21a758c43cbc2 file=src/wizard/setup.memory-import.owner.test.ts run=5 mode=node26121 start=2026-11-22T10:40:02Z
+# files: 1 runwt=/home/figs/classify-129388-s4nr/prior-16541aa5 (46 chars) link=<present>
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-s4nr-LuUeyZ/home TMPDIR=/tmp/oc-s4nr-LuUeyZ/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.wizard.config.ts
+include-file: /tmp/oc-s4nr-LuUeyZ/tmp/oc-focused.wPAe1Q/include.json
+include-file-contents:
+  [
+    "src/wizard/setup.memory-import.owner.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-s4nr-LuUeyZ/tmp/oc-focused.wPAe1Q/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.wizard.config.ts --maxWorkers=1 src/wizard/setup.memory-import.owner.test.ts
+logs: /tmp/oc-s4nr-LuUeyZ/tmp/oc-focused.wPAe1Q
+
+ RUN  v5.0.5 /home/figs/classify-129388-s4nr/prior-16541aa5
+
+[vitest-workers] local cache hit after 2193ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared c3d83c217be4 in 2262ms (20559 inputs, 25756 outputs)
+ ✓ |wizard| src/wizard/setup.memory-import.owner.test.ts > keeps terminal memory import with accept 499ms
+ ✓ |wizard| src/wizard/setup.memory-import.owner.test.ts > keeps terminal memory import with decline 130ms
+ ✓ |wizard| src/wizard/setup.memory-import.owner.test.ts > keeps terminal memory import with empty 114ms
+ ✓ |wizard| src/wizard/setup.memory-import.owner.test.ts > keeps terminal memory import with lost response 344ms
+ ✓ |wizard| src/wizard/setup.memory-import.owner.test.ts > keeps terminal memory import with plan unavailable 38ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.devicePairSetupChanges
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.sessionGroupCatalog
+
+ ✓ |wizard| src/wizard/setup.memory-import.owner.test.ts > keeps terminal memory import with offline 276ms
+ ✓ |wizard| src/wizard/setup.memory-import.owner.test.ts > lets classic setup pass migration detection while a Gateway owns state 13ms
+
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+   Start at  02:40:04
+   Duration  15.07s (transform 63%, import 24%, tests 10%, worker 3%, setup 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=16541aa5a8ee81f1e505a414e2d21a758c43cbc2 config=test/vitest/vitest.wizard.config.ts files=src/wizard/setup.memory-import.owner.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 7 passed (7)]
+# exit=0

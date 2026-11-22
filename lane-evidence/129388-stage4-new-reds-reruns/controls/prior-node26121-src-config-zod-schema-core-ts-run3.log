@@ -1,0 +1,32 @@
+# ctl ref=prior sha=16541aa5a8ee81f1e505a414e2d21a758c43cbc2 file=src/config/zod-schema.core.test.ts run=3 mode=node26121 start=2026-11-22T10:26:51Z
+# files: 1 runwt=/home/figs/classify-129388-s4nr/prior-16541aa5 (46 chars) link=<present>
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-s4nr-qGpyVr/home TMPDIR=/tmp/oc-s4nr-qGpyVr/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.runtime-config.config.ts
+include-file: /tmp/oc-s4nr-qGpyVr/tmp/oc-focused.6MdkHL/include.json
+include-file-contents:
+  [
+    "src/config/zod-schema.core.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-s4nr-qGpyVr/tmp/oc-focused.6MdkHL/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.runtime-config.config.ts --maxWorkers=1 src/config/zod-schema.core.test.ts
+logs: /tmp/oc-s4nr-qGpyVr/tmp/oc-focused.6MdkHL
+
+ RUN  v5.0.5 /home/figs/classify-129388-s4nr/prior-16541aa5
+
+ ✓ |runtime-config| src/config/zod-schema.core.test.ts > config schema regressions > accepts historyLimit: 0 2ms
+ ✓ |runtime-config| src/config/zod-schema.core.test.ts > config schema regressions > accepts markdown table block mode 1ms
+ ✓ |runtime-config| src/config/zod-schema.core.test.ts > config schema regressions > accepts string-array media provider options 5ms
+ ✓ |runtime-config| src/config/zod-schema.core.test.ts > config schema regressions > rejects invalid cron.sessionRetention durations 1ms
+ ✓ |runtime-config| src/config/zod-schema.core.test.ts > config schema regressions > round-trips desktop host config and rejects unsafe or unknown fields 1ms
+ ✓ |runtime-config| src/config/zod-schema.core.test.ts > config schema regressions > round-trips the Templates Labs visibility setting 2ms
+ ✓ |runtime-config| src/config/zod-schema.core.test.ts > config schema regressions > projects schema-owned field documentation into the public schema and UI hints 78ms
+
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+   Start at  02:26:53
+   Duration  1.29s (worker 49%, transform 20%, import 17%, tests 9%, setup 4%)
+
+receipt head=16541aa5a8ee81f1e505a414e2d21a758c43cbc2 config=test/vitest/vitest.runtime-config.config.ts files=src/config/zod-schema.core.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 7 passed (7)]
+# exit=0

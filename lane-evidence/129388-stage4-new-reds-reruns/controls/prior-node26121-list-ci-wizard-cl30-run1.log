@@ -1,0 +1,456 @@
+# ctl ref=prior sha=16541aa5a8ee81f1e505a414e2d21a758c43cbc2 file=@/home/figs/classify-129388-s4nr/lists/ci-wizard-cl30.files run=1 mode=node26121 start=2026-11-22T11:04:02Z
+# files: 20 runwt=/home/figs/classify-129388-s4nr/prior-16541aa5 (46 chars) link=<present>
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-s4nr-u4D4cK/home TMPDIR=/tmp/oc-s4nr-u4D4cK/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.wizard.config.ts
+include-file: /tmp/oc-s4nr-u4D4cK/tmp/oc-focused.A1qVDi/include.json
+include-file-contents:
+  [
+    "src/wizard/clack-prompter.test.ts",
+    "src/wizard/setup.finalize.test.ts",
+    "src/wizard/session.test.ts",
+    "src/wizard/setup.model-auth.test.ts",
+    "src/wizard/setup.plugin-config.test.ts",
+    "src/wizard/setup.default-agent.test.ts",
+    "src/wizard/setup.completion.test.ts",
+    "src/wizard/setup.migration-import.test.ts",
+    "src/wizard/setup.post-install-migration.test.ts",
+    "src/wizard/setup.memory-import.test.ts",
+    "src/wizard/navigation-prompter.test.ts",
+    "src/wizard/setup.workspace-validation.test.ts",
+    "src/wizard/setup.memory-import.owner.test.ts",
+    "src/wizard/setup.migration-resources.test.ts",
+    "src/wizard/setup.migration-snapshot.test.ts",
+    "src/wizard/setup.gateway-service-offer.test.ts",
+    "src/wizard/i18n/index.test.ts",
+    "src/wizard/clack-navigation-prompts.test.ts",
+    "src/wizard/clack-prompter.process.test.ts",
+    "src/wizard/setup.finalize.service.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-s4nr-u4D4cK/tmp/oc-focused.A1qVDi/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.wizard.config.ts --maxWorkers=1 src/wizard/clack-prompter.test.ts src/wizard/setup.finalize.test.ts src/wizard/session.test.ts src/wizard/setup.model-auth.test.ts src/wizard/setup.plugin-config.test.ts src/wizard/setup.default-agent.test.ts src/wizard/setup.completion.test.ts src/wizard/setup.migration-import.test.ts src/wizard/setup.post-install-migration.test.ts src/wizard/setup.memory-import.test.ts src/wizard/navigation-prompter.test.ts src/wizard/setup.workspace-validation.test.ts src/wizard/setup.memory-import.owner.test.ts src/wizard/setup.migration-resources.test.ts src/wizard/setup.migration-snapshot.test.ts src/wizard/setup.gateway-service-offer.test.ts src/wizard/i18n/index.test.ts src/wizard/clack-navigation-prompts.test.ts src/wizard/clack-prompter.process.test.ts src/wizard/setup.finalize.service.test.ts
+logs: /tmp/oc-s4nr-u4D4cK/tmp/oc-focused.A1qVDi
+
+ RUN  v5.0.5 /home/figs/classify-129388-s4nr/prior-16541aa5
+
+[vitest-workers] local cache hit after 2266ms
+[vitest-workers] reused local compiler outputs
+[vitest-workers] prepared 651dd6b1b54e in 2324ms (20559 inputs, 25756 outputs)
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > resolves gateway password SecretRef for probe but omits auth from TUI hatch 25ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > waits for the served dashboard before announcing its URL 57ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > keeps the reachable Gateway and TUI when dashboard preparation fails 8ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > does not wait for dashboard assets when the UI is disabled 7ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > probes the canonical loopback dashboard for custom TLS Gateway paths 6ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > advertises LAN Control UI links while probing the local gateway 7ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > finishes without a hatch message when the prepared catalog owner was replaced 8ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > propagates unrelated prepared catalog failures 5ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > passes physical catalog routes into the bootstrap auth decision 11ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > skips the doomed hatch seed message and warns when model auth is missing 6ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > hatches without a seed and omits setup advice for an incompatible model route 6ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > does not resend the bootstrap hatch message on setup reruns 14ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > restores terminal state after failed TUI hatch 7ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > does not persist resolved SecretRef token in daemon install plan 29ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > reports Bun for a Bun-only QuickStart install 125ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > waits for gateway install warnings before installing the service 57ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > shows gateway install warnings when planning fails 7ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > uses the linux readiness budget after service installed 5ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > uses the linux readiness budget after service reused 4ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > uses the linux readiness budget after service skipped 4ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > uses the win32 readiness budget after service installed 5ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > detects the surviving gateway after failed reinstall (skipHealth=false) 7ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > detects the surviving gateway after failed reinstall (skipHealth=true) 5ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > reports gateway install failure with recovery guidance instead of success 6ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > reports gateway restart failure with recovery guidance instead of success 6ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > keeps managed readiness timeout recovery on the canonical service path 6ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > preserves external supervision through unreachable container recovery 5ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > installs a missing gateway service when onboarding resumes before installation 4ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > reuses a running gateway while resuming without restarting it 4ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > starts an installed but stopped gateway while resuming 4ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > reports service definition repair failures without restarting on resume 4ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > never prints the reusable Gateway token during classic onboarding 5ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > stops after a scheduled restart instead of reinstalling the service 5ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > preserves the installed service when reinstall authentication fails 5ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > passes installed pin intent to the reinstall owner (explicit=undefined) 5ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > passes installed pin intent to the reinstall owner (explicit=node) 6ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > reinstalls recorded Bun through advanced with choice=node 6ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > reinstalls recorded Bun through quickstart with choice=bun 4ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/wizard/setup.finalize.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/wizard/setup.finalize.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/wizard/setup.finalize.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/wizard/setup.finalize.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/wizard/setup.finalize.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/wizard/setup.finalize.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/wizard/setup.finalize.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/wizard/setup.finalize.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/wizard/setup.finalize.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/wizard/setup.finalize.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/wizard/setup.finalize.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/wizard/setup.finalize.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/wizard/setup.finalize.test.ts: retiring openclaw.pluginStateNamespaceOwner
+
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > does not turn skip into an implicit reinstall 3ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > does not turn restart into an implicit reinstall 4ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > reports selected providers blocked by plugin policy as unavailable 7ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > only reports legacy auto-detect for runtime-visible providers 4ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > uses configured provider resolution instead of the active runtime registry 5ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > reports OAuth-backed web search as enabled without an API key 10ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > reports a keyless provider as ready without prompting for an API key 5ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > uses the setup token for health checks to avoid local env token drift 5ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > ends with a health-failure outro when the health check exits after a reachable probe 5ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > joins the temporary Gateway around TUI return (skipHealth=false, ready=true) 5ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > joins the temporary Gateway around TUI reject (skipHealth=false, ready=true) 3ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > joins the temporary Gateway around TUI return (skipHealth=true, ready=true) 3ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > joins the temporary Gateway around TUI reject (skipHealth=true, ready=true) 4ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > joins the temporary Gateway around TUI return (skipHealth=false, ready=false) 5ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > joins the temporary Gateway around TUI reject (skipHealth=true, ready=false) 5ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > closes a session gateway on probe failure before TUI launch 4ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > closes a session gateway on child failure before TUI launch 4ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > uses the resolved setup password for health checks 5ms
+ ✓ |wizard| src/wizard/setup.finalize.test.ts > finalizeSetupWizard > shows actionable gateway guidance instead of a hard error in no-daemon onboarding 6ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > clamps long progress labels by display width without splitting grapheme clusters 20ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > preserves emoji joined by zero-width joiners when truncating 5ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > shrinks active progress labels without expanding past the initial width 5ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > leaves progress labels untouched when terminal columns are unavailable 3ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > preserves tiny completion undefined once 3ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > preserves tiny completion "" once 4ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > preserves tiny completion "First line\nSecond line" once 4ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > keeps completion after clearing tiny animation 6ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > selects the interactive spinner (rich: false) 4ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > selects the interactive spinner (rich: true) 4ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > routes Clack UI, prompts, notes, plain text, and progress to the selected output 5ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > select request routing > preserves request values for {"searchable":false,"withNavigation":false} 4ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > select request routing > preserves request values for {"searchable":true,"withNavigation":false} 4ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > select request routing > preserves request values for {"searchable":false,"withNavigation":true} 5ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > select request routing > preserves request values for {"searchable":true,"withNavigation":true} 5ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > multiselect request routing > preserves request values for {"searchable":false,"withNavigation":false} 5ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > multiselect request routing > preserves request values for {"searchable":true,"withNavigation":false} 5ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > multiselect request routing > preserves request values for {"searchable":false,"withNavigation":true} 4ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > multiselect request routing > preserves request values for {"searchable":true,"withNavigation":true} 7ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > restores prior cursor actions after select completion 4ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > restores prior cursor actions after multiselect completion 3ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > restores prior cursor actions after confirm completion 3ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > restores prior cursor actions after text completion 4ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > restores prior cursor actions after password completion 2ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > cleans up a throwing navigation prompt after queued EOF 2ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > cancels select input silently when its owner completes or disconnects 2ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > cancels multiselect input silently when its owner completes or disconnects 2ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > cancels confirm input silently when its owner completes or disconnects 4ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > cancels text input silently when its owner completes or disconnects 3ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > cancels password input silently when its owner completes or disconnects 3ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > preserves both cancellation owners for a text prompt: owner 5ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > preserves both cancellation owners for a text prompt: text 2ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > turns stdin EOF into wizard cancellation (navigation: false) 3ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > turns stdin EOF into wizard cancellation (navigation: true) 2ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > lets Clack finalize before the wrapper fallback (piped input: false) 3ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > lets Clack finalize before the wrapper fallback (piped input: true) 4ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > keeps Ctrl-C cancellation on Clack's canonical path (navigation: false) 3ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > keeps Ctrl-C cancellation on Clack's canonical path (navigation: true) 4ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > rejects navigation after Clack resolves an aborted prompt 3ms
+ ✓ |wizard| src/wizard/clack-prompter.test.ts > createClackPrompter > keeps text cursor actions when prompt navigation has no available move 3ms
+ ✓ |wizard| src/wizard/setup.model-auth.test.ts > runSetupModelAuthStep > keeps the migrated setup owner and pending credentials through config copies 9ms
+ ✓ |wizard| src/wizard/setup.model-auth.test.ts > runSetupModelAuthStep > re-prompts after failed and utility-only setup, keeping pending-agent credentials scoped 12ms
+ ✓ |wizard| src/wizard/setup.model-auth.test.ts > runSetupModelAuthStep > passes the explicit system agent to custom setup while preserving its existing model 71ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/wizard/setup.model-auth.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/wizard/setup.model-auth.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/wizard/setup.model-auth.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/wizard/setup.model-auth.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/wizard/setup.model-auth.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/wizard/setup.model-auth.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/wizard/setup.model-auth.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/wizard/setup.model-auth.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/wizard/setup.model-auth.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/wizard/setup.model-auth.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/wizard/setup.model-auth.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/wizard/setup.model-auth.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/wizard/setup.model-auth.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/wizard/setup.model-auth.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/wizard/setup.model-auth.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/wizard/setup.model-auth.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+
+ ✓ |wizard| src/wizard/setup.model-auth.test.ts > runSetupModelAuthStep > applies and validates an interactive model selection on the configured agent 4ms
+ ✓ |wizard| src/wizard/setup.model-auth.test.ts > runSetupModelAuthStep > keeps the current provider without applying auth or automatic lean changes 3ms
+ ✓ |wizard| src/wizard/setup.model-auth.test.ts > runSetupModelAuthStep > still fails loudly when the auth choice came from a flag 3ms
+ ✓ |wizard| src/wizard/setup.model-auth.test.ts > runSetupModelAuthStep > propagates wizard cancellation from provider setup 4ms
+ ✓ |wizard| src/wizard/setup.model-auth.test.ts > runSetupModelAuthStep > revokes prepared provider requests when the root config changes during chooser 23ms
+ ✓ |wizard| src/wizard/setup.model-auth.test.ts > runSetupModelAuthStep > revokes prepared provider requests when the include config changes during preparation 12ms
+ ✓ |wizard| src/wizard/setup.model-auth.test.ts > records telemetry consent only once 3ms
+ ✓ |wizard| src/wizard/setup.model-auth.test.ts > resolveQuickstartGatewayDefaults > infers auth from credentials and honors explicit mode: {} => token 3ms
+ ✓ |wizard| src/wizard/setup.model-auth.test.ts > resolveQuickstartGatewayDefaults > infers auth from credentials and honors explicit mode: {} => token 3ms
+ ✓ |wizard| src/wizard/setup.model-auth.test.ts > resolveQuickstartGatewayDefaults > infers auth from credentials and honors explicit mode: {} => password 3ms
+ ✓ |wizard| src/wizard/setup.model-auth.test.ts > resolveQuickstartGatewayDefaults > infers auth from credentials and honors explicit mode: {"gatewayPassword":"<redacted len=17>"} => password 4ms
+ ✓ |wizard| src/wizard/setup.model-auth.test.ts > resolveQuickstartGatewayDefaults > infers auth from credentials and honors explicit mode: {"gatewayToken":"<redacted len=14>"} => token 4ms
+ ✓ |wizard| src/wizard/setup.model-auth.test.ts > resolveQuickstartGatewayDefaults > infers auth from credentials and honors explicit mode: {"gatewayAuth":"password","gatewayToken":"<redacted len=14>"} => password 4ms
+ ✓ |wizard| src/wizard/setup.model-auth.test.ts > resolveQuickstartGatewayDefaults > infers auth from credentials and honors explicit mode: {"gatewayAuth":"token","gatewayPassword":"<redacted len=17>"} => token 3ms
+ ✓ |wizard| src/wizard/setup.model-auth.test.ts > writeWizardConfigFile > delegates CAS and pending-install ownership to the canonical transform 3ms
+ ✓ |wizard| src/wizard/setup.model-auth.test.ts > writeWizardConfigFile > preserves literal nulls added by the wizard 5ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > only literal true confirms a wire answer (true) 3ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > only literal true confirms a wire answer ("false") 3ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > classifies whether select/undefined awaits user input 2ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > classifies whether multiselect/undefined awaits user input 2ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > classifies whether text/undefined awaits user input 3ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > classifies whether confirm/undefined awaits user input 3ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > classifies whether action/client awaits user input 3ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > classifies whether action/gateway awaits user input 4ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > classifies whether note/undefined awaits user input 3ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > classifies whether progress/undefined awaits user input 3ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > steps progress in order through a spread prompter with a note adapter 5ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > plain output is a client note with plain format 4ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > returns the exact prepared model only on the successful terminal result 5ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > returns the exact utility model only on the successful terminal result 5ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > withholds model outcomes after error, even on late completion 5ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > withholds model outcomes after cancelled, even on late completion 5ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > attaches an explicit browser destination to the next client step 6ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > keeps a browser waiting link through progress until done without an answer 5ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > keeps a browser waiting link through progress until cancelled without an answer 5ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > carries device-code presentation without parsing provider prose 5ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > keeps a text step pending after answer "banana" 4ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > keeps a text step pending after answer ["token"] 4ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > returns cancellation when progress is retired before a waiting next resumes 5ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > retires a manual prompt aborted before prompting without cancelling the wizard 4ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > retires a manual prompt aborted while pending without cancelling the wizard 5ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > retires unanswered prompts when the runner is done 3ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > retires unanswered prompts when the runner is error 3ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > refuses cancellation after the durable commit point 2ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > expires an abandoned interactive session 7ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > a cancelled runner stays cancelled on late commit 4ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > does not lose terminal completion when the last answer finishes the runner immediately 3ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > forwards sensitive flag to the emitted text step 5ms
+ ✓ |wizard| src/wizard/session.test.ts > WizardSession > bridges confirm, progress updates, and notes in order 4ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/wizard/setup.default-agent.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/wizard/setup.default-agent.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/wizard/setup.default-agent.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/wizard/setup.default-agent.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/wizard/setup.default-agent.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/wizard/setup.default-agent.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/wizard/setup.default-agent.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/wizard/setup.default-agent.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/wizard/setup.default-agent.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/wizard/setup.default-agent.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/wizard/setup.default-agent.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/wizard/setup.default-agent.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/wizard/setup.default-agent.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/wizard/setup.default-agent.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/wizard/setup.default-agent.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/wizard/setup.default-agent.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/wizard/setup.default-agent.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+
+ ✓ |wizard| src/wizard/setup.default-agent.test.ts > runSetupWizard default-agent ownership > revokes provider requests when config changes during an earlier setup prompt 222ms
+ ✓ |wizard| src/wizard/setup.default-agent.test.ts > runSetupWizard default-agent ownership > keeps concurrent gateway settings while carrying the telemetry choice 9ms
+ ✓ |wizard| src/wizard/setup.default-agent.test.ts > runSetupWizard default-agent ownership > checks first-agent authority by authored revision (changed=false) 4ms
+ ✓ |wizard| src/wizard/setup.default-agent.test.ts > runSetupWizard default-agent ownership > checks first-agent authority by authored revision (changed=true) 3ms
+ ✓ |wizard| src/wizard/setup.default-agent.test.ts > runSetupWizard default-agent ownership > waits for recommendation persistence and propagates failure before finalization 5ms
+ ✓ |wizard| src/wizard/setup.default-agent.test.ts > runSetupWizard default-agent ownership > uses the keyed default-agent workspace for all classic agent-owned effects 4ms
+ ✓ |wizard| src/wizard/setup.plugin-config.test.ts > plugin configuration discovery > offers sorted plugins and prompts only for their non-advanced fields 5ms
+ ✓ |wizard| src/wizard/setup.plugin-config.test.ts > plugin configuration discovery > offers missing and empty fields while recognizing configured nested paths 5ms
+ ✓ |wizard| src/wizard/setup.plugin-config.test.ts > setupPluginConfig > allows skipping plugin setup without prompting for fields 3ms
+ ✓ |wizard| src/wizard/setup.plugin-config.test.ts > setupPluginConfig > preserves typed enum values when writing a nested uiHint path 4ms
+ ✓ |wizard| src/wizard/setup.plugin-config.test.ts > setupPluginConfig > writes a nested token in existing array 3ms
+ ✓ |wizard| src/wizard/setup.plugin-config.test.ts > setupPluginConfig > writes a nested token in schema array 4ms
+ ✓ |wizard| src/wizard/setup.plugin-config.test.ts > setupPluginConfig > writes a nested token in numeric record 4ms
+ ✓ |wizard| src/wizard/setup.plugin-config.test.ts > setupPluginConfig > writes a nested token in bracket index 4ms
+ ✓ |wizard| src/wizard/setup.plugin-config.test.ts > setupPluginConfig > rejects prototype-polluting paths without mutating config 4ms
+ ✓ |wizard| src/wizard/setup.plugin-config.test.ts > setupPluginConfig > coerces only JSON-compatible numeric inputs 4ms
+ ✓ |wizard| src/wizard/setup.plugin-config.test.ts > offers only unconfigured generic plugins and installs the selected plugin 6ms
+ ✓ |wizard| src/wizard/setup.memory-import.owner.test.ts > keeps terminal memory import with accept 437ms
+ ✓ |wizard| src/wizard/setup.memory-import.owner.test.ts > keeps terminal memory import with decline 139ms
+ ✓ |wizard| src/wizard/setup.memory-import.owner.test.ts > keeps terminal memory import with empty 107ms
+ ✓ |wizard| src/wizard/setup.memory-import.owner.test.ts > keeps terminal memory import with lost response 344ms
+ ✓ |wizard| src/wizard/setup.memory-import.owner.test.ts > keeps terminal memory import with plan unavailable 22ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.devicePairSetupChanges
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.owner.test.ts: retiring openclaw.sessionGroupCatalog
+
+ ✓ |wizard| src/wizard/setup.memory-import.owner.test.ts > keeps terminal memory import with offline 247ms
+ ✓ |wizard| src/wizard/setup.memory-import.owner.test.ts > lets classic setup pass migration detection while a Gateway owns state 17ms
+ ✓ |wizard| src/wizard/setup.completion.test.ts > setupWizardShellCompletion > Advanced: prompts; skip means no install 4ms
+ ✓ |wizard| src/wizard/setup.completion.test.ts > setupWizardShellCompletion > handles completion failure (en, installed=true, slow=true, EACCES) 3ms
+ ✓ |wizard| src/wizard/setup.completion.test.ts > setupWizardShellCompletion > handles completion failure (zh-TW, installed=false, slow=false, EACCES) 3ms
+ ✓ |wizard| src/wizard/setup.completion.test.ts > setupWizardShellCompletion > handles completion failure (en, installed=false, slow=false, ERR_INVALID_UTF8) 3ms
+ ✓ |wizard| src/wizard/setup.completion.test.ts > setupWizardShellCompletion > handles completion failure (en, installed=false, slow=false, ENOSPC) 3ms
+ ✓ |wizard| src/wizard/setup.completion.test.ts > setupWizardShellCompletion > reports cache generation failure (profile installed=true) 3ms
+ ✓ |wizard| src/wizard/setup.completion.test.ts > setupWizardShellCompletion > reports cache generation failure (profile installed=false) 4ms
+ ✓ |wizard| src/wizard/setup.completion.test.ts > setupWizardShellCompletion > localizes advanced prompts and install notes 4ms
+ ✓ |wizard| src/wizard/setup.completion.test.ts > setupWizardShellCompletion > installs and reports the actual configured zsh startup profile 31ms
+ ✓ |wizard| src/wizard/setup.completion.test.ts > setupWizardShellCompletion > shows a concrete PowerShell profile reload command after setup 4ms
+ ✓ |wizard| src/wizard/setup.migration-import.test.ts > setup migration import freshness > allows first-launch security and telemetry consent before import 6ms
+ ✓ |wizard| src/wizard/setup.migration-import.test.ts > setup migration import freshness > preserves first-launch consent choices across the lock-time config reread 3ms
+ ✓ |wizard| src/wizard/setup.migration-import.test.ts > setup migration import freshness > binds source symlink contents while keeping target snapshots scoped to the link 9ms
+ ✓ |wizard| src/wizard/setup.migration-import.test.ts > setup migration import freshness > rejects other wizard config during import freshness checks 3ms
+ ✓ |wizard| src/wizard/setup.migration-import.test.ts > setup migration import freshness > rejects existing config, workspace files, credentials, sessions, and agents 6ms
+ ✓ |wizard| src/wizard/setup.migration-import.test.ts > setup migration import options > does not offer install-only providers during a transactional import 4ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/wizard/setup.migration-import.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/wizard/setup.migration-import.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/wizard/setup.migration-import.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/wizard/setup.migration-import.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/wizard/setup.migration-import.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/wizard/setup.migration-import.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/wizard/setup.migration-import.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/wizard/setup.migration-import.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/wizard/setup.migration-import.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/wizard/setup.migration-import.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/wizard/setup.migration-import.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/wizard/setup.migration-import.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/wizard/setup.migration-import.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/wizard/setup.migration-import.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/wizard/setup.migration-import.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/wizard/setup.migration-import.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+
+ ✓ |wizard| src/wizard/setup.migration-import.test.ts > setup migration import provider selection > names the available providers when --import-from does not match one 119ms
+ ✓ |wizard| src/wizard/setup.post-install-migration.test.ts > excludes unowned providers from migration offers 4ms
+ ✓ |wizard| src/wizard/setup.post-install-migration.test.ts > excludes absent providers from migration offers 4ms
+ ✓ |wizard| src/wizard/setup.post-install-migration.test.ts > excludes low providers from migration offers 3ms
+ ✓ |wizard| src/wizard/setup.post-install-migration.test.ts > excludes failed providers from migration offers 4ms
+ ✓ |wizard| src/wizard/setup.post-install-migration.test.ts > shows provider-owned import scope before asking and respects a decline 4ms
+ ✓ |wizard| src/wizard/setup.post-install-migration.test.ts > preserves input for empty migration results 3ms
+ ✓ |wizard| src/wizard/setup.post-install-migration.test.ts > preserves input for failure migration results 3ms
+ ✓ |wizard| src/wizard/setup.post-install-migration.test.ts > preserves input for patch migration results 3ms
+ ✓ |wizard| src/wizard/setup.post-install-migration.test.ts > skips migration when no plugins 2ms
+ ✓ |wizard| src/wizard/setup.post-install-migration.test.ts > skips migration when flag 3ms
+ ✓ |wizard| src/wizard/setup.post-install-migration.test.ts > skips migration when stdin 4ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/wizard/setup.memory-import.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+
+ ✓ |wizard| src/wizard/setup.memory-import.test.ts > runSetupMemoryImportStep > shows no prompts when there are no offers 2ms
+ ✓ |wizard| src/wizard/setup.memory-import.test.ts > runSetupMemoryImportStep > respects a declined import and shows the memory-scoped retry hint 2ms
+ ✓ |wizard| src/wizard/setup.memory-import.test.ts > runSetupMemoryImportStep > applies only selected offers 3ms
+ ✓ |wizard| src/wizard/setup.memory-import.test.ts > runSetupMemoryImportStep > records a confirmed outcome before rendering can fail 3ms
+ ✓ |wizard| src/wizard/setup.memory-import.test.ts > runSetupMemoryImportStep > continues after an indeterminate apply failure and checks authority before each apply 3ms
+ ✓ |wizard| src/wizard/navigation-prompter.test.ts > replays answers with replace navigation 3ms
+ ✓ |wizard| src/wizard/navigation-prompter.test.ts > replays answers with forward navigation 2ms
+ ✓ |wizard| src/wizard/navigation-prompter.test.ts > does not cache sensitive text answers for forward navigation 2ms
+ ✓ |wizard| src/wizard/navigation-prompter.test.ts > disables back replay for prompts after an irreversible boundary 2ms
+ ✓ |wizard| src/wizard/navigation-prompter.test.ts > creates a fresh scope inside an outer wizard whose back history is disabled 2ms
+ ✓ |wizard| src/wizard/navigation-prompter.test.ts > preserves optional client actions inside a navigation scope 2ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/wizard/setup.workspace-validation.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/wizard/setup.workspace-validation.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/wizard/setup.workspace-validation.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/wizard/setup.workspace-validation.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/wizard/setup.workspace-validation.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/wizard/setup.workspace-validation.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/wizard/setup.workspace-validation.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/wizard/setup.workspace-validation.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/wizard/setup.workspace-validation.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/wizard/setup.workspace-validation.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/wizard/setup.workspace-validation.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/wizard/setup.workspace-validation.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/wizard/setup.workspace-validation.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/wizard/setup.workspace-validation.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/wizard/setup.workspace-validation.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/wizard/setup.workspace-validation.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+
+ ✓ |wizard| src/wizard/setup.workspace-validation.test.ts > validates workspace prompt paths 151ms
+ ✓ |wizard| src/wizard/setup.workspace-validation.test.ts > reports filesystem inspection errors at the symlink target 3ms
+ ✓ |wizard| src/wizard/setup.migration-resources.test.ts > retains a completed memory import outcome when native registration cleanup fails 299ms
+ ✓ |wizard| src/wizard/setup.migration-resources.test.ts > retains advisory discovery metadata after native cleanup fails 134ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/wizard/setup.migration-resources.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/wizard/setup.migration-resources.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/wizard/setup.migration-resources.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/wizard/setup.migration-resources.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/wizard/setup.migration-resources.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/wizard/setup.migration-resources.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/wizard/setup.migration-resources.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/wizard/setup.migration-resources.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/wizard/setup.migration-resources.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/wizard/setup.migration-resources.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/wizard/setup.migration-resources.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/wizard/setup.migration-resources.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/wizard/setup.migration-resources.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/wizard/setup.migration-resources.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/wizard/setup.migration-resources.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/wizard/setup.migration-resources.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/wizard/setup.migration-resources.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+
+ ✓ |wizard| src/wizard/setup.migration-resources.test.ts > preserves an authority failure even when native registration cleanup also fails 103ms
+ ✓ |wizard| src/wizard/setup.migration-snapshot.test.ts > preserves persisted migration fingerprints across filesystem traversal changes 14ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/wizard/setup.gateway-service-offer.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/wizard/setup.gateway-service-offer.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/wizard/setup.gateway-service-offer.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/wizard/setup.gateway-service-offer.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+
+ ✓ |wizard| src/wizard/setup.gateway-service-offer.test.ts > canOfferGatewayServiceForOnboarding > offers the service on a durable install of a supported host 7ms
+ ✓ |wizard| src/wizard/setup.gateway-service-offer.test.ts > canOfferGatewayServiceForOnboarding > offers the service when running from npx 4ms
+ ✓ |wizard| src/wizard/setup.gateway-service-offer.test.ts > canOfferGatewayServiceForOnboarding > does not offer a service the installer would refuse 2ms
+ ✓ |wizard| src/wizard/setup.gateway-service-offer.test.ts > canOfferGatewayServiceForOnboarding > does not offer a service on platforms without a service manager 2ms
+ ✓ |wizard| src/wizard/setup.gateway-service-offer.test.ts > canOfferGatewayServiceForOnboarding > does not offer a service on Linux without user systemd 2ms
+ ✓ |wizard| src/wizard/i18n/index.test.ts > wizard i18n > resolves the zh_CN.UTF-8 CLI locale through translated setup copy 3ms
+ ✓ |wizard| src/wizard/i18n/index.test.ts > wizard i18n > resolves the zh-HK CLI locale through translated setup copy 2ms
+ ✓ |wizard| src/wizard/i18n/index.test.ts > wizard i18n > resolves the en_US.UTF-8 CLI locale through translated setup copy 3ms
+ ✓ |wizard| src/wizard/i18n/index.test.ts > wizard i18n > resolves the de_DE.UTF-8 CLI locale through translated setup copy 4ms
+ ✓ |wizard| src/wizard/i18n/index.test.ts > wizard i18n > uses English when every locale variable is blank 5ms
+ ✓ |wizard| src/wizard/i18n/index.test.ts > wizard i18n > falls back to English and interpolates params 4ms
+ ✓ |wizard| src/wizard/i18n/index.test.ts > wizard i18n > creates scoped setup translators without exporting a generic SDK t helper 3ms
+ ✓ |wizard| src/wizard/i18n/index.test.ts > wizard i18n > keeps shipped locale keys aligned with English 5ms
+ ✓ |wizard| src/wizard/clack-navigation-prompts.test.ts > navigation-aware select rendering > omits navigation copy when no move is available 6ms
+ ✓ |wizard| src/wizard/clack-navigation-prompts.test.ts > navigation-aware select rendering > renders compact back and forward guidance 4ms
+ ✓ |wizard| src/wizard/clack-navigation-prompts.test.ts > navigation-aware select rendering > renders only the available navigation action 3ms
+ ✓ |wizard| src/wizard/clack-prompter.process.test.ts > classic onboarding process > exits through wizard cancellation when Ctrl-D ends stdin at the first prompt 133ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/wizard/setup.finalize.service.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/wizard/setup.finalize.service.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/wizard/setup.finalize.service.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/wizard/setup.finalize.service.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/wizard/setup.finalize.service.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/wizard/setup.finalize.service.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/wizard/setup.finalize.service.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/wizard/setup.finalize.service.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/wizard/setup.finalize.service.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/wizard/setup.finalize.service.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/wizard/setup.finalize.service.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/wizard/setup.finalize.service.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/wizard/setup.finalize.service.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/wizard/setup.finalize.service.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/wizard/setup.finalize.service.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/wizard/setup.finalize.service.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/wizard/setup.finalize.service.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/wizard/setup.finalize.service.test.ts: retiring openclaw.devicePairSetupChanges
+
+ ✓ |wizard| src/wizard/setup.finalize.service.test.ts > ensureGatewayServiceForOnboarding > offers the existing-service menu for an installed but disabled unit 6ms
+
+ Test Files  20 passed (20)
+      Tests  236 passed (236)
+   Start at  03:04:04
+   Duration  22.29s (transform 51%, import 25%, tests 18%, setup 3%, worker 2%)
+
+[vitest-workers] verifying completed generation before cleanup
+[vitest-workers] retained completed compiler outputs for reuse
+receipt head=16541aa5a8ee81f1e505a414e2d21a758c43cbc2 config=test/vitest/vitest.wizard.config.ts files=src/wizard/clack-prompter.test.ts src/wizard/setup.finalize.test.ts src/wizard/session.test.ts src/wizard/setup.model-auth.test.ts src/wizard/setup.plugin-config.test.ts src/wizard/setup.default-agent.test.ts src/wizard/setup.completion.test.ts src/wizard/setup.migration-import.test.ts src/wizard/setup.post-install-migration.test.ts src/wizard/setup.memory-import.test.ts src/wizard/navigation-prompter.test.ts src/wizard/setup.workspace-validation.test.ts src/wizard/setup.memory-import.owner.test.ts src/wizard/setup.migration-resources.test.ts src/wizard/setup.migration-snapshot.test.ts src/wizard/setup.gateway-service-offer.test.ts src/wizard/i18n/index.test.ts src/wizard/clack-navigation-prompts.test.ts src/wizard/clack-prompter.process.test.ts src/wizard/setup.finalize.service.test.ts
+VERDICT PASS [Test Files 20 passed (20); Tests 236 passed (236)]
+# exit=0

@@ -1,0 +1,63 @@
+# ctl ref=cand sha=a329243bd1aa4e8677517a5eaf4a67aa30ca8647 file=src/config/zod-schema.core.test.ts run=9 mode=node26121 start=2026-11-22T10:27:51Z
+# files: 1 runwt=/home/figs/classify-129388-s4nr/cand-a329243b (45 chars) link=<present>
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-s4nr-XzteOt/home TMPDIR=/tmp/oc-s4nr-XzteOt/tmp 
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.runtime-config.config.ts
+include-file: /tmp/oc-s4nr-XzteOt/tmp/oc-focused.759BAb/include.json
+include-file-contents:
+  [
+    "src/config/zod-schema.core.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-s4nr-XzteOt/tmp/oc-focused.759BAb/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.runtime-config.config.ts --maxWorkers=1 src/config/zod-schema.core.test.ts
+logs: /tmp/oc-s4nr-XzteOt/tmp/oc-focused.759BAb
+
+ RUN  v5.0.5 /home/figs/classify-129388-s4nr/cand-a329243b
+
+ ✓ |runtime-config| src/config/zod-schema.core.test.ts > config schema regressions > accepts historyLimit: 0 2ms
+ ✓ |runtime-config| src/config/zod-schema.core.test.ts > config schema regressions > accepts markdown table block mode 1ms
+ ✓ |runtime-config| src/config/zod-schema.core.test.ts > config schema regressions > accepts string-array media provider options 6ms
+ ✓ |runtime-config| src/config/zod-schema.core.test.ts > config schema regressions > rejects invalid cron.sessionRetention durations 2ms
+ ✓ |runtime-config| src/config/zod-schema.core.test.ts > config schema regressions > round-trips desktop host config and rejects unsafe or unknown fields 1ms
+ ✓ |runtime-config| src/config/zod-schema.core.test.ts > config schema regressions > round-trips the Templates Labs visibility setting 3ms
+ × |runtime-config| src/config/zod-schema.core.test.ts > config schema regressions > projects schema-owned field documentation into the public schema and UI hints 115ms
+   → expected { label: 'Templates', …(2) } to match object { label: 'Templates', …(1) }
+(1 matching property omitted from actual)
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |runtime-config| src/config/zod-schema.core.test.ts > config schema regressions > projects schema-owned field documentation into the public schema and UI hints
+AssertionError: expected { label: 'Templates', …(2) } to match object { label: 'Templates', …(1) }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "help": StringContaining "default: false",
++   "help": "Allow ClawHub discovery and one-way Add through the web app and Gateway (default: true). Retained as an advanced config-only opt-out; existing false values remain off. Installation still requires its normal authority and consent. Existing agents keep running while this is off.",
+    "label": "Templates",
+  }
+
+ ❯ src/config/zod-schema.core.test.ts:67:74
+     65|       help: "Absolute path to the VNC password file. Omit on macOS to …
+     66|     });
+     67|     expect(response.uiHints["gateway.controlUi.experimental.templates"…
+       |                                                                          ^
+     68|       label: "Templates",
+     69|       help: expect.stringContaining("default: false"),
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 6 passed (7)
+   Start at  02:27:53
+   Duration  1.78s (worker 53%, transform 22%, import 12%, tests 10%, setup 4%)
+
+[test] FAILED (exit 1)
+receipt head=a329243bd1aa4e8677517a5eaf4a67aa30ca8647 config=test/vitest/vitest.runtime-config.config.ts files=src/config/zod-schema.core.test.ts
+failing-tests:
+ × |runtime-config| src/config/zod-schema.core.test.ts > config schema regressions > projects schema-owned field documentation into the public schema and UI hints 115ms
+VERDICT RED [Test Files 1 failed (1); Tests 1 failed | 6 passed (7)]
+# exit=1

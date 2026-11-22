@@ -1,0 +1,123 @@
+# ctl ref=prior sha=16541aa5a8ee81f1e505a414e2d21a758c43cbc2 file=src/gateway/server-methods/sessions.dispatch.device.test.ts run=2 mode=node26121+CI+GITHUB_ACTIONS+npm_command+OPENCLAW_TMP_DIR+rootlen94 start=2026-11-22T11:18:34Z
+# files: 1 runwt=/home/figs/classify-129388-s4nr/lr/ci-batch-work-prior-00000000000000000000000000000/shard-1-x (94 chars) link=<present>
+# env: PATH=/home/figs/.nvm/versions/node/v26.12.1/bin:$PATH OPENCLAW_VITEST_RUNTIME=node HOME=/tmp/oc-s4nr-zagNzQ/home TMPDIR=/tmp/oc-s4nr-zagNzQ/tmp CI=true GITHUB_ACTIONS=true npm_command=exec OPENCLAW_TMP_DIR=/tmp/oc-s4nr-ci/openclaw-tmp (timeout 570s)
+planner: scripts/test-projects.test-support.mts createVitestRunSpecs (what pnpm test <file> runs)
+config: test/vitest/vitest.gateway.config.ts
+include-file: /tmp/oc-s4nr-zagNzQ/tmp/oc-focused.4zKEeg/include.json
+include-file-contents:
+  [
+    "src/gateway/server-methods/sessions.dispatch.device.test.ts"
+  ]
+env: FORCE_COLOR=<unset> OPENCLAW_VITEST_INCLUDE_FILE=/tmp/oc-s4nr-zagNzQ/tmp/oc-focused.4zKEeg/include.json umask=0022
+argv: node scripts/run-vitest.mjs run --config test/vitest/vitest.gateway.config.ts --maxWorkers=1 src/gateway/server-methods/sessions.dispatch.device.test.ts
+logs: /tmp/oc-s4nr-zagNzQ/tmp/oc-focused.4zKEeg
+
+ RUN  v5.0.5 /home/figs/classify-129388-s4nr/lr/ci-batch-work-prior-00000000000000000000000000000/shard-1-x
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js (48:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/resolve-evaluate-options.js:48:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m48 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js (6:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-create.js:6:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m6 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js (11:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/@mdx-js+mdx@3.1.1_supports-color@10.2.2/node_modules/@mdx-js/mdx/lib/util/estree-util-is-declaration.js:11:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m11 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js (9:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js" may not be preserved when bundling.
+   [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/text.js:9:1 [38;5;246m][0m
+   [38;5;246m│[0m
+ [38;5;246m9 │[0m ''
+ [38;5;240m  │[0m ─┬  
+ [38;5;240m  │[0m  ╰── module level directive may not be preserved
+ [38;5;240m  │[0m 
+ [38;5;240m  │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m───╯[0m
+
+node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js (12:0) [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "" in "node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js" may not be preserved when bundling.
+    [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m node_modules/.pnpm/hast-util-to-estree@3.1.3_supports-color@10.2.2/node_modules/hast-util-to-estree/lib/handlers/comment.js:12:1 [38;5;246m][0m
+    [38;5;246m│[0m
+ [38;5;246m12 │[0m ''
+ [38;5;240m   │[0m ─┬  
+ [38;5;240m   │[0m  ╰── module level directive may not be preserved
+ [38;5;240m   │[0m 
+ [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+[38;5;246m────╯[0m
+
+[vitest-workers] prepared 95ebebf5a33a in 28755ms (15835 inputs, 25756 outputs)
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > admits a named native device profile with admin authority and preserves its provider snapshot 1869ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > synthesizes the core device-provider target for a connected session-capable node 1761ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > reports live unpaired refusal instead of stale full capacity 195ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > reports live reconnected refusal instead of stale full capacity 148ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > rejects automatic selection combined with an explicit target: {"autoDevice":true,"deviceId":"device-1"} 5ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > spreads six concurrent Auto dispatches across three two-slot nodes 2107ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > explains how to recover when no paired node can host sessions 168ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > tries the next host when the first disconnects before dispatch 1508ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > tries the next host when the first fills its worker slots before dispatch 1521ms
+(node:184) [DEP_PLUGIN_SDK] DeprecationWarning: Plugin SDK: get is deprecated; use getAsync instead. Synchronous reads use committed in-process receipts; cold or inventory reads require the async replacement. Removal requires an announced ordinary stable release window.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > rotates the first host only after cleanup when it disconnects after dispatch starts 2366ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > rotates the first host only after cleanup when it loses capacity and cleanup succeeds 2239ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > automatic paired-device selection > rotates the first host only after cleanup when it loses capacity and cleanup fails 2213ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > runtime-owned paired-node command authority > rejects a missing required paired-node command before dispatch 575ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > runtime-owned paired-node command authority > rejects a declared but denied required paired-node command before dispatch 216ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > runtime-owned paired-node command authority > dispatches an opted-in runtime to a paired device 1591ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > runtime-owned paired-node command authority > rejects a runtime without opt-in to a paired device 195ms
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > rejects a full node before mutating placement or provisioning 768ms
+stderr | unknown test
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.sqliteWalCheckpointListeners
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.agentDatabaseReaders
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateSnapshotOwners
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.agentDatabaseBorrowers
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.agentDatabaseLifecycle
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateReadWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.sqliteWorkerBroker
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.devicePairingPublications
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.devicePairSetupChanges
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.sharedStateWorkerOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.personal-model-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.auth-profile-credentials
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.repository-workspace
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.github-publication
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.plugin-state
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.pluginStatePublication
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.sessionDiskBudgetWorkers
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.sessionStateNotices
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.pluginStateNamespaceOwner
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.exec-approvals
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.workspace-state
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.stateDomainPublication.sandbox-registry
+[sqlite-test-lifecycle] src/gateway/server-methods/sessions.dispatch.device.test.ts: retiring openclaw.sessionGroupCatalog
+
+ ✓ |gateway-methods| src/gateway/server-methods/sessions.dispatch.device.test.ts > sessions.dispatch device targets > rejects a disconnected node before mutating placement or provisioning 726ms
+
+ Test Files  1 passed (1)
+      Tests  18 passed (18)
+   Start at  03:18:37
+   Duration  61.70s (transform 60%, tests 33%, import 6%, worker 1%)
+
+[vitest-workers] verifying completed generation before cleanup
+receipt head=16541aa5a8ee81f1e505a414e2d21a758c43cbc2 config=test/vitest/vitest.gateway.config.ts files=src/gateway/server-methods/sessions.dispatch.device.test.ts
+VERDICT PASS [Test Files 1 passed (1); Tests 18 passed (18)]
+# exit=0
