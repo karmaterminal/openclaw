@@ -1,0 +1,22 @@
+[
+  "src/wizard/clack-prompter.test.ts",
+  "src/wizard/setup.finalize.test.ts",
+  "src/wizard/session.test.ts",
+  "src/wizard/setup.model-auth.test.ts",
+  "src/wizard/setup.plugin-config.test.ts",
+  "src/wizard/setup.default-agent.test.ts",
+  "src/wizard/setup.completion.test.ts",
+  "src/wizard/setup.migration-import.test.ts",
+  "src/wizard/setup.post-install-migration.test.ts",
+  "src/wizard/setup.memory-import.test.ts",
+  "src/wizard/navigation-prompter.test.ts",
+  "src/wizard/setup.workspace-validation.test.ts",
+  "src/wizard/setup.memory-import.owner.test.ts",
+  "src/wizard/setup.migration-resources.test.ts",
+  "src/wizard/setup.migration-snapshot.test.ts",
+  "src/wizard/setup.gateway-service-offer.test.ts",
+  "src/wizard/i18n/index.test.ts",
+  "src/wizard/clack-navigation-prompts.test.ts",
+  "src/wizard/clack-prompter.process.test.ts",
+  "src/wizard/setup.finalize.service.test.ts"
+]

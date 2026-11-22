@@ -6,9 +6,11 @@ set -euo pipefail
 R=/home/figs/classify-129388-s4nr
 E=/home/figs/flesh_beast_best_beast/source/WORKTREES/openclaw-129388-stage4-new-reds-reruns/lane-evidence/129388-stage4-new-reds-reruns
 umask 022
-mkdir -p "$E/controls" "$E/tools" "$E/lists" "$E/ci"
+mkdir -p "$E/controls" "$E/tools" "$E/lists" "$E/ci" "$E/samples" "$E/probe-blobs"
 cp -p "$R"/controls/* "$E/controls/"
-cp -p "$R"/tools/*.sh "$E/tools/"
+cp -p "$R"/tools/*.sh "$R"/tools/*.py "$E/tools/"
+cp -p "$R"/samples/* "$E/samples/" 2>/dev/null || true
+cp -p "$R"/probe-blobs/hashes.txt "$E/probe-blobs/"
 cp -p "$R"/lists/* "$E/lists/"
 printf '*.log -text\n' >"$E/.gitattributes"
 {

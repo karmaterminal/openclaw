@@ -1,0 +1,13 @@
+src/gateway/server-methods/chat-send-mentions.test.ts
+src/gateway/server-methods/sessions-mutations.owner.test.ts
+src/gateway/server-methods/chat-send-session-binding.test.ts
+src/gateway/server-methods/control-ui.test.ts
+src/gateway/server-methods/approval-shared.test.ts
+src/gateway/server-methods/chat-send-direct-followup.test.ts
+src/gateway/server-methods/templates-add-authority.integration.test.ts
+src/gateway/server-methods/artifacts.images.test.ts
+src/gateway/server-methods/sessions.abort-embedded.test.ts
+src/gateway/server-methods/system-agent-setup-resolution.test.ts
+src/gateway/server-methods/chat-send-pre-admission.test.ts
+src/gateway/server-methods/chat.abort-persistence.test.ts
+src/gateway/server-methods/sessions.dispatch.device.test.ts

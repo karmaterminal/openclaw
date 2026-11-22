@@ -14,7 +14,7 @@ case "$ref" in
   cand) wt=$R/cand-a329243b donor=$WT/openclaw-129388-stage4-pins-deletion-fix ;;
   prior) wt=$R/prior-16541aa5 donor=$WT/openclaw-129388-final-fix ;;
   up) wt=$R/up-5a3e6b1c donor=$WT/openclaw-129388-stage4-config-readiness-up ;;
-  probe) wt=$R/probe donor=$WT/openclaw-129388-stage4-pins-deletion-fix ;; # bisect probe (lock 9608b4f2); SHA in log + row
+  probe) wt=$R/probe donor=$WT/openclaw-129388-stage4-absorb ;; # CI product SHA 8fbf29f2 (lock 9608b4f2); SHA in log + row
   *) echo "ref must be cand|prior|up|probe" >&2; exit 2 ;;
 esac
 iso=/home/figs/flesh_beast_best_beast/source/frond-scribe/skills/pr-drift-cure-gates/run-isolated-from-live-gateways.sh
