@@ -18,6 +18,7 @@ import { withAdminIngress } from "../../channels/message-access/operator-authori
 import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import { captureQueuedOperatorRecoverySource } from "../../gateway/operator-run-recovery-source.js";
 import { withRecovery } from "../../gateway/operator-run-recovery.test-support.js";
+import type { OperatorScope } from "../../gateway/operator-scopes.js";
 import type { GatewayRequestContext } from "../../gateway/server-methods/types.js";
 import { removePairedDevice } from "../../infra/device-pairing.js";
 import { getPluginRuntimeGatewayRequestScope } from "../../plugins/runtime/gateway-request-scope.js";
@@ -79,8 +80,8 @@ afterEach(() => {
   observed.failed.length = 0;
 });
 
-const ADMIN = ["operator.admin"];
-const MEMBER = ["operator.read", "operator.write"];
+const ADMIN: OperatorScope[] = ["operator.admin"];
+const MEMBER: OperatorScope[] = ["operator.read", "operator.write"];
 // The generic refusal upstream's admission raises for a changed identity or credential.
 const AUTHORITY_CHANGED = "Restart recovery operator authority changed; start a new user turn.";
 
