@@ -5,10 +5,11 @@
 // scopes, and refuses it only where upstream refuses a start (🌊 and 🩸's wake-admission ruling).
 // These cases arm the real continue_work tool under a channel operator's and a scheduled
 // operator's own authority, change that authority after the turn, then run the real wake.
-// Real: the channel ingress and host context, the scheduled source restore, the continue_work
-// tool, the in-process custody capture, the wake's start admission and the in-process Gateway
-// dispatch the wake's tools use. Observed only: the turn the wake would start and the failed row
-// it would write.
+// Real: the channel ingress and host context, the saved-source restore, the continue_work tool,
+// the in-process custody capture, the wake's start admission, and an in-process Gateway dispatch
+// under the scope the wake starts its turn in. Observed only: the turn the wake would start and the
+// failed row it would write. The real turn's tools under a narrowed wake are proven in
+// server.continuation-finished-child-wake.product.test.ts.
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, expect, it, vi } from "vitest";
 import type { AdmittedRunOperatorAuthority } from "../../agents/admitted-run-context.js";
@@ -28,6 +29,7 @@ import { changeCanonicalUserChannelIdentity } from "../../state/user-channel-ide
 import { mergeProfiles, setUserProfileRole } from "../../state/user-profile-writes.worker.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
 import { getCommandOwnerAuthority } from "../command-owner-authority.js";
+import { getRequesterProfile } from "../requester-profile.js";
 import type { ContinueWorkRequest } from "./types.js";
 import type { PendingContinuationWork } from "./work-flow-state.js";
 import {
@@ -47,7 +49,7 @@ const observed = vi.hoisted(() => ({
 vi.mock("./work-dispatch-execution.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./work-dispatch-execution.js")>()),
   executePendingContinuationWork: async () => {
-    // The scope the wake's turn and its tools run in (what its reply runtime reads).
+    // The request scope the wake starts its turn in.
     const client = getPluginRuntimeGatewayRequestScope()?.client;
     const admin = await dispatchGatewayMethodInProcess("exec.approvals.get", {}).then(
       () => "allowed",
@@ -185,6 +187,8 @@ it.for([
   { source: "live", change: "role demoted", expected: { dispatched: MEMBER } },
   // It needs its profile to exist, not every binding of it.
   { source: "live", change: "identity unlinked", expected: { dispatched: ADMIN } },
+  // A role widened after arming never widens the wake past the scopes it was armed with.
+  { source: "live", change: "role promoted", expected: { dispatched: MEMBER } },
   {
     source: "live",
     change: "agent excluded",
@@ -216,19 +220,20 @@ it.for([
         cfg.agents = { entries: { main: { model: "fixture/permitted" } } };
         const roles = expectDefined(cfg.gateway?.roles, "configured channel roles");
         const adminRole = expectDefined(roles.definitions.admin, "administrator role");
+        const memberRole = expectDefined(roles.definitions.member, "member role");
+        // A model policy past the durable recovery bound keeps the live authority itself.
+        const modelPolicy = {
+          sourceAgent: "main",
+          allow: ["fixture/*"],
+          deny: Array.from({ length: 257 }, (_, index) => `fixture/blocked-${index}/*`),
+        };
         await activatePolicy({
           roles: {
             ...roles,
             definitions: {
               ...roles.definitions,
-              admin: {
-                ...adminRole,
-                modelPolicy: {
-                  sourceAgent: "main",
-                  allow: ["fixture/*"],
-                  deny: Array.from({ length: 257 }, (_, index) => `fixture/blocked-${index}/*`),
-                },
-              },
+              admin: { ...adminRole, modelPolicy },
+              member: { ...memberRole, modelPolicy },
               // Each leaves exactly one admission rule to refuse the wake.
               "other-agent": { scopes: MEMBER, agents: ["other"], sessions: { others: "view" } },
               suspended: { scopes: [], agents: "*", sessions: { others: "none" } },
@@ -236,11 +241,17 @@ it.for([
           },
         });
       }
+      if (change === "role promoted") {
+        setUserProfileRole(admin.profile.id, "member");
+      }
       const turn = await context(admin.identity.senderId);
+      // The channel turn's own operator authority, as reply preparation pins it.
       const authority = expectDefined(
-        getCommandOwnerAuthority(turn)?.operatorAuthority,
+        getRequesterProfile(turn)?.operatorAuthority ??
+          getCommandOwnerAuthority(turn)?.operatorAuthority,
         "channel operator authority",
       );
+      expect(authority.scopes).toEqual(change === "role promoted" ? MEMBER : ADMIN);
       expect(captureQueuedOperatorRecoverySource(authority)?.kind).toBe(
         source === "saved" ? "channel" : "unavailable",
       );
@@ -254,6 +265,8 @@ it.for([
 
       if (change === "role demoted") {
         setUserProfileRole(admin.profile.id, "member");
+      } else if (change === "role promoted") {
+        setUserProfileRole(admin.profile.id, "admin");
       } else if (change === "identity unlinked") {
         await changeCanonicalUserChannelIdentity("unlink", admin.profile.id, admin.identity);
       } else if (change === "agent excluded") {
@@ -277,7 +290,7 @@ it.for([
   ({ change, expected }) =>
     withRecovery(async (fixture, stateDir, profile) => {
       setRuntimeConfigSnapshot({});
-      // A scheduled run's authority: restoreCronOperatorSource restores its saved source here.
+      // A scheduled run's authority, restored from its saved source as its occurrence started.
       const scheduled = expectDefined(await fixture.restore(), "scheduled operator authority");
       try {
         const { retained, wake } = await armContinueWork({
