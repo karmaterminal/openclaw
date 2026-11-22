@@ -1,12 +1,14 @@
-// Continuation (karmaterminal): a continue_work wake re-checks its retained operator custody once
-// (🌊's O4 ruling on #129388). A started run keeps its admission fixed (upstream #201377); the wake
-// is a new start, so it admits the retained source against the owner's current policy once, through
-// the custody's runWithRequester (upstream #202513). These cases arm the real continue_work tool
-// under a channel operator's and a scheduled operator's own authority, change that authority after
-// the turn, then run the real wake.
+// Continuation (karmaterminal): a continue_work wake is a new start (🌊's O4 ruling on #129388). A
+// started run keeps its admission fixed (upstream #201377); the wake admits the retained source
+// once, against the owner's current policy, through the custody's runWithRequester (upstream
+// #202513). That admission narrows the source to its current role, never past the custody's own
+// scopes, and refuses it only where upstream refuses a start (🌊 and 🩸's wake-admission ruling).
+// These cases arm the real continue_work tool under a channel operator's and a scheduled
+// operator's own authority, change that authority after the turn, then run the real wake.
 // Real: the channel ingress and host context, the scheduled source restore, the continue_work
-// tool, the in-process custody capture and the wake. Observed only: the turn the wake would start
-// and the failed row it would write.
+// tool, the in-process custody capture, the wake's start admission and the in-process Gateway
+// dispatch the wake's tools use. Observed only: the turn the wake would start and the failed row
+// it would write.
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, expect, it, vi } from "vitest";
 import type { AdmittedRunOperatorAuthority } from "../../agents/admitted-run-context.js";
@@ -19,8 +21,10 @@ import { withRecovery } from "../../gateway/operator-run-recovery.test-support.j
 import type { GatewayRequestContext } from "../../gateway/server-methods/types.js";
 import { removePairedDevice } from "../../infra/device-pairing.js";
 import { getPluginRuntimeGatewayRequestScope } from "../../plugins/runtime/gateway-request-scope.js";
+import { trackAsyncWork } from "../../shared/async-work-scope.js";
 import { changeCanonicalUserChannelIdentity } from "../../state/user-channel-identity-operations.js";
-import { setUserProfileRole } from "../../state/user-profile-writes.worker.js";
+import { mergeProfiles, setUserProfileRole } from "../../state/user-profile-writes.worker.js";
+import { ensureProfileForEmail } from "../../state/user-profiles.js";
 import { getCommandOwnerAuthority } from "../command-owner-authority.js";
 import type { ContinueWorkRequest } from "./types.js";
 import type { PendingContinuationWork } from "./work-flow-state.js";
@@ -31,15 +35,28 @@ import {
 } from "./work-operator-continuation.js";
 
 const observed = vi.hoisted(() => ({
-  turns: [] as Array<{ profileId?: string }>,
+  turns: [] as Array<{
+    authority: AdmittedRunOperatorAuthority | undefined;
+    scopes: readonly string[] | undefined;
+    admin: string;
+  }>,
   failed: [] as Array<{ summary: string; options: unknown[] }>,
 }));
 vi.mock("./work-dispatch-execution.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./work-dispatch-execution.js")>()),
   executePendingContinuationWork: async () => {
+    // The scope the wake's turn and its tools run in (what its reply runtime reads).
+    const client = getPluginRuntimeGatewayRequestScope()?.client;
+    const { dispatchGatewayMethodInProcess } =
+      await import("../../gateway/server-plugin-in-process-dispatch.js");
+    const admin = await dispatchGatewayMethodInProcess("exec.approvals.get", {}).then(
+      () => "allowed",
+      (error: unknown) => (error instanceof Error ? error.message : String(error)),
+    );
     observed.turns.push({
-      profileId:
-        getPluginRuntimeGatewayRequestScope()?.client?.internal?.operatorRunAuthority?.profileId,
+      authority: client?.internal?.operatorRunAuthority,
+      scopes: client?.connect.scopes,
+      admin,
     });
     return { kind: "dispatched" as const };
   },
@@ -61,6 +78,13 @@ afterEach(() => {
   observed.turns.length = 0;
   observed.failed.length = 0;
 });
+
+const ADMIN = ["operator.admin"];
+const MEMBER = ["operator.read", "operator.write"];
+// The generic refusal upstream's admission raises for a changed identity or credential.
+const AUTHORITY_CHANGED = "Restart recovery operator authority changed; start a new user turn.";
+
+type Expected = { dispatched: readonly string[] } | { refused: string };
 
 /** One turn's continue_work call under the producer's authority, and the wake it armed. */
 async function armContinueWork(params: {
@@ -112,39 +136,82 @@ async function armContinueWork(params: {
 
 function expectWake(
   result: Awaited<ReturnType<typeof executePendingWorkWithOperatorContinuation>>,
-  profileId: string,
-  refused: boolean,
+  arming: { profileId: string; retained: AdmittedRunOperatorAuthority },
+  expected: Expected,
 ) {
-  if (refused) {
-    // Refused before a turn starts, and the failed row owes no notice.
+  if ("refused" in expected) {
+    // Refused before a turn starts: no execution, no tool dispatch, and no notice owed.
     expect(result).toEqual({ kind: "failed" });
     expect(observed.turns).toEqual([]);
     expect(observed.failed).toEqual([
-      { summary: expect.stringContaining("Retained operator authority revoked"), options: [] },
+      {
+        summary: expect.stringContaining(
+          `Retained operator authority revoked: ${expected.refused}`,
+        ),
+        options: [],
+      },
     ]);
-  } else {
-    expect(result).toEqual({ kind: "dispatched" });
-    expect(observed.turns).toEqual([{ profileId }]);
-    expect(observed.failed).toEqual([]);
+    return;
   }
+  expect(result).toEqual({ kind: "dispatched" });
+  expect(observed.failed).toEqual([]);
+  expect(observed.turns).toHaveLength(1);
+  const turn = expectDefined(observed.turns[0], "the wake's turn");
+  const authority = expectDefined(turn.authority, "the wake's admitted operator authority");
+  // Admitted at start for the arming requester, not the arming turn's authority reused.
+  expect(authority).not.toBe(arming.retained);
+  expect(authority.profileId).toBe(arming.profileId);
+  expect(authority.scopes).toEqual(expected.dispatched);
+  expect(turn.scopes).toEqual(expected.dispatched);
+  // The wake's tools hold exactly the admitted scopes: admin only where admission kept it.
+  expect(turn.admin).toEqual(
+    expected.dispatched.includes("operator.admin")
+      ? "allowed"
+      : expect.stringContaining("missing scope: operator.admin"),
+  );
 }
 
-// The custody restores a saved channel source; a source past its recovery bound keeps the live
-// channel authority itself (upstream's "preserves live channel work at recovery bounds").
-it.for(
-  (["saved", "live"] as const).flatMap((source) =>
-    (["authorized", "role demoted", "identity unlinked"] as const).map((change) => ({
-      source,
-      change,
-    })),
-  ),
-)(
-  "a channel operator's continue_work wake checks the $source source live ($change)",
-  ({ source, change }) =>
+// The custody restores a saved channel source at the wake's start; a source past its recovery
+// bound keeps the live channel authority itself (upstream's "preserves live channel work at
+// recovery bounds"), which a start re-admits as a live profile-backed source.
+it.for([
+  { source: "saved", change: "authorized", expected: { dispatched: ADMIN } },
+  // Every profile authority change clears its saved channel authorizations, and an unlinked
+  // identity has none: the saved source resolves no linked identity, so its start is refused.
+  { source: "saved", change: "role demoted", expected: { refused: AUTHORITY_CHANGED } },
+  { source: "saved", change: "identity unlinked", expected: { refused: AUTHORITY_CHANGED } },
+  { source: "live", change: "authorized", expected: { dispatched: ADMIN } },
+  // A live profile-backed source re-reads its current role: member scopes, never admin.
+  { source: "live", change: "role demoted", expected: { dispatched: MEMBER } },
+  // It needs its profile to exist, not every binding of it.
+  { source: "live", change: "identity unlinked", expected: { dispatched: ADMIN } },
+  {
+    source: "live",
+    change: "agent excluded",
+    expected: { refused: 'Your operator role cannot create sessions for agent "main".' },
+  },
+  {
+    source: "live",
+    change: "role without scopes",
+    expected: {
+      refused:
+        "Gateway access is not active for this requester; ask an administrator to restore access.",
+    },
+  },
+  {
+    source: "live",
+    change: "profile merged away",
+    expected: { refused: "user profile not found" },
+  },
+] as const)(
+  "a channel operator's continue_work wake admits the $source source at start ($change)",
+  ({ source, change, expected }) =>
     withAdminIngress(async ({ admins, cfg, context, gateway, activatePolicy }) => {
       const admin = expectDefined(admins[0], "linked channel operator");
-      // As a production Gateway context does, resolve the owner a detached capture restores against.
+      // As a production Gateway context does, resolve the owner a detached capture restores against,
+      // and track the in-process requests the wake's tools dispatch.
       gateway.resolveGatewayContext = () => gateway;
+      gateway.trackExecution = trackAsyncWork;
       if (source === "live") {
         cfg.agents = { entries: { main: { model: "fixture/permitted" } } };
         const roles = expectDefined(cfg.gateway?.roles, "configured channel roles");
@@ -162,6 +229,9 @@ it.for(
                   deny: Array.from({ length: 257 }, (_, index) => `fixture/blocked-${index}/*`),
                 },
               },
+              // Each leaves exactly one admission rule to refuse the wake.
+              "other-agent": { scopes: MEMBER, agents: ["other"], sessions: { others: "view" } },
+              suspended: { scopes: [], agents: "*", sessions: { others: "none" } },
             },
           },
         });
@@ -186,14 +256,25 @@ it.for(
         setUserProfileRole(admin.profile.id, "member");
       } else if (change === "identity unlinked") {
         await changeCanonicalUserChannelIdentity("unlink", admin.profile.id, admin.identity);
+      } else if (change === "agent excluded") {
+        setUserProfileRole(admin.profile.id, "other-agent");
+      } else if (change === "role without scopes") {
+        setUserProfileRole(admin.profile.id, "suspended");
+      } else if (change === "profile merged away") {
+        mergeProfiles(admin.profile.id, ensureProfileForEmail("successor@example.test").id);
       }
-      expectWake(await wake(), admin.profile.id, change !== "authorized");
+      expectWake(await wake(), { profileId: admin.profile.id, retained }, expected);
     }),
 );
 
-it.each(["authorized", "role changed", "device removed"] as const)(
-  "a scheduled operator's continue_work wake checks the restored source live (%s)",
-  (change) =>
+it.for([
+  { change: "authorized", expected: { dispatched: ADMIN } },
+  // No role is configured, so the new assignment restricts nothing and the device keeps admin.
+  { change: "role changed", expected: { dispatched: ADMIN } },
+  { change: "device removed", expected: { refused: AUTHORITY_CHANGED } },
+] as const)(
+  "a scheduled operator's continue_work wake admits the restored source at start ($change)",
+  ({ change, expected }) =>
     withRecovery(async (fixture, stateDir, profile) => {
       setRuntimeConfigSnapshot({});
       // A scheduled run's authority: restoreCronOperatorSource restores its saved source here.
@@ -216,7 +297,7 @@ it.each(["authorized", "role changed", "device removed"] as const)(
           // Upstream #202513: a start reads the paired-device record, not the revocation index.
           expect(await removePairedDevice("recovery-device", stateDir)).not.toBeNull();
         }
-        expectWake(await wake(), profile.id, change !== "authorized");
+        expectWake(await wake(), { profileId: profile.id, retained }, expected);
       } finally {
         scheduled.release();
       }
