@@ -264,6 +264,7 @@ function expectChildUnderElector(launch: ChildLaunch | undefined, profileId: str
   expect(authority?.profileId).toBe(profileId);
   expect(authority?.scopes).toEqual(["operator.write"]);
   expect(launch?.client.connect.scopes).not.toContain("operator.admin");
+  expect(launch?.admin).toEqual(expect.stringContaining("missing scope: operator.admin"));
 }
 
 async function settledDelegate(recordId: string) {
