@@ -1,0 +1,178 @@
+## Evidence
+
+**What this PR solves.** Persistent agents act only when something prompts
+them, and what survives compaction is whatever the summarizer kept. This PR
+lets a session elect its own next turn (`continue_work`), send work to
+background sub-agents whose results return to it (`continue_delegate`), and ask
+for compaction once it has saved its state (`request_compaction`). It is
+designed so that accepted work survives restart, compaction and session
+rollover. The checks below cover regressions at this exact head; its live
+behavior proofs are still pending (see the end of this section).
+
+**Head checked:** `a329243bd1aa4e8677517a5eaf4a67aa30ca8647`, which carries
+upstream `main` at `5a3e6b1cb09bb886c4f9760d5d155353131e823a`. It
+fast-forwards the previous head, `16541aa5`, by 11 commits: a merge of upstream
+`main` (473 upstream commits past `1129d4c0`, 24 conflicting paths resolved),
+three fixes for merge semantics, one product fix (below), and six updates to
+tests, generated files and recorded budgets. "The intermediate candidate" below
+means `8fbf29f2`, this head without its last two commits, which this PR never
+presented.
+
+**Result: not green, and no failing test is attributable to this change.**
+
+- **Full CI run** (the fork's Mode-B, run `45008617882`, 2026-11-22): 257,852
+  tests passed and 117 failed. The failed count includes confirmation retries;
+  72 failures are deterministic. All 72 failing tests (23 files) are classified:
+  - 24 tests in 8 files also fail at upstream. Six of them were reproduced at
+    upstream `5a3e6b1c`; the other 18 were reproduced at upstream `1129d4c0`
+    during an earlier head's classification.
+  - 48 tests in 15 files fail because of the CI host environment, for example
+    no Chromium, no systemd user bus, a 64 MiB `/dev/shm`, no `bun` or
+    `setfacl`, a fixture guard that stops at the host's dirty-memory level, or
+    a checkout path long enough to overflow one `exec` argument. Three of these
+    tests (2 files) have no reproduced trigger.
+- **One failure found at the intermediate candidate is fixed here.** Its full
+  CI run failed upstream's agent-deletion test from #203076
+  (`server.agents.config-readiness.test.ts`, "finishes agent deletion when
+  personal pins change during cleanup preparation"). This branch takes the
+  maintenance pins snapshot after the preserve providers prepare (`abc9ce5b`),
+  so a pin written during that preparation no longer refused the deletion
+  attempt. `bd709979` restores the refusal for agent deletion only; automatic
+  maintenance keeps its ordering. Upstream's test is unchanged. It and a new
+  test for a pin written while a provider prepares fail with only the fix
+  reverted, on Bun and Node 24, and pass with it. Both pass in this run.
+- **Two shards hit the batch time limit, so parts of this run are unproved:**
+  - `extension-database-workers` was cut at 5,239 s, as in every run so far,
+    and is **unproved at this head**. Its output before the cut covers 414 test
+    files, about half of the shard, with one failing test,
+    `extensions/tlon/src/monitor/index.test.ts`, which also fails at upstream
+    `1129d4c0`.
+  - `compact-large-30` completed all 5 of its sub-shards in its first attempt.
+    Its one failure there was a Vitest worker killed with SIGKILL while running
+    `src/gateway/server-http.event-loop-health.test.ts`, an environment row
+    classified at the earlier heads (no reproduced trigger; it passes locally at
+    an earlier candidate and at upstream `1129d4c0`). The shard retried, hit
+    the same kill in the same file, and the batch limit cut the retry at
+    5,338 s.
+
+  Neither shard wrote a summary, so their tests are not in the totals above.
+- **Static checks:** 40 of 41 pass. The failure is the baseline-ratchet row,
+  which hit its 20-minute limit. CI runs the ratchets against the fork's `main`
+  (`7ce2d10e`), not against upstream:
+  - **session-identity** reports 31 files over its allowlist. Run locally
+    against upstream `5a3e6b1c`, it reports the same 31 files as at the previous
+    head, so the excess comes from this branch's changes. It is unchanged and
+    open for review.
+  - **test-lines** was stopped by the row's limit before it reported. Run
+    locally against upstream `5a3e6b1c`, this head passes it: +114,436 lines
+    against an allowance of 114,317 + 400.
+  - The other 10 ratchets pass, in CI and locally.
+- **Focused checks at this head:** core, test and scripts type checks are
+  clean. The full type-aware lint reports the same findings as upstream, apart
+  from one line count in a file that already fails there. There are no import
+  cycles, and the plugin-SDK declarations are byte-identical to the
+  intermediate candidate's. The fix's 57 sibling suites (agent deletion,
+  session maintenance and pin preparation) ran with 0 failures on Bun and on
+  Node 24.21; the two PostgreSQL-backed suites among them skip there.
+  For the merge itself, 76 pinned test files and a 1,429-file matrix ran on
+  both runtimes. Every failure there was classified, and the ones the merge
+  caused are fixed in this branch. One generator check fails because of this
+  branch and is not fixed here: `native:i18n:check`, for three untranslated
+  Android tool labels (Continue Work, Continue Delegate, Request Compaction),
+  present since `16541aa5`.
+
+**Not yet run at this head:** the live proof rows (real agent turns through a
+running Gateway). The upstream window changes paths they exercise (the system
+prompt, delegate result delivery and restart, and detached re-entry), so they
+must run again here. They're pending and will be added to this PR once they've
+run. The Real behavior proof section still describes earlier heads.
+
+<details>
+<summary>Run identities, classification, the fixes, and coverage details</summary>
+
+- **Identities.** Product `a329243bd1aa4e8677517a5eaf4a67aa30ca8647`, upstream
+  base `5a3e6b1cb09bb886c4f9760d5d155353131e823a`, CI workflow
+  `105e83abf9c3d328695e022779d75cb556fdc275`. The full run `45008617882`
+  (created 2026-11-22 09:39Z) and the intermediate candidate's run
+  `44990430565` (at `8fbf29f25f3fba75a2ed964f4fabc611598b9e52`, 05:40Z) live in
+  the fork's private CI repository, so they aren't linked. Both receipts were
+  validated against their product and workflow SHAs. The intermediate run had
+  264,128 passed, 116 failed and 71 deterministic failures.
+- **How failures were classified.** The 72 are the run's aggregate failure
+  list, which equals the failure lines extracted from its job logs. The two cut
+  shards' in-flight output adds two more rows, the tlon test and the
+  event-loop-health worker kill, described above. 69 of the 72 tests (21 files)
+  also failed at the previous head, `16541aa5`, with the same titles and the
+  same first error, and keep the classification made there: paired local runs
+  at an earlier candidate and at upstream `1129d4c0` (one worker, isolated from
+  any live Gateway), plus one-variable controls for the environment rows with a
+  reproduced trigger. The 9 `test/scripts-update-gateway-legacy.test.ts`
+  failures, counted as upstream above, also stop at the missing systemd user
+  bus; their upstream reproduction ran without one too. Three tests are new at
+  this head: the two upstream ones below, and a third
+  `test/scripts/team-shape-fixture.test.ts` case that stops at the same
+  dirty-memory guard, with the same error, as its two siblings.
+- **The six reproduced at upstream `5a3e6b1c`.** Each ran 10 times,
+  interleaved, at this head, the previous head and upstream:
+  - `src/config/zod-schema.core.test.ts` (1) and
+    `test/scripts/installed-terminal-observer.test.ts` (1): red 10 of 10 at
+    this head and at upstream with CI's exact assertion, green at `16541aa5`.
+    Upstream source changes in the merged window (#203096, and a regenerated
+    runtime probe) left each test stale. Both tests are byte-identical to
+    upstream's, and upstream has since fixed them (#203416, #203415).
+  - `extensions/browser/src/browser/chrome.headless-cleanup.test.ts` (4): red
+    10 of 10 at all three refs on an arm64 host whose CPU model isn't Apple.
+    The test names its fake browser cache from `process.arch`, while the
+    resolver picks the macOS directory from the CPU model. Mocking only that
+    model to "Apple M2" makes all 45 cases pass at all three refs. CI fails it
+    whenever this shard lands on an arm64 runner, as here, and passed it on
+    x64 at the intermediate candidate. This PR changes no file in
+    `extensions/browser/`.
+- **The intermediate run's other new failures don't recur here.**
+  `sessions.dispatch.device` is order- and timing-dependent: in CI's file order
+  it fails at upstream `5a3e6b1c` with CI's exact error.
+  `setup.memory-import.owner` is an environment row with no reproduced trigger.
+- **The fixes.**
+  - `bd709979`: `prepareSessionMaintenancePreservation` gains an option, set
+    only by agent deletion (`purgeDeletedAgentSessionEntries`), that reads the
+    pins before the preserve providers prepare. If that publication changed by
+    the time they finish, the attempt is refused before anything is captured,
+    dispatched or committed. #203076's existing once-only retry then prepares
+    again, which is the second preparation upstream's test expects. A second
+    new test pins the existing check for a change after the snapshot. Two
+    mutation controls fail as expected: removing that check, and opting
+    automatic maintenance into the new refusal.
+  - The three merge-semantics fixes: the branch's post-coordination recheck
+    now asks #203102's settled-delivery question; continuation re-entries go
+    through #203113's `runOutsideAdmittedTurnScopes`, so they also drop the
+    arming turn's workspace gate; and two clean merges that each side
+    half-moved are settled. The first two each tighten an existing test so
+    that it fails without the fix.
+  - The two failures fixed before `16541aa5` (by `2218b2b7`, `abc9ce5b` and
+    `ae47d143`) stay fixed: both original tests pass in this run.
+- **Diff attribution.** A line-level attribution of the intermediate
+  candidate's diff against upstream attributed all 172,122 added lines to this
+  feature, with none from the fork's deployment line. The deletion fix changes
+  four files: two session-maintenance source files, their test, and this PR's
+  test-line record.
+- **Shard coverage.** 128 of the 130 routed shards wrote summaries; the two cut
+  shards are described above. The event-loop-health test and the stall
+  observer that issues the kill are byte-identical to upstream `5a3e6b1c`, and
+  the same kill occurred in the previous head's and the intermediate
+  candidate's runs. At the previous head, a full local run of
+  `extension-database-workers` paired with upstream `1129d4c0` matched
+  upstream's two failures. That run hasn't been repeated at this head.
+- **Not covered:**
+  - the rest of `extension-database-workers` at this head (about half of its
+    test files);
+  - the two PostgreSQL-backed suites in the deletion fix's sibling set
+    (`mixed-agent-lifecycle.conformance`,
+    `session-accessor.sqlite-maintenance-age.postgres`), which skip in this CI
+    run as they do locally without PostgreSQL. The last PostgreSQL conformance
+    run (38 files, on CI's pinned image) was during the merge, before the
+    deletion fix: 210 tests, with 1 failure that upstream shares;
+  - the live proof rows;
+  - CI's 4-worker interleaving for the rows with no reproduced trigger (the
+    local controls ran with one worker).
+
+</details>

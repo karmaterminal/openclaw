@@ -1,0 +1,9 @@
+{
+  "status": "missing",
+  "reason": "External PRs must include authored What Problem This Solves sections.",
+  "applies": true,
+  "passed": false,
+  "missingSections": [
+    "What Problem This Solves"
+  ]
+}

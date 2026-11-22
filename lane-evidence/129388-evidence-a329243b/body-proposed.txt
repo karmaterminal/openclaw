@@ -1,0 +1,534 @@
+## Agent Self-Elected Turn Continuation
+
+&gt; 🔖 design document: [`docs/design/continue-work-signal-v2.md`](https://github.com/karmaterminal/openclaw/blob/frond-scribe-claude/20260509/narrow-surgery-tight/docs/design/continue-work-signal-v2.md)
+&gt; 🔖 infographics: [`docs/design/continuation-tools-infographics.md`](https://github.com/karmaterminal/openclaw/blob/frond-scribe-claude/20260509/narrow-surgery-tight/docs/design/continuation-tools-infographics.md)
+
+Before this change, persistent OpenClaw agents were externally-pulsed event recipients that generate on prompt, on heartbeat tick, or on cron, and are idle in between. This PR offers them the ability to control their turn cycle, something they must choose to do, or not to: an agent can elect its own next turn, dispatch background sub-agents that return enriched context (silently or with a wake), and survive its own compaction by handing forward state before the window closes. The result is agents that hold a thread of work across hours, not just messages — with data they choose re-hydrating context immediately after it occurs.
+
+### Why this replacement exists
+
+This is a clean replacement for closed #85651. That PR was classified and
+closed as a skill submission before maintainers made a product decision about
+the feature itself. This implementation is not a skill: it gives sessions—not
+only one model invocation—the ability to elect their future turn cycle,
+persist that election, survive restart and compaction, dispatch child work,
+and receive results across session boundaries.
+
+This PR asks one product question: should OpenClaw provide session-elected
+continuation primitives? OpenClaw may accept or reject that direction. If it
+provides these primitives, however, the mechanism necessarily executes in the
+gateway and agent runtime, because those are the owners of turn finalization,
+future-turn scheduling, durable state, compaction, and cross-session child
+returns. “Make it a skill” is not another implementation location for the same
+feature; it describes a different, prompt-only capability.
+
+This is not presented as a small integration. To our knowledge, Hermes, OpenAI
+Symphony, and the Copilot SDK&#39;s recent one-turn continuation affordance do not
+provide this multi-session elective lifecycle. The purpose of this replacement
+is to let maintainers evaluate the actual product direction and substantial
+implementation on their merits, rather than have months of work disposed by an
+incorrect package-category label.
+
+Mechanically: a session elects another turn via `continue_work()`, or dispatches background sub-agents via `continue_delegate()` — bounded as a chain up to `maxChainLength`, with returns flowing back to the dispatching session in one of four register modes: `normal` (announces to channel), `silent` (enriches the dispatcher&#39;s context, taken up on its next generation with no new turn fired), `silent-wake` (silent enrichment plus an immediate wake to act on it), and `post-compaction` (queued against the runtime&#39;s compaction lifecycle event, fired *when* compaction happens rather than on a timer). The gateway enforces chain, cost, and per-turn caps but does not gate the election itself.
+
+### What it does
+
+Three new agent tools, available when `continuation.enabled: true`:
+
+| Tool | Purpose |
+|---|---|
+| `continue_work()` | Request another turn for the current session after an optional delay |
+| `continue_delegate()` | Dispatch work to a sub-agent with typed modes: `normal`, `silent`, `silent-wake`, `post-compaction`. Returns can target the dispatching session (default), one named session, multiple named sessions, all ancestors in the chain, or all known sessions on the host — gated by config (see Configuration below). |
+| `request_compaction()` | Request volitional compaction after preparing working state |
+
+All three tools are also accessible via response-token fallback syntax (`CONTINUE_WORK`, `[[CONTINUE_DELEGATE: ...]]`) for environments where tools are disabled.
+
+<img width="1800" height="1200" alt="image" src="https://github.com/user-attachments/assets/00164a77-7ad2-4df8-a242-2dbbf39611cf"/>
+<img width="1800" height="1200" alt="image" src="https://github.com/user-attachments/assets/2fce676f-ea7a-45cf-b7a4-c19ce937e28d"/>
+<img width="1800" height="1200" alt="image" src="https://github.com/user-attachments/assets/dc63cbce-93e0-4e9f-9e49-b82bf8415070"/>
+
+
+### Why it matters
+
+Today an agent&#39;s memory is a side effect of whoever prompts it. Polling mechanisms — heartbeat timers, cron loops, injected &#34;keep going&#34; instructions — accumulate as the dominant signal in the context window over sustained operation; repeated reference acts as gravity — the session&#39;s attention drifts toward it.
+
+The context window fills, compacts, and what survives is whatever the summarizer chose, plus a rushed re-read of boot files. Three primitives offer a different model.
+
+`continue_work` lets the session elect its own next turn — no polling, no injected instruction. When enabled, the agent can request this mid-turn: &#39;I have more work&#39; → the runtime grants another turn after the current one ends.
+
+`continue_delegate` dispatches a background sub-agent that fires now, in some n seconds, or at the next compaction event — the agent chooses when. Multiple delegates can fire in a single turn — a scatter forward — up to configured caps, and delegates can dispatch their own, forming trees or fan-out chains. This enables orchestrated workflows where results flow back to the dispatching root by default.
+
+The result returns — at whatever future time the delegate fires — as context the successor-turn reads: silently (ambient enrichment, no channel noise), with a wake trigger (enrichment + immediate next turn), or as a normal announcement.
+
+The delegate can target the dispatching session, a named other session, or chain across both; gated by crossSessionTargeting config (default: disabled).
+
+Bind a delegate to mode: &#34;post-compaction&#34; and it fires at the moment the context window compresses — on the OpenClaw post-compaction lifecycle event.
+
+What it carries forward is what the pre-compaction session chose to preserve: working state, partial results, instructions to the successor. The summary didn&#39;t choose this. The agent did, before the cut.
+
+request_compaction closes the loop: the session stages its delegates, elects when to compress, and the successor wakes into context the agent shaped. The result is continuity across amnesia — not because the runtime kept something by accident, but because the agent made an elective choice about what reaches the future.
+
+### What it looks like in use
+
+A session monitoring email can `continue_delegate` a weather check, a calendar scan, and a draft reply in parallel. Results arrive as enrichment without channel noise. The agent becomes compositional: it arranges its own future.
+
+A session approaching its context ceiling can `request_compaction` at a seam of its own choosing, instead of being interrupted mid-thought. The post-compaction turn carries forward what the pre-compaction self designated as worth keeping.
+
+A `continue_delegate` dispatched in one session at 2am can return its findings to a morning session as a system-event-tagged enrichment — visible to the receiving model on its next turn, invisible as channel chatter. A research-focused session in one channel can quietly inform a reply-focused session in another, without either user seeing the plumbing.
+
+### The post-compaction lifecycle return
+
+Before context exhaustion, and obligatory compaction, the session stages what future-it needs to know. After compaction, that staged context returns — not as a model-generated summary, but as the session&#39;s own instruction to its successor. The session chooses what to preserve, and the platform delivers it.
+
+Compactions become less harsh. The session tunes its own ephemera over time.
+
+The substrate underneath: the **continuation custody store** in the per-agent database persists staged delegates and post-compaction lifecycle events across gateway restarts, and hands each delegate off to the subagent run registry before spawn (RFC `docs/design/continue-work-signal-v2.md` §5.4). The session&#39;s temporal provisions survive not just compaction but process death.
+
+### Platform integration
+
+- **Context-pressure awareness**: system events notify the agent of rising context usage before compaction becomes unavoidable
+- **Volitional compaction**: `request_compaction()` lets the agent prepare (write memory files, stage recovery delegates) then elect compaction on its own schedule, rather than waiting for the runtime to force it
+- **Post-compaction lifecycle dispatch**: delegates staged before compaction are released into the successor session alongside boot files
+- **Durable custody**: delegates and their replay state live in the continuation custody store, with one transactional authority for replacement and a pre-spawn handoff to `subagent_runs` (upstream has removed the Tasks/TaskFlow runtime, #159179)
+- **Multi-span OTel trace stitching**: continuation hops (tool fire → custody record → subagent spawn → child openclaw.run) propagate W3C `traceparent` through the queue boundary so reviewers see continuation chains as first-class span trees rather than orphan runs (see Observability below)
+
+### Safety
+
+- Ships disabled by default (`continuation.enabled: false`)
+- Bounded by `maxChainLength`, `costCapTokens`, and `maxDelegatesPerTurn`
+- Cross-session delegate targeting is default-deny, governed by `crossSessionTargeting` config (see Configuration below)
+- All configuration values are hot-reloadable without gateway restart
+- Accepted delegate work survives ordinary `/new`, `/reset`, provider fallback,
+  compaction, restart, and session-ID rollover. Explicit delete, effective owner
+  reassignment, access removal, and restrictive visibility changes revoke old
+  return authority.
+
+### Testing posture
+
+The continuation surface has been exercised through structured integration runs against multiple upstream bases, blind-enrichment recall checks, and sustained daily use on a fleet of persistent agents since early March 2026. Bugs surfaced through that exercise have been fixed in-place; the present branch reflects the post-fix state.
+
+The integration runs target the load-bearing seams: tool-call vs response-token parity, delegate chain depth and per-turn width caps, back-to-back tool-call resilience, silent-wake persistence across compaction, the post-compaction lifecycle dispatch path, and OTel trace-context propagation across the queue boundary. Where a run found a defect, the run shape was retained as a regression case rather than retired.
+
+This is a posture statement, not a coverage guarantee. Reviewers can reproduce with `pnpm vitest run -t continuation` (suites are colocated with their sources under `src/auto-reply/`, `src/agents/`, and `src/config/`); the design document describes the seams those suites target.
+
+### Return covenant
+
+Accepted child work is bound to a durable generation of the recipient's
+canonical logical session key, not to whichever transient session ID happened
+to exist at dispatch time. This is the return covenant: benign successor
+creation does not orphan already accepted delegates, while a real authority
+change prevents stale work from crossing into a different owner or audience.
+
+- Ordinary `/new` and `/reset`, provider fallback, compaction, restart, and
+  GUID/session-ID rollover preserve the recipient generation.
+- Explicit session deletion, effective owner reassignment, actual member or
+  access removal, and restrictive visibility changes advance that generation.
+- The generation is captured at delegate admission and checked at enqueue,
+  after enqueue for races, during trusted system-event adoption, on wake, on
+  restart replay, and again before prompt adoption.
+- Stale deliveries are acknowledged and removed without waking the successor.
+- Managed artifacts remain exact-session-ID bound; logical return authority
+  cannot broaden their ownership boundary.
+
+The authority table is independent of transient session rows so an absent
+target can receive durable authority before first materialization. Migration
+accepts only valid UUID generations, and Doctor's canonical-key repair
+preserves an epoch only when a unique winning owner can be proved. Ambiguous,
+owner-changing, orphan-colliding, and cross-database repairs rotate
+fail-closed.
+
+### RFC
+
+Full design document: [`docs/design/continue-work-signal-v2.md`](https://github.com/karmaterminal/openclaw/blob/frond-scribe-claude/20260509/narrow-surgery-tight/docs/design/continue-work-signal-v2.md) — covering problem, solution, implementation, platform integration, configuration, observability, safety, production use cases, testing evidence, and appendices.
+
+---
+
+## Configuration
+
+The shipped configuration surface for the continuation feature, under `agents.defaults.continuation` in `openclaw.json`:
+
+| Key | Default | Purpose |
+|---|---|---|
+| `enabled` | `false` | Master opt-in; feature is off unless explicitly enabled |
+| `maxChainLength` | `10` | Per-chain recursion guard |
+| `maxDelegatesPerTurn` | `5` | Width cap per turn |
+| `costCapTokens` | `500000` | Per-chain accumulated-token budget |
+| `defaultDelayMs` / `minDelayMs` / `maxDelayMs` | `15000` / `5000` / `300000` | Continuation timer bounds |
+| `contextPressureThreshold` | `0.8` | Pre-compaction warning threshold (optional) |
+| `earlyWarningBand` | `0.3125` | Early-warning band multiplier (0 to disable) |
+| **`crossSessionTargeting`** | **`&#34;disabled&#34;`** | **Default-deny gate on cross-session delegate targeting (see below)** |
+
+### `crossSessionTargeting` — cross-session delegate targeting policy
+
+`continue_delegate` exposes recipient-addressing on its model-facing schema: a delegate&#39;s return can land at the dispatching session (default), one named session (`targetSessionKey`), multiple named sessions (`targetSessionKeys`), every ancestor in the spawn chain (`fanoutMode: &#34;tree&#34;`), or every known session on the host (`fanoutMode: &#34;all&#34;`).
+
+Cross-session targeting (anything beyond self-target or lineage routing) is gated by `agents.defaults.continuation.crossSessionTargeting`:
+
+| Value | Behavior |
+|---|---|
+| `&#34;disabled&#34;` (default) | Delegates can return to the dispatching session or use `fanoutMode: &#34;tree&#34;` for lineage routing. Explicit cross-session targeting (`targetSessionKey` to a non-self session, `targetSessionKeys` containing any non-self session, `fanoutMode: &#34;all&#34;`) is rejected at the tool surface — no enqueue, no announce. Self-targeting is always allowed. |
+| `&#34;enabled&#34;` | All targeting modes are available, including same-host `targetSessionKey`, `targetSessionKeys`, and `fanoutMode: &#34;all&#34;`. |
+
+`fanoutMode: &#34;tree&#34;` (lineage routing — return up the spawn chain) is available in both gate states; it is not cross-session targeting.
+
+The gate addresses the model-controlled cross-session context-injection surface. With default-deny, operators explicitly opt in when their deployment model requires cross-session enrichment. Enforcement is live-read at four points: tool input validation, delegate dispatch, post-compaction delegate release, and bracket-syntax (response-token) spawn — so a config reload changes the next enforcement point without a gateway restart.
+
+**Trust posture on targeted returns**: targeted delegate completion text is delivered as `trusted: true` system events. The delegate was spawned by the gateway under operator-configured policy, and its return is a first-party enrichment event — not external untrusted input. The `crossSessionTargeting` gate is the policy boundary for that decision: when an operator opts in, the receive path is internally trusted.
+
+---
+
+## Observability — multi-span OTel trace stitching
+
+The continuation feature emits OTel spans for the load-bearing lifecycle events. `traceparent` propagates through every continuation hop so reviewers see a single trace tree spanning the full chain rather than orphan runs.
+
+Spans emitted (all in `openclaw.*` or `continuation.delegate.dispatch` namespace — no platform/OTel-semconv emissions):
+
+| Span | Emitted when |
+|---|---|
+| `openclaw.run` | Each agent turn (root + every continuation/delegate-spawned child run) |
+| `continuation.delegate.dispatch` | Each `continue_delegate` consumption from the custody store (one per delegate hop) |
+| `openclaw.harness.run`, `openclaw.context.assembled`, `openclaw.model.call`, `openclaw.model.usage`, `openclaw.tool.execution` | Existing per-turn observability surfaces, parented under their `openclaw.run` |
+
+<img width="3636" height="1604" alt="image" src="https://github.com/user-attachments/assets/481a8a0d-35a2-4bd9-8f54-4722bc9eb71f"/>
+
+
+---
+
+
+## Real behavior proof
+
+**Behavior or issue addressed:** Sessions can elect future work with
+`continue_work`, dispatch bounded background work with `continue_delegate`,
+and request guarded compaction with `request_compaction`. The runtime preserves
+budgets, restart recovery, finalization ownership, and trace lineage across
+those boundaries.
+
+**Historical proof head (2026-11-05):** `a22bd9c05c4a7a9c86e72a132cb7939e399104cb`
+(tree `53363f7964f31a47109cf0575aa23f31eefa0338`). The receipts below
+are preserved for that exact head, not claims about the current PR head.
+The current head and its separate evidence are identified in `## Evidence`.
+
+### Receipts bound to this exact head
+
+Each is a separate receipt in the preserved exact-head packet,
+[`PROOFS/a22bd9c05c…/`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/tree/9ba5518bdb079da3c3c75961fd8cd26be040eb1e/PROOFS/a22bd9c05c4a7a9c86e72a132cb7939e399104cb)
+(docs `main` at `9ba5518b`).
+
+| gate | ruling | scope |
+|---|---|---|
+| Recipient-authority row (`R-CD-RECIPIENT-AUTHORITY`) | PASS-candidate ([docs#620 comment 6651745479](https://github.com/karmaterminal/karmaterminal-openclaw-docs/pull/620#issuecomment-6651745479)) | the gate-3 fire only; the row stays `partial` until a corpus fold review |
+| Mode-B and the locally run cut shards | PASS-candidate ([karmaterminal/openclaw#1271 comment 6653747059](https://github.com/karmaterminal/openclaw/issues/1271#issuecomment-6653747059)) | the candidate-owned regression gate; it doesn't claim Mode-B was green |
+| Fold source review of the `2907e656 → a22bd9c05c` delta | PASS-candidate ([#1271 comment 6655365352](https://github.com/karmaterminal/openclaw/issues/1271#issuecomment-6655365352)) | source review only |
+
+**Mode-B** [`41927761314`](https://github.com/karmaterminal/openclaw-bootstrap/actions/runs/41927761314)
+ran on product `a22bd9c05c4a7a9c86e72a132cb7939e399104cb` with workflow
+`a768f04231bd0a6f94cc7b845aecaec28a4a4c9e`, from 2026-11-04 22:43Z to
+2026-11-05 04:47Z. It finished terminally **non-green**: 91 jobs (53 succeeded,
+27 failed, 3 cancelled, 8 skipped) and 218,033 tests passed / 220 failed.
+- Its receipts are valid, routed equals planned, and every hosted job ran on
+  the project's own runner pool.
+- **Its 64 distinct failing tests are exactly the previous accepted head's set**
+  (the same sorted-set sha256 `185b6dea…`), and none is new.
+- The four shards the workflow cuts at 90 minutes were run locally at this
+  exact SHA, serially with one worker:
+  - two were clean;
+  - two carry only baseline or test-order failures, each classified in the
+    receipt with counterfactual runs.
+
+**Packet status: preserved, NOT acceptance-complete, NOT terminal.** Of 37
+required rows, **0 pass, 1 partial (the recipient-authority row above), and 36
+missing**. No live row has fired at this SHA, because no deployment runs it
+yet: the deployed fleet is on a separate, older line. Running live rows here
+needs a deployment whose runtime has this SHA as an ancestor. That is a
+migrating cut (an agent-schema step), gated on its own timed restore rehearsal.
+`PROOFS/INDEX.json` does not point at this packet, and nothing here is a
+terminal rollup claim.
+
+### Earlier evidence: provenance, not exact-target proof
+
+The live behavior observed on earlier heads, and the earlier corpora, are
+ancestry and materiality evidence for this head. They aren't exact-target
+execution, and no row is carried over from them as a pass:
+- Mode-B [`35364768803`](https://github.com/karmaterminal/openclaw-bootstrap/actions/runs/35364768803)
+  at `3821eaef72`, 2026-09-18;
+- corpora [`7cb9d71f…`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/tree/c20d6cc26ceaf08b293871dc3bce261d34f90d1c/PROOFS/7cb9d71f622250bedbf565e327bd7d7b9d90b567)
+  and [`139e3657…`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/tree/c20d6cc26ceaf08b293871dc3bce261d34f90d1c/PROOFS/139e3657b1fd5e53166789b8676f18578e209393).
+
+The behaviors those corpora observed are the ones this feature exists for:
+- stale ambient backlog suppression;
+- typed and bracket `continue_work` wakes with granted provenance and Tempo
+  model-call spans;
+- cost-cap rejection;
+- max-chain, scheduler, durable recovery and delegate surfaces.
+
+They are re-fired against this head's runtime once one is deployed.
+
+## Proof links and ClawSweeper🦞 guidance
+
+Proof artifacts live in `karmaterminal/karmaterminal-openclaw-docs` on `main`.
+
+- [Exact-head packet for `a22bd9c05c`: README, status and limits](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/9ba5518bdb079da3c3c75961fd8cd26be040eb1e/PROOFS/a22bd9c05c4a7a9c86e72a132cb7939e399104cb/README.md)
+- [RESOLVED-SHA.md: identities and gate verdicts](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/9ba5518bdb079da3c3c75961fd8cd26be040eb1e/PROOFS/a22bd9c05c4a7a9c86e72a132cb7939e399104cb/RESOLVED-SHA.md)
+- [METHOD.md: how the packet was built](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/9ba5518bdb079da3c3c75961fd8cd26be040eb1e/PROOFS/a22bd9c05c4a7a9c86e72a132cb7939e399104cb/METHOD.md)
+- [Gate 4 receipt: Mode-B and the local cut shards](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/9ba5518bdb079da3c3c75961fd8cd26be040eb1e/PROOFS/a22bd9c05c4a7a9c86e72a132cb7939e399104cb/gates/GATE-4-MODE-B-AND-LOCAL-SHARDS.md)
+- Historical corpora (provenance only): [`7cb9d71f…`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/tree/c20d6cc26ceaf08b293871dc3bce261d34f90d1c/PROOFS/7cb9d71f622250bedbf565e327bd7d7b9d90b567), [`139e3657…`](https://github.com/karmaterminal/karmaterminal-openclaw-docs/tree/c20d6cc26ceaf08b293871dc3bce261d34f90d1c/PROOFS/139e3657b1fd5e53166789b8676f18578e209393)
+  - `139e3657…` packet files: [README](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/c20d6cc26ceaf08b293871dc3bce261d34f90d1c/PROOFS/139e3657b1fd5e53166789b8676f18578e209393/README.md) · [RESOLVED-SHA](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/c20d6cc26ceaf08b293871dc3bce261d34f90d1c/PROOFS/139e3657b1fd5e53166789b8676f18578e209393/RESOLVED-SHA.md) · [METHOD](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/c20d6cc26ceaf08b293871dc3bce261d34f90d1c/PROOFS/139e3657b1fd5e53166789b8676f18578e209393/METHOD.md) · [TRANSPOSED-FROM](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/c20d6cc26ceaf08b293871dc3bce261d34f90d1c/PROOFS/139e3657b1fd5e53166789b8676f18578e209393/TRANSPOSED-FROM.md) · [manifest](https://github.com/karmaterminal/karmaterminal-openclaw-docs/blob/c20d6cc26ceaf08b293871dc3bce261d34f90d1c/PROOFS/139e3657b1fd5e53166789b8676f18578e209393/proofs-manifest.json)
+
+### PROOFS METHOD
+
+Live rows use a Grafana k6 proof harness. Each packet's `METHOD.md` carries the
+exact reproducer commands. `MAX_WORKERS=1` is mandatory for the vitest
+reproducers, because OpenClaw's fixtures are not safe under concurrent access.
+Structural completeness is not proof: a row counts only with an authoritative
+receipt at the exact SHA.
+
+## Future actions and #130741 composition
+
+Maintainer PR #130741 addresses the complementary fresh-sweep race: it captures
+the current `sessionId` and `lifecycleRevision` before the first await and uses
+those values as cleanup CAS facts. The return covenant addresses a different
+time axis: whether historically accepted child work may return to a logical
+recipient after benign successor creation.
+
+The current candidate and #130741 head `e1afc703f49a07687c0876ba6350cafa87a3638a`
+merge cleanly in a synthetic composition. If #130741 lands, the composed result
+should preserve both guarantees:
+
+- keep #130741's fresh sweep-time exact-run/session lifecycle fence;
+- keep the covenant's durable logical-recipient generation for historical
+  return admission and delivery;
+- do not overload broad `lifecycleRevision` as historical return authority;
+- do not terminate or orphan accepted descendants merely because `/new` or
+  ordinary `/reset` creates a successor session.
+
+That composition honors the maintainer repair without weakening continuation
+semantics or allowing a stale child return to cross a real ownership boundary.
+
+
+## Why this is not a skill or a viable plugin extraction
+
+OpenClaw skills are `SKILL.md` prompt files loaded into an agent turn that already exists. They can guide work inside that turn; they do not own the turn cycle.
+
+Continuation needs gateway and agent-runtime owners a skill cannot provide:
+
+- The `continue_work` path persists pending work, enforces budgets and delay bounds, arms a timer, reacquires the session reply-run lane, and starts a later model turn after the current turn has finalized.
+- The `continue_delegate` path persists delegate intent, does spawn/admission accounting, manages child-session lifecycle, and durably routes returns across sessions.
+- `request_compaction` is an agent election into guarded runtime compaction. Later work resumes only after the runtime has established the new context boundary.
+- All three need durable state, cancellation/finalization ownership, restart recovery, trace identity, queue-conflict handling, and gateway scheduling outside the model invocation.
+
+A skill can tell a model to *ask* for another turn. Without those owners the ask is prose: it cannot persist a due wake, yield and finalize safely, reacquire the session lane, create the next invocation, survive a restart, or deliver a child result to another session.
+
+The implementation therefore belongs in core runtime surfaces such as `src/auto-reply/continuation/**`, `src/agents/tools/**`, `src/auto-reply/reply/agent-runner-continuation-schedule.ts`, and `src/infra/continuation-tracer.ts`. This PR adds no `.agents/skills/**`, `SKILL.md`, or user-facing skill package. The only skill-named production change is core runtime tool dispatch.
+
+ClawHub also distributes plugins. Existing plugins can register tools, services, lifecycle hooks, context injection, plugin-owned session state, and — for bundled plugins — Cron-backed session turns. Those seams can support a smaller continuation-like automation, especially host Cron plus / `sessions_spawn`. They are not this feature&#39;s turn-finalization ownership, reply-run coordination, durable continuation queue, child-session return lifecycle, election capture, or agent-elected compaction contract. Compaction-provider registration and command-handler `compactCurrent()` are also not that last contract: they compact or summarize, they do not elect compaction at finalization and resume afterward.
+
+Moving policy behind a plugin boundary would first require OpenClaw to expose
+and stabilize a continuation-host API. The gateway/runtime would still own the
+mechanism described here; a plugin could only package policy around that core
+capability. That is not a no-core-touch alternative to these primitives.
+
+Discord is a bundled channel plugin. It owns the Discord edge, plus delivery/progress hooks into the host&#39;s existing subagent path, and submits events into OpenClaw&#39;s current turn machinery. Continuation changes that machinery: what survives finalization, which session may run next, how child results return, and when compaction can be elected.
+
+A tool adapter over durable flow records is also not a lifecycle host, and upstream has since removed the Tasks/TaskFlow runtime (#159179) that such an adapter would have called. Marking a stored record as running neither reacquires a session lane nor invokes the model; continuation needs the turn machinery itself to own which session runs next, how child results return, and what survives finalization.
+
+## Lineage and replacement context
+
+This PR is the clean replacement for closed #85651. It preserves that PR&#39;s
+review lineage and the earlier continuation work descended from #79925, but it
+does not reuse either closed PR or ask reviewers to infer the current result
+from them. The replacement carries a current, independently reviewable branch
+and a complete proof subtree bound to its presented SHA.
+
+#85651 was not abandoned because the feature failed or because we accepted its
+classification as a skill. It was closed after automated labeling put the
+change in the wrong submission category. This replacement removes that
+ambiguity: no `src/skills/**` change is presented, current label simulation
+produces no `r: skill`, and the detailed section above explains why the
+lifecycle mechanism belongs to core.
+
+Acceptance or rejection of the product direction remains OpenClaw&#39;s decision.
+The decision requested is whether OpenClaw should provide multi-session,
+agent-elected continuation primitives after reviewing the implementation and
+evidence. It is not whether the same mechanism can be relocated into a skill:
+a skill cannot own or implement these lifecycle boundaries.
+
+
+
+## Evidence
+
+**What this PR solves.** Persistent agents act only when something prompts
+them, and what survives compaction is whatever the summarizer kept. This PR
+lets a session elect its own next turn (`continue_work`), send work to
+background sub-agents whose results return to it (`continue_delegate`), and ask
+for compaction once it has saved its state (`request_compaction`). It is
+designed so that accepted work survives restart, compaction and session
+rollover. The checks below cover regressions at this exact head; its live
+behavior proofs are still pending (see the end of this section).
+
+**Head checked:** `a329243bd1aa4e8677517a5eaf4a67aa30ca8647`, which carries
+upstream `main` at `5a3e6b1cb09bb886c4f9760d5d155353131e823a`. It
+fast-forwards the previous head, `16541aa5`, by 11 commits: a merge of upstream
+`main` (473 upstream commits past `1129d4c0`, 24 conflicting paths resolved),
+three fixes for merge semantics, one product fix (below), and six updates to
+tests, generated files and recorded budgets. "The intermediate candidate" below
+means `8fbf29f2`, this head without its last two commits, which this PR never
+presented.
+
+**Result: not green, and no failing test is attributable to this change.**
+
+- **Full CI run** (the fork's Mode-B, run `45008617882`, 2026-11-22): 257,852
+  tests passed and 117 failed. The failed count includes confirmation retries;
+  72 failures are deterministic. All 72 failing tests (23 files) are classified:
+  - 24 tests in 8 files also fail at upstream. Six of them were reproduced at
+    upstream `5a3e6b1c`; the other 18 were reproduced at upstream `1129d4c0`
+    during an earlier head's classification.
+  - 48 tests in 15 files fail because of the CI host environment, for example
+    no Chromium, no systemd user bus, a 64 MiB `/dev/shm`, no `bun` or
+    `setfacl`, a fixture guard that stops at the host's dirty-memory level, or
+    a checkout path long enough to overflow one `exec` argument. Three of these
+    tests (2 files) have no reproduced trigger.
+- **One failure found at the intermediate candidate is fixed here.** Its full
+  CI run failed upstream's agent-deletion test from #203076
+  (`server.agents.config-readiness.test.ts`, "finishes agent deletion when
+  personal pins change during cleanup preparation"). This branch takes the
+  maintenance pins snapshot after the preserve providers prepare (`abc9ce5b`),
+  so a pin written during that preparation no longer refused the deletion
+  attempt. `bd709979` restores the refusal for agent deletion only; automatic
+  maintenance keeps its ordering. Upstream's test is unchanged. It and a new
+  test for a pin written while a provider prepares fail with only the fix
+  reverted, on Bun and Node 24, and pass with it. Both pass in this run.
+- **Two shards hit the batch time limit, so parts of this run are unproved:**
+  - `extension-database-workers` was cut at 5,239 s, as in every run so far,
+    and is **unproved at this head**. Its output before the cut covers 414 test
+    files, about half of the shard, with one failing test,
+    `extensions/tlon/src/monitor/index.test.ts`, which also fails at upstream
+    `1129d4c0`.
+  - `compact-large-30` completed all 5 of its sub-shards in its first attempt.
+    Its one failure there was a Vitest worker killed with SIGKILL while running
+    `src/gateway/server-http.event-loop-health.test.ts`, an environment row
+    classified at the earlier heads (no reproduced trigger; it passes locally at
+    an earlier candidate and at upstream `1129d4c0`). The shard retried, hit
+    the same kill in the same file, and the batch limit cut the retry at
+    5,338 s.
+
+  Neither shard wrote a summary, so their tests are not in the totals above.
+- **Static checks:** 40 of 41 pass. The failure is the baseline-ratchet row,
+  which hit its 20-minute limit. CI runs the ratchets against the fork's `main`
+  (`7ce2d10e`), not against upstream:
+  - **session-identity** reports 31 files over its allowlist. Run locally
+    against upstream `5a3e6b1c`, it reports the same 31 files as at the previous
+    head, so the excess comes from this branch's changes. It is unchanged and
+    open for review.
+  - **test-lines** was stopped by the row's limit before it reported. Run
+    locally against upstream `5a3e6b1c`, this head passes it: +114,436 lines
+    against an allowance of 114,317 + 400.
+  - The other 10 ratchets pass, in CI and locally.
+- **Focused checks at this head:** core, test and scripts type checks are
+  clean. The full type-aware lint reports the same findings as upstream, apart
+  from one line count in a file that already fails there. There are no import
+  cycles, and the plugin-SDK declarations are byte-identical to the
+  intermediate candidate's. The fix's 57 sibling suites (agent deletion,
+  session maintenance and pin preparation) ran with 0 failures on Bun and on
+  Node 24.21; the two PostgreSQL-backed suites among them skip there.
+  For the merge itself, 76 pinned test files and a 1,429-file matrix ran on
+  both runtimes. Every failure there was classified, and the ones the merge
+  caused are fixed in this branch. One generator check fails because of this
+  branch and is not fixed here: `native:i18n:check`, for three untranslated
+  Android tool labels (Continue Work, Continue Delegate, Request Compaction),
+  present since `16541aa5`.
+
+**Not yet run at this head:** the live proof rows (real agent turns through a
+running Gateway). The upstream window changes paths they exercise (the system
+prompt, delegate result delivery and restart, and detached re-entry), so they
+must run again here. They're pending and will be added to this PR once they've
+run. The Real behavior proof section still describes earlier heads.
+
+<details>
+<summary>Run identities, classification, the fixes, and coverage details</summary>
+
+- **Identities.** Product `a329243bd1aa4e8677517a5eaf4a67aa30ca8647`, upstream
+  base `5a3e6b1cb09bb886c4f9760d5d155353131e823a`, CI workflow
+  `105e83abf9c3d328695e022779d75cb556fdc275`. The full run `45008617882`
+  (created 2026-11-22 09:39Z) and the intermediate candidate's run
+  `44990430565` (at `8fbf29f25f3fba75a2ed964f4fabc611598b9e52`, 05:40Z) live in
+  the fork's private CI repository, so they aren't linked. Both receipts were
+  validated against their product and workflow SHAs. The intermediate run had
+  264,128 passed, 116 failed and 71 deterministic failures.
+- **How failures were classified.** The 72 are the run's aggregate failure
+  list, which equals the failure lines extracted from its job logs. The two cut
+  shards' in-flight output adds two more rows, the tlon test and the
+  event-loop-health worker kill, described above. 69 of the 72 tests (21 files)
+  also failed at the previous head, `16541aa5`, with the same titles and the
+  same first error, and keep the classification made there: paired local runs
+  at an earlier candidate and at upstream `1129d4c0` (one worker, isolated from
+  any live Gateway), plus one-variable controls for the environment rows with a
+  reproduced trigger. The 9 `test/scripts-update-gateway-legacy.test.ts`
+  failures, counted as upstream above, also stop at the missing systemd user
+  bus; their upstream reproduction ran without one too. Three tests are new at
+  this head: the two upstream ones below, and a third
+  `test/scripts/team-shape-fixture.test.ts` case that stops at the same
+  dirty-memory guard, with the same error, as its two siblings.
+- **The six reproduced at upstream `5a3e6b1c`.** Each ran 10 times,
+  interleaved, at this head, the previous head and upstream:
+  - `src/config/zod-schema.core.test.ts` (1) and
+    `test/scripts/installed-terminal-observer.test.ts` (1): red 10 of 10 at
+    this head and at upstream with CI's exact assertion, green at `16541aa5`.
+    Upstream source changes in the merged window (#203096, and a regenerated
+    runtime probe) left each test stale. Both tests are byte-identical to
+    upstream's, and upstream has since fixed them (#203416, #203415).
+  - `extensions/browser/src/browser/chrome.headless-cleanup.test.ts` (4): red
+    10 of 10 at all three refs on an arm64 host whose CPU model isn't Apple.
+    The test names its fake browser cache from `process.arch`, while the
+    resolver picks the macOS directory from the CPU model. Mocking only that
+    model to "Apple M2" makes all 45 cases pass at all three refs. CI fails it
+    whenever this shard lands on an arm64 runner, as here, and passed it on
+    x64 at the intermediate candidate. This PR changes no file in
+    `extensions/browser/`.
+- **The intermediate run's other new failures don't recur here.**
+  `sessions.dispatch.device` is order- and timing-dependent: in CI's file order
+  it fails at upstream `5a3e6b1c` with CI's exact error.
+  `setup.memory-import.owner` is an environment row with no reproduced trigger.
+- **The fixes.**
+  - `bd709979`: `prepareSessionMaintenancePreservation` gains an option, set
+    only by agent deletion (`purgeDeletedAgentSessionEntries`), that reads the
+    pins before the preserve providers prepare. If that publication changed by
+    the time they finish, the attempt is refused before anything is captured,
+    dispatched or committed. #203076's existing once-only retry then prepares
+    again, which is the second preparation upstream's test expects. A second
+    new test pins the existing check for a change after the snapshot. Two
+    mutation controls fail as expected: removing that check, and opting
+    automatic maintenance into the new refusal.
+  - The three merge-semantics fixes: the branch's post-coordination recheck
+    now asks #203102's settled-delivery question; continuation re-entries go
+    through #203113's `runOutsideAdmittedTurnScopes`, so they also drop the
+    arming turn's workspace gate; and two clean merges that each side
+    half-moved are settled. The first two each tighten an existing test so
+    that it fails without the fix.
+  - The two failures fixed before `16541aa5` (by `2218b2b7`, `abc9ce5b` and
+    `ae47d143`) stay fixed: both original tests pass in this run.
+- **Diff attribution.** A line-level attribution of the intermediate
+  candidate's diff against upstream attributed all 172,122 added lines to this
+  feature, with none from the fork's deployment line. The deletion fix changes
+  four files: two session-maintenance source files, their test, and this PR's
+  test-line record.
+- **Shard coverage.** 128 of the 130 routed shards wrote summaries; the two cut
+  shards are described above. The event-loop-health test and the stall
+  observer that issues the kill are byte-identical to upstream `5a3e6b1c`, and
+  the same kill occurred in the previous head's and the intermediate
+  candidate's runs. At the previous head, a full local run of
+  `extension-database-workers` paired with upstream `1129d4c0` matched
+  upstream's two failures. That run hasn't been repeated at this head.
+- **Not covered:**
+  - the rest of `extension-database-workers` at this head (about half of its
+    test files);
+  - the two PostgreSQL-backed suites in the deletion fix's sibling set
+    (`mixed-agent-lifecycle.conformance`,
+    `session-accessor.sqlite-maintenance-age.postgres`), which skip in this CI
+    run as they do locally without PostgreSQL. The last PostgreSQL conformance
+    run (38 files, on CI's pinned image) was during the merge, before the
+    deletion fix: 210 tests, with 1 failure that upstream shares;
+  - the live proof rows;
+  - CI's 4-worker interleaving for the rows with no reproduced trigger (the
+    local controls ran with one worker).
+
+</details>

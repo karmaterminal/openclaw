@@ -1,0 +1,9 @@
+{
+  "status": "missing",
+  "reason": "External PRs must include authored Evidence sections.",
+  "applies": true,
+  "passed": false,
+  "missingSections": [
+    "Evidence"
+  ]
+}
