@@ -5,9 +5,10 @@
  * dispatch under whatever request scope armed its timer: the electing connection, which an
  * ordinary disconnect closes, or none after a restart. Election now captures that operator's
  * durable source (principal and scope ceiling) with the record; dispatch restores it through
- * the shared operator-recovery owner, which still fails closed on device revocation, profile
- * or role change and narrowed scopes. Delegates elected without a Gateway operator (channel
- * and internal turns) carry no grant and dispatch as before.
+ * the shared operator-recovery owner, which still fails closed on device revocation and a
+ * changed profile, and refuses a source whose current scopes no longer cover the grant.
+ * Delegates elected without a Gateway operator (channel and internal turns) carry no grant and
+ * dispatch as before.
  *
  * A Gateway that cannot answer yet has not refused anything: the same delegate stays queued
  * and retries on the dispatch hedge, and the grant's expiry is what ends that wait.
@@ -16,6 +17,7 @@
 import type { AdmittedRunOperatorAuthority } from "../../agents/admitted-run-context.js";
 import { withoutGatewayToolCallerIdentity } from "../../agents/tools/gateway-caller-context.js";
 import { captureAmbientGatewayOperatorAuthority } from "../../gateway/operator-invocation-authority.js";
+import { decodeQueuedOperatorRecoverySource } from "../../gateway/operator-run-recovery-source.codec.js";
 import { captureQueuedOperatorRecoverySource } from "../../gateway/operator-run-recovery-source.js";
 import { restoreGatewayQueuedOperatorRecovery } from "../../gateway/operator-run-recovery.js";
 import { runOutsideOperatorToolGatewayAuthority } from "../../gateway/operator-tool-gateway-authority.js";
@@ -28,6 +30,7 @@ import {
   getPluginRuntimeGatewayRequestScope,
   withPluginRuntimeGatewayRequestScope,
 } from "../../plugins/runtime/gateway-request-scope.js";
+import { roleScopesAllow } from "../../shared/operator-scope-compat.js";
 import type { ContinuationDelegateDispatchGrant } from "./types.js";
 
 const log = createSubsystemLogger("continuation/delegate-dispatch");
@@ -136,6 +139,18 @@ export async function runUnderContinuationDelegateDispatchGrant<T>(
   }
   try {
     const { authority } = restored;
+    // A start narrows a restored source to its current scopes (#202513); the grant is the ceiling.
+    const granted = decodeQueuedOperatorRecoverySource(grant.source);
+    if (
+      granted.kind === "gateway" &&
+      !roleScopesAllow({
+        role: "operator",
+        requestedScopes: granted.snapshot.scopes,
+        allowedScopes: authority.scopes,
+      })
+    ) {
+      throw grantRefused("was revoked", new Error("its operator scopes narrowed below the grant"));
+    }
     const client = createSyntheticPluginRuntimeClient({
       operatorRoleActor: { kind: "operator", profileId: authority.profileId },
       operatorRunAuthority: authority,
