@@ -206,9 +206,14 @@ describe("runEmbeddedAgent timeout recovery composition", () => {
 
   it("keeps the timeout compaction cap across auth-profile rotation", async () => {
     const session = await createSession();
+    // Add continuation to the harness config; its model, workspace and session store still apply.
+    const harnessConfig = session.runParams.config;
     const config = {
+      ...harnessConfig,
       agents: {
+        ...harnessConfig.agents,
         defaults: {
+          ...harnessConfig.agents?.defaults,
           continuation: {
             enabled: true,
             contextPressureThreshold: 0.8,
