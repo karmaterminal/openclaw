@@ -310,6 +310,19 @@ describe("a shed preview stays out of other senders' turns (#1415)", () => {
     });
   });
 
+  it("counts another sender's line beside the previews a turn holds", async () => {
+    const rows = ["alice", "bob", "alice", "carol"].map((id, index) =>
+      chatter(`r${index + 1}`, sender(id)),
+    );
+    await overflow(rows, { cap: 2, ...summarize }, (harness) => {
+      const [alice] = harness.calls;
+      expect(alice).toBe(harness.runs.get("r3"));
+      expect(shedCounts(alice)).toEqual([{ shed: 2, previewed: 1 }]);
+      expect(modelInput(alice)).not.toMatch(/bob|message r2/u);
+      expect(records.map((record) => record.outcome)).toEqual(["previewed", "counted"]);
+    });
+  });
+
   it("previews a sender's shed line in that sender's request, not in one that waits before it", async () => {
     const rows = [ask("q1", sender("bob")), ask("q2", sender("alice")), chatter("r3")];
     await overflow(rows, { cap: 2, ...summarize }, (harness) => {
