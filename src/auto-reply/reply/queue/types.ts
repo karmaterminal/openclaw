@@ -49,6 +49,11 @@ export type InternalFollowupRun = FollowupRun & {
     shed: number;
     attached?: true;
   };
+  /**
+   * Frond (karmaterminal, #1415): performance.now() when this source joined the queue. Waiting is
+   * elapsed time; enqueuedAt is wall time, which a clock correction moves.
+   */
+  queuedAt?: number;
   currentTurnImagesPrepared?: true;
   /** Fact indexes are relative to this run's media array. */
   mediaImageLayout?: MediaImageLayout;

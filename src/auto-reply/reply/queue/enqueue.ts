@@ -43,6 +43,7 @@ import {
   resolveFollowupAbortSignal,
   type EnqueueFollowupRunOptions,
   type FollowupRun,
+  type InternalFollowupRun,
   type QueueDedupeMode,
   type QueueSettings,
 } from "./types.js";
@@ -54,22 +55,26 @@ const MAX_RECENT_MESSAGE_IDS = 10_000;
 // debounce, but its oldest line waits at most this long for the batch, or one debounce when longer.
 const ROOM_CHATTER_MAX_WAIT_MS = 60_000;
 
-function restartQueueDebounce(queue: ReturnType<typeof getFollowupQueue>, run: FollowupRun): void {
+function restartQueueDebounce(
+  queue: ReturnType<typeof getFollowupQueue>,
+  run: InternalFollowupRun,
+): void {
   const now = performance.now();
+  run.queuedAt ??= now;
   if (resolveRoomPrecedence(run) !== "chatter") {
     queue.lastEnqueuedAt = now;
     return;
   }
-  const waiting = queue.items.filter((item) => !queue.inFlight.has(item));
+  const waiting: InternalFollowupRun[] = queue.items.filter((item) => !queue.inFlight.has(item));
   // Chatter never extends the debounce of a waiting request or principal line.
   if (waiting.some((item) => resolveRoomPrecedence(item) === "direct")) {
     return;
   }
   const oldest = [run, ...waiting]
     .filter((item) => resolveRoomPrecedence(item) === "chatter")
-    .reduce((at, item) => Math.min(at, item.enqueuedAt), run.enqueuedAt);
+    .reduce((at, item) => Math.min(at, item.queuedAt ?? now), now);
   const overdue =
-    Date.now() - oldest + queue.debounceMs - Math.max(queue.debounceMs, ROOM_CHATTER_MAX_WAIT_MS);
+    now - oldest + queue.debounceMs - Math.max(queue.debounceMs, ROOM_CHATTER_MAX_WAIT_MS);
   const restarted = now - Math.max(0, overdue);
   // A later stamp on queued lines is a refused claim's backoff, which an overdue batch waits out.
   queue.lastEnqueuedAt = waiting.length ? Math.max(queue.lastEnqueuedAt, restarted) : restarted;

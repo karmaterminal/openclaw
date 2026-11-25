@@ -1,6 +1,7 @@
 // Frond (karmaterminal, #1415): room chatter batches whatever it quotes, and addressed requests and
 // the principal's room lines run ahead of it, in order, from the queue and from an idle debounce.
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { createDeferred } from "../../../test/helpers/promise.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
   releaseSessionControllerClaim,
@@ -8,6 +9,7 @@ import {
 } from "../../sessions/session-controller.mailbox.js";
 import { testing as controllerTesting } from "../../sessions/session-controller.test-support.js";
 import type { MsgContext } from "../templating.js";
+import { createQueueCase } from "./queue.case.test-support.js";
 import { enqueueFollowupRun, scheduleFollowupDrain, type FollowupRun } from "./queue.js";
 import {
   aggregated,
@@ -322,7 +324,7 @@ describe("room chatter's wait is bounded (#1415)", () => {
 
   /** The same lines, already in the queue for `ageMs`. */
   const aged = (ageMs: number) =>
-    rows.map((row): Row => ({ ...row, source: () => ({ enqueuedAt: Date.now() - ageMs }) }));
+    rows.map((row): Row => ({ ...row, source: () => ({ queuedAt: performance.now() - ageMs }) }));
 
   it("flushes chatter older than a minute without waiting for the room to go quiet", async () => {
     await withRoomIngress(
@@ -357,6 +359,68 @@ describe("room chatter's wait is bounded (#1415)", () => {
       { settings: { debounceMs } },
     );
   });
+
+  // The wait runs on elapsed time, like the debounce it extends, so one clock drives the real owner:
+  // chatter arrives while a turn runs and after it ends, and the wall clock may step in between.
+  it.each([
+    ["steady", 0],
+    ["stepped back an hour", -3_600_000],
+    ["stepped forward an hour", 3_600_000],
+  ])(
+    "flushes a minute after its oldest line, through the active turn's end, wall clock %s",
+    async (_, step) => {
+      vi.useFakeTimers({ toFake: ["Date", "performance", "setTimeout", "clearTimeout"] });
+      onTestFinished(() => void vi.useRealTimers());
+      const q = createQueueCase({ mode: "collect", debounceMs: 45_000 });
+      const turns: Array<{ ids: string[]; at: number }> = [];
+      const active = createDeferred();
+      let startedAt = 0;
+      const seconds = () => Math.round((performance.now() - startedAt) / 1_000);
+      const pass = async (to: number) =>
+        await vi.advanceTimersByTimeAsync(to * 1_000 - (performance.now() - startedAt));
+      const room = (messageId: string, kind: FollowupRun["currentInboundEventKind"]) =>
+        q.add(
+          createQueueTestRun(
+            {
+              prompt: messageId,
+              messageId,
+              currentInboundEventKind: kind,
+              originatingChannel: "discord",
+              originatingTo: "channel:room",
+            },
+            { sessionKey: q.key, messageProvider: "discord", ...sender("alice") },
+          ),
+        );
+      room("request", "user_request");
+      q.start(async (run) => {
+        turns.push({
+          ids: ["request", "line-a", "line-b", "line-c"].filter((id) => run.prompt.includes(id)),
+          at: seconds(),
+        });
+        if (turns.length === 1) {
+          startedAt = performance.now();
+          await active.promise;
+        }
+      });
+      await vi.advanceTimersByTimeAsync(45_000);
+      expect(turns).toHaveLength(1);
+      await pass(10);
+      room("line-a", "room_event");
+      await pass(20);
+      vi.setSystemTime(Date.now() + step);
+      await pass(40);
+      room("line-b", "room_event");
+      await pass(50);
+      active.resolve();
+      await pass(60);
+      room("line-c", "room_event");
+      // Quiet would end 45 s after line-c; the oldest line's minute ends first.
+      await pass(69);
+      expect(turns).toHaveLength(1);
+      await pass(71);
+      expect(turns.slice(1)).toEqual([{ ids: ["line-a", "line-b", "line-c"], at: 70 }]);
+    },
+  );
 
   it("never restarts a waiting request's debounce", async () => {
     const mixed: Row[] = [

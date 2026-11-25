@@ -27,6 +27,7 @@ import {
 import { createQueueTestRun } from "./queue.test-helpers.js";
 import { stageBundledDiscordGateway } from "./queue/room-aggregate-plugin-gate.test-support.js";
 import { clearFollowupQueue, getExistingFollowupQueue } from "./queue/state.js";
+import type { InternalFollowupRun } from "./queue/types.js";
 
 const COLLECT_TITLE = "[Queued messages while agent was busy]";
 const ROOM_LANE = "discord:channel:room";
@@ -36,7 +37,7 @@ export type Row = {
   kind?: InboundEventKind;
   from?: Partial<FollowupRun["run"]>;
   /** Further source fields, built when the row is dispatched, as channel admission builds them. */
-  source?: () => Partial<Omit<FollowupRun, "run">>;
+  source?: () => Partial<Omit<InternalFollowupRun, "run">>;
 };
 export type Harness = Awaited<ReturnType<typeof openRoomIngress>>;
 
