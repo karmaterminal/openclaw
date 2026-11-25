@@ -1,12 +1,17 @@
 // Frond (karmaterminal, #1415): a senderless room aggregate runs only while every plugin surface its
 // turn can reach is an audited bundled implementation.
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { onGatewayWorkMetricsChanged } from "../../../infra/gateway-work-metrics-events.js";
+import { setGatewayPluginMetadataSnapshot } from "../../../plugins/current-plugin-metadata-snapshot.js";
 import { clearCurrentPluginMetadataSnapshot } from "../../../plugins/current-plugin-metadata-state.js";
 import { initializeGlobalHookRunner } from "../../../plugins/hook-runner-global.js";
 import { createPluginRecord } from "../../../plugins/loader-records.js";
+import { loadPluginMetadataSnapshot } from "../../../plugins/plugin-metadata-snapshot.js";
 import type { PluginOrigin } from "../../../plugins/plugin-origin.types.js";
+import { writeArtifacts } from "../../../plugins/public-surface.test-support.js";
 import { createEmptyPluginRegistry } from "../../../plugins/registry-empty.js";
 import type { PluginRegistry } from "../../../plugins/registry-types.js";
 import {
@@ -216,43 +221,159 @@ describe("room aggregate plugin gate (#1415)", () => {
   });
 });
 
-describe("room aggregate plugin gate at the drain (#1415)", () => {
-  const settings: QueueSettings = { mode: "collect", debounceMs: 0, cap: 50, dropPolicy: "old" };
-  const COLLECT_TITLE = "[Queued messages while agent was busy]";
+const settings: QueueSettings = { mode: "collect", debounceMs: 0, cap: 50, dropPolicy: "old" };
+const COLLECT_TITLE = "[Queued messages while agent was busy]";
 
-  /** Room events queued behind an active turn; its end drains the mailbox into `calls`. */
-  async function drainRoom(senders: string[], onClaim?: (sources: number) => void) {
-    const key = `agent:main:discord:channel:room:${expect.getState().currentTestName}`;
-    for (const id of senders) {
-      expect(enqueueFollowupRun(key, member(id), settings, "message-id", undefined, false)).toBe(
-        true,
-      );
+/** Room events queued behind an active turn; its end drains the mailbox into `calls`. */
+async function drainRoom(
+  senders: string[],
+  { config, onClaim }: { config?: OpenClawConfig; onClaim?: (sources: number) => void } = {},
+) {
+  const key = `agent:main:discord:channel:room:${expect.getState().currentTestName}`;
+  for (const id of senders) {
+    expect(
+      enqueueFollowupRun(key, member(id, config), settings, "message-id", undefined, false),
+    ).toBe(true);
+  }
+  const calls: FollowupRun[] = [];
+  let claimed = false;
+  const stop = onGatewayWorkMetricsChanged(() => {
+    const sources = getExistingFollowupQueue(key)?.claim?.sources.length ?? 0;
+    if (onClaim && !claimed && sources > 0) {
+      claimed = true;
+      onClaim(sources);
     }
-    const calls: FollowupRun[] = [];
-    let claimed = false;
-    const stop = onGatewayWorkMetricsChanged(() => {
-      const sources = getExistingFollowupQueue(key)?.claim?.sources.length ?? 0;
-      if (onClaim && !claimed && sources > 0) {
-        claimed = true;
-        onClaim(sources);
-      }
+  });
+  try {
+    const settlements = (getExistingFollowupQueue(key)?.entries ?? []).map(
+      (input) => input.settlement.promise,
+    );
+    scheduleFollowupDrain(key, async (run) => {
+      calls.push(run);
+      await admitFollowupRunLifecycle(run);
     });
-    try {
-      const settlements = (getExistingFollowupQueue(key)?.entries ?? []).map(
-        (input) => input.settlement.promise,
-      );
-      scheduleFollowupDrain(key, async (run) => {
-        calls.push(run);
-        await admitFollowupRunLifecycle(run);
-      });
-      await Promise.allSettled(settlements);
-      await vi.waitFor(() => expect(getExistingFollowupQueue(key)).toBeUndefined());
-    } finally {
-      stop();
-    }
-    return calls;
+    await Promise.allSettled(settlements);
+    await vi.waitFor(() => expect(getExistingFollowupQueue(key)).toBeUndefined());
+  } finally {
+    stop();
+  }
+  return calls;
+}
+
+// The two plugins that keep the aggregate closed on the fleet's seats (🌊's #1415 ruling): neither
+// joins the audited set without source and test evidence of its absent-sender behavior.
+describe("room aggregate plugin gate over a Gateway's discovered plugins (#1415)", () => {
+  const tempRoots = useAutoCleanupTempDirTracker((cleanup) => afterEach(cleanup));
+  const CANTICLE_TOOLS = ["listen", "status", "mute", "sing", "hush", "outbox"].map(
+    (name) => `canticle_${name}`,
+  );
+
+  /**
+   * The inventory a Gateway boots with: this checkout's bundled plugins, and canticle installed in the
+   * state directory, with only `enabled` on beside the fleet's audited plugins.
+   */
+  function bootGateway(enabled: readonly string[]) {
+    const home = tempRoots.make("openclaw-room-aggregate-gate-");
+    writeArtifacts(path.join(home, ".openclaw", "extensions", "canticle"), {
+      "package.json": {
+        name: "canticle",
+        version: "1.0.0",
+        openclaw: { extensions: ["./index.cjs"] },
+      },
+      "openclaw.plugin.json": {
+        id: "canticle",
+        name: "Canticle",
+        configSchema: { type: "object" },
+        activation: { onStartup: true },
+        contracts: { tools: CANTICLE_TOOLS },
+      },
+      "index.cjs": "module.exports = { register() {} };",
+    });
+    const config: OpenClawConfig = {
+      plugins: {
+        allow: [...FLEET.map(({ id }) => id), "canticle", "voice-call"],
+        entries: Object.fromEntries(
+          ["canticle", "voice-call"].map((id) => [id, { enabled: enabled.includes(id) }]),
+        ),
+      },
+    };
+    const env = {
+      OPENCLAW_HOME: home,
+      OPENCLAW_BUNDLED_PLUGINS_DIR: path.resolve("extensions"),
+    };
+    const snapshot = loadPluginMetadataSnapshot({
+      config,
+      env,
+      workspaceDir: "/tmp",
+      preferPersisted: false,
+    });
+    setGatewayPluginMetadataSnapshot(snapshot, { config, env, workspaceDir: "/tmp" });
+    setActivePluginRegistry(pluginRegistry(...FLEET));
+    const discovered = (id: string) => snapshot.plugins.find((plugin) => plugin.id === id);
+    return { config, discovered };
   }
 
+  it("opens while both are installed and disabled, so each case below turns on its one plugin", () => {
+    const { config, discovered } = bootGateway([]);
+    expect(discovered("canticle")).toMatchObject({
+      origin: "global",
+      contracts: { tools: CANTICLE_TOOLS },
+    });
+    expect(discovered("voice-call")).toMatchObject({
+      origin: "bundled",
+      contracts: { tools: ["voice_call"] },
+    });
+    expect(joins(member("alice", config))).toBe(true);
+  });
+
+  it.each([
+    ["canticle, an external plugin,", ["canticle"]],
+    ["voice-call, a bundled plugin outside the audited set,", ["voice-call"]],
+    ["both", ["canticle", "voice-call"]],
+  ])("keeps every sender on its own key while %s may load its tools", (_, enabled) => {
+    const { config } = bootGateway(enabled);
+    expect(joins(member("alice", config))).toBe(false);
+    expect(resolveFollowupBatchKey(member("alice", config))).not.toBe(
+      resolveFollowupBatchKey(member("bob", config)),
+    );
+  });
+
+  it.each<[string, Owner, readonly string[]]>([
+    ["canticle", { id: "canticle", origin: "global" }, CANTICLE_TOOLS],
+    ["voice-call", { id: "voice-call", origin: "bundled" }, ["voice_call"]],
+  ])("keeps every sender on its own key once %s has registered its tools", (_, owner, tools) => {
+    // Disabled in config, so the loaded registry alone decides.
+    const { config } = bootGateway([]);
+    const registry = pluginRegistry(...FLEET);
+    const record = pluginRegistry(owner).plugins[0]!;
+    registry.plugins.push(record);
+    for (const name of tools) {
+      registry.tools.push({
+        pluginId: owner.id,
+        factory: () => null,
+        names: [name],
+        optional: false,
+        source: record.source,
+      });
+    }
+    setActivePluginRegistry(registry);
+    expect(joins(member("alice", config))).toBe(false);
+  });
+
+  it.each([["canticle"], ["voice-call"]])(
+    "runs each member of a room burst as itself while %s is enabled",
+    async (id) => {
+      const { config } = bootGateway([id]);
+      const senders = ["alice", "bob", "carol"];
+      const calls = await drainRoom(senders, { config });
+      expect(calls.map((call) => [call.prompt, call.run.senderId])).toEqual(
+        senders.map((sender) => [`room message from ${sender}`, sender]),
+      );
+    },
+  );
+});
+
+describe("room aggregate plugin gate at the drain (#1415)", () => {
   it("runs a 100-sender burst as one turn with only the fleet's audited plugins active", async () => {
     setActivePluginRegistry(pluginRegistry(...FLEET));
     const senders = Array.from({ length: 100 }, (_, index) => `speaker-${index + 1}`);
@@ -275,10 +396,12 @@ describe("room aggregate plugin gate at the drain (#1415)", () => {
   it("falls back to per-sender turns when an unaudited plugin activates after the claim formed", async () => {
     setActivePluginRegistry(pluginRegistry(...FLEET));
     const senders = ["alice", "bob", "carol"];
-    const calls = await drainRoom(senders, (sources) => {
-      // Selection saw only audited plugins and claimed the whole room.
-      expect(sources).toBe(senders.length);
-      setActivePluginRegistry(pluginRegistry(...FLEET, { id: "sender-gate", origin: "global" }));
+    const calls = await drainRoom(senders, {
+      onClaim: (sources) => {
+        // Selection saw only audited plugins and claimed the whole room.
+        expect(sources).toBe(senders.length);
+        setActivePluginRegistry(pluginRegistry(...FLEET, { id: "sender-gate", origin: "global" }));
+      },
     });
     // Each member runs as itself; no turn runs senderless.
     expect(calls.map((call) => [call.prompt, call.run.senderId])).toEqual(

@@ -344,8 +344,9 @@ describe("mid-turn room events over durable ingress (#1415)", () => {
         await harness.endActiveTurn();
         expect(harness.calls).toHaveLength(1);
         collected(harness.calls[0], rows.slice(2));
-        // drop:old keeps no preview of the shed rows.
-        expect(harness.calls[0]?.currentInboundContext).toBeUndefined();
+        // drop:old keeps no preview of the shed rows; the turn states how many there were.
+        expect(shedCounts(harness.calls[0])).toEqual([{ shed: 2, previewed: 0 }]);
+        expect(shedContext(harness.calls[0])).toEqual([]);
         await expectSettledOnce(
           harness,
           rows.map((row) => row.id),
@@ -850,20 +851,17 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
           await harness.endActiveTurn();
           expect(harness.calls).toHaveLength(1);
           aggregated(harness.calls[0], kept);
-          // Each preview rides the oldest survivor, which the next arrival sheds in turn; it hands
-          // on what it carried, so the turn states all 50 and previews the newest 20.
-          if (dropPolicy === "old") {
-            expect(harness.calls[0]?.currentInboundContext).toBeUndefined();
-          } else {
-            expect(shedCounts(harness.calls[0])).toEqual([{ shed: 50, previewed: 20 }]);
-            expect(shedContext(harness.calls[0])).toEqual(
-              shed.slice(-20).map((row) => ({
-                sender: row.from?.senderName,
-                messageId: row.id,
-                text: textOf(row),
-              })),
-            );
-          }
+          // Each count rides the oldest survivor, which the next arrival sheds in turn; it hands on
+          // what it carried, so the turn states all 50. drop:summarize previews the newest 20.
+          const previews = dropPolicy === "old" ? [] : shed.slice(-20);
+          expect(shedCounts(harness.calls[0])).toEqual([{ shed: 50, previewed: previews.length }]);
+          expect(shedContext(harness.calls[0])).toEqual(
+            previews.map((row) => ({
+              sender: row.from?.senderName,
+              messageId: row.id,
+              text: textOf(row),
+            })),
+          );
           await expectSettledOnce(
             harness,
             rows.map((row) => row.id),
