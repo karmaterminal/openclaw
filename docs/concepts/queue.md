@@ -103,7 +103,7 @@ are still validated.
 Per-session `/queue` options apply to queued delivery. The `debounce` option also sets the Codex steering quiet window in `steer` mode:
 
 - `debounce`: quiet window before draining queued followups or collect batches; in Codex `steer` mode, quiet window before sending batched `turn/steer`. Bare numbers are milliseconds; units `ms`, `s`, `m`, `h`, and `d` are accepted.
-- `cap`: max queued messages per session, apart from [owner room messages](#owner-room-messages-at-capacity) held over it. Values below `1` are ignored.
+- `cap`: max queued messages per session, apart from [owner room messages](/concepts/queue#owner-room-messages-at-capacity) held over it. Values below `1` are ignored.
 - `drop: "summarize"` (default): drop the oldest queued entries as needed, keep compact summaries, and inject them as a synthetic followup prompt. Each summarized entry keeps its own sender and conversation context.
 - `drop: "old"`: drop the oldest queued entries as needed, without preserving summaries.
 - `drop: "new"`: reject the newest message when the queue is already full.
