@@ -289,6 +289,9 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
   return {
     label: "Compaction",
     name: "request_compaction",
+    // Turn-lifecycle choice, like continue_work and sessions_yield: kept direct so
+    // Tool Search and Code Mode never hide it behind a catalog.
+    catalogMode: "direct-only",
     description: [
       "Trigger compaction volitionally — but FIRST stage working-state survival via continue_delegate(mode='post-compaction', task='<state-summary>'), THEN call this — vs becoming subject to forced compaction at context exhaustion with no warning.",
       "Working state is NOT preserved automatically — the paired post-compaction delegate is what carries state across the seam, and you must stage it before requesting compaction.",
