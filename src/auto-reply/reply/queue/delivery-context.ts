@@ -176,12 +176,12 @@ function resolveSenderScopedToolPolicyKey(execution: FollowupRun["run"]): string
   }
 }
 
-// Frond (karmaterminal, #1415): with messages.groupChat.ambientOwnerAggregate on, an owner folds
+// Frond (karmaterminal, #1415): with messages.groupChat.ambientOwnerAggregate on, a sender folds
 // only as a bot account listed in ambientOwnerAggregatePeers, matched on its channel-verified
-// sender id in the commands.ownerAllowFrom grammar. Each setting resolves like unmentionedInbound:
-// a per-agent groupChat value wins when present. A human, or a sender the channel did not report
-// as a bot, keeps its own turn even when listed, so the principal's request never folds.
-function isAmbientOwnerPeer(execution: FollowupRun["run"]): boolean {
+// sender id in the commands.ownerAllowFrom grammar, command owner or not. Each setting resolves like
+// unmentionedInbound: a per-agent groupChat value wins when present. A human, or a sender the channel
+// did not report as a bot, keeps its own turn even when listed, so no person's line ever folds.
+function isAmbientAggregatePeer(execution: FollowupRun["run"]): boolean {
   const agentGroupChat = resolveAgentConfig(execution.config, execution.agentId)?.groupChat;
   const groupChat = execution.config.messages?.groupChat;
   const resolve = <K extends "ambientOwnerAggregate" | "ambientOwnerAggregatePeers">(key: K) =>
@@ -202,27 +202,23 @@ function isAmbientOwnerPeer(execution: FollowupRun["run"]): boolean {
   );
 }
 
-// Frond (karmaterminal, #1415): a room event joins a cross-sender aggregate only when its own
-// authority already equals the senderless baseline, so the aggregate never grants a member
-// authority it lacks or lifts a member's restriction. It does lose sender-derived context
-// (roles, requester-scoped connections); returns that baseline source. A spawned session stays
-// out: there a senderless requester resolves its tool policy through the persisted child
-// envelope instead of the current request. With the ambient owner mode on, unaddressed prose from
-// a listed owner bot joins too and loses its owner facts the same way: the owner bit, the owner
-// memory audience, and the trace grant the owner bit derives. Every other grant still keeps it out.
+// Frond (karmaterminal, #1415): only a listed bot's unaddressed prose, in a room that opted in, joins a
+// cross-sender aggregate (ruled 2026-11-25), and only when its authority already equals the senderless
+// baseline, so the aggregate never grants a member authority it lacks or lifts a member's restriction.
+// It does lose sender-derived context (roles, requester-scoped connections) and an owner's facts: the
+// owner bit, the owner memory audience, and the trace grant the owner bit derives. Every other grant
+// keeps it out; returns that baseline source. A spawned session stays out: there a senderless requester
+// resolves its tool policy through the persisted child envelope instead of the current request.
 function resolveRoomAggregateSource(source: FollowupRun): FollowupRun | undefined {
   const execution = source.run;
-  const ownerFacts =
-    execution.senderIsOwner === true || source.memoryAudienceSenderIsOwner === true;
-  const ambientOwner =
-    ownerFacts && source.ambientRoomProse === true && isAmbientOwnerPeer(execution);
   if (
     source.currentInboundEventKind !== "room_event" ||
+    source.ambientRoomProse !== true ||
+    !isAmbientAggregatePeer(execution) ||
     source.operatorAuthority ||
     source.createChannelCronAuthority ||
-    (ownerFacts && !ambientOwner) ||
     source.explicitSkillSelections?.length ||
-    (execution.traceAuthorized === true && !(ambientOwner && execution.senderIsOwner === true)) ||
+    (execution.traceAuthorized === true && execution.senderIsOwner !== true) ||
     execution.operatorProfileId ||
     execution.requesterOrigin?.operatorProfileId ||
     execution.conversationToolPolicy ||
@@ -235,7 +231,13 @@ function resolveRoomAggregateSource(source: FollowupRun): FollowupRun | undefine
   ) {
     return undefined;
   }
-  const baseline = { ...source, run: resolveRoomAggregateExecution(execution) };
+  // The message a member quotes is context, not a delivery target: the aggregate never replies on its
+  // own (followup-turn-execution.ts), and threads ride the route's thread id.
+  const baseline = {
+    ...source,
+    originatingReplyToId: undefined,
+    run: resolveRoomAggregateExecution(execution),
+  };
   const policy = resolveSenderScopedToolPolicyKey(execution);
   return policy !== undefined && policy === resolveSenderScopedToolPolicyKey(baseline.run)
     ? baseline
@@ -249,8 +251,8 @@ function resolveRoomAggregateBatchKey(run: FollowupRun): string | undefined {
   );
 }
 
-// Frond (karmaterminal, #1415): the batch identity. A room event with baseline authority keys by
-// the room baseline so senders share one collect; everything else keeps its storage key.
+// Frond (karmaterminal, #1415): the batch identity. An aggregate member keys by the room baseline so
+// senders, whatever they quote, share one collect; everything else keeps its storage key.
 export function resolveFollowupBatchKey(run: FollowupRun): string {
   return resolveRoomAggregateBatchKey(run) ?? resolveFollowupDeliveryStorageKey(run);
 }
@@ -414,13 +416,7 @@ function resolveFollowupReplyAnchor(run: FollowupRun): string | undefined {
   if (run.originatingReplyToMode === "off") {
     return undefined;
   }
-  // Frond (karmaterminal, #1415): the message a room event quotes is context, not a delivery target.
-  // Its turn never replies on its own (followup-turn-execution.ts), and threads ride the route's
-  // thread id, so quoting different messages does not keep a room's lines apart.
-  const replyToId =
-    run.currentInboundEventKind === "room_event"
-      ? undefined
-      : normalizeOptionalString(run.originatingReplyToId);
+  const replyToId = normalizeOptionalString(run.originatingReplyToId);
   if (replyToId || normalizeMessageChannel(run.originatingChannel) !== "slack") {
     return replyToId;
   }

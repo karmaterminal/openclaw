@@ -1,6 +1,6 @@
 // Frond (karmaterminal, #1415): which queued room input runs next in one session's mailbox. Room
 // chatter under a configured collect yields to direct input and joins chatter already queued, so a
-// backlog of chatter becomes one turn behind every request and principal line.
+// backlog of chatter waits behind every request and listed account's line.
 import { type RoomPrecedence, resolveRoomPrecedence } from "../auto-reply/reply/queue/envelope.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import type { SessionControllerInput } from "./session-controller.contracts.js";

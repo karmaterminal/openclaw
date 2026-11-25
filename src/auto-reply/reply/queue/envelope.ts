@@ -15,6 +15,7 @@ import {
 import { extractTextFromChatContent } from "../../../shared/chat-content.js";
 import { buildCollectPrompt } from "../../../utils/queue-helpers.js";
 import { getFollowupOriginRouting, hasPreparedCurrentTurnImages } from "./delivery-context.js";
+import { isListedAccountRoomEvent } from "./listed-account.js";
 import type { FollowupRun, InternalFollowupRun } from "./types.js";
 type OriginRoutingMetadata = Pick<
   FollowupRun,
@@ -286,35 +287,23 @@ export function requiresIndividualCollectDrain(item: FollowupRun): boolean {
   );
 }
 
-/** Frond (karmaterminal, #1415): a command owner the channel did not report as a bot. */
-export function isPrincipalSender(execution: FollowupRun["run"]): boolean {
-  return execution.senderIsOwner === true && execution.senderIsBot !== true;
-}
-
-// Frond (karmaterminal, #1415): the principal's unaddressed room line is not chatter: a source the
-// queue protects, or one from a principal sender. The same reading keeps the principal out of the
-// ambient owner aggregate (delivery-context.ts).
-function isPrincipalRoomEvent(item: FollowupRun): boolean {
-  return (
-    item.currentInboundEventKind === "room_event" &&
-    (item.protectFromQueueOverflow === true || isPrincipalSender(item.run))
-  );
-}
-
 // Frond (karmaterminal, #1415): optional room chatter a configured collect batches yields to direct
-// input: a request a person or peer addressed to the agent, or the principal's own room line. Every
-// other source, internal turns included, keeps its place in the queue.
+// input: a request a person or peer addressed to the agent, or a room line the queue protects, such as
+// a listed account's (#1564). Command authority alone orders nothing. Every other source, internal
+// turns included, keeps its place in the queue.
 export type RoomPrecedence = "direct" | "chatter";
 
 export function resolveRoomPrecedence(item: FollowupRun): RoomPrecedence | undefined {
   if (item.currentInboundEventKind === "user_request") {
     return isHostGeneratedInputProvenance(item.run.inputProvenance) ? undefined : "direct";
   }
-  if (isPrincipalRoomEvent(item)) {
+  if (item.currentInboundEventKind !== "room_event") {
+    return undefined;
+  }
+  if (item.protectFromQueueOverflow === true || isListedAccountRoomEvent(item)) {
     return "direct";
   }
-  return item.currentInboundEventKind === "room_event" &&
-    item.controllerInput?.policy.mode === "collect" &&
+  return item.controllerInput?.policy.mode === "collect" &&
     !isRequiredReplyExpectation(item.run.terminalReplyExpectation)
     ? "chatter"
     : undefined;

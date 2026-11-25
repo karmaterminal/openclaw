@@ -14,7 +14,6 @@ import {
 } from "../../../sessions/session-controller.mailbox.js";
 import { extractTextFromChatContent } from "../../../shared/chat-content.js";
 import { applyQueueDropPolicy, countPendingQueueItems } from "../../../utils/queue-helpers.js";
-import { isSenderInOwnerAllowFromList } from "../../command-auth.js";
 import {
   handOnAmbientOverflowContext,
   handOnUnattachedContext,
@@ -27,13 +26,14 @@ import {
   resolveFollowupDeliveryStorageKey,
 } from "./delivery-context.js";
 import { dropAbortedFollowups, rememberFollowupDrainCallback } from "./drain.js";
-import { isPrincipalSender, resolveRoomPrecedence } from "./envelope.js";
+import { resolveRoomPrecedence } from "./envelope.js";
 import {
   admitFollowupRunLifecycle,
   completeFollowupRunLifecycle,
   markFollowupRunEnqueued,
   releaseBeforeTurnAdoptionRetry,
 } from "./lifecycle.js";
+import { isListedAccountRoomEvent } from "./listed-account.js";
 import {
   followupSourceRunners,
   getExistingFollowupQueue,
@@ -68,7 +68,7 @@ function restartQueueDebounce(
     return;
   }
   const waiting: InternalFollowupRun[] = queue.items.filter((item) => !queue.inFlight.has(item));
-  // Chatter never extends the debounce of a waiting request or principal line.
+  // Chatter never extends the debounce of a waiting request or protected line.
   if (waiting.some((item) => resolveRoomPrecedence(item) === "direct")) {
     return;
   }
@@ -175,13 +175,7 @@ export function enqueueFollowupRun(
       !deferOverflow &&
       queue.dropPolicy === "new" &&
       queue.cap > 0 &&
-      !isPrincipalAccountRoomEvent(run) &&
-      countPendingQueueItems(
-        queue.items,
-        isDiscardableRoomEvent(run) ? queue.inFlight : uncappedItems(queue),
-      ) -
-        supersededGoals.length >=
-        queue.cap &&
+      countPendingQueueItems(queue.items, queue.inFlight) - supersededGoals.length >= queue.cap &&
       (isDiscardableRoomEvent(run) ||
         !queue.items.some((item) => !queue.inFlight.has(item) && isDiscardableRoomEvent(item)))
     ) {
@@ -215,14 +209,6 @@ export function enqueueFollowupRun(
     }
     if (!deferOverflow && !applyFollowupQueueOverflow(queue, run)) {
       return false;
-    }
-    if (
-      !deferOverflow &&
-      queue.cap > 0 &&
-      isPrincipalAccountRoomEvent(run) &&
-      countPendingQueueItems(queue.items, queue.inFlight) >= queue.cap
-    ) {
-      recordQueueCapacity(run, { kind: "held" });
     }
     const front =
       options.position === "front" && (!deferOverflow || options.steerCandidate === true);
@@ -353,73 +339,11 @@ function settleFollowupQueueRefusal(
   );
 }
 
-// Frond (karmaterminal, #1564): channels whose plugins set account provenance (senderAccountVerified)
-// from verified platform account metadata. Every other channel is unsupported, so its owner's room
-// message stays ambient: Feishu and Mattermost, whose bot flags were not reviewed as provenance, and
-// the channels with no such signal, among them iMessage, IRC, LINE, Microsoft Teams, Signal, SMS and
-// WhatsApp. A plugin outside this set gains nothing by setting the fact.
-const OWNER_ACCOUNT_PROVENANCE_CHANNELS: ReadonlySet<string> = new Set([
-  "discord",
-  "slack",
-  "telegram",
-]);
-
-// Frond (karmaterminal, #1564): a room event the channel verified the sender's own account posted, not
-// a bot or app account, webhook, relay or proxy speaking for it. Absent or ambiguous provenance is
-// not protected, whatever authority the sender shows. Agent and Gateway traffic stays bounded by
-// ordinary ambient discard and the cap on purpose: Gateway error storms have flooded rooms. A
-// designated agent lane would need its own authenticated, storm-safe contract (loop and rate limits, a
-// circuit breaker); it is not part of this policy.
-function isVerifiedAccountRoomEvent(run: FollowupRun): boolean {
-  return (
-    run.currentInboundEventKind === "room_event" &&
-    run.run.senderAccountVerified === true &&
-    OWNER_ACCOUNT_PROVENANCE_CHANNELS.has(run.run.messageProvider ?? "")
-  );
-}
-
-// Frond (karmaterminal, #1415): the principal's room line, which the queue already runs ahead of
-// chatter, is never lost to the cap either. It is held over the cap rather than refused: a refused row
-// would hold its ingress lane, where a request to stop may wait. Accepted edge case: only the pace of
-// the accounts' typing bounds how many lines wait, and outside collect each one runs as its own turn.
-function isPrincipalAccountRoomEvent(run: FollowupRun): boolean {
-  return isVerifiedAccountRoomEvent(run) && isPrincipalSender(run.run);
-}
-
-// Frond (karmaterminal, #1564): queue policy for this cut, not a criterion for whose words count. A
-// listed account's unaddressed room message is not ambient chatter. The accounts are the sender ids in
-// messages.groupChat.ownerQueueProtectionAccounts, which is unset (nobody listed) by default, and
-// never derived from command authority.
-function isListedAccountRoomEvent(run: FollowupRun): boolean {
-  const execution = run.run;
-  return (
-    isVerifiedAccountRoomEvent(run) &&
-    !isPrincipalAccountRoomEvent(run) &&
-    isSenderInOwnerAllowFromList(
-      execution.config,
-      {
-        channel: execution.messageProvider,
-        accountId: execution.agentAccountId,
-        senderId: execution.senderId,
-        senderE164: execution.senderE164,
-      },
-      // Always a list: the matcher reads commands.ownerAllowFrom when given none.
-      execution.config.messages?.groupChat?.ownerQueueProtectionAccounts ?? [],
-    )
-  );
-}
-
-/** Items the cap neither counts against a request nor drops: in flight, or the principal's lines. */
-function uncappedItems(queue: ReturnType<typeof getFollowupQueue>): ReadonlySet<FollowupRun> {
-  return new Set([...queue.inFlight, ...queue.items.filter(isPrincipalAccountRoomEvent)]);
-}
-
 function isDiscardableRoomEvent(run: FollowupRun): boolean {
   return (
     run.currentInboundEventKind === "room_event" &&
     !isRequiredReplyExpectation(run.run.terminalReplyExpectation) &&
-    run.protectFromQueueOverflow !== true &&
-    !isPrincipalAccountRoomEvent(run)
+    run.protectFromQueueOverflow !== true
   );
 }
 
@@ -482,9 +406,6 @@ function applyFollowupQueueOverflow(
       discardOverflowRoomEvent(item, "queue-cap-old", queue, [...survivors, run]);
     }
   }
-  if (isPrincipalAccountRoomEvent(run)) {
-    return true;
-  }
   const elidedSummaryLines: string[] = [];
   // The generic drop policy owns temporary lines; publish only paired mailbox entries.
   const summarySources = queue.summaryEntries.map(({ source }) => source);
@@ -495,7 +416,7 @@ function applyFollowupQueueOverflow(
   };
   const shouldEnqueue = applyQueueDropPolicy({
     queue: capacity,
-    inFlight: uncappedItems(queue),
+    inFlight: queue.inFlight,
     summarize: (item) => {
       const approved = item.userTurnTranscriptRecorder?.getPendingInputMessage?.();
       // Capture the approved body before overflow stores its bounded preview.

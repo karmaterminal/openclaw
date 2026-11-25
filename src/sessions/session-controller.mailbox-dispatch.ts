@@ -124,10 +124,6 @@ function selectSessionControllerMailbox(
     let previousInput = first;
     for (const candidate of candidates.slice(start + 1)) {
       const input = candidate.controllerInput;
-      // Frond (karmaterminal, #1415): lines held over the cap still collect at most a cap at a time.
-      if (!isSummary && mailbox.cap > 0 && sources.length >= mailbox.cap) {
-        break;
-      }
       if (
         !input ||
         mailbox.entries.indexOf(input) !== mailbox.entries.indexOf(previousInput) + 1 ||
