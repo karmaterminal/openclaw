@@ -224,6 +224,7 @@ describe("addressed requests and listed accounts run ahead of room chatter (#141
       { id: "i7", from: sender("dave") },
       // An internal turn rebuilt from a listed account's line carries that line's sender facts.
       { id: "i8", from: { ...listed, inputProvenance: { kind: "internal_system" } } },
+      { id: "i9", kind: "user_request", from: sender("asker") },
     ];
     await withRoomIngress(rows, async (harness) => {
       await harness.dispatchRows();
@@ -237,6 +238,7 @@ describe("addressed requests and listed accounts run ahead of room chatter (#141
         "i5",
         "i7",
         "i8",
+        "i9",
       ]);
     });
   });
