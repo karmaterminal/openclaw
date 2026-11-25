@@ -48,6 +48,8 @@ export type InternalFollowupRun = FollowupRun & {
     /** Frond (karmaterminal, #1415): every room message shed into this context, previewed or not. */
     shed: number;
     attached?: true;
+    /** Frond (karmaterminal, #1415): attached for a try that was refused before execution. */
+    attachedEarlier?: InternalFollowupRun["ambientOverflowContext"];
   };
   /**
    * Frond (karmaterminal, #1415): performance.now() when this source joined the queue. Waiting is

@@ -16,6 +16,7 @@ import { extractTextFromChatContent } from "../../../shared/chat-content.js";
 import { applyQueueDropPolicy, countPendingQueueItems } from "../../../utils/queue-helpers.js";
 import { isSenderInOwnerAllowFromList } from "../../command-auth.js";
 import { handOnAmbientOverflowContext, preserveAmbientOverflowContext } from "./ambient-context.js";
+import { recordQueueCapacity } from "./capacity-record.js";
 import {
   createOverflowSummaryRetrySource,
   resolveFollowupAuthorizationKey,
@@ -29,7 +30,6 @@ import {
   markFollowupRunEnqueued,
   releaseBeforeTurnAdoptionRetry,
 } from "./lifecycle.js";
-import { recordQueueShed } from "./shed-record.js";
 import {
   followupSourceRunners,
   getExistingFollowupQueue,
@@ -115,7 +115,7 @@ export function enqueueFollowupRun(
   if (isFollowupRunAborted(run)) {
     return false;
   }
-  if (options.position === "front" || isOwnerAccountRoomEvent(run)) {
+  if (options.position === "front" || isListedAccountRoomEvent(run)) {
     run.protectFromQueueOverflow = true;
   }
   // Peek before getFollowupQueue: rejecting a redelivery after the original
@@ -171,7 +171,13 @@ export function enqueueFollowupRun(
       !deferOverflow &&
       queue.dropPolicy === "new" &&
       queue.cap > 0 &&
-      countPendingQueueItems(queue.items, queue.inFlight) - supersededGoals.length >= queue.cap &&
+      !isPrincipalAccountRoomEvent(run) &&
+      countPendingQueueItems(
+        queue.items,
+        isDiscardableRoomEvent(run) ? queue.inFlight : uncappedItems(queue),
+      ) -
+        supersededGoals.length >=
+        queue.cap &&
       (isDiscardableRoomEvent(run) ||
         !queue.items.some((item) => !queue.inFlight.has(item) && isDiscardableRoomEvent(item)))
     ) {
@@ -299,12 +305,18 @@ function settleFollowupQueueRefusal(
   queue: ReturnType<typeof getFollowupQueue>,
   run: FollowupRun,
 ): void {
-  // Frond (karmaterminal, #1564): the owner's room message, posted from the owner's own account, is
-  // never lost to capacity. Under every policy, drop:new included, its refusal is retryable
-  // backpressure that spends no retry budget; the ingress owner paces the retry. Requests and other
-  // senders keep their accounting.
-  if (isOwnerAccountRoomEvent(run)) {
-    recordQueueShed(run, "queue-cap", "refused");
+  // Frond (karmaterminal, #1415): a refused source runs, if at all, as a fresh one. The count it
+  // carried stays here.
+  const unstated = handOnAmbientOverflowContext(
+    run,
+    queue.items.filter((item) => !queue.inFlight.has(item)),
+    queue.cap,
+  );
+  // Frond (karmaterminal, #1564): a listed account's room message is never lost to capacity. Under
+  // every policy, drop:new included, its refusal is retryable backpressure that spends no retry
+  // budget; the ingress owner paces the retry. Requests and other senders keep their accounting.
+  if (isListedAccountRoomEvent(run)) {
+    recordQueueCapacity(run, { kind: "refused", disposition: "queue-cap", unstated });
     completeFollowupRunLifecycle(run, "backpressure");
     return;
   }
@@ -318,7 +330,11 @@ function settleFollowupQueueRefusal(
   // That is retryable backpressure under every policy, including drop:new.
   const reason =
     queue.dropPolicy === "new" && protectedPendingCount < queue.cap ? "queue-cap-new" : "queue-cap";
-  recordQueueShed(run, reason, reason === "queue-cap-new" ? "dropped" : "refused");
+  recordQueueCapacity(run, {
+    kind: reason === "queue-cap-new" ? "dropped" : "refused",
+    disposition: reason,
+    unstated,
+  });
   completeFollowupRunLifecycle(
     run,
     reason === "queue-cap-new" ? { kind: "dropped", reason } : undefined,
@@ -336,43 +352,62 @@ const OWNER_ACCOUNT_PROVENANCE_CHANNELS: ReadonlySet<string> = new Set([
   "telegram",
 ]);
 
-// Frond (karmaterminal, #1564): queue policy for this cut, not a criterion for whose words count. The
-// owner's unaddressed room message, posted from the owner's own account, is not ambient chatter. The
-// owner's accounts are the principal's (#1415: the command owner the queue already runs ahead of
-// chatter keeps its line at the cap too) and the sender ids in
-// messages.groupChat.ownerQueueProtectionAccounts, which need no command authority. Either way the
-// channel must have verified that the account itself posted it, not a bot or app account, webhook,
-// relay or proxy speaking for it; absent or ambiguous provenance is not protected, whatever authority
-// the sender shows.
-// Agent and Gateway traffic stays bounded by ordinary ambient discard and the cap on purpose: Gateway
-// error storms have flooded rooms. A designated agent lane would need its own authenticated,
-// storm-safe contract (loop and rate limits, a circuit breaker); it is not part of this policy.
-function isOwnerAccountRoomEvent(run: FollowupRun): boolean {
-  const execution = run.run;
+// Frond (karmaterminal, #1564): a room event the channel verified the sender's own account posted, not
+// a bot or app account, webhook, relay or proxy speaking for it. Absent or ambiguous provenance is
+// not protected, whatever authority the sender shows. Agent and Gateway traffic stays bounded by
+// ordinary ambient discard and the cap on purpose: Gateway error storms have flooded rooms. A
+// designated agent lane would need its own authenticated, storm-safe contract (loop and rate limits, a
+// circuit breaker); it is not part of this policy.
+function isVerifiedAccountRoomEvent(run: FollowupRun): boolean {
   return (
     run.currentInboundEventKind === "room_event" &&
-    execution.senderAccountVerified === true &&
-    OWNER_ACCOUNT_PROVENANCE_CHANNELS.has(execution.messageProvider ?? "") &&
-    (isPrincipalSender(execution) ||
-      isSenderInOwnerAllowFromList(
-        execution.config,
-        {
-          channel: execution.messageProvider,
-          accountId: execution.agentAccountId,
-          senderId: execution.senderId,
-          senderE164: execution.senderE164,
-        },
-        // Always a list: the matcher reads commands.ownerAllowFrom when given none.
-        execution.config.messages?.groupChat?.ownerQueueProtectionAccounts ?? [],
-      ))
+    run.run.senderAccountVerified === true &&
+    OWNER_ACCOUNT_PROVENANCE_CHANNELS.has(run.run.messageProvider ?? "")
   );
+}
+
+// Frond (karmaterminal, #1415): the principal's room line, which the queue already runs ahead of
+// chatter, is never lost to the cap either. It is one person's typing, so it is held over the cap
+// rather than refused: a refused row would hold its ingress lane, where a request to stop may wait.
+// Accepted edge case: nothing but that person's pace bounds how many lines wait.
+function isPrincipalAccountRoomEvent(run: FollowupRun): boolean {
+  return isVerifiedAccountRoomEvent(run) && isPrincipalSender(run.run);
+}
+
+// Frond (karmaterminal, #1564): queue policy for this cut, not a criterion for whose words count. A
+// listed account's unaddressed room message is not ambient chatter. The accounts are the sender ids in
+// messages.groupChat.ownerQueueProtectionAccounts, which is unset (nobody listed) by default, and
+// never derived from command authority.
+function isListedAccountRoomEvent(run: FollowupRun): boolean {
+  const execution = run.run;
+  return (
+    isVerifiedAccountRoomEvent(run) &&
+    !isPrincipalAccountRoomEvent(run) &&
+    isSenderInOwnerAllowFromList(
+      execution.config,
+      {
+        channel: execution.messageProvider,
+        accountId: execution.agentAccountId,
+        senderId: execution.senderId,
+        senderE164: execution.senderE164,
+      },
+      // Always a list: the matcher reads commands.ownerAllowFrom when given none.
+      execution.config.messages?.groupChat?.ownerQueueProtectionAccounts ?? [],
+    )
+  );
+}
+
+/** Items the cap neither counts against a request nor drops: in flight, or the principal's lines. */
+function uncappedItems(queue: ReturnType<typeof getFollowupQueue>): ReadonlySet<FollowupRun> {
+  return new Set([...queue.inFlight, ...queue.items.filter(isPrincipalAccountRoomEvent)]);
 }
 
 function isDiscardableRoomEvent(run: FollowupRun): boolean {
   return (
     run.currentInboundEventKind === "room_event" &&
     !isRequiredReplyExpectation(run.run.terminalReplyExpectation) &&
-    run.protectFromQueueOverflow !== true
+    run.protectFromQueueOverflow !== true &&
+    !isPrincipalAccountRoomEvent(run)
   );
 }
 
@@ -383,16 +418,16 @@ function discardOverflowRoomEvent(
   candidates: FollowupRun[],
 ): void {
   const previewed = queue.dropPolicy === "summarize";
-  const stated = preserveAmbientOverflowContext(run, candidates, queue.cap, previewed);
+  const unstated = preserveAmbientOverflowContext(run, candidates, queue.cap, previewed);
   if (run.controllerInput) {
     run.controllerInput.payload = "unbound";
   }
-  if (stated) {
-    recordQueueShed(run, disposition, previewed ? "previewed" : "counted");
-  } else {
-    const { ambientOverflowContext }: InternalFollowupRun = run;
-    recordQueueShed(run, disposition, "none", 1 + (ambientOverflowContext?.shed ?? 0));
-  }
+  recordQueueCapacity(
+    run,
+    unstated > 0
+      ? { kind: "unstated", disposition, unstated }
+      : { kind: previewed ? "previewed" : "counted", disposition },
+  );
   // This is a terminal policy decision, not abandonment: reopening durable ingress
   // would replay the chatter we just shed. Adoption only settles source custody;
   // no model or tool execution is admitted here.
@@ -428,18 +463,18 @@ function applyFollowupQueueOverflow(
       );
       return false;
     }
-    // Frond (karmaterminal, #1415): nor may the owner's room message. With no chatter left to make
-    // room it waits in durable ingress, and nothing is shed for it.
-    if (isOwnerAccountRoomEvent(run) && ambient.length < needed) {
-      settleFollowupQueueRefusal(queue, run);
-      return false;
-    }
     const survivors = queue.items.filter(
       (item) => !queue.inFlight.has(item) && !ambient.includes(item),
     );
     for (const item of ambient) {
       discardOverflowRoomEvent(item, "queue-cap-old", queue, [...survivors, run]);
     }
+  }
+  if (isPrincipalAccountRoomEvent(run)) {
+    if (queue.cap > 0 && countPendingQueueItems(queue.items, queue.inFlight) >= queue.cap) {
+      recordQueueCapacity(run, { kind: "held" });
+    }
+    return true;
   }
   const elidedSummaryLines: string[] = [];
   // The generic drop policy owns temporary lines; publish only paired mailbox entries.
@@ -451,7 +486,7 @@ function applyFollowupQueueOverflow(
   };
   const shouldEnqueue = applyQueueDropPolicy({
     queue: capacity,
-    inFlight: queue.inFlight,
+    inFlight: uncappedItems(queue),
     summarize: (item) => {
       const approved = item.userTurnTranscriptRecorder?.getPendingInputMessage?.();
       // Capture the approved body before overflow stores its bounded preview.
@@ -481,7 +516,7 @@ function applyFollowupQueueOverflow(
           item.controllerInput.payload = "unbound";
         }
         const unstated = handOnAmbientOverflowContext(item, [...survivors, run], queue.cap);
-        recordQueueShed(item, "queue-cap-old", "dropped", unstated);
+        recordQueueCapacity(item, { kind: "dropped", disposition: "queue-cap-old", unstated });
         completeFollowupRunLifecycle(item, { kind: "dropped", reason: "queue-cap-old" });
       }
     },

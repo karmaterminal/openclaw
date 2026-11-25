@@ -126,17 +126,16 @@ or sender authority. Input text awaiting its write hook is replaced by an omissi
 notice; approved text is used without restoring redacted content.
 
 Context is attached once when the recipient executes, including across retries;
-events shed while it waits to retry are stated beside it. A recipient the cap cuts
-hands its count on. The context expires if its recipient is canceled; if no eligible
-pending recipient exists, the ambient event is recorded as unstated. `old` and
+events shed while it waits to retry are stated beside it. A recipient the cap drops or
+refuses hands its count on. The context expires if its recipient is canceled; if no
+eligible pending recipient exists, the ambient event is recorded as unstated. `old` and
 `new` state the count without previews. Among ambient
 events, `drop: "new"` keeps the existing events, while the other policies keep the
 newest. Surviving messages retain FIFO order. Active turns, protected recovery
-work, and events requiring a reply are not eligible for ambient shedding. Each
-message the cap sheds, drops, or refuses leaves one log record without message
-content (policy, disposition, and where it went on; a warning when no turn states
-it), and a shed event's channel receipt is settled so durable ingress does not
-retry it. Recent room history remains subject to the
+work, and events requiring a reply are not eligible for ambient shedding. Each time
+the cap sheds, drops, refuses, or holds a message it leaves one log record without
+message content (a warning when room messages go unstated), and a shed event's
+channel receipt is settled so durable ingress does not retry it. Recent room history remains subject to the
 channel's configured history window.
 
 Gateway followup and collect debounce windows measure elapsed time, so wall-clock corrections do not shorten or extend them.
@@ -145,9 +144,12 @@ The queue uses a built-in 500ms debounce. `cap` defaults to `20`, and `drop` def
 
 ### Owner room messages at capacity
 
-A command owner's unaddressed room messages are never shed as ambient events when
-their channel verified that the owner's own account posted them. To protect
-accounts that hold no command authority too, list them in
+A command owner's unaddressed room message is never shed, dropped, or refused at
+capacity when its channel verified that the owner's own account posted it. Ambient
+events shed to make room for it; with none left it stays queued over the cap. It does
+not count against other people's requests, and nothing displaces it.
+
+To protect further accounts that hold no command authority, list them in
 `messages.groupChat.ownerQueueProtectionAccounts`:
 
 ```json5
@@ -171,11 +173,11 @@ bot or app account, and not a webhook, relay, proxy, or chat posting on the
 account's behalf. Absent or ambiguous provenance is not protected, whatever
 authority the sender shows.
 
-A protected room event sheds ambient events to make room but displaces no request,
-and nothing displaces it. At a cap with nothing left to shed, it is retryable
-backpressure under every `drop` policy and spends no retry attempt; durable ingress
-paces the retry (1 second, doubling to 3 minutes). Messages that mention the agent
-keep the usual capacity rules.
+A listed account's room event is refused only at a cap full of protected work. The
+refusal is retryable backpressure under every `drop` policy and spends no retry
+attempt; durable ingress paces the retry (1 second, doubling to 3 minutes), and later
+messages in that conversation wait behind it. Messages that mention the agent keep the
+usual capacity rules.
 
 Discord, Slack, and Telegram verify account provenance:
 

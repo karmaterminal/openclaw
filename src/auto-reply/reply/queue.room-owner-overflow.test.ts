@@ -1,9 +1,9 @@
-// Frond (karmaterminal, #1564): the owner's unaddressed room message, verified by the channel as the
-// account's own post, survives queue overflow, while other room chatter keeps upstream's settled,
-// no-retry discard (#191733). The owner's accounts are the principal's (#1415) and those listed in
-// messages.groupChat.ownerQueueProtectionAccounts; authority without provenance never grants it. Real
-// durable ingress feeds the real session mailbox; only the model turn and the Discord transport are
-// replaced.
+// Frond (karmaterminal): an owner's unaddressed room message, verified by the channel as the account's
+// own post, survives queue overflow, while other room chatter keeps upstream's settled, no-retry
+// discard (#191733). An account listed in messages.groupChat.ownerQueueProtectionAccounts is refused
+// for retry at a protected cap (#1564); the principal's line is held over the cap (#1415). Authority
+// without provenance never grants either. Real durable ingress feeds the real session mailbox; only
+// the model turn and the Discord transport are replaced.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChannelIngressDispatchLifecycle } from "../../channels/message/ingress-drain-lifecycle.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -39,22 +39,23 @@ installQueueRuntimeErrorSilencer();
 afterEach(() => controllerTesting.resetSessionControllerForTest());
 
 // figs's account is the one listed for queue protection, posting from the account the channel
-// verified as figs's own. peer-a is a prince, a bot account, listed beside figs as a command owner.
+// verified as figs's own, with no command authority: the principal has its own contract below (#1415).
+// peer-a is a prince, a bot account and a command owner.
 const OWNERS: OpenClawConfig = {
-  commands: { ownerAllowFrom: ["figs", "discord:peer-a"] },
+  commands: { ownerAllowFrom: ["discord:peer-a"] },
   messages: { groupChat: { ownerQueueProtectionAccounts: ["discord:figs"] } },
 };
 const owner = { config: OWNERS, senderIsOwner: true, traceAuthorized: true } as const;
-const figs = sender("figs", { ...owner, senderAccountVerified: true });
+const figs = sender("figs", { config: OWNERS, senderAccountVerified: true });
 // The owner's id with no account provenance: absent never means the account's own post.
 const figsUnverified = sender("figs", owner);
 const prince = sender("peer-a", { ...owner, senderIsBot: true });
 // The owner bit without the owner identity or account provenance: an operator profile's command-owner
 // authority.
 const operator = sender("ops", owner);
+bindCommandOwnerAuthority(operator, { isCurrent: () => true });
 // A verified account with neither the listing nor command authority.
 const guest = sender("guest", { config: OWNERS, senderAccountVerified: true });
-bindCommandOwnerAuthority(operator, { isCurrent: () => true });
 
 const POLICIES = ["old", "summarize", "new"] as const satisfies readonly NonNullable<
   QueueSettings["dropPolicy"]
@@ -405,9 +406,9 @@ describe("the configured owner's room message at queue capacity (#1564)", () => 
 });
 
 // Frond (karmaterminal, #1415): running ahead of chatter is not custody. The principal's room line,
-// posted from an account the channel verified, is never shed: ambient chatter sheds first, requests
-// keep their places, and a line the cap cannot hold returns to durable ingress.
-describe("the principal's room message at capacity, with no protection accounts listed (#1415)", () => {
+// posted from an account the channel verified, is never shed: chatter sheds for it, and with none
+// left the queue holds it over the cap. It costs no one else a place, and its ingress lane stays free.
+describe("the principal's room message at capacity (#1415)", () => {
   const config: OpenClawConfig = { commands: { ownerAllowFrom: ["figs", "discord:peer-a"] } };
   const principal = sender("figs", { ...owner, config, senderAccountVerified: true });
   const line = (id: string): Row => ({ id, from: principal });
@@ -422,93 +423,104 @@ describe("the principal's room message at capacity, with no protection accounts 
     // Each request keeps its own turn, so the turns below name the rows that ran.
     source: () => ({ disableCollectBatching: true }),
   });
+  const queued = (harness: Harness) =>
+    getExistingFollowupQueue(harness.key)?.items.map((item) => item.messageId);
 
   it.each(POLICIES)(
-    "holds it for retry and displaces no request when no chatter is left to shed under drop:%s",
+    "holds it over a cap full of requests, displacing none and keeping its lane free, under drop:%s",
     async (dropPolicy) => {
       const admission = openAdmission();
-      let clock = Date.now();
-      const rows = [ask("q1"), ask("q2"), line("z3")];
-      await withRoomIngress(
-        rows,
-        async (harness) => {
-          admission.bind(harness);
-          await harness.dispatchRows();
-          expect(admission.admitted.get("z3")).toBe(false);
-          expect(admission.dispositions).toEqual([["z3", "queue-cap"]]);
-          await settlementOf(harness, "z3");
-          // Counted and visible: pending with no attempt spent, and the reason it waits.
-          expect(await harness.queue.listPending()).toMatchObject([
-            { id: "z3", attempts: 0, lastError: expect.stringContaining("backpressure") },
-          ]);
-          expect(harness.writes.complete.size + harness.writes.fail.size).toBe(0);
-          await harness.endActiveTurn();
-          expect(harness.calls).toEqual(["q1", "q2"].map((id) => harness.runs.get(id)));
-          clock += 1_000;
-          await harness.dispatchRows(1);
-          await harness.endActiveTurn();
-          expect(harness.calls.at(-1)).toBe(harness.runs.get("z3"));
-          await expectSettledOnce(harness, ["q1", "q2", "z3"]);
-          expect(admission.releases).toEqual(["z3"]);
-        },
-        {
-          now: () => clock,
-          settings: { mode: "collect", cap: 2, dropPolicy },
-          enqueue: admission.enqueue,
-        },
-      );
-    },
-  );
-
-  it.each(POLICIES)(
-    "sheds the oldest chatter for it, and never a queued principal line for an arrival, under drop:%s",
-    async (dropPolicy) => {
-      const admission = openAdmission();
-      // Each arrival meets a full queue from r3 on.
-      const rows = [chatter("r1"), line("r2"), line("r3"), chatter("r4"), ask("r5")];
+      // Ids sort in arrival order. A typed stop is an ordinary request in the same lane.
+      const rows = [ask("q1"), ask("q2"), line("r3"), line("r4"), ask("s5")];
       await withRoomIngress(
         rows,
         async (harness) => {
           admission.bind(harness);
           await harness.dispatchRows(4);
-          expect(
-            getExistingFollowupQueue(harness.key)?.items.map((item) => item.messageId),
-          ).toEqual(["r2", "r3"]);
-          expect(admission.dispositions).toEqual([
-            ["r1", "queue-cap-old"],
-            ["r4", "queue-cap-new"],
-          ]);
-          // A request finds only principal lines at the cap: it is refused for retry, they stay.
+          expect(queued(harness)).toEqual(["q1", "q2", "r3", "r4"]);
+          expect(admission.dispositions).toEqual([]);
+          // Nothing waits in front of the next row: it reaches dispatch at once, without a retry.
           await harness.dispatchRows(1);
-          expect(admission.dispositions.at(-1)).toEqual(["r5", "queue-cap"]);
-          expect(
-            getExistingFollowupQueue(harness.key)?.items.map((item) => item.messageId),
-          ).toEqual(["r2", "r3"]);
-          // The principal's consecutive lines are one collected turn, run as the principal.
+          // It meets the cap on its own terms, as if the held lines were not there.
+          expect(admission.dispositions).toEqual(
+            dropPolicy === "old"
+              ? [["q1", "queue-cap-old"]]
+              : dropPolicy === "new"
+                ? [["s5", "queue-cap-new"]]
+                : [],
+          );
           await harness.endActiveTurn();
-          expect(harness.calls).toHaveLength(1);
-          collected(harness.calls[0], rows.slice(1, 3));
-          expect(harness.calls[0]?.run).toMatchObject({ senderId: "figs", senderIsOwner: true });
+          const dropped = admission.dispositions.map(([id]) => id);
+          await expectSettledOnce(
+            harness,
+            rows.map((row) => row.id).filter((id) => !dropped.includes(id)),
+            dropped,
+          );
+          expect(admission.releases).toEqual([]);
+          const own = harness.calls.find((call) => call.run.senderId === "figs");
+          collected(own, rows.slice(2, 4));
+          expect(own?.run.senderIsOwner).toBe(true);
         },
         { settings: { mode: "collect", cap: 2, dropPolicy }, enqueue: admission.enqueue },
       );
     },
   );
 
-  it("keeps the principal line a deferred overflow decides about after a steer settles", async () => {
+  it.each(POLICIES)(
+    "sheds the oldest chatter for it and no line of its own, and admits a request beside it, under drop:%s",
+    async (dropPolicy) => {
+      const admission = openAdmission();
+      // Every arrival from r3 on meets a full queue.
+      const rows = [
+        chatter("r1"),
+        line("r2"),
+        line("r3"),
+        chatter("r4"),
+        line("r5"),
+        ask("r6"),
+        chatter("r7"),
+      ];
+      await withRoomIngress(
+        rows,
+        async (harness) => {
+          admission.bind(harness);
+          await harness.dispatchRows();
+          expect(queued(harness)).toEqual(["r2", "r3", "r5", "r6"]);
+          expect(admission.dispositions).toEqual([
+            ["r1", "queue-cap-old"],
+            ["r4", "queue-cap-new"],
+            ["r7", "queue-cap-new"],
+          ]);
+          await harness.endActiveTurn();
+          expect(harness.calls).toHaveLength(2);
+          collected(harness.calls[0], [rows[1]!, rows[2]!, rows[4]!]);
+          expect(harness.calls[1]).toBe(harness.runs.get("r6"));
+          await expectSettledOnce(
+            harness,
+            rows.map((row) => row.id),
+          );
+          expect(admission.releases).toEqual([]);
+        },
+        { settings: { mode: "collect", cap: 2, dropPolicy }, enqueue: admission.enqueue },
+      );
+    },
+  );
+
+  const room = (messageId: string, execution: Partial<FollowupRun["run"]>) =>
+    createQueueTestRun(
+      {
+        prompt: messageId,
+        messageId,
+        currentInboundEventKind: "room_event",
+        originatingChannel: "discord",
+        originatingTo: "channel:room",
+      },
+      { messageProvider: "discord", ...execution },
+    );
+
+  it("keeps the line a deferred overflow decides about after a steer settles", async () => {
     // A steer holds the cap decision open; settling it applies the cap to sources already queued.
     const q = createQueueCase({ mode: "collect", cap: 1, dropPolicy: "old" });
-    const room = (messageId: string, execution: Partial<FollowupRun["run"]>) =>
-      createQueueTestRun(
-        {
-          prompt: messageId,
-          messageId,
-          currentInboundEventKind: "room_event",
-          originatingChannel: "discord",
-          originatingTo: "channel:room",
-        },
-        { messageProvider: "discord", ...execution },
-      );
     const steer = createQueueTestRun({ prompt: "steer", messageId: "steer" });
     const reservation = reserveSteerCandidate(q.key, steer, q.settings, q.runFollowup)!;
     const held = room("principal", principal);
@@ -518,6 +530,26 @@ describe("the principal's room message at capacity, with no protection accounts 
     expect(getExistingFollowupQueue(q.key)?.items).toEqual([held]);
     await q.drain();
     expect(q.calls).toEqual([held]);
+  });
+
+  it("wakes a full queue that waits for a fresh kick", async () => {
+    const q = createQueueCase({ mode: "collect", cap: 1, dropPolicy: "old" }, 2);
+    const request = createQueueTestRun({ prompt: "request", messageId: "request" });
+    q.add(request);
+    let refused = false;
+    q.start(async (run) => {
+      refused = true;
+      rejectQueuePreparation(run, new AgentDatabaseExecutionAdmissionClosedError("closing"));
+    });
+    const queue = getExistingFollowupQueue(q.key)!;
+    await vi.waitFor(() => {
+      expect(refused).toBe(true);
+      expect(queue.claim).toBeUndefined();
+    });
+    const held = room("principal", principal);
+    expect(enqueueFollowupRun(q.key, held, q.settings, "message-id", q.runFollowup)).toBe(true);
+    await q.done.promise;
+    expect(q.calls).toEqual([request, held]);
   });
 });
 
@@ -627,9 +659,9 @@ describe("room overflow protection follows the owner identity and its account pr
 
 // Either source of protection stands alone; a verified account with neither stays ambient.
 describe("queue protection covers the principal (#1415) and the listed accounts (#1564)", () => {
-  const COMMAND_OWNERS: OpenClawConfig = { commands: OWNERS.commands };
+  const COMMAND_OWNERS: OpenClawConfig = { commands: { ownerAllowFrom: ["figs"] } };
   it.each<[string, boolean, string, OpenClawConfig, boolean]>([
-    ["the listed command owner", true, "figs", OWNERS, true],
+    ["the listed command owner", true, "figs", { ...OWNERS, ...COMMAND_OWNERS }, true],
     ["the command owner's account with the setting unset", true, "figs", COMMAND_OWNERS, true],
     [
       "the command owner's account with the setting empty",

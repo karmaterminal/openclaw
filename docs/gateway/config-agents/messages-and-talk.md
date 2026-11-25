@@ -104,7 +104,7 @@ Batching is a bounded timing heuristic, not a guarantee that every part of a lon
 - `messages.visibleReplies`: controls visible source replies across direct, group, and channel conversations (`"message_tool"` requires `message(action=send)` for visible output; `"automatic"` posts normal replies as before).
 - `messages.usageTemplate` / `messages.responseUsage`: custom `/usage` footer template and default per-reply usage mode (`off | tokens | full`, plus legacy `on` alias for `tokens`).
 - `messages.groupChat.mentionPatterns` / `historyLimit`: group-message mention triggers and history window sizing.
-- `messages.groupChat.ownerQueueProtectionAccounts`: channel-prefixed sender ids of further owner accounts (for example `"discord:123456789012345678"`) whose unaddressed room messages are held as retryable backpressure at a full queue instead of discarded, as a command owner's are. Grants no command authority, global only, and, like a command owner's, limited to Discord, Slack, and Telegram posts the channel verified as the account's own. See [Owner room messages at capacity](/concepts/queue#owner-room-messages-at-capacity).
+- `messages.groupChat.ownerQueueProtectionAccounts`: channel-prefixed sender ids of further owner accounts (for example `"discord:123456789012345678"`) whose unaddressed room messages are held as retryable backpressure at a full queue instead of discarded. A command owner's need no listing. Grants no command authority, global only, and limited to Discord, Slack, and Telegram posts the channel verified as the account's own. See [Owner room messages at capacity](/concepts/queue#owner-room-messages-at-capacity).
 
 ### TTS (text-to-speech)
 

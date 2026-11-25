@@ -52,15 +52,34 @@ function giveToPendingTurn(
   }
   // Frond (karmaterminal, #1415): a turn waiting to retry already states an attached context; what
   // is shed meanwhile is stated beside it.
-  if (!recipient.ambientOverflowContext || recipient.ambientOverflowContext.attached) {
-    recipient.ambientOverflowContext = { entries: [], shed: 0 };
-  }
-  const context = recipient.ambientOverflowContext;
+  const current = recipient.ambientOverflowContext;
+  const context =
+    current && !current.attached ? current : { entries: [], shed: 0, attachedEarlier: current };
+  recipient.ambientOverflowContext = context;
   context.shed += given.shed;
   context.entries.push(...given.entries);
   context.entries.sort((a, b) => a.sequence - b.sequence);
   context.entries.splice(0, Math.max(0, context.entries.length - Math.min(20, Math.floor(cap))));
   return true;
+}
+
+/** Everything the cap shed into a source that has not run, attached for an earlier try or not. */
+function unreadContext(
+  context: AmbientOverflowContext | undefined,
+): Pick<AmbientOverflowContext, "entries" | "shed"> {
+  if (!context) {
+    return { entries: [], shed: 0 };
+  }
+  const earlier = unreadContext(context.attachedEarlier);
+  return {
+    entries: [...earlier.entries, ...context.entries],
+    shed: earlier.shed + context.shed,
+  };
+}
+
+/** How many room messages go unstated when this source leaves the queue without running. */
+export function countUnreadSheds(source: InternalFollowupRun): number {
+  return unreadContext(source.ambientOverflowContext).shed;
 }
 
 /**
@@ -72,8 +91,8 @@ export function handOnAmbientOverflowContext(
   candidates: InternalFollowupRun[],
   cap: number,
 ): number {
-  const context = source.ambientOverflowContext;
-  if (!context) {
+  const context = unreadContext(source.ambientOverflowContext);
+  if (context.shed === 0) {
     return 0;
   }
   if (!giveToPendingTurn(source, candidates, cap, context)) {
@@ -85,14 +104,14 @@ export function handOnAmbientOverflowContext(
 
 /**
  * Counts a shed room message in the turn that outlives it, whatever the drop policy; only
- * drop:summarize adds a preview.
+ * drop:summarize adds a preview. Returns how many room messages no pending turn took over.
  */
 export function preserveAmbientOverflowContext(
   source: InternalFollowupRun,
   candidates: InternalFollowupRun[],
   cap: number,
   previewed: boolean,
-): boolean {
+): number {
   const entries: AmbientOverflowContext["entries"] = [];
   if (previewed && source.controllerInput) {
     const approved = source.userTurnTranscriptRecorder?.getPendingInputMessage?.();
@@ -114,11 +133,14 @@ export function preserveAmbientOverflowContext(
   }
   // Frond (karmaterminal, #1415): a shed source never ran, so it hands on the context it carried;
   // nothing goes uncounted.
-  const inherited = source.ambientOverflowContext;
+  const inherited = unreadContext(source.ambientOverflowContext);
+  const shed = 1 + inherited.shed;
   return giveToPendingTurn(source, candidates, cap, {
-    entries: [...(inherited?.entries ?? []), ...entries],
-    shed: 1 + (inherited?.shed ?? 0),
-  });
+    entries: [...inherited.entries, ...entries],
+    shed,
+  })
+    ? 0
+    : shed;
 }
 
 export function attachAmbientOverflowContext(source: InternalFollowupRun): void {

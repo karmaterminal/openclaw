@@ -3,11 +3,13 @@
 // ingress feeds the real session mailbox; only the model turn and the Discord transport are replaced.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { diagnosticLogger } from "../../logging/diagnostic-runtime.js";
+import { submitSessionControllerInput } from "../../sessions/session-controller.mailbox.js";
 import { testing as controllerTesting } from "../../sessions/session-controller.test-support.js";
 import { AgentDatabaseExecutionAdmissionClosedError } from "../../state/agent-database-admission-error.js";
 import { createQueueCase } from "./queue.case.test-support.js";
 import {
   enqueueFollowupRun,
+  reserveSteerCandidate,
   scheduleFollowupDrain,
   type FollowupRun,
   type QueueSettings,
@@ -42,7 +44,7 @@ beforeEach(() => {
   records.length = 0;
   for (const level of ["info", "warn"] as const) {
     vi.spyOn(diagnosticLogger, level).mockImplementation((message, meta) => {
-      if (message === "followup queue shed message at capacity") {
+      if (message === "followup queue capacity") {
         records.push({ level, ...meta });
       }
     });
@@ -125,7 +127,7 @@ describe("shed room chatter is counted under every drop policy (#1415)", () => {
             roomEvent: true,
             dropPolicy,
             disposition,
-            continuity: dropPolicy === "summarize" ? "previewed" : "counted",
+            outcome: dropPolicy === "summarize" ? "previewed" : "counted",
           }),
         ),
       );
@@ -136,10 +138,10 @@ describe("shed room chatter is counted under every drop policy (#1415)", () => {
     });
   });
 
-  it.each(POLICIES)(
+  it.each(["old", "summarize"] as const)(
     "keeps the count when the request carrying it is itself cut under drop:%s",
     async (dropPolicy) => {
-      // r2 is shed into r1's turn; r4 to r6 then push requests out of a queue full of requests.
+      // r2 is shed into r1's turn; r3 to r6 then push requests out of a queue full of requests.
       const rows = [ask("r1"), chatter("r2"), ...["r3", "r4", "r5", "r6"].map((id) => ask(id))];
       await overflow(rows, { cap: 1, dropPolicy }, async (harness) => {
         expect(stated(harness.calls)).toEqual({
@@ -168,7 +170,7 @@ describe("shed room chatter is counted under every drop policy (#1415)", () => {
             roomEvent: true,
             dropPolicy,
             disposition: "queue-cap-new",
-            continuity: "none",
+            outcome: "unstated",
             unstated: 1,
           }),
         ]);
@@ -177,9 +179,14 @@ describe("shed room chatter is counted under every drop policy (#1415)", () => {
     },
   );
 
-  it.each(POLICIES)(
-    "states lines shed while their turn waits to retry beside those it already stated under drop:%s",
-    async (dropPolicy) => {
+  it.each([
+    ["old", false],
+    ["summarize", false],
+    ["new", false],
+    ["old", true],
+  ] as const)(
+    "states lines shed while their turn waits to retry beside those it already stated under drop:%s, cut %s",
+    async (dropPolicy, cut) => {
       const q = createQueueCase({ mode: "followup", cap: 1, dropPolicy });
       const line = (prompt: string) =>
         createQueueTestRun({ prompt, currentInboundEventKind: "room_event" });
@@ -195,17 +202,23 @@ describe("shed room chatter is counted under every drop policy (#1415)", () => {
         expect(refused).toBe(true);
         expect(queue.claim).toBeUndefined();
       });
-      enqueueFollowupRun(
-        q.key,
-        line("before the retry"),
-        q.settings,
-        "message-id",
-        undefined,
-        false,
-      );
+      const park = (run: FollowupRun) =>
+        enqueueFollowupRun(q.key, run, q.settings, "message-id", undefined, false);
+      park(line("before the retry"));
+      if (cut) {
+        park(createQueueTestRun({ prompt: "@bot and now?" }));
+      }
       await q.drain();
-      const each = { shed: 1, previewed: dropPolicy === "summarize" ? 1 : 0 };
-      expect(shedCounts(q.calls[0])).toEqual([each, each]);
+      const previewed = dropPolicy === "summarize" ? 1 : 0;
+      expect(shedCounts(q.calls[0])).toEqual(
+        cut
+          ? // The request that replaces it never ran beside either notice, so it states both.
+            [{ shed: 2, previewed: 0 }]
+          : [
+              { shed: 1, previewed },
+              { shed: 1, previewed },
+            ],
+      );
     },
   );
 });
@@ -229,14 +242,33 @@ describe("a count stays with one turn (#1415)", () => {
     expect(calls.map((call) => shedCounts(call))).toEqual([[{ shed: 1, previewed: 1 }], [], []]);
   });
 
+  it("passes from a refused request to the turn that keeps its place", async () => {
+    const q = createQueueCase({ mode: "followup", cap: 1, dropPolicy: "new" });
+    // Reserved first, parked last: the steer's fallback puts it ahead of the request at the cap.
+    const steer = createQueueTestRun({ prompt: "steer" });
+    submitSessionControllerInput(q.key, steer, q.settings);
+    const park = (run: FollowupRun) =>
+      enqueueFollowupRun(q.key, run, q.settings, "message-id", undefined, false);
+    park(createQueueTestRun({ prompt: "carrier" }));
+    park(createQueueTestRun({ prompt: "lunch?", currentInboundEventKind: "room_event" }));
+    reserveSteerCandidate(q.key, steer, q.settings, q.runFollowup)!.fallback();
+    expect(records).toMatchObject([
+      { outcome: "counted", roomEvent: true },
+      { outcome: "dropped", disposition: "queue-cap-new", roomEvent: false },
+    ]);
+    await q.drain();
+    expect(q.calls.map((call) => call.prompt)).toEqual(["steer"]);
+    expect(shedCounts(q.calls[0])).toEqual([{ shed: 1, previewed: 0 }]);
+  });
+
   it("is recorded as unstated when its turn is cut and no other turn of its room waits", async () => {
     const elsewhere = { disableCollectBatching: true, originatingThreadId: "elsewhere" };
     const rows: Row[] = [ask("r1"), chatter("r2"), { ...ask("r3"), source: () => elsewhere }];
     await overflow(rows, { cap: 1, dropPolicy: "old" }, (harness) => {
       expect(stated(harness.calls)).toEqual({ shed: 0, previewed: 0 });
       expect(records).toMatchObject([
-        { level: "info", roomEvent: true, continuity: "counted" },
-        { level: "warn", roomEvent: false, continuity: "dropped", unstated: 1 },
+        { level: "info", roomEvent: true, outcome: "counted" },
+        { level: "warn", roomEvent: false, outcome: "dropped", unstated: 1 },
       ]);
     });
   });
@@ -261,7 +293,7 @@ describe("requests the cap cuts are recorded under every drop policy (#1415)", (
             roomEvent: false,
             dropPolicy,
             disposition,
-            continuity: "dropped",
+            outcome: "dropped",
           }),
         ),
       );
@@ -273,43 +305,51 @@ describe("requests the cap cuts are recorded under every drop policy (#1415)", (
     });
   });
 
-  it("records a refusal durable ingress will retry", async () => {
-    const protectedLine: Row = {
-      id: "p1",
-      from: sender("figs", {
-        senderIsOwner: true,
-        senderAccountVerified: true,
-        config: { commands: { ownerAllowFrom: ["figs"] } },
-      }),
-    };
+  it("records a refusal durable ingress retries", async () => {
+    // A listed account's line (#1564) fills the cap, so a request is refused rather than dropped.
+    const listed = sender("figs", {
+      senderAccountVerified: true,
+      config: { messages: { groupChat: { ownerQueueProtectionAccounts: ["discord:figs"] } } },
+    });
+    const ref: { harness?: Harness } = {};
     await withRoomIngress(
-      [protectedLine, ask("q2")],
+      [{ id: "p1", from: listed }, ask("q2")],
       async (harness) => {
-        await harness.dispatchRows(1);
-        const refused = createQueueTestRun(
-          { prompt: "request", currentInboundEventKind: "user_request" },
-          { sessionKey: harness.key },
-        );
-        expect(
-          enqueueFollowupRun(
-            harness.key,
-            refused,
-            harness.settings,
-            "message-id",
-            undefined,
-            false,
-          ),
-        ).toBe(false);
+        ref.harness = harness;
+        await harness.dispatchRows();
         expect(records).toEqual([
           expect.objectContaining({
             level: "info",
             roomEvent: false,
             disposition: "queue-cap",
-            continuity: "refused",
+            outcome: "refused",
           }),
         ]);
+        await harness.runs.get("q2")?.controllerInput?.settlement.promise;
+        expect(await harness.queue.listPending()).toMatchObject([{ id: "q2", attempts: 1 }]);
       },
-      { settings: { mode: "collect", cap: 1, dropPolicy: "new" } },
+      {
+        settings: { mode: "collect", cap: 1, dropPolicy: "new" },
+        enqueue: (row, lifecycle) => {
+          const { key, settings } = ref.harness!;
+          const run = createRoomRun(key, row, lifecycle);
+          enqueueFollowupRun(key, run, settings, "message-id", undefined, false);
+          return run;
+        },
+      },
     );
+  });
+
+  it("records a principal line held over the cap once, with no shed disposition", async () => {
+    const principal: Row = {
+      id: "p2",
+      from: sender("figs", { senderIsOwner: true, senderAccountVerified: true }),
+    };
+    await overflow([ask("q1"), principal], { cap: 1, dropPolicy: "new" }, (_, dispositions) => {
+      expect(dispositions).toEqual([]);
+      expect(records).toEqual([
+        expect.objectContaining({ level: "info", roomEvent: true, outcome: "held" }),
+      ]);
+    });
   });
 });
