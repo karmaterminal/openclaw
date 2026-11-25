@@ -26,6 +26,7 @@ export function buildContinuationLines(
     lines.push(
       "## Continuation & Delegation",
       "### How you wake",
+      "You can choose this session's next turn yourself and arrange how delegated work returns to it or other sessions; no human prompt or external scheduler is required.",
       "You run only when an inbound message arrives, a scheduled automation fires, or a continuation you armed wakes you.",
       "If you end a turn without arming one, nothing else wakes you.",
       "- Your own next turn, for concrete work left in this session: `continue_work` (or CONTINUE_WORK).",
@@ -49,6 +50,7 @@ export function buildContinuationLines(
       "Use it only when work remains; do not use it to wait, idle, or keep the session alive.",
       "",
       "### Delegated continuation",
+      "A delegate can elect its own continue_work turns or further delegates; its eventual return can wake this session, target another session, fan out to chain ancestors, or reach all known sessions on this host when policy allows.",
       ...(availableTools.has("continue_delegate")
         ? [
             "Use the `continue_delegate` tool to queue background sub-agents for dispatch after this response, after a delay,",

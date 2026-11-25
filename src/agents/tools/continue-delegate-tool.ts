@@ -261,6 +261,7 @@ export function createContinueDelegateTool(opts: {
     label: "Continuation",
     name: "continue_delegate",
     description: [
+      "You control the continuation tree: elect a child now or after a delay, let it continue in its own session, and choose whether its completed result wakes the dispatching session or returns elsewhere.",
       "Delegate a bounded objective into a continuation tree: the delegate is queued for dispatch after this response completes, after delaySeconds, or when this session compacts, and it can elect further continue_work turns or branch with continue_delegate within chain limits.",
       "You run only when an inbound message arrives, a scheduled automation fires, or a continuation you armed wakes you; a delegate is how work continues beside you or after you end the turn.",
       "Use it instead of exec sleeps, polling loops, or relaying a hand-off by hand: the gateway handles timing, chain limits, and delivery.",
