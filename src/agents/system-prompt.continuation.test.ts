@@ -247,6 +247,24 @@ describe("buildAgentSystemPrompt — continuation section branching", () => {
     });
   });
 
+  describe("turn-cycle line", () => {
+    const render = (toolNames: string[]) =>
+      buildAgentSystemPrompt({ ...baseParams, continuationEnabled: true, toolNames });
+    it("omits the line when no turn control is exposed", () => {
+      expect(render([])).not.toContain("You control your own turn cycle:");
+    });
+    it("names a single control with is", () => {
+      expect(render(["continue_work"])).toContain(
+        "You control your own turn cycle: `continue_work` is how.",
+      );
+    });
+    it("names every exposed control with are", () => {
+      expect(render(["continue_work", "continue_delegate", "request_compaction"])).toContain(
+        "You control your own turn cycle: `continue_work`, `continue_delegate`, `request_compaction` are how.",
+      );
+    });
+  });
+
   describe("## Tooling list", () => {
     const work =
       "- continue_work: Take your own next turn, now or after a delay; no message needed.";

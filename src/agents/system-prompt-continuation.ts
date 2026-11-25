@@ -5,6 +5,19 @@
  */
 
 /** Tooling-list hint steering delegate work to `continue_delegate` when the tool is available. */
+/** "You control your own turn cycle" naming only the turn controls this turn exposes; omitted when none are. */
+function turnCycleLine(availableTools: ReadonlySet<string>): string[] {
+  const controls = ["continue_work", "continue_delegate", "request_compaction"]
+    .filter((name) => availableTools.has(name))
+    .map((name) => `\`${name}\``);
+  if (controls.length === 0) {
+    return [];
+  }
+  return [
+    `You control your own turn cycle: ${controls.join(", ")} ${controls.length === 1 ? "is" : "are"} how.`,
+  ];
+}
+
 export function delegateToolHint(availableTools: ReadonlySet<string>): string[] {
   return availableTools.has("continue_delegate")
     ? [
@@ -26,14 +39,7 @@ export function buildContinuationLines(
     lines.push(
       "## Continuation & Delegation",
       "### How you wake",
-      `You control your own turn cycle: ${[
-        "continue_work",
-        "continue_delegate",
-        "request_compaction",
-      ]
-        .filter((name) => availableTools.has(name))
-        .map((name) => `\`${name}\``)
-        .join(", ")} are how.`,
+      ...turnCycleLine(availableTools),
       "You can choose this session's next turn yourself and arrange how delegated work returns to it or other sessions; no human prompt or external scheduler is required.",
       "You run only when an inbound message arrives, a scheduled automation fires, or a continuation you armed wakes you.",
       "If you end without arming a continuation, unfinished work won't schedule its own next turn; an inbound message or automation can still wake you.",
