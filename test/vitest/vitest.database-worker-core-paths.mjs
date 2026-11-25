@@ -378,6 +378,8 @@ export const databaseWorkerCoreTestFiles = [
   // Frond (karmaterminal, #1564): the human owner's room message at queue capacity, same ingress.
   "src/auto-reply/reply/queue.room-owner-overflow.test.ts",
   "test/discord-room-ambient-owner-echo.integration.test.ts",
+  // Frond (karmaterminal, #1415): a Discord room backlog through the same durable ingress.
+  "test/discord-room-backlog-coalesce.integration.test.ts",
   "src/auto-reply/reply/reply-run-registry.preparation.test.ts",
   "src/auto-reply/reply/reply-run-registry.question-registration.test.ts",
   "src/auto-reply/reply/reply-tool-authority.worker.test.ts",
