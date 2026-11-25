@@ -34,7 +34,15 @@ const GROUP = {
   chatType: "group",
 } as const;
 
+const groupChat = {
+  ambientOwnerAggregate: true,
+  ambientOwnerAggregatePeers: [
+    ...["peer-a", "peer-b", "peer-c", "peer-x"],
+    ...["grantee", "restricted", "agent-restricted", "group-restricted"],
+  ],
+};
 const config = {
+  messages: { groupChat },
   tools: {
     toolsBySender: { "id:grantee": { alsoAllow: ["exec"] }, "id:restricted": { deny: ["exec"] } },
   },
@@ -50,12 +58,16 @@ const config = {
 
 type Patch = { source?: Partial<FollowupRun>; run?: Partial<FollowupRun["run"]> };
 
-/** A non-owner room event as production stages it, elevated config enabled but not granted. */
+/**
+ * A listed bot's unaddressed prose in an opted-in room, as production stages it: no owner, elevated
+ * config enabled but not granted. A patched config keeps the opt-in unless it names its own messages.
+ */
 function member(id: string, patch: Patch = {}, origin: typeof ROOM | typeof GROUP = ROOM) {
   return createQueueTestRun(
     {
       prompt: `room message from ${id}`,
       currentInboundEventKind: "room_event",
+      ambientRoomProse: true,
       originatingChannel: origin.messageProvider,
       originatingTo: "channel:room",
       originatingChatType: origin.chatType,
@@ -64,16 +76,30 @@ function member(id: string, patch: Patch = {}, origin: typeof ROOM | typeof GROU
     {
       sessionKey: origin.sessionKey,
       messageProvider: origin.messageProvider,
-      config,
       senderId: id,
       senderName: id,
       senderIsOwner: false,
+      senderIsBot: true,
       bashElevated: { enabled: true, allowed: false, defaultLevel: "on" },
       requesterOrigin: { ...origin, senderId: id, senderName: id },
       ...patch.run,
+      config: { ...config, ...patch.run?.config },
     },
   );
 }
+
+/** The same from a prince: a bot that is a command owner, with the trace grant the owner bit derives. */
+const owner: typeof member = (id, patch = {}, origin) =>
+  member(
+    id,
+    { ...patch, run: { senderIsOwner: true, traceAuthorized: true, ...patch.run } },
+    origin,
+  );
+
+const LISTED = [
+  ["a listed bot", member],
+  ["a listed owner bot", owner],
+] as const;
 
 /** Authority a member may carry, each of which keeps it out of the senderless room aggregate. */
 const exclusions: [string, Patch][] = [
@@ -83,13 +109,14 @@ const exclusions: [string, Patch][] = [
     { source: { operatorAuthority: { profileId: "op", scopes: [], assertCurrent: () => {} } } },
   ],
   ["cron-creator authority", { source: { createChannelCronAuthority: () => undefined } }],
-  ["an owner memory audience", { source: { memoryAudienceSenderIsOwner: true } }],
   [
     "an explicit skill selection",
     { source: { explicitSkillSelections: [{ name: "s", path: "/s" }] } },
   ],
-  ["the owner bit", { run: { senderIsOwner: true } }],
-  ["a trace grant", { run: { traceAuthorized: true } }],
+  [
+    "a trace grant the owner bit does not derive",
+    { run: { traceAuthorized: true, senderIsOwner: false } },
+  ],
   ["an operator profile", { run: { operatorProfileId: "op" } }],
   [
     "an origin operator profile",
@@ -112,6 +139,11 @@ const exclusions: [string, Patch][] = [
     "an unreadable sender policy",
     { run: { config: { tools: { toolsBySender: { untyped: {} } } } } },
   ],
+  ["a command or inline directive", { source: { ambientRoomProse: false } }],
+  ["no recorded prose fact", { source: { ambientRoomProse: undefined } }],
+  // 🌊's #1415 ruling: people, and senders the channel did not report as bots, keep their own turns.
+  ["a human sender", { run: { senderIsBot: false } }],
+  ["a sender of unauthenticated kind", { run: { senderIsBot: undefined } }],
 ];
 
 /** A member that keeps its own per-sender key never batches across senders. */
@@ -119,25 +151,74 @@ const joins = (run: FollowupRun) =>
   resolveFollowupBatchKey(run) !== resolveFollowupDeliveryStorageKey(run);
 
 describe("room aggregate eligibility (#1415)", () => {
-  it("batches baseline-authority senders under one room key", () => {
-    expect(joins(member("alice"))).toBe(true);
-    expect(resolveFollowupBatchKey(member("alice"))).toBe(resolveFollowupBatchKey(member("bob")));
+  it("batches listed bots' prose under one room key, owners or not", () => {
+    expect(joins(member("peer-a"))).toBe(true);
+    expect(joins(owner("peer-b"))).toBe(true);
+    const keys = [
+      member("peer-a"),
+      member("peer-b"),
+      owner("peer-c"),
+      owner("peer-c", { source: { memoryAudienceSenderIsOwner: true } }),
+      // An overflow-compacted copy keeps its source's batch identity.
+      createOverflowSummaryRetrySource(owner("peer-c")),
+    ].map((run) => resolveFollowupBatchKey(run));
+    expect(new Set(keys).size).toBe(1);
   });
 
-  it.each(exclusions)("keeps a member with %s on its own key", (_, patch) => {
-    expect(joins(member("x", patch))).toBe(false);
+  const withAgent = (messages: OpenClawConfig["messages"], agent: GroupChatConfig) => ({
+    messages,
+    agents: { entries: { agent: { ...config.agents.entries.agent, groupChat: agent } } },
   });
+  const { ambientOwnerAggregatePeers } = groupChat;
 
-  it.each(["grantee", "restricted", "agent-restricted"])(
-    "keeps a toolsBySender entry for id:%s on its own key",
-    (id) => {
-      expect(joins(member(id))).toBe(false);
-    },
-  );
+  describe.each(LISTED)("%s", (_, peer) => {
+    it.each(exclusions)("with %s keeps its own key", (__, patch) => {
+      expect(joins(peer("peer-a", patch))).toBe(false);
+    });
 
-  it("keeps a group toolsBySender entry on its own key", () => {
-    expect(joins(member("anyone", {}, GROUP))).toBe(true);
-    expect(joins(member("group-restricted", {}, GROUP))).toBe(false);
+    it.each<[string, OpenClawConfig]>([
+      ["unset", { messages: {} }],
+      ["off", { messages: { groupChat: { ...groupChat, ambientOwnerAggregate: false } } }],
+      ["on but off for the agent", withAgent({ groupChat }, { ambientOwnerAggregate: false })],
+      ["on with no peers listed", { messages: { groupChat: { ambientOwnerAggregate: true } } }],
+      [
+        "on with the agent's empty peers list",
+        withAgent({ groupChat }, { ambientOwnerAggregatePeers: [] }),
+      ],
+      ["on only for the agent, with no peers", withAgent({}, { ambientOwnerAggregate: true })],
+    ])("keeps its own key with the mode %s", (__, cfg) => {
+      expect(joins(peer("peer-a", { run: { config: cfg } }))).toBe(false);
+    });
+
+    it("follows the agent's override of the mode and of the peers list", () => {
+      const at = (id: string, cfg: OpenClawConfig) => joins(peer(id, { run: { config: cfg } }));
+      expect(at("peer-a", withAgent({}, groupChat))).toBe(true);
+      const narrowed = withAgent({ groupChat }, { ambientOwnerAggregatePeers: ["peer-b"] });
+      expect(at("peer-b", narrowed)).toBe(true);
+      expect(at("peer-a", narrowed)).toBe(false);
+    });
+
+    it("matches the list by its own sender id, never by its name", () => {
+      expect(joins(peer("peer-x"))).toBe(true);
+      expect(joins(peer("peer-a", { run: { senderName: "figs", senderUsername: "figs" } }))).toBe(
+        true,
+      );
+      const named = { senderName: "peer-a", senderUsername: "peer-a" };
+      const requesterOrigin = { ...ROOM, senderId: "impostor", ...named };
+      expect(joins(peer("impostor", { run: { ...named, requesterOrigin } }))).toBe(false);
+    });
+
+    it.each(["grantee", "restricted", "agent-restricted"])(
+      "keeps a toolsBySender entry for id:%s on its own key",
+      (id) => {
+        expect(joins(peer(id))).toBe(false);
+      },
+    );
+
+    it("keeps a group toolsBySender entry on its own key", () => {
+      expect(joins(peer("peer-a", {}, GROUP))).toBe(true);
+      expect(joins(peer("group-restricted", {}, GROUP))).toBe(false);
+    });
   });
 
   it("batches senders that share exec overrides and runs the aggregate with them", () => {
@@ -145,107 +226,20 @@ describe("room aggregate eligibility (#1415)", () => {
     const execOverrides = resolveReplyExecOverrides({
       agentExecDefaults: { host: "gateway", security: "full" },
     });
-    const alice = member("alice", { run: { execOverrides } });
-    expect(joins(alice)).toBe(true);
-    expect(resolveFollowupBatchKey(member("bob", { run: { execOverrides } }))).toBe(
-      resolveFollowupBatchKey(alice),
+    const first = member("peer-a", { run: { execOverrides } });
+    expect(joins(first)).toBe(true);
+    expect(resolveFollowupBatchKey(member("peer-b", { run: { execOverrides } }))).toBe(
+      resolveFollowupBatchKey(first),
     );
     for (const other of [
-      member("carol", { run: { execOverrides: { ...execOverrides, security: "allowlist" } } }),
+      member("peer-c", { run: { execOverrides: { ...execOverrides, security: "allowlist" } } }),
       // A session permission mode an attempt wrote into its run's shared exec overrides.
-      member("erin", { run: { execOverrides: { ...execOverrides, mode: "deny" } } }),
-      member("dave"),
+      member("peer-b", { run: { execOverrides: { ...execOverrides, mode: "deny" } } }),
+      member("peer-x"),
     ]) {
-      expect(resolveFollowupBatchKey(other)).not.toBe(resolveFollowupBatchKey(alice));
+      expect(resolveFollowupBatchKey(other)).not.toBe(resolveFollowupBatchKey(first));
     }
-    expect(resolveRoomAggregateExecution(alice.run).execOverrides).toEqual(execOverrides);
-  });
-});
-
-describe("ambient owner room aggregate eligibility (#1415)", () => {
-  const peers = { ambientOwnerAggregatePeers: ["peer-a", "peer-x"] };
-  const ambient: OpenClawConfig = {
-    ...config,
-    messages: { groupChat: { ambientOwnerAggregate: true, ...peers } },
-  };
-  const withAgent = (base: OpenClawConfig, groupChat: GroupChatConfig): OpenClawConfig => ({
-    ...base,
-    agents: { entries: { agent: { ...config.agents.entries.agent, groupChat } } },
-  });
-  /** Unaddressed prose from a bot owner as the reply run stages it; a patched config keeps the mode. */
-  const owner = (id: string, patch: Patch = {}, cfg = ambient) =>
-    member(id, {
-      source: { ambientRoomProse: true, ...patch.source },
-      run: {
-        senderIsOwner: true,
-        traceAuthorized: true,
-        senderIsBot: true,
-        ...patch.run,
-        config: { ...cfg, ...patch.run?.config },
-      },
-    });
-  // Only the owner facts relax; the trace grant only as the owner bit's own derivation.
-  const relaxed = new Set(["an owner memory audience", "the owner bit", "a trace grant"]);
-
-  it("batches owner prose with other senders under one room key", () => {
-    expect(joins(owner("peer-a"))).toBe(true);
-    expect(resolveFollowupBatchKey(owner("peer-a"))).toBe(
-      resolveFollowupBatchKey(member("alice", { run: { config: ambient } })),
-    );
-    expect(joins(owner("peer-a", { source: { memoryAudienceSenderIsOwner: true } }))).toBe(true);
-    // An overflow-compacted copy keeps its source's batch identity.
-    expect(resolveFollowupBatchKey(createOverflowSummaryRetrySource(owner("peer-a")))).toBe(
-      resolveFollowupBatchKey(owner("peer-a")),
-    );
-  });
-
-  it.each<[string, OpenClawConfig]>([
-    ["unset", config],
-    ["off", { ...config, messages: { groupChat: { ambientOwnerAggregate: false, ...peers } } }],
-    ["on but off for the agent", withAgent(ambient, { ambientOwnerAggregate: false })],
-    [
-      "on with no peers listed",
-      { ...config, messages: { groupChat: { ambientOwnerAggregate: true } } },
-    ],
-    [
-      "on with the agent's empty peers list",
-      withAgent(ambient, { ambientOwnerAggregatePeers: [] }),
-    ],
-    ["on only for the agent, with no peers", withAgent(config, { ambientOwnerAggregate: true })],
-  ])("keeps owner prose on its own key with the mode %s", (_, cfg) => {
-    expect(joins(owner("peer-a", {}, cfg))).toBe(false);
-  });
-
-  it("follows the agent's override of the mode and of the peers list", () => {
-    expect(
-      joins(owner("peer-a", {}, withAgent(config, { ambientOwnerAggregate: true, ...peers }))),
-    ).toBe(true);
-    const narrowed = withAgent(ambient, { ambientOwnerAggregatePeers: ["peer-b"] });
-    expect(joins(owner("peer-b", {}, narrowed))).toBe(true);
-    expect(joins(owner("peer-a", {}, narrowed))).toBe(false);
-  });
-
-  it("matches the listed peer by its own sender id, never by its name", () => {
-    expect(joins(owner("peer-x"))).toBe(true);
-    expect(joins(owner("peer-a", { run: { senderName: "figs", senderUsername: "figs" } }))).toBe(
-      true,
-    );
-    const named = { senderName: "peer-a", senderUsername: "peer-a" };
-    expect(
-      joins(
-        owner("impostor", {
-          run: { ...named, requesterOrigin: { ...ROOM, senderId: "impostor", ...named } },
-        }),
-      ),
-    ).toBe(false);
-  });
-
-  it.each<[string, string, Patch]>([
-    ["an unlisted bot", "peer-new", {}],
-    ["a listed human", "peer-a", { run: { senderIsBot: false } }],
-    ["a listed sender of unauthenticated kind", "peer-a", { run: { senderIsBot: undefined } }],
-  ])("keeps owner prose from %s on its own key", (_, id, patch) => {
-    expect(joins(owner(id, patch))).toBe(false);
+    expect(resolveRoomAggregateExecution(first.run).execOverrides).toEqual(execOverrides);
   });
 
   it("runs the room baseline as no bot and with no member's account provenance", () => {
@@ -257,95 +251,77 @@ describe("ambient owner room aggregate eligibility (#1415)", () => {
     // Frond (karmaterminal, #1564): a rebuilt source never gains the owner's queue protection.
     expect(baseline.senderAccountVerified).toBeUndefined();
   });
-
-  it.each<[string, Patch]>([
-    ...exclusions.filter(([label]) => !relaxed.has(label)),
-    ["a command or inline directive", { source: { ambientRoomProse: false } }],
-    ["no recorded prose fact", { source: { ambientRoomProse: undefined } }],
-  ])("keeps owner prose with %s on its own key", (_, patch) => {
-    expect(joins(owner("peer-a", patch))).toBe(false);
-  });
-
-  it("keeps a non-owner trace grant and an owner's tool grant on their own keys", () => {
-    const traced = member("x", {
-      source: { ambientRoomProse: true },
-      run: { config: ambient, traceAuthorized: true },
-    });
-    expect(joins(traced)).toBe(false);
-    const grant = { tools: { toolsBySender: { "id:peer-x": { alsoAllow: ["exec"] } } } };
-    expect(joins(owner("peer-x", { run: { config: grant } }))).toBe(false);
-  });
 });
 
-// The fold's scope as ruled so far, pinned so a ruling changes it on purpose. A room line's batch
-// identity ignores the message it quotes, so every fold here also crosses quotes.
-describe("what folds across senders, whatever each line quotes (#1415)", () => {
-  const groupChat = { ambientOwnerAggregatePeers: ["peer-a", "figs"] };
-  const optedOut: OpenClawConfig = { ...config, messages: { groupChat } };
-  const optedIn: OpenClawConfig = {
-    ...config,
-    messages: { groupChat: { ...groupChat, ambientOwnerAggregate: true } },
+// The fold's scope as 🌊 ruled it (#1415): lines cross senders, and the messages they quote, only in a
+// room that opted in, and only from the bots it lists.
+describe("what folds across senders and quotes (#1415)", () => {
+  const listed = {
+    ambientOwnerAggregatePeers: [
+      ...groupChat.ambientOwnerAggregatePeers,
+      "figs",
+      "alice",
+      "pk-figs",
+    ],
   };
-  const quoting = (messageId: string, source: Patch["source"] = {}) => ({
-    originatingReplyToId: messageId,
-    originatingReplyToMode: "batched" as const,
-    ...source,
-  });
-  const bot = { senderIsBot: true };
-  const ownerBot = { ...bot, senderIsOwner: true, traceAuthorized: true };
-  const ownerHuman = {
-    senderIsOwner: true,
-    traceAuthorized: true,
-    senderAccountVerified: true as const,
-  };
-  const prose = { ambientRoomProse: true };
-  type Case = [label: string, folds: boolean, id: string, Patch];
-  const always: Case[] = [
-    // No opt-in: non-owner room events fold at the room baseline, people and bots alike.
-    ["a non-owner's prose", true, "bob", { source: prose }],
-    ["a non-owner bot's prose", true, "other-bot", { source: prose, run: bot }],
-    // Text the channel did not classify as a command grants a non-owner nothing; it folds as text.
-    ["a non-owner's directive-shaped text", true, "bob", { source: { ambientRoomProse: false } }],
-    ["a mention", false, "bob", { source: { currentInboundEventKind: "user_request" } }],
-    [
-      "an owner's mention",
-      false,
-      "peer-a",
-      { source: { currentInboundEventKind: "user_request" }, run: ownerBot },
-    ],
-    // Channels classify control and native commands as requests (classifyChannelInboundEvent).
-    [
-      "an owner's command or directive",
-      false,
-      "peer-a",
-      { source: { ambientRoomProse: false }, run: ownerBot },
-    ],
-    [
-      "a skill command",
-      false,
-      "bob",
-      { source: { explicitSkillSelections: [{ name: "s", path: "/s" }] } },
-    ],
-    // Even listed as a peer, a human owner is the principal.
-    ["the principal's prose", false, "figs", { source: prose, run: ownerHuman }],
-  ];
+  const person = { senderIsBot: undefined };
+  const figs = { ...person, senderAccountVerified: true as const };
+  const request: Patch["source"] = { currentInboundEventKind: "user_request" };
 
   describe.each(["off", "on"] as const)("with ambientOwnerAggregate %s", (mode) => {
-    it.each<Case>([
-      ...always,
-      ["a listed owner bot's prose", mode === "on", "peer-a", { source: prose, run: ownerBot }],
-      ["an unlisted owner bot's prose", false, "peer-b", { source: prose, run: ownerBot }],
-    ])("%s folds: %s", (_, folds, id, patch) => {
-      const at = (messageId: string, sender: string, from: Patch) =>
+    it.each<[label: string, opted: boolean, id: string, peer: typeof member, patch?: Patch]>([
+      ["a listed bot's prose", true, "peer-a", member],
+      ["a listed owner bot's prose", true, "peer-a", owner],
+      ["an unlisted bot's prose", false, "other-bot", member],
+      ["an unlisted owner bot's prose", false, "other-bot", owner],
+      // Even listed, a person is no bot peer, and neither is a webhook or proxy speaking for one.
+      ["a person's prose", false, "bob", member, { run: person }],
+      ["a listed person's prose", false, "alice", member, { run: { senderIsBot: false } }],
+      ["the principal's prose", false, "figs", owner, { run: figs }],
+      ["a listed proxy's prose", false, "pk-figs", owner, { run: person }],
+      [
+        "a person's directive-shaped text",
+        false,
+        "bob",
+        member,
+        { source: { ambientRoomProse: false }, run: person },
+      ],
+      // Channels classify control and native commands as requests (classifyChannelInboundEvent).
+      ["a listed bot's mention", false, "peer-a", member, { source: request }],
+      ["a listed owner bot's mention", false, "peer-a", owner, { source: request }],
+      [
+        "a listed bot's command or directive",
+        false,
+        "peer-a",
+        member,
+        { source: { ambientRoomProse: false } },
+      ],
+      [
+        "a listed owner bot's command or directive",
+        false,
+        "peer-a",
+        owner,
+        { source: { ambientRoomProse: false } },
+      ],
+    ])("%s folds when opted in: %s", (_, opted, id, peer, patch = {}) => {
+      const folds = mode === "on" && opted;
+      const messages = { groupChat: { ...listed, ambientOwnerAggregate: mode === "on" } };
+      const at = (quoted: string, sender: string, from: typeof member, extra: Patch = {}) =>
         resolveFollowupBatchKey(
-          member(sender, {
-            source: quoting(messageId, from.source),
-            run: { ...from.run, config: mode === "on" ? optedIn : optedOut },
+          from(sender, {
+            source: {
+              originatingReplyToId: quoted,
+              originatingReplyToMode: "batched",
+              ...extra.source,
+            },
+            run: { ...extra.run, config: { messages } },
           }),
         );
-      const room = at("m1", "alice", { source: prose });
-      expect(at("m2", id, patch) === room).toBe(folds);
-      expect(at("m1", id, patch) === room).toBe(folds);
+      const line = at("m1", id, peer, patch);
+      expect(at("m1", "peer-b", member) === line).toBe(folds);
+      expect(at("m2", "peer-b", owner) === line).toBe(folds);
+      // Outside the aggregate a sender's own lines stay apart by the message each one quotes.
+      expect(at("m2", id, peer, patch) === line).toBe(folds);
     });
   });
 });

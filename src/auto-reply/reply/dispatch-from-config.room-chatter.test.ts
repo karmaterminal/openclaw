@@ -42,8 +42,11 @@ async function arrive(
 ) {
   const cfg: OpenClawConfig = {
     session: { store: sessionStoreMocks.resolveSessionStorePathCore() },
-    commands: { ownerAllowFrom: ["discord:figs"] },
-    messages: { queue: { byChannel: { discord: mode }, debounceMsByChannel: { discord: 60_000 } } },
+    commands: { ownerAllowFrom: ["discord:figs", "discord:kin"] },
+    messages: {
+      groupChat: { ownerQueueProtectionAccounts: ["discord:figs"] },
+      queue: { byChannel: { discord: mode }, debounceMsByChannel: { discord: 60_000 } },
+    },
   };
   const runTurn = vi.fn(async (_run: FollowupRun) => {});
   const waiting = createQueueTestRun(
@@ -106,7 +109,11 @@ async function arrive(
 
 it.each<[string, Partial<MsgContext>, Setup?]>([
   ["a mention", { InboundEventKind: "user_request", SenderId: "asker" }],
-  ["the principal's line", { InboundEventKind: "room_event", SenderId: "figs" }],
+  [
+    "a listed account's line",
+    { InboundEventKind: "room_event", SenderId: "figs", SenderAccountVerified: true },
+  ],
+  ["an unlisted command owner's chatter", { InboundEventKind: "room_event", SenderId: "kin" }],
   ["a peer bot's chatter", PEER],
   ["a guest's chatter", { InboundEventKind: "room_event", SenderId: "guest" }],
   ["chatter behind a queued request", PEER, { queued: "user_request" }],

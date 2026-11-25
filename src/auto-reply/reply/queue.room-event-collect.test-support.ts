@@ -61,6 +61,8 @@ export function createRoomRun(
       originatingTo: "channel:room",
       originatingChatType: "channel",
       currentInboundEventKind: row.kind ?? "room_event",
+      // What the reply run records for these rows' text (get-reply-run-execute.ambient-room-prose).
+      ambientRoomProse: (row.kind ?? "room_event") === "room_event",
       turnAdoptionLifecycle,
       // Room events inherit the ingress admission fence as their queued cancel signal.
       abortSignal: turnAdoptionLifecycle.abortSignal,
@@ -326,17 +328,31 @@ export const owner = sender("owner", {
   config: { messages: { groupChat: { ownerQueueProtectionAccounts: ["discord:owner"] } } },
 });
 
-// Frond (karmaterminal, #1415): the fleet's room, where every prince is a command owner, with the
-// ambient owner room aggregate on for the listed princes, one in the typed owner-list form.
-export const AMBIENT: OpenClawConfig = {
+// Frond (karmaterminal, #1415): a room opted in to combining the listed bots' unaddressed prose.
+export const optedIn = (peers: string[]): OpenClawConfig => ({
   messages: {
     groupChat: {
       unmentionedInbound: "room_event",
       ambientOwnerAggregate: true,
-      ambientOwnerAggregatePeers: ["peer-a", "discord:peer-b", "peer-c", "peer-d"],
+      ambientOwnerAggregatePeers: peers,
     },
   },
-};
+});
+
+/** The fleet's room: its princes (one in the typed owner-list form) and four other bots listed. */
+export const AMBIENT = optedIn([
+  ...["peer-a", "discord:peer-b", "peer-c", "peer-d"],
+  ...["bot-a", "bot-b", "bot-c", "bot-d"],
+]);
+
+/** A bot account with no command authority, as channel admission records it. */
+export function peer(
+  id: string,
+  config: OpenClawConfig = AMBIENT,
+  extra: Partial<FollowupRun["run"]> = {},
+): Partial<FollowupRun["run"]> {
+  return sender(id, { senderIsBot: true, config, ...extra });
+}
 
 /** A command owner prince, a bot account, speaking in the room as channel admission records it. */
 export function ownerPeer(
@@ -344,25 +360,16 @@ export function ownerPeer(
   config: OpenClawConfig,
   extra: Partial<FollowupRun["run"]> = {},
 ): Partial<FollowupRun["run"]> {
-  return sender(id, {
-    senderIsOwner: true,
-    traceAuthorized: true,
-    senderIsBot: true,
-    config,
-    ...extra,
-  });
+  return peer(id, config, { senderIsOwner: true, traceAuthorized: true, ...extra });
 }
 
-/** The human principal, a command owner Discord reports as no bot. */
+/** The human principal, a command owner Discord reports as no bot, not listed for protection. */
 export function principal(
   config: OpenClawConfig,
   extra: Partial<FollowupRun["run"]> = {},
 ): Partial<FollowupRun["run"]> {
   return sender("figs", { senderIsOwner: true, traceAuthorized: true, config, ...extra });
 }
-
-/** What the reply run records for unaddressed prose (get-reply-run-execute.ambient-room-prose). */
-export const prose = () => ({ ambientRoomProse: true });
 
 export type Shared = Pick<FollowupRun["run"], "execOverrides">;
 

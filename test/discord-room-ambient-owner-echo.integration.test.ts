@@ -17,7 +17,6 @@ import {
   expectSettledOnce,
   ownerPeer,
   principal,
-  prose,
   withRoomIngress,
   type Row,
 } from "../src/auto-reply/reply/queue.room-event-collect.test-support.js";
@@ -97,7 +96,6 @@ async function replayEcho(config: OpenClawConfig, aside = false) {
       // Core queued the turn behind the active run; it settles when its agent run ends.
       turn.finishDispatch({ deferredToActiveRun: "followup" });
       return {
-        ...prose(),
         currentInboundContext: { text: context },
         runObservers: { onAgentRunTerminalOutcome: turn.replyOptions.onAgentRunTerminalOutcome },
         onQueueDisposition: turn.replyOptions.onFollowupQueueDisposition,
@@ -173,10 +171,10 @@ describe("the all-owner echo under the ambient owner room aggregate (#1415)", ()
     ]);
   });
 
-  it("runs the principal's aside as its own owner turn ahead of the peers' collected turn", async () => {
+  it("keeps the principal's aside as its own owner turn beside the peers' collected turn", async () => {
     const echo = await replayEcho(AMBIENT, true);
-    expect(echo.count).toEqual({ inputsPerTurn: [1, 1, 5], posts: 3, answers: 1 });
-    const [aside, collectedTurn] = echo.calls;
+    expect(echo.count).toEqual({ inputsPerTurn: [1, 5, 1], posts: 3, answers: 1 });
+    const [collectedTurn, aside] = echo.calls;
     aggregated(collectedTurn, echo.rows.slice(0, REPLIES.length));
     expect(collectedTurn?.controllerClaim?.sources).not.toContain(echo.runs.get(ASIDE[0]));
     // Discord reports a human as no bot: the principal runs as itself with its owner authority.
@@ -187,10 +185,7 @@ describe("the all-owner echo under the ambient owner room aggregate (#1415)", ()
       senderIsOwner: true,
       traceAuthorized: true,
     });
-    expect(echo.posts.slice(1)).toEqual([
-      { replyTo: ASIDE[0], text: ACK },
-      { replyTo: "1005", text: ACK },
-    ]);
+    expect(echo.posts.at(-1)).toEqual({ replyTo: ASIDE[0], text: ACK });
   });
 
   it.each([

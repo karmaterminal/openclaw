@@ -32,7 +32,9 @@ import {
   expectSettledOnce,
   expectShedAtCap,
   openRoomIngress,
+  optedIn,
   owner,
+  peer,
   ROOM_ORIGIN,
   sender,
   shedContext,
@@ -79,12 +81,12 @@ afterEach(() => controllerTesting.resetSessionControllerForTest());
 
 const burst: Row[] = [{ id: "r1" }, { id: "r2" }, { id: "r3" }];
 
-// The 2026-10-31 breakfast burst: four non-owner senders, one of them a peer agent.
+// The 2026-10-31 breakfast burst: four senders, here the bots the room lists.
 const breakfast: Row[] = [
-  { id: "b1", from: sender("alice") },
-  { id: "b2", from: sender("bob") },
-  { id: "b3", from: sender("carol") },
-  { id: "b4", from: sender("peer-agent") },
+  { id: "b1", from: peer("bot-a") },
+  { id: "b2", from: peer("bot-b") },
+  { id: "b3", from: peer("bot-c") },
+  { id: "b4", from: peer("bot-d") },
 ];
 
 describe("mid-turn room events over durable ingress (#1415)", () => {
@@ -198,6 +200,7 @@ describe("mid-turn room events over durable ingress (#1415)", () => {
           originatingTo: "channel:room",
           originatingChatType: "channel",
           currentInboundEventKind: "room_event",
+          ambientRoomProse: true,
           turnAdoptionLifecycle: source.options.turnAdoptionLifecycle,
           abortSignal: source.options.turnAdoptionLifecycle?.abortSignal,
         },
@@ -505,11 +508,11 @@ describe("mid-turn room events over durable ingress (#1415)", () => {
 describe("a multi-sender room burst runs as one least-authority aggregate (#1415)", () => {
   it("runs the owner's room message first, as its own turn, then one non-owner aggregate", async () => {
     const rows: Row[] = [
-      { id: "n1", from: sender("alice") },
-      { id: "n2", from: sender("bob") },
+      { id: "n1", from: peer("bot-a") },
+      { id: "n2", from: peer("bot-b") },
       { id: "n3o", from: owner },
-      { id: "n4", from: sender("carol") },
-      { id: "n5", from: sender("peer-agent") },
+      { id: "n4", from: peer("bot-c") },
+      { id: "n5", from: peer("bot-d") },
     ];
     await withRoomIngress(rows, async (harness) => {
       await harness.dispatchRows();
@@ -528,9 +531,9 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
   // the oldest, the first the cap would shed.
   const capped = (from: Partial<FollowupRun["run"]>): Row[] => [
     { id: "c1", from },
-    ...["alice", "bob", "carol", "peer-agent"].map((id, index) => ({
+    ...["bot-a", "bot-b", "bot-c", "bot-d"].map((id, index) => ({
       id: `c${index + 2}`,
-      from: sender(id),
+      from: peer(id),
     })),
   ];
 
@@ -560,10 +563,7 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
       "without account provenance",
       sender("owner", { senderIsOwner: true, traceAuthorized: true, config: owner.config }),
     ],
-    [
-      "from an account its channel reports as a bot",
-      { ...owner, config: {}, senderIsBot: true, senderAccountVerified: undefined },
-    ],
+    ["on an account the setting does not list", { ...owner, config: {} }],
   ])("sheds the owner bit %s at the cap like ambient chatter", async (_, from) => {
     const rows = capped(from);
     await withRoomIngress(
@@ -584,7 +584,9 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
   });
 
   it("keeps each sender-scoped grant or restriction out of the aggregate as its own turn", async () => {
+    const held = ["grantee", "restricted", "elevated", "exec", "reviewer", "legacy"];
     const config = {
+      ...optedIn(["bot-a", "bot-b", "bot-c", "bot-d", ...held]),
       tools: {
         toolsBySender: {
           "id:grantee": { alsoAllow: ["exec"] },
@@ -592,12 +594,11 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
         },
       },
     };
-    const member = (id: string, extra: Partial<FollowupRun["run"]> = {}) =>
-      sender(id, { config, ...extra });
+    const member = (id: string, extra?: Partial<FollowupRun["run"]>) => peer(id, config, extra);
     // Same-millisecond ingress claims order by id, so ids sort in arrival order.
     const rows: Row[] = [
-      { id: "c01", from: member("alice") },
-      { id: "c02", from: member("bob") },
+      { id: "c01", from: member("bot-a") },
+      { id: "c02", from: member("bot-b") },
       // toolsBySender resolves from the sender at run time: one grant, one restriction.
       { id: "c03", from: member("grantee") },
       { id: "c04", from: member("restricted") },
@@ -611,8 +612,8 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
       { id: "c06", from: member("exec", { execOverrides: { security: "full" } }) },
       { id: "c07", from: member("reviewer", { approvalReviewerDeviceId: "device-1" }) },
       { id: "c08", from: member("legacy", { conversationToolPolicy: { deny: ["exec"] } }) },
-      { id: "c09", from: member("carol") },
-      { id: "c10", from: member("peer-agent") },
+      { id: "c09", from: member("bot-c") },
+      { id: "c10", from: member("bot-d") },
     ];
     await withRoomIngress(
       rows,
@@ -641,9 +642,9 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
   });
 
   it("carries a multi-sender overflow into the room-baseline aggregate as named background", async () => {
-    const rows: Row[] = ["alice", "bob", "carol", "dave", "peer-agent"].map((id, index) => ({
+    const rows: Row[] = ["bot-a", "bot-b", "bot-c", "bot-d", "peer-a"].map((id, index) => ({
       id: `s${index + 1}`,
-      from: sender(id),
+      from: peer(id),
     }));
     await withRoomIngress(
       rows,
@@ -657,8 +658,8 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
         // The preview never bypasses the shed row's transcript write hook, still pending here.
         const text = "[Content omitted: input write hook has not approved this message.]";
         expect(shedContext(harness.calls[0])).toEqual([
-          { sender: "alice", messageId: "s1", text },
-          { sender: "bob", messageId: "s2", text },
+          { sender: "bot-a", messageId: "s1", text },
+          { sender: "bot-b", messageId: "s2", text },
         ]);
         expect(shedCounts(harness.calls[0])).toEqual([{ shed: 2, previewed: 2 }]);
         expect(readUserTurnRequesterOrigin(harness.calls[0]?.userTurnTranscriptRecorder)).toEqual(
@@ -684,7 +685,7 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
         const lostMember = harness.runs.get("b2")!.turnAdoptionLifecycle!;
         const adoptLostMember = lostMember.onAdopted;
         lostMember.onAdopted = async () => {
-          await harness.addRow({ id: "b2-edit", from: sender("bob") });
+          await harness.addRow({ id: "b2-edit", from: peer("bot-b") });
           expect(await harness.drain.drainOnce()).toEqual({ started: 1 });
           await adoptLostMember();
         };
@@ -711,7 +712,7 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
   });
 
   it("runs room content arriving during the aggregate turn as the next turn", async () => {
-    const late: Row = { id: "late", from: sender("dave") };
+    const late: Row = { id: "late", from: peer("bot-a") };
     await withRoomIngress(breakfast, async (harness) => {
       await harness.dispatchRows();
       await harness.endActiveTurn(async (run) => {
@@ -732,9 +733,9 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
     const execOverrides = resolveReplyExecOverrides({
       agentExecDefaults: { host: "gateway", security: "full" },
     });
-    const rows: Row[] = ["alice", "bob", "carol", "peer-agent"].map((id, index) => ({
+    const rows: Row[] = ["bot-a", "bot-b", "bot-c", "bot-d"].map((id, index) => ({
       id: `x${index + 1}`,
-      from: sender(id, { execOverrides }),
+      from: peer(id, undefined, { execOverrides }),
     }));
     await withRoomIngress(rows, async (harness) => {
       await harness.dispatchRows();
@@ -750,9 +751,10 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
 
   it("splits senders by exec permission mode, each turn under its own mode", async () => {
     // An attempt narrows its run's shared exec overrides to the session mode; recovery reuses them.
+    const bots = ["bot-a", "bot-b", "bot-c", "bot-d"];
     const rows: Row[] = (["deny", "deny", "full", "full"] as const).map((mode, index) => ({
       id: `m${index + 1}`,
-      from: sender(`speaker-${index + 1}`, { execOverrides: { mode } }),
+      from: peer(bots[index]!, undefined, { execOverrides: { mode } }),
     }));
     await withRoomIngress(rows, async (harness) => {
       await harness.dispatchRows();
@@ -810,8 +812,8 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
         expect(harness.calls).toEqual(["b1h", "b3", "b4"].map((id) => harness.runs.get(id)));
         // The owner's turn holds the shed previews as background, under its own authority.
         expect(shedContext(harness.calls[0])).toEqual([
-          { sender: "alice", messageId: "b1", text: textOf(rows[0]!) },
-          { sender: "bob", messageId: "b2", text: textOf(rows[2]!) },
+          { sender: "bot-a", messageId: "b1", text: textOf(rows[0]!) },
+          { sender: "bot-b", messageId: "b2", text: textOf(rows[2]!) },
         ]);
         expect(harness.calls[0]?.run).toMatchObject({ senderId: "owner", senderIsOwner: true });
         await expectSettledOnce(
@@ -823,12 +825,11 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
     );
   });
 
-  /** One room event from each of `count` distinct non-owner senders; ids sort in arrival order. */
+  /** One room event from each of `count` distinct listed bots; ids sort in arrival order. */
   function crowd(count: number): Row[] {
-    return Array.from({ length: count }, (_, index) => {
-      const n = String(index + 1).padStart(3, "0");
-      return { id: `p${n}`, from: sender(`speaker-${n}`) };
-    });
+    const ids = Array.from({ length: count }, (_, index) => String(index + 1).padStart(3, "0"));
+    const config = optedIn(ids.map((n) => `bot-${n}`));
+    return ids.map((n) => ({ id: `p${n}`, from: peer(`bot-${n}`, config) }));
   }
 
   // The harness queue is the fleet's: collect, cap 50, drop:old, no debounce. The mailbox cap

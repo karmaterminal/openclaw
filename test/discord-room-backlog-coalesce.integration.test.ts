@@ -2,7 +2,8 @@
 // senders, most of them replies to different messages, pass Discord's real message context, the real
 // reply context, admission and execution, real durable ingress and the session mailbox; only the
 // agent runner and the Discord transport are replaced. The sources queue while the room's turn runs;
-// its end admits the whole ambient backlog as one turn, behind the mention and the principal.
+// its end admits the listed bots' ambient backlog as one turn, behind the mention and the line of the
+// account listed for queue protection. In a room that did not opt in, no line crosses senders.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   loadDiscordRoomLineFixture,
@@ -80,8 +81,9 @@ const FIGS = { id: "9001", name: "figs", owner: true } as const;
 const PEER_A = { id: "7001", name: "peer-a", bot: true, owner: true } as const;
 const PEER_B = { id: "7002", name: "peer-b", bot: true, owner: true } as const;
 const PEER_C = { id: "7003", name: "peer-c", bot: true, owner: true } as const;
+const BOT_A = { id: "7101", name: "bot-a", bot: true } as const;
+const BOT_B = { id: "7102", name: "bot-b", bot: true } as const;
 const GUEST = { id: "8001", name: "guest" } as const;
-const OTHER = { id: "8002", name: "other" } as const;
 
 const FLEET: OpenClawConfig = {
   channels: { discord: { replyToMode: "batched" } },
@@ -95,8 +97,18 @@ const FLEET: OpenClawConfig = {
     groupChat: {
       unmentionedInbound: "room_event",
       ambientOwnerAggregate: true,
-      ambientOwnerAggregatePeers: [PEER_A, PEER_B, PEER_C].map(({ id }) => `discord:${id}`),
+      ambientOwnerAggregatePeers: [PEER_A, PEER_B, PEER_C, BOT_A, BOT_B].map(
+        ({ id }) => `discord:${id}`,
+      ),
+      ownerQueueProtectionAccounts: [`discord:${FIGS.id}`],
     },
+  },
+};
+const OPTED_OUT: OpenClawConfig = {
+  ...FLEET,
+  messages: {
+    ...FLEET.messages,
+    groupChat: { ...FLEET.messages?.groupChat, ambientOwnerAggregate: false },
   },
 };
 
@@ -106,14 +118,15 @@ async function stageDiscordLine(params: {
   line: Line;
   lifecycle: ChannelIngressDispatchLifecycle;
   debounceMs: number;
+  fleet: OpenClawConfig;
 }): Promise<FollowupRun> {
-  const { line, stateDir } = params;
+  const { line, stateDir, fleet } = params;
   const { buildDiscordRoomLineContext } = await loadDiscordRoomLineFixture();
   const storePath = `${stateDir}/agents/main/sessions/sessions.json`;
-  const queue = { ...FLEET.messages?.queue, debounceMsByChannel: { discord: params.debounceMs } };
+  const queue = { ...fleet.messages?.queue, debounceMsByChannel: { discord: params.debounceMs } };
   const cfg: OpenClawConfig = {
-    ...FLEET,
-    messages: { ...FLEET.messages, queue },
+    ...fleet,
+    messages: { ...fleet.messages, queue },
     session: { store: storePath },
   };
   const ctxPayload = await buildDiscordRoomLineContext({
@@ -218,13 +231,14 @@ type BacklogOptions = {
   /** Lines arriving after the turn ended, while its queue waits out `debounceMs`. */
   late?: readonly Line[];
   debounceMs?: number;
+  fleet?: OpenClawConfig;
 };
 
 /** The lines arrive while the room's turn runs; its end drains the mailbox. */
 async function drainBacklog(
   lines: readonly Line[],
   check: (harness: Harness) => void | Promise<void>,
-  { prioritizePending, late = [], debounceMs = 0 }: BacklogOptions = {},
+  { prioritizePending, late = [], debounceMs = 0, fleet = FLEET }: BacklogOptions = {},
 ) {
   await withTempState(async (stateDir) => {
     const active = createReplyOperation({
@@ -240,7 +254,7 @@ async function drainBacklog(
       {
         prioritizePending,
         enqueue: (row, lifecycle) =>
-          stageDiscordLine({ stateDir, line: byId.get(row.id)!, lifecycle, debounceMs }),
+          stageDiscordLine({ stateDir, line: byId.get(row.id)!, lifecycle, debounceMs, fleet }),
       },
     );
     try {
@@ -293,18 +307,43 @@ describe("a Discord room backlog behind a busy turn (#1415)", () => {
   const room: Line[] = [
     { id: "1001", author: PEER_A, text: "it passes here" },
     { id: "1002", author: PEER_B, text: "green for me too", replyTo: "1000" },
-    { id: "1003", author: GUEST, text: "same on arm", replyTo: "1001" },
-    { id: "1004", author: PEER_C, text: "confirmed", replyTo: "1002" },
-    { id: "1005", author: PEER_A, text: "the docs job too", replyTo: "1003" },
-    { id: "1006", author: OTHER, text: "mine is still running" },
+    { id: "1003", author: BOT_A, text: "same on arm", replyTo: "1001" },
+    { id: "1004", author: BOT_B, text: "confirmed", replyTo: "1002" },
+    { id: "1005", author: PEER_C, text: "the docs job too", replyTo: "1003" },
+    { id: "1006", author: PEER_A, text: "mine is still running" },
   ];
 
-  it("admits every ambient line as one turn, whatever message each one quotes", async () => {
+  it("admits every listed bot's line as one turn, whatever message each one quotes", async () => {
     await drainBacklog(room, (harness) => {
       const keys = room.map(({ id }) => harness.runs.get(id)?.originatingReplyToId);
       expect(keys).toEqual([undefined, "1000", "1001", "1002", "1003", undefined]);
       expect(harness.calls).toHaveLength(1);
       expectCarries(harness.calls[0], room);
+    });
+  });
+
+  it("runs every line as its sender in a room that did not opt in", async () => {
+    await drainBacklog(
+      room,
+      (harness) => {
+        expect(harness.calls).toEqual(room.map(({ id }) => harness.runs.get(id)));
+        expect(harness.calls.map((call) => call.run.senderId)).toEqual(
+          room.map(({ author }) => author.id),
+        );
+      },
+      { fleet: OPTED_OUT },
+    );
+  });
+
+  it("keeps a person's line out of the bots' turns", async () => {
+    const guest: Line = { id: "10031", author: GUEST, text: "same on arm", replyTo: "1001" };
+    const lines = [...room.slice(0, 3), guest, ...room.slice(3)];
+    await drainBacklog(lines, (harness) => {
+      expect(harness.calls).toHaveLength(3);
+      expectCarries(harness.calls[0], lines.slice(0, 3));
+      expect(harness.calls[1]).toBe(harness.runs.get(guest.id));
+      expect(harness.calls[1]?.run).toMatchObject({ senderId: GUEST.id, senderIsOwner: false });
+      expectCarries(harness.calls[2], lines.slice(4));
     });
   });
 
@@ -315,12 +354,12 @@ describe("a Discord room backlog behind a busy turn (#1415)", () => {
     // Discord claims a recent native mention ahead of other pending rows (#1531).
     ["the mention claimed first", [MENTION, FIGS_LINE], (id) => id === MENTION],
   ])(
-    "runs the principal and a mention first, %s, then one ambient turn",
+    "runs the listed account's line and a mention first, %s, then one ambient turn",
     async (_, first, prioritizePending) => {
       const lines: Line[] = [
         ...room.slice(0, 2),
         { id: FIGS_LINE, author: FIGS, text: "also check the arm runner" },
-        { id: "10030", author: GUEST, text: "same on arm", replyTo: "1001" },
+        { id: "10030", author: BOT_A, text: "same on arm", replyTo: "1001" },
         { id: "10031", author: PEER_C, text: "confirmed", replyTo: "1002" },
         {
           id: MENTION,
@@ -329,7 +368,7 @@ describe("a Discord room backlog behind a busy turn (#1415)", () => {
           replyTo: "1000",
           kind: "user_request",
         },
-        { id: "10041", author: OTHER, text: "mine is still running" },
+        { id: "10041", author: BOT_B, text: "mine is still running" },
       ];
       const ambient = lines.filter((line) => !first.includes(line.id));
       await drainBacklog(

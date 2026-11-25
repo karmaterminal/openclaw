@@ -1,5 +1,6 @@
-// Frond (karmaterminal, #1415): room chatter batches whatever it quotes, and addressed requests and
-// the principal's room lines run ahead of it, in order, from the queue and from an idle debounce.
+// Frond (karmaterminal, #1415): a room that opted in batches listed bots' chatter whatever it quotes,
+// and addressed requests and the room lines of accounts listed for queue protection (#1564) run ahead
+// of chatter, in order, from the queue and from an idle debounce.
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -18,8 +19,8 @@ import {
   expectRoomTurns,
   expectSettledOnce,
   ownerPeer,
+  peer,
   principal,
-  prose,
   sender,
   withRoomIngress,
   type Row,
@@ -44,11 +45,11 @@ const quoting =
     ...extra,
   });
 
-describe("room chatter batches whatever message it quotes (#1415)", () => {
+describe("listed bots' chatter batches whatever message it quotes (#1415)", () => {
   it("collects many senders quoting different messages into one turn that quotes none", async () => {
-    const rows: Row[] = ["alice", "bob", "carol", "dave"].map((id, index) => ({
+    const rows: Row[] = ["bot-a", "bot-b", "bot-c", "bot-d"].map((id, index) => ({
       id: `q${index + 1}`,
-      from: sender(id),
+      from: peer(id),
       source: quoting(`m${index}`),
     }));
     await withRoomIngress(rows, async (harness) => {
@@ -64,21 +65,22 @@ describe("room chatter batches whatever message it quotes (#1415)", () => {
     });
   });
 
-  it("collects one owner's lines quoting different messages as that owner, opt-in off", async () => {
+  it("keeps one sender's lines apart by the message each quotes, with the opt-in off", async () => {
     const config: OpenClawConfig = {
       messages: { groupChat: { unmentionedInbound: "room_event" } },
     };
-    const rows: Row[] = ["m1", "m2", "m3"].map((replyTo, index) => ({
+    const rows: Row[] = ["m1", "m1", "m2"].map((replyTo, index) => ({
       id: `o${index + 1}`,
       from: ownerPeer("peer-a", config),
-      source: quoting(replyTo, prose()),
+      source: quoting(replyTo),
     }));
     await withRoomIngress(rows, async (harness) => {
       await harness.dispatchRows();
       await harness.endActiveTurn();
-      expect(harness.calls).toHaveLength(1);
-      collected(harness.calls[0], rows);
+      expect(harness.calls).toHaveLength(2);
+      collected(harness.calls[0], rows.slice(0, 2));
       expect(harness.calls[0]?.run).toMatchObject({ senderId: "peer-a", senderIsOwner: true });
+      expect(harness.calls[1]).toBe(harness.runs.get("o3"));
       await expectSettledOnce(
         harness,
         rows.map((row) => row.id),
@@ -88,8 +90,8 @@ describe("room chatter batches whatever message it quotes (#1415)", () => {
 
   it("keeps a batch's shared quote, and keeps addressed requests apart by theirs", async () => {
     const rows: Row[] = [
-      { id: "s1", from: sender("alice"), source: quoting("m1") },
-      { id: "s2", from: sender("bob"), source: quoting("m1") },
+      { id: "s1", from: peer("bot-a"), source: quoting("m1") },
+      { id: "s2", from: peer("bot-b"), source: quoting("m1") },
       { id: "s3", kind: "user_request", from: sender("asker"), source: quoting("m1") },
       { id: "s4", kind: "user_request", from: sender("asker"), source: quoting("m2") },
     ];
@@ -103,9 +105,9 @@ describe("room chatter batches whatever message it quotes (#1415)", () => {
 
   it("keeps other threads of the channel on their own turn", async () => {
     const rows: Row[] = [
-      { id: "t1", from: sender("alice"), source: quoting("m1", { originatingThreadId: "a" }) },
-      { id: "t2", from: sender("bob"), source: quoting("m1", { originatingThreadId: "a" }) },
-      { id: "t3", from: sender("carol"), source: quoting("m1", { originatingThreadId: "b" }) },
+      { id: "t1", from: peer("bot-a"), source: quoting("m1", { originatingThreadId: "a" }) },
+      { id: "t2", from: peer("bot-b"), source: quoting("m1", { originatingThreadId: "a" }) },
+      { id: "t3", from: peer("bot-c"), source: quoting("m1", { originatingThreadId: "b" }) },
     ];
     await withRoomIngress(rows, async (harness) => {
       await harness.dispatchRows();
@@ -117,15 +119,26 @@ describe("room chatter batches whatever message it quotes (#1415)", () => {
   });
 });
 
-describe("addressed requests and the principal run ahead of room chatter (#1415)", () => {
+// figs is the account listed for queue protection; kin is a command owner it does not list.
+const LISTED: OpenClawConfig = {
+  messages: {
+    groupChat: {
+      ...AMBIENT.messages?.groupChat,
+      ownerQueueProtectionAccounts: ["discord:figs"],
+    },
+  },
+};
+const listed = principal(LISTED, { senderAccountVerified: true });
+
+describe("addressed requests and listed accounts run ahead of room chatter (#1415)", () => {
   it("runs them in arrival order, then the chatter around them as one turn", async () => {
     const rows: Row[] = [
-      { id: "d1", from: ownerPeer("peer-a", AMBIENT), source: prose },
-      { id: "d2", from: principal(AMBIENT), source: prose },
-      { id: "d3", from: sender("alice", { config: AMBIENT }) },
-      { id: "d4", kind: "user_request", from: ownerPeer("peer-b", AMBIENT) },
-      { id: "d5", from: principal(AMBIENT), source: prose },
-      { id: "d6", from: ownerPeer("peer-c", AMBIENT), source: prose },
+      { id: "d1", from: ownerPeer("peer-a", LISTED) },
+      { id: "d2", from: listed },
+      { id: "d3", from: peer("bot-a", LISTED) },
+      { id: "d4", kind: "user_request", from: ownerPeer("peer-b", LISTED) },
+      { id: "d5", from: { ...listed, senderIsOwner: false, traceAuthorized: false } },
+      { id: "d6", from: ownerPeer("peer-c", LISTED) },
     ];
     await withRoomIngress(rows, async (harness) => {
       await harness.dispatchRows();
@@ -138,15 +151,38 @@ describe("addressed requests and the principal run ahead of room chatter (#1415)
     });
   });
 
+  it("gives command authority without the listing, and a listed id without provenance, no precedence", async () => {
+    const rows: Row[] = [
+      { id: "n1", from: peer("bot-a", LISTED) },
+      { id: "n2", from: peer("bot-b", LISTED) },
+      {
+        id: "n3",
+        from: sender("kin", {
+          config: LISTED,
+          senderIsOwner: true,
+          traceAuthorized: true,
+          senderAccountVerified: true,
+        }),
+      },
+      { id: "n4", from: principal(LISTED) },
+      { id: "n5", kind: "user_request", from: sender("asker") },
+    ];
+    await withRoomIngress(rows, async (harness) => {
+      await harness.dispatchRows();
+      await harness.endActiveTurn();
+      expectRoomTurns(harness, rows, { direct: ["n5"], own: ["n3", "n4"] });
+    });
+  });
+
   it("lets a request arriving during the chatter's turn run before later chatter", async () => {
-    const rows: Row[] = ["alice", "bob"].map((id, index) => ({
+    const rows: Row[] = ["bot-a", "bot-b"].map((id, index) => ({
       id: `e${index + 1}`,
-      from: sender(id),
+      from: peer(id),
     }));
     const late: Row[] = [
-      { id: "e3", from: sender("carol") },
+      { id: "e3", from: peer("bot-c") },
       { id: "e4", kind: "user_request", from: sender("asker") },
-      { id: "e5", from: sender("dave") },
+      { id: "e5", from: peer("bot-d") },
     ];
     await withRoomIngress(rows, async (harness) => {
       await harness.dispatchRows();
@@ -199,7 +235,7 @@ describe("addressed requests and the principal run ahead of room chatter (#1415)
       const rows: Row[] = [
         { id: "f1", from: sender("alice") },
         { id: "f2", kind: "user_request", from: sender("asker") },
-        { id: "f3", from: principal(AMBIENT), source: prose },
+        { id: "f3", from: listed },
       ];
       await withRoomIngress(
         rows,
@@ -219,12 +255,9 @@ describe("addressed requests and the principal run ahead of room chatter (#1415)
 describe("an arrival while chatter waits out its debounce (#1415)", () => {
   const cfg = (debounceMs: number): OpenClawConfig => ({
     ...AMBIENT,
-    commands: { ownerAllowFrom: ["discord:figs", "discord:peer-a"] },
+    commands: { ownerAllowFrom: ["discord:figs", "discord:kin", "discord:peer-a"] },
     messages: {
-      groupChat: {
-        ...AMBIENT.messages?.groupChat,
-        ownerQueueProtectionAccounts: ["discord:keeper"],
-      },
+      ...LISTED.messages,
       queue: { mode: "collect", debounceMsByChannel: { discord: debounceMs } },
     },
   });
@@ -281,13 +314,17 @@ describe("an arrival while chatter waits out its debounce (#1415)", () => {
     SenderId: "peer-a",
     SenderIsBot: true,
   } as const;
+  const line = (SenderId: string, SenderAccountVerified?: true) =>
+    ({ InboundEventKind: "room_event", SenderId, SenderAccountVerified }) as const;
 
   it.each<[string, boolean, ...Parameters<typeof arrive>]>([
     ["a mention", true, mention],
-    ["the principal's line", true, { InboundEventKind: "room_event", SenderId: "figs" }],
+    ["a listed account's line", true, line("figs", true)],
+    ["an unlisted command owner's line", false, line("kin", true)],
+    ["a listed id without account provenance", false, line("figs")],
     ["a mention behind chatter still preparing", true, mention, [chatter]],
     ["an owner bot's chatter", false, chatter],
-    ["a non-owner's chatter", false, { InboundEventKind: "room_event", SenderId: "carol" }],
+    ["a non-owner's chatter", false, line("carol")],
     [
       "an internal turn",
       false,
@@ -298,10 +335,10 @@ describe("an arrival while chatter waits out its debounce (#1415)", () => {
     ],
     ["a mention behind a request still preparing", false, mention, [mention]],
     [
-      "a mention behind a line the queue may protect once it binds",
+      "a mention behind a listed account's line still preparing",
       false,
       mention,
-      [{ InboundEventKind: "room_event", SenderId: "keeper", SenderAccountVerified: true }],
+      [line("figs", true)],
     ],
     // With nothing queued, the mailbox does not know yet that this session collects.
     [
@@ -317,9 +354,9 @@ describe("an arrival while chatter waits out its debounce (#1415)", () => {
 });
 
 describe("room chatter's wait is bounded (#1415)", () => {
-  const rows: Row[] = ["alice", "bob"].map((id, index) => ({
+  const rows: Row[] = ["bot-a", "bot-b"].map((id, index) => ({
     id: `a${index + 1}`,
-    from: sender(id),
+    from: peer(id),
   }));
 
   /** The same lines, already in the queue for `ageMs`. */

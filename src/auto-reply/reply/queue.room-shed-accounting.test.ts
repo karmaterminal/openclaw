@@ -362,28 +362,32 @@ describe("requests the cap cuts are recorded under every drop policy (#1415)", (
     });
   });
 
-  it("records a refusal durable ingress retries", async () => {
-    // A listed account's line (#1564) fills the cap, so a request is refused rather than dropped.
-    const listed = sender("figs", {
-      senderAccountVerified: true,
-      config: { messages: { groupChat: { ownerQueueProtectionAccounts: ["discord:figs"] } } },
-    });
+  // A listed account's line (#1564) fills the cap, so the next message is refused, not dropped.
+  const listed = sender("figs", {
+    senderAccountVerified: true,
+    config: { messages: { groupChat: { ownerQueueProtectionAccounts: ["discord:figs"] } } },
+  });
+  it.each<[string, Row, { roomEvent: boolean; attempts: number }]>([
+    ["a request", ask("q2"), { roomEvent: false, attempts: 1 }],
+    ["a listed account's line", { id: "q2", from: listed }, { roomEvent: true, attempts: 0 }],
+  ])("records a refusal of %s that durable ingress retries", async (_, refused, outcome) => {
+    const { roomEvent, attempts } = outcome;
     const ref: { harness?: Harness } = {};
     await withRoomIngress(
-      [{ id: "p1", from: listed }, ask("q2")],
+      [{ id: "p1", from: listed }, refused],
       async (harness) => {
         ref.harness = harness;
         await harness.dispatchRows();
         expect(records).toEqual([
           expect.objectContaining({
             level: "info",
-            roomEvent: false,
+            roomEvent,
             disposition: "queue-cap",
             outcome: "refused",
           }),
         ]);
         await harness.runs.get("q2")?.controllerInput?.settlement.promise;
-        expect(await harness.queue.listPending()).toMatchObject([{ id: "q2", attempts: 1 }]);
+        expect(await harness.queue.listPending()).toMatchObject([{ id: "q2", attempts }]);
       },
       {
         settings: { mode: "collect", cap: 1, dropPolicy: "new" },
@@ -397,29 +401,19 @@ describe("requests the cap cuts are recorded under every drop policy (#1415)", (
     );
   });
 
-  it("does not record a held principal line again when a steer settles", () => {
-    const q = createQueueCase({ mode: "collect", cap: 1, dropPolicy: "old" });
-    const held = createQueueTestRun(
-      { prompt: "held", currentInboundEventKind: "room_event" },
-      { messageProvider: "discord", senderIsOwner: true, senderAccountVerified: true },
-    );
-    q.add(createQueueTestRun({ prompt: "request" }));
-    q.add(held);
-    const steer = createQueueTestRun({ prompt: "steer" });
-    reserveSteerCandidate(q.key, steer, q.settings, q.runFollowup)!.consume("consumed");
-    expect(records).toMatchObject([{ outcome: "held" }]);
-  });
-
-  it("records a principal line held over the cap once, with no shed disposition", async () => {
-    const principal: Row = {
-      id: "p2",
-      from: sender("figs", { senderIsOwner: true, senderAccountVerified: true }),
-    };
-    await overflow([ask("q1"), principal], { cap: 1, dropPolicy: "new" }, (_, dispositions) => {
-      expect(dispositions).toEqual([]);
-      expect(records).toEqual([
-        expect.objectContaining({ level: "info", roomEvent: true, outcome: "held" }),
-      ]);
-    });
-  });
+  it.each(POLICIES)(
+    "counts and records an unlisted command owner's shed line like any chatter under drop:%s",
+    async (dropPolicy) => {
+      const unlisted = sender("figs", { senderIsOwner: true, senderAccountVerified: true });
+      const rows: Row[] = [ask("q1"), { id: "r2", from: unlisted }];
+      await overflow(rows, { cap: 1, dropPolicy }, async (harness, dispositions) => {
+        expect(dispositions).toEqual([["r2", "queue-cap-new"]]);
+        expect(stated(harness.calls).shed).toBe(1);
+        expect(records).toMatchObject([
+          { roomEvent: true, outcome: dropPolicy === "summarize" ? "previewed" : "counted" },
+        ]);
+        await expectSettledOnce(harness, ["q1", "r2"]);
+      });
+    },
+  );
 });

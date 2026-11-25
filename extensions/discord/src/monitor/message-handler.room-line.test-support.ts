@@ -6,6 +6,7 @@ import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { mapGatewayDispatchData } from "../internal/gateway-dispatch.js";
 import { buildDiscordMessageProcessContext } from "./message-handler.context.js";
 import { createBaseDiscordMessageContext } from "./message-handler.test-harness.js";
+import { isDiscordAccountOwnPost } from "./sender-identity.js";
 
 export type DiscordRoomLine = {
   /** A snowflake: arrival order. */
@@ -25,29 +26,30 @@ export async function buildDiscordRoomLineContext(params: {
   line: DiscordRoomLine;
 }) {
   const { cfg, sessionKey, channelId, line } = params;
+  const frame = {
+    id: line.id,
+    channel_id: channelId,
+    guild_id: "g1",
+    timestamp: new Date(Number(line.id)).toISOString(),
+    type: line.replyTo ? MessageType.Reply : MessageType.Default,
+    content: line.text,
+    attachments: [],
+    author: {
+      id: line.author.id,
+      username: line.author.name,
+      discriminator: "0",
+      global_name: null,
+      avatar: null,
+      ...(line.author.bot ? { bot: true } : {}),
+    },
+    ...(line.replyTo
+      ? { message_reference: { channel_id: channelId, message_id: line.replyTo } }
+      : {}),
+  };
   const { message, author } = mapGatewayDispatchData(
     { rest: {} } as never,
     GatewayDispatchEvents.MessageCreate,
-    {
-      id: line.id,
-      channel_id: channelId,
-      guild_id: "g1",
-      timestamp: new Date(Number(line.id)).toISOString(),
-      type: line.replyTo ? MessageType.Reply : MessageType.Default,
-      content: line.text,
-      attachments: [],
-      author: {
-        id: line.author.id,
-        username: line.author.name,
-        discriminator: "0",
-        global_name: null,
-        avatar: null,
-        ...(line.author.bot ? { bot: true } : {}),
-      },
-      ...(line.replyTo
-        ? { message_reference: { channel_id: channelId, message_id: line.replyTo } }
-        : {}),
-    },
+    frame,
   ) as { message: unknown; author: unknown };
   const ctx = await createBaseDiscordMessageContext(
     {
@@ -56,6 +58,8 @@ export async function buildDiscordRoomLineContext(params: {
       replyToMode: "batched",
       message,
       author,
+      // Durable ingress decides account provenance from the frame, before any policy runs.
+      senderAccountVerified: isDiscordAccountOwnPost(frame.author, frame) ? true : undefined,
       sender: {
         id: line.author.id,
         label: line.author.name,

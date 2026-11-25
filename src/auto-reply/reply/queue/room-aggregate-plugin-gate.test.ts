@@ -45,13 +45,14 @@ const ROOM = {
   chatType: "channel",
 } as const;
 
-/** A non-owner room event as Discord ingress stages it, in the "/tmp" test workspace. */
+/** A listed bot's prose in an opted-in room, as Discord ingress stages it, in the "/tmp" workspace. */
 function member(id: string, config: OpenClawConfig = {}): FollowupRun {
   return createQueueTestRun(
     {
       prompt: `room message from ${id}`,
       messageId: id,
       currentInboundEventKind: "room_event",
+      ambientRoomProse: true,
       originatingChannel: "discord",
       originatingTo: "channel:room",
       originatingChatType: "channel",
@@ -59,10 +60,16 @@ function member(id: string, config: OpenClawConfig = {}): FollowupRun {
     {
       sessionKey: ROOM.sessionKey,
       messageProvider: "discord",
-      config,
+      config: {
+        ...config,
+        messages: {
+          groupChat: { ambientOwnerAggregate: true, ambientOwnerAggregatePeers: [id] },
+        },
+      },
       senderId: id,
       senderName: id,
       senderIsOwner: false,
+      senderIsBot: true,
       requesterOrigin: { ...ROOM, senderId: id, senderName: id },
     },
   );
