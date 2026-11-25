@@ -1,8 +1,10 @@
 // Frond (karmaterminal, #1415): whatever the drop policy, each message the queue cap sheds leaves one
 // record and one settled receipt, and the turn that outlives a shed room line states it. Real durable
 // ingress feeds the real session mailbox; only the model turn and the Discord transport are replaced.
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { onGatewayWorkMetricsChanged } from "../../infra/gateway-work-metrics-events.js";
 import { diagnosticLogger } from "../../logging/diagnostic-runtime.js";
+import { clearCurrentPluginMetadataSnapshot } from "../../plugins/current-plugin-metadata-state.js";
 import { submitSessionControllerInput } from "../../sessions/session-controller.mailbox.js";
 import { testing as controllerTesting } from "../../sessions/session-controller.test-support.js";
 import { AgentDatabaseExecutionAdmissionClosedError } from "../../state/agent-database-admission-error.js";
@@ -257,7 +259,7 @@ describe("a shed preview stays out of other senders' turns (#1415)", () => {
   it.each<[string, From, Partial<QueueSettings>?, string?]>([
     ["nothing configured", (id) => sender(id)],
     ["nothing configured, in followup mode", (id) => sender(id), { mode: "followup" }],
-    ["nothing configured, in steer mode", (id) => sender(id), { mode: "steer" }],
+    ["nothing configured, under a steer policy", (id) => sender(id), { mode: "steer" }],
     ["listed bots, opt-in unset", (id) => peer(id, optedOut(undefined))],
     ["listed bots, opted out", (id) => peer(id, optedOut(false))],
     ["opted in, no bot listed", (id) => peer(id, optedIn([]))],
@@ -459,8 +461,69 @@ describe("a shed preview stays out of other senders' turns (#1415)", () => {
       });
     });
 
+    it("keeps it out of an aggregate its sender's refused turn joins", async () => {
+      const directive = bot("r1", "alice", () => ({ ambientRoomProse: false }));
+      const rows = [directive, bot("r2", "alice")];
+      const check = (harness: Harness) => {
+        const [refused, retry] = harness.calls;
+        expect(harness.calls).toHaveLength(2);
+        expect(refused).toBe(harness.runs.get("r2"));
+        aggregated(retry, [rows[1]!, bot("r3", "bob")]);
+        expect(modelInput(retry)).not.toContain(textOf(directive));
+        expect(shedCounts(retry)).toEqual([{ shed: 1, previewed: 0 }]);
+      };
+      await overflow(rows, { cap: 1, ...summarize }, check, async (run, harness) => {
+        if (harness.calls.length > 0) {
+          await harness.adoptAndRecord(run);
+          return;
+        }
+        harness.calls.push(run);
+        // bob speaks while the room waits out the refusal.
+        const { key, settings } = harness;
+        enqueueFollowupRun(key, createRoomRun(key, bot("r3", "bob")), settings, "message-id");
+        rejectQueuePreparation(run, new Error("reply lane not ready"));
+      });
+    });
+
+    it("previews a listed bot's line in its own request before an aggregate that may split", async () => {
+      const rows = [
+        bot("r1", "alice"),
+        bot("r2", "bob"),
+        ask("q3", peer("alice", listed)),
+        ask("q4", sender("erin", { config: listed })),
+      ];
+      await overflow(rows, { cap: 3, ...summarize }, (harness) => {
+        expect(harness.calls).toEqual(["q3", "q4", "r2"].map((id) => harness.runs.get(id)));
+        expect(harness.calls.map((call) => shedContext(call))).toEqual([
+          [preview(rows[0]!)],
+          [],
+          [],
+        ]);
+        expect(records).toMatchObject([{ outcome: "previewed" }]);
+      });
+    });
+
+    it("gives no member its aggregate's previews when the plugin gate closes on the claim", async () => {
+      const rows = ["alice", "bob", "carol"].map((id, index) => bot(`r${index + 1}`, id));
+      const key = `agent:main:discord:channel:room:${expect.getState().currentTestName}`;
+      const stop = onGatewayWorkMetricsChanged(() => {
+        if ((getExistingFollowupQueue(key)?.claim?.sources.length ?? 0) > 1) {
+          clearCurrentPluginMetadataSnapshot();
+        }
+      });
+      onTestFinished(stop);
+      await overflow(rows, { cap: 2, ...summarize }, (harness) => {
+        expect(harness.calls).toEqual(["r2", "r3"].map((id) => harness.runs.get(id)));
+        expect(modelInput(harness.calls[0])).not.toMatch(/alice|message r1/u);
+        expect(harness.calls.map((call) => shedCounts(call))).toEqual([
+          [{ shed: 1, previewed: 0 }],
+          [],
+        ]);
+      });
+    });
+
     it.each(["together", "alone"])(
-      "gives them to no member retried %s as itself",
+      "re-reads them only in an aggregate, its members retried %s",
       async (retried) => {
         const left = new AbortController();
         const rows = [

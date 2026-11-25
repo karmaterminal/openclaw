@@ -49,10 +49,11 @@ export function textOf(row: Row): string {
 export function createRoomRun(
   key: string,
   row: Row,
-  lifecycle: ChannelIngressDispatchLifecycle,
+  lifecycle?: ChannelIngressDispatchLifecycle,
   transcripts = false,
 ): FollowupRun {
-  const { turnAdoptionLifecycle } = bindIngressLifecycleToReplyOptions(lifecycle);
+  const turnAdoptionLifecycle =
+    lifecycle && bindIngressLifecycleToReplyOptions(lifecycle).turnAdoptionLifecycle;
   return createQueueTestRun(
     {
       prompt: textOf(row),
@@ -65,7 +66,7 @@ export function createRoomRun(
       ambientRoomProse: (row.kind ?? "room_event") === "room_event",
       turnAdoptionLifecycle,
       // Room events inherit the ingress admission fence as their queued cancel signal.
-      abortSignal: turnAdoptionLifecycle.abortSignal,
+      abortSignal: turnAdoptionLifecycle?.abortSignal,
       userTurnTranscriptRecorder: transcripts
         ? createUserTurnTranscriptRecorder({
             input: {
@@ -276,7 +277,7 @@ const SHED_CONTEXT = "[Compacted ambient room context; ";
 /** For each shed notice in a turn, how many room messages it counts and how many it previews. */
 export function shedCounts(run: FollowupRun | undefined) {
   const text = run?.currentInboundContext?.text ?? "";
-  const notice = /shed at the queue cap: (\d+), (?:(?:newest )?(\d+)|none) previewed/gu;
+  const notice = /shed at the queue cap: (\d+), (?:(\d+)|none) previewed/gu;
   return [...text.matchAll(notice)].map(([, shed, previewed]) => ({
     shed: Number(shed),
     previewed: Number(previewed ?? 0),
