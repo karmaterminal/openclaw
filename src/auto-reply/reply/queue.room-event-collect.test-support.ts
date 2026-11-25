@@ -393,7 +393,7 @@ export function aggregated(
 }
 
 /**
- * The turns a burst drains as. Direct rows (addressed requests, the principal's lines) run first and
+ * The turns a burst drains as. Direct rows (addressed requests, listed accounts' lines) run first and
  * the `own` rows in their place, each as itself; the chatter around them aggregates, in order.
  */
 export function expectRoomTurns(

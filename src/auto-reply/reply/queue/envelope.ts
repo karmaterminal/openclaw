@@ -288,22 +288,21 @@ export function requiresIndividualCollectDrain(item: FollowupRun): boolean {
 }
 
 // Frond (karmaterminal, #1415): optional room chatter a configured collect batches yields to direct
-// input: a request a person or peer addressed to the agent, or a room line the queue protects, such as
-// a listed account's (#1564). Command authority alone orders nothing. Every other source, internal
-// turns included, keeps its place in the queue.
+// input: a request a person or peer addressed to the agent, or a listed account's room line (#1564).
+// Command authority alone orders nothing. Every other source, internal turns included, keeps its place
+// in the queue.
 export type RoomPrecedence = "direct" | "chatter";
 
 export function resolveRoomPrecedence(item: FollowupRun): RoomPrecedence | undefined {
-  if (item.currentInboundEventKind === "user_request") {
-    return isHostGeneratedInputProvenance(item.run.inputProvenance) ? undefined : "direct";
-  }
-  if (item.currentInboundEventKind !== "room_event") {
+  // An internal turn keeps the sender facts of the message it continues, never that message's place.
+  if (isHostGeneratedInputProvenance(item.run.inputProvenance)) {
     return undefined;
   }
-  if (item.protectFromQueueOverflow === true || isListedAccountRoomEvent(item)) {
+  if (item.currentInboundEventKind === "user_request" || isListedAccountRoomEvent(item)) {
     return "direct";
   }
-  return item.controllerInput?.policy.mode === "collect" &&
+  return item.currentInboundEventKind === "room_event" &&
+    item.controllerInput?.policy.mode === "collect" &&
     !isRequiredReplyExpectation(item.run.terminalReplyExpectation)
     ? "chatter"
     : undefined;

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
+  bindSessionControllerSource,
   releaseSessionControllerClaim,
   tryClaimSessionControllerTask,
 } from "../../sessions/session-controller.mailbox.js";
@@ -46,24 +47,30 @@ const quoting =
   });
 
 describe("listed bots' chatter batches whatever message it quotes (#1415)", () => {
-  it("collects many senders quoting different messages into one turn that quotes none", async () => {
-    const rows: Row[] = ["bot-a", "bot-b", "bot-c", "bot-d"].map((id, index) => ({
-      id: `q${index + 1}`,
-      from: peer(id),
-      source: quoting(`m${index}`),
-    }));
-    await withRoomIngress(rows, async (harness) => {
-      await harness.dispatchRows();
-      await harness.endActiveTurn();
-      expectRoomTurns(harness, rows, {});
-      expect(harness.calls[0]).toMatchObject({ messageId: "q4", originatingTo: "channel:room" });
-      expect(harness.calls[0]?.originatingReplyToId).toBeUndefined();
-      await expectSettledOnce(
-        harness,
-        rows.map((row) => row.id),
-      );
-    });
-  });
+  it.each([
+    ["many senders", ["bot-a", "bot-b", "bot-c", "bot-d"]],
+    ["one sender", ["bot-a", "bot-a", "bot-a", "bot-a"]],
+  ])(
+    "collects %s quoting different messages into one room turn that quotes none",
+    async (_, ids) => {
+      const rows: Row[] = ids.map((id, index) => ({
+        id: `q${index + 1}`,
+        from: peer(id),
+        source: quoting(`m${index}`),
+      }));
+      await withRoomIngress(rows, async (harness) => {
+        await harness.dispatchRows();
+        await harness.endActiveTurn();
+        expectRoomTurns(harness, rows, {});
+        expect(harness.calls[0]).toMatchObject({ messageId: "q4", originatingTo: "channel:room" });
+        expect(harness.calls[0]?.originatingReplyToId).toBeUndefined();
+        await expectSettledOnce(
+          harness,
+          rows.map((row) => row.id),
+        );
+      });
+    },
+  );
 
   it("keeps one sender's lines apart by the message each quotes, with the opt-in off", async () => {
     const config: OpenClawConfig = {
@@ -214,6 +221,9 @@ describe("addressed requests and listed accounts run ahead of room chatter (#141
       },
       { id: "i5", from: sender("carol") },
       { id: "i6", kind: "user_request", from: sender("asker") },
+      { id: "i7", from: sender("dave") },
+      // An internal turn rebuilt from a listed account's line carries that line's sender facts.
+      { id: "i8", from: { ...listed, inputProvenance: { kind: "internal_system" } } },
     ];
     await withRoomIngress(rows, async (harness) => {
       await harness.dispatchRows();
@@ -225,6 +235,8 @@ describe("addressed requests and listed accounts run ahead of room chatter (#141
         "i4",
         "i6",
         "i5",
+        "i7",
+        "i8",
       ]);
     });
   });
@@ -266,6 +278,7 @@ describe("an arrival while chatter waits out its debounce (#1415)", () => {
     ctx: Partial<MsgContext>,
     earlier: Array<Partial<MsgContext>> = [],
     queued = ["alice", "bob"],
+    bound?: Partial<FollowupRun["run"]>,
   ) {
     let claimed: boolean | undefined;
     await withRoomIngress(
@@ -291,7 +304,11 @@ describe("an arrival while chatter waits out its debounce (#1415)", () => {
             )
           ).input!;
         for (const facts of earlier) {
-          await reserve(facts);
+          const reserved = await reserve(facts);
+          if (bound) {
+            const source = { prompt: "bound", currentInboundEventKind: "room_event" } as const;
+            bindSessionControllerSource(reserved, createQueueTestRun(source, bound));
+          }
         }
         const input = await reserve(ctx);
         expect(input.mailbox).toBe(getExistingFollowupQueue(harness.key));
@@ -339,6 +356,14 @@ describe("an arrival while chatter waits out its debounce (#1415)", () => {
       false,
       mention,
       [line("figs", true)],
+    ],
+    [
+      "a mention behind a listed account's line bound but not queued yet",
+      false,
+      mention,
+      [line("figs", true)],
+      undefined,
+      { messageProvider: "discord", ...listed },
     ],
     // With nothing queued, the mailbox does not know yet that this session collects.
     [

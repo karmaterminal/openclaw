@@ -156,6 +156,18 @@ describe("shed room chatter is counted under every drop policy (#1415)", () => {
     });
   });
 
+  it("carries other senders' shed lines as background of a turn that stays its sender's own", async () => {
+    // No opt-in: nothing crosses senders but the bounded previews drop:summarize states (#191733).
+    const senders = ["alice", "bob", "carol", "dave"];
+    const rows = senders.map((id, index): Row => ({ id: `r${index + 1}`, from: sender(id) }));
+    await overflow(rows, { cap: 2, dropPolicy: "summarize" }, (harness) => {
+      expect(harness.calls).toEqual(["r3", "r4"].map((id) => harness.runs.get(id)));
+      expect(shedContext(harness.calls[0])).toMatchObject([{ sender: "alice" }, { sender: "bob" }]);
+      expect(harness.calls[0]?.run.senderId).toBe("carol");
+      expect(shedContext(harness.calls[1])).toEqual([]);
+    });
+  });
+
   it.each(["old", "summarize"] as const)(
     "keeps the count when the request carrying it is itself cut under drop:%s",
     async (dropPolicy) => {

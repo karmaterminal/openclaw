@@ -79,8 +79,11 @@ function resolveReservedRoomPrecedence(
   cfg: OpenClawConfig,
   policy: QueueSettings,
 ): RoomPrecedence | undefined {
+  if (isHostGeneratedInputProvenance(ctx.InputProvenance)) {
+    return undefined;
+  }
   if (ctx.InboundEventKind === "user_request") {
-    return isHostGeneratedInputProvenance(ctx.InputProvenance) ? undefined : "direct";
+    return "direct";
   }
   if (ctx.InboundEventKind !== "room_event") {
     return undefined;

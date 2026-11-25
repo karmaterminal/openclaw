@@ -79,9 +79,11 @@ describe("the ambient owner room aggregate (#1415)", () => {
 
   // The fold's scope as 🌊 ruled it, end to end, for lines that quote different messages: nothing
   // crosses senders without the opt-in; with it, only listed bots' prose does, owners or not.
-  const unset: OpenClawConfig = { messages: { groupChat: { unmentionedInbound: "room_event" } } };
+  const off: OpenClawConfig = {
+    messages: { groupChat: { ...AMBIENT.messages?.groupChat, ambientOwnerAggregate: false } },
+  };
   it.each<[string, OpenClawConfig, own: string[]]>([
-    ["off", unset, ["f1", "f2", "f3", "f5", "f6", "f7", "f8"]],
+    ["off", off, ["f1", "f2", "f3", "f5", "f6", "f7", "f8"]],
     ["on", AMBIENT, ["f3", "f5", "f6"]],
   ])("folds quoting lines across senders with the opt-in %s", async (_, config, own) => {
     const quoting = (messageId: string) => () => ({

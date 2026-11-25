@@ -42,7 +42,7 @@ async function arrive(
 ) {
   const cfg: OpenClawConfig = {
     session: { store: sessionStoreMocks.resolveSessionStorePathCore() },
-    commands: { ownerAllowFrom: ["discord:figs", "discord:kin"] },
+    commands: { ownerAllowFrom: ["discord:figs"] },
     messages: {
       groupChat: { ownerQueueProtectionAccounts: ["discord:figs"] },
       queue: { byChannel: { discord: mode }, debounceMsByChannel: { discord: 60_000 } },
@@ -113,7 +113,6 @@ it.each<[string, Partial<MsgContext>, Setup?]>([
     "a listed account's line",
     { InboundEventKind: "room_event", SenderId: "figs", SenderAccountVerified: true },
   ],
-  ["an unlisted command owner's chatter", { InboundEventKind: "room_event", SenderId: "kin" }],
   ["a peer bot's chatter", PEER],
   ["a guest's chatter", { InboundEventKind: "room_event", SenderId: "guest" }],
   ["chatter behind a queued request", PEER, { queued: "user_request" }],

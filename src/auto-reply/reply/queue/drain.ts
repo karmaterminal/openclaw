@@ -227,8 +227,8 @@ async function executeClaim(
   }
   // A summary prompt shows only the newest cap lines; source context pairs with those lines.
   const summarizedSources = queue.cap > 0 ? sources.slice(-queue.cap) : sources;
-  // Frond (karmaterminal, #1415): differing per-sender identities only batch through the room
-  // aggregate key; that turn runs as the senderless room baseline, never as any one member, so
+  // Frond (karmaterminal, #1415): differing per-sender or per-quote identities only batch through the
+  // room aggregate key; that turn runs as the senderless room baseline, never as any one member, so
   // each summary line names its sender.
   const mixedSenders =
     sources.length > 1 && new Set(sources.map(resolveFollowupDeliveryStorageKey)).size > 1;

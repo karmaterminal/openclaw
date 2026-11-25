@@ -68,7 +68,7 @@ function restartQueueDebounce(
     return;
   }
   const waiting: InternalFollowupRun[] = queue.items.filter((item) => !queue.inFlight.has(item));
-  // Chatter never extends the debounce of a waiting request or protected line.
+  // Chatter never extends the debounce of a waiting request or listed account's line.
   if (waiting.some((item) => resolveRoomPrecedence(item) === "direct")) {
     return;
   }
