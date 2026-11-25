@@ -3,7 +3,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
-  claimSessionControllerTask,
   releaseSessionControllerClaim,
   tryClaimSessionControllerTask,
 } from "../../sessions/session-controller.mailbox.js";
@@ -16,7 +15,6 @@ import {
   collected,
   expectRoomTurns,
   expectSettledOnce,
-  openRoomIngress,
   ownerPeer,
   principal,
   prose,
@@ -283,17 +281,13 @@ describe("room chatter's wait is bounded (#1415)", () => {
     from: sender(id),
   }));
 
-  async function openAged(ageMs: number) {
-    const aged = rows.map((row): Row => ({
-      ...row,
-      source: () => ({ enqueuedAt: Date.now() - ageMs }),
-    }));
-    return aged;
-  }
+  /** The same lines, already in the queue for `ageMs`. */
+  const aged = (ageMs: number) =>
+    rows.map((row): Row => ({ ...row, source: () => ({ enqueuedAt: Date.now() - ageMs }) }));
 
   it("flushes chatter older than a minute without waiting for the room to go quiet", async () => {
     await withRoomIngress(
-      await openAged(60_001),
+      aged(60_001),
       async (harness) => {
         await harness.dispatchRows();
         await harness.endActiveTurn();
@@ -308,7 +302,7 @@ describe("room chatter's wait is bounded (#1415)", () => {
     ["chatter for a debounce longer than a minute", 60_001, 120_000],
   ])("holds %s", async (_, ageMs, debounceMs) => {
     await withRoomIngress(
-      await openAged(ageMs),
+      aged(ageMs),
       async (harness) => {
         await harness.dispatchRows();
         scheduleFollowupDrain(harness.key, harness.adoptAndRecord);
@@ -345,7 +339,7 @@ describe("room chatter's wait is bounded (#1415)", () => {
 
   it("finishes forming a batch when a request arrives while it prepares", async () => {
     await withRoomIngress(
-      await openAged(60_001),
+      aged(60_001),
       async (harness) => {
         await harness.dispatchRows();
         const asked = createQueueTestRun(

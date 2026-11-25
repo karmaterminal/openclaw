@@ -13,11 +13,13 @@ import {
   retireSessionControllerInput,
   type SessionControllerInput,
 } from "../../sessions/session-controller.mailbox.js";
+import { reserveRoomPrecedence } from "../../sessions/session-controller.room-precedence.js";
 import { isConfiguredCommandOwner } from "../command-auth.js";
 import { resolveCommandTurnTargetSessionKey } from "../command-turn-context.js";
 import type { TurnAdoptionLifecycle } from "../get-reply-options.types.js";
 import type { MsgContext } from "../templating.js";
 import type { InternalGetReplyOptions } from "./get-reply.types.js";
+import type { RoomPrecedence } from "./queue/envelope.js";
 // Frond (karmaterminal, #1415): shared room-event queue-mode rule.
 import { resolveQueueSettingsCore, resolveRoomEventQueueMode } from "./queue/settings.js";
 import type { FollowupRun, QueueSettings } from "./queue/types.js";
@@ -76,7 +78,7 @@ function resolveReservedRoomPrecedence(
   ctx: MsgContext,
   cfg: OpenClawConfig,
   policy: QueueSettings,
-): SessionControllerInput["roomPrecedence"] {
+): RoomPrecedence | undefined {
   if (ctx.InboundEventKind === "user_request") {
     return isHostGeneratedInputProvenance(ctx.InputProvenance) ? undefined : "direct";
   }
@@ -139,7 +141,6 @@ export async function prepareReplySourceInput(
     sourceTurnId: readChannelSourceTurnId(ctx),
     protocolRunId: options?.runId,
     policy,
-    roomPrecedence: resolveReservedRoomPrecedence(ctx, cfg, policy),
     target: captureSessionTarget({
       storeScope: storePath,
       sessionKey,
@@ -151,6 +152,8 @@ export async function prepareReplySourceInput(
       authority: options?.operatorAuthority,
     },
   });
+  // Frond (karmaterminal, #1415): before any await, so no later arrival is ordered around it blind.
+  reserveRoomPrecedence(input, resolveReservedRoomPrecedence(ctx, cfg, policy));
   prepared.abortSignal = input.abortSignal;
   return { options: bindReplySourceInput(prepared, input), input, created: true };
 }

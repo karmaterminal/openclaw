@@ -7,7 +7,6 @@ import { isRequiredReplyExpectation } from "../../../agents/reply-completion.js"
 import { resolveSessionStorePathCore } from "../../../config/sessions.js";
 import { readSessionEntryReadOnlyInWorker } from "../../../config/sessions/session-entry-read-runtime.js";
 import { isHostGeneratedInputProvenance } from "../../../sessions/input-provenance.js";
-import type { SessionControllerInput } from "../../../sessions/session-controller.contracts.js";
 import {
   buildPersistedUserTurnMediaInputsFromFields,
   createUserTurnTranscriptRecorder,
@@ -301,7 +300,9 @@ function isPrincipalRoomEvent(item: FollowupRun): boolean {
 // Frond (karmaterminal, #1415): optional room chatter a configured collect batches yields to direct
 // input: a request a person or peer addressed to the agent, or the principal's own room line. Every
 // other source, internal turns included, keeps its place in the queue.
-export function resolveRoomPrecedence(item: FollowupRun): SessionControllerInput["roomPrecedence"] {
+export type RoomPrecedence = "direct" | "chatter";
+
+export function resolveRoomPrecedence(item: FollowupRun): RoomPrecedence | undefined {
   if (item.currentInboundEventKind === "user_request") {
     return isHostGeneratedInputProvenance(item.run.inputProvenance) ? undefined : "direct";
   }

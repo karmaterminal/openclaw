@@ -234,8 +234,6 @@ type SessionControllerSourceReservation = {
   replaceInactiveTarget?: boolean;
   continuationCaller?: SessionControllerInput["continuationCaller"];
   policy: QueueSettings;
-  /** Frond (karmaterminal, #1415). */
-  roomPrecedence?: SessionControllerInput["roomPrecedence"];
   adapter?: SessionControllerSourceAdapter;
   target?: SessionTarget;
 };
@@ -306,7 +304,6 @@ function reserveOrJoinSessionControllerSource(
     protocolRunId: params.protocolRunId,
     sourceSessionId: params.sourceSessionId,
     policy: Object.freeze({ ...params.policy }),
-    roomPrecedence: params.roomPrecedence,
     mailbox,
     sourceAdapter: params.adapter,
     target: target ?? mailbox.owner.target,

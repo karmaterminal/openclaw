@@ -13,7 +13,6 @@ import {
 import { defaultRuntime } from "../../../runtime.js";
 import type { ReplyOperation } from "../../../sessions/session-controller.contracts.js";
 import { deferSessionControllerClaimBeforeExecution } from "../../../sessions/session-controller.mailbox-claim.js";
-import { findSessionControllerMailboxHead } from "../../../sessions/session-controller.mailbox-dispatch.js";
 import { isSessionControllerSourceQueued } from "../../../sessions/session-controller.mailbox-source.js";
 import {
   detachSessionControllerSources,
@@ -24,6 +23,7 @@ import {
   type SessionControllerMailboxClaim,
 } from "../../../sessions/session-controller.mailbox.js";
 import { runWithSessionControllerCleanup } from "../../../sessions/session-controller.owner-context.js";
+import { findSessionControllerMailboxHead } from "../../../sessions/session-controller.room-precedence.js";
 import {
   getSessionControllerEntryForOperation,
   type SessionControllerEntry,

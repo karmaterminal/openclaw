@@ -302,7 +302,8 @@ describe("a Discord room backlog behind a busy turn (#1415)", () => {
       const lines: Line[] = [
         ...room.slice(0, 2),
         { id: FIGS_LINE, author: FIGS, text: "also check the arm runner" },
-        ...room.slice(2, 4).map((line, index) => ({ ...line, id: `1003${index}` })),
+        { id: "10030", author: GUEST, text: "same on arm", replyTo: "1001" },
+        { id: "10031", author: PEER_C, text: "confirmed", replyTo: "1002" },
         {
           id: MENTION,
           author: PEER_B,

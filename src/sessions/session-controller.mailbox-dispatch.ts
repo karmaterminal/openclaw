@@ -42,6 +42,7 @@ import {
   settleSessionControllerSourceInjectionOrder,
   retireSessionControllerInput,
 } from "./session-controller.mailbox-source.js";
+import { findSessionControllerMailboxHead } from "./session-controller.room-precedence.js";
 import { sessionControllers, pruneSessionControllerEntry } from "./session-controller.state.js";
 
 type MailboxSelection = {
@@ -55,30 +56,6 @@ type MailboxSelection = {
 // Frond (karmaterminal, #1415): room chatter collects until the room is quiet for the configured
 // debounce, but its oldest line waits at most this long for the batch, or one debounce when longer.
 const ROOM_CHATTER_MAX_WAIT_MS = 60_000;
-
-/**
- * Frond (karmaterminal, #1415): the queued input that runs next. Unclaimed room chatter yields to the
- * first runnable direct input behind it; direct inputs keep arrival order among themselves. Anything
- * else behind the chatter, such as an internal turn or a request still preparing, keeps FIFO.
- * Accepted edge case: requests arriving faster than turns end hold the chatter until the queue cap
- * sheds it into their context.
- */
-export function findSessionControllerMailboxHead(
-  inputs: readonly SessionControllerInput[],
-): SessionControllerInput | undefined {
-  const precedenceOf = (input: SessionControllerInput) =>
-    input.claim || input.injection || input.withdrawalHolds || input.retirementRequested
-      ? undefined
-      : input.source
-        ? resolveRoomPrecedence(input.source)
-        : input.roomPrecedence;
-  const next = inputs.find((input) => precedenceOf(input) !== "chatter");
-  return next?.phase === "waiting" &&
-    (next.ready || next.task || next.payload !== "unbound") &&
-    precedenceOf(next) === "direct"
-    ? next
-    : inputs[0];
-}
 
 function selectSessionControllerMailbox(
   mailbox: SessionControllerMailbox,

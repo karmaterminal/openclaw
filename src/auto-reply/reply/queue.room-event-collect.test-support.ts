@@ -153,7 +153,7 @@ export async function openRoomIngress(
     ...(options.now ? { now: options.now } : {}),
     ...(options.claimLeaseMs ? { claimLeaseMs: options.claimLeaseMs } : {}),
     ...(options.prioritizePending
-      ? { prioritizePending: (record: { id: string }) => options.prioritizePending!(record.id) }
+      ? { prioritizePending: ({ id }: { id: string }) => options.prioritizePending!(id) }
       : {}),
     ...(options.supersedes
       ? {

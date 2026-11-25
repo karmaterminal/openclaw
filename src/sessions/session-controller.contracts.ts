@@ -564,11 +564,6 @@ export type SessionControllerInput = {
   reject?: (error: unknown) => void;
   task?: (claim: SessionControllerMailboxClaim) => void;
   taskTurnKind?: SessionControllerTurnKind;
-  /**
-   * Frond (karmaterminal, #1415): what a room source is before it binds. Chatter yields to direct
-   * input in this mailbox; absent keeps FIFO. A bound source answers for itself.
-   */
-  readonly roomPrecedence?: "direct" | "chatter";
   /** The active mutation whose own body submitted this direct task. */
   mutation?: Mutation;
   withdrawalHolds: number;
