@@ -198,9 +198,9 @@ The agent-specific `agents.entries.*.groupChat.unmentionedInbound` value overrid
 
 ## Owner messages in a busy room
 
-Under `collect`, room events that arrive while a turn runs combine into one followup turn, whatever message each one quotes. Addressed requests and the human owner's room messages run ahead of them, in arrival order. After the turn ends, the combined turn starts once the room is quiet for the configured debounce, or once its oldest message has waited a minute (one debounce, if longer). An owner's message keeps its own turn with its owner authority by default. In a room where every speaker is a command owner, for example agents listed in each other's `commands.ownerAllowFrom`, every reply then runs a turn of its own.
+Under `collect`, one sender's consecutive room events that arrive while a turn runs and share a reply target combine into one followup turn, with that sender's authority. Addressed requests and [listed owner accounts'](/concepts/queue#owner-room-messages-at-capacity) room messages run ahead of them, in arrival order. After the turn ends, waiting room events run once the room is quiet for the configured debounce, or once the oldest has waited a minute (one debounce, if longer). By default, messages from different senders never combine. In a room of several agents, every reply then runs a turn of its own.
 
-Set `messages.groupChat.ambientOwnerAggregate: true` (default `false`) and list the owner bots in `messages.groupChat.ambientOwnerAggregatePeers` (default `[]`) to let their unaddressed prose join the combined turn:
+Set `messages.groupChat.ambientOwnerAggregate: true` (default `false`) and list the bots in `messages.groupChat.ambientOwnerAggregatePeers` (default `[]`) to combine their unaddressed prose, command owners or not, into one turn, whatever message each one quotes:
 
 ```json5
 {
@@ -215,11 +215,11 @@ Set `messages.groupChat.ambientOwnerAggregate: true` (default `false`) and list 
 }
 ```
 
-List sender ids in the form `commands.ownerAllowFrom` accepts. The list refuses wildcards and duplicates. With an empty list, no owner message joins.
+List sender ids in the form `commands.ownerAllowFrom` accepts. The list refuses wildcards and duplicates. With an empty list, nothing combines across senders.
 
-An owner message joins only when all of these hold:
+A message joins only when all of these hold:
 
-- its sender id is on the list, and the channel reports the sender as a bot. A human owner keeps its own turn even when listed, as does a Discord webhook post, which includes PluralKit proxies.
+- its sender id is on the list, and the channel reports the sender as a bot. A human keeps its own turn even when listed, as does a Discord webhook post, which includes PluralKit proxies.
 - it is an ambient room event, so not a mention, a reply to the agent, or a command
 - its typed text has no command or inline directive token, such as `/think` or `/model`
 - it carries no other grant: operator authority, an elevated grant, a sender-specific tool policy entry, explicit skills, or a UI command target
@@ -246,9 +246,9 @@ before user requests, without generating overflow-summary turns. The default
 same conversation; under every policy that turn states how many messages were shed. This sheds ambient processing,
 not channel history; the configured history window still
 bounds which recent messages are available as context. See [Queue options](/concepts/queue#queue-options).
-Room messages a command owner, or an account listed in
-`messages.groupChat.ownerQueueProtectionAccounts`, posted from its own verified
-account (Discord, Slack, and Telegram) are kept instead; see [Owner room messages at capacity](/concepts/queue#owner-room-messages-at-capacity).
+Room messages from the owner's accounts listed in
+`messages.groupChat.ownerQueueProtectionAccounts` (Discord, Slack, and Telegram;
+unset by default) are kept instead; see [Owner room messages at capacity](/concepts/queue#owner-room-messages-at-capacity).
 
 ## Troubleshooting
 

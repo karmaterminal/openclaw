@@ -53,7 +53,7 @@ Messages from channels using durable ingress admission, including Discord and Te
 
 <!-- Frond (karmaterminal, #1415): unaddressed room events collect. -->
 
-[Ambient room events](/channels/ambient-room-events) are the exception: under `collect`, consecutive room events with the same route combine into one followup turn, whatever message each one quotes, and each message's admission still settles once. Addressed requests and the human owner's room messages queued behind them run first, in arrival order. Room events from different senders also combine. A message with sender-scoped authority keeps its own turn, in order: an owner or operator message (unless [`ambientOwnerAggregate`](/channels/ambient-room-events#owner-messages-in-a-busy-room) lets unaddressed prose from listed owner bots join), an elevated grant, a sender-specific tool policy entry, or exec settings the other messages don't share. Messages in a spawned session never combine across senders. The combined turn, and any overflow summary of it, names each sender but runs with no sender identity or sender-scoped authority. Room events still never steer or interrupt.
+[Ambient room events](/channels/ambient-room-events) are the exception: under `collect`, one sender's consecutive room events with the same route and reply target combine into one followup turn, and each message's admission still settles once. Addressed requests and [listed owner accounts'](/concepts/queue#owner-room-messages-at-capacity) room messages queued behind them run first, in arrival order. Room events from different senders combine only where [`ambientOwnerAggregate`](/channels/ambient-room-events#owner-messages-in-a-busy-room) is on, and only unaddressed prose from the bots it lists, whatever message each one quotes. People, other bots, commands, and directives keep their own turns, in order, as does a listed bot's message with sender-scoped authority: operator authority, an elevated grant, a sender-specific tool policy entry, or exec settings the other messages don't share. Messages in a spawned session never combine across senders. The combined turn, and any overflow summary of it, names each sender but runs with no sender identity or sender-scoped authority. Room events still never steer or interrupt.
 
 For runtime-specific timing and dependency behavior, see [Steering queue](/concepts/queue-steering). For the explicit `/steer <message>` command, see [Steer](/tools/steer).
 
@@ -103,7 +103,7 @@ are still validated.
 Per-session `/queue` options apply to queued delivery. The `debounce` option also sets the Codex steering quiet window in `steer` mode:
 
 - `debounce`: quiet window before draining queued followups or collect batches; in Codex `steer` mode, quiet window before sending batched `turn/steer`. Bare numbers are milliseconds; units `ms`, `s`, `m`, `h`, and `d` are accepted.
-- `cap`: max queued messages per session, apart from [owner room messages](/concepts/queue#owner-room-messages-at-capacity) held over it. Values below `1` are ignored.
+- `cap`: max queued messages per session. Values below `1` are ignored.
 - `drop: "summarize"` (default): drop the oldest queued entries as needed, keep compact summaries, and inject them as a synthetic followup prompt. Each summarized entry keeps its own sender and conversation context.
 - `drop: "old"`: drop the oldest queued entries as needed, without preserving summaries.
 - `drop: "new"`: reject the newest message when the queue is already full.
@@ -133,7 +133,7 @@ eligible pending recipient exists, the ambient event is recorded as unstated. `o
 events, `drop: "new"` keeps the existing events, while the other policies keep the
 newest. Surviving messages retain FIFO order. Active turns, protected recovery
 work, and events requiring a reply are not eligible for ambient shedding. Each time
-the cap sheds, drops, refuses, or holds a message it leaves one log record without
+the cap sheds, drops, or refuses a message it leaves one log record without
 message content (a warning when room messages go unstated), and a shed event's
 channel receipt is settled so durable ingress does not retry it. Recent room history remains subject to the
 channel's configured history window.
@@ -144,14 +144,9 @@ The queue uses a built-in 500ms debounce. `cap` defaults to `20`, and `drop` def
 
 ### Owner room messages at capacity
 
-A command owner's unaddressed room message is never shed, dropped, or refused at
-capacity when its channel verified that the owner's own account posted it. Ambient
-events shed to make room for it; with none left it stays queued over the cap, and
-collect takes at most `cap` messages per turn. It does not count against other
-people's requests, and nothing displaces it.
-
-To protect further accounts that hold no command authority, list them in
-`messages.groupChat.ownerQueueProtectionAccounts`:
+No one's room messages are protected at capacity by default. List the owner's own
+accounts in `messages.groupChat.ownerQueueProtectionAccounts` to keep their
+unaddressed room messages instead of shedding them as ambient events:
 
 ```json5
 {
@@ -164,21 +159,22 @@ To protect further accounts that hold no command authority, list them in
 ```
 
 Each entry is a sender id with its channel prefix, in the grammar
-`commands.ownerAllowFrom` uses; wildcards and duplicates are rejected. Listing an
-account here grants no command authority. The setting is global; agents cannot
-override it.
+`commands.ownerAllowFrom` uses; wildcards and duplicates are rejected. The setting
+is separate from command authority: an account in `commands.ownerAllowFrom` gets
+no queue protection unless it is listed here, the owner bit (operator profiles,
+`operator.admin`) grants none, and listing an account here grants no command
+authority. It is global; agents cannot override it.
 
-A command owner's or listed account's room event is protected only when its channel
-verified, from platform account metadata, that the account itself posted it: not a
-bot or app account, and not a webhook, relay, proxy, or chat posting on the
-account's behalf. Absent or ambiguous provenance is not protected, whatever
-authority the sender shows.
-
-A listed account's room event is refused only at a cap full of protected work. The
-refusal is retryable backpressure under every `drop` policy and spends no retry
-attempt; durable ingress paces the retry (1 second, doubling to 3 minutes), and later
-messages in that conversation wait behind it. Messages that mention the agent keep the
-usual capacity rules.
+A listed account's room event is protected only when its channel verified, from
+platform account metadata, that the account itself posted it: not a bot or app
+account, and not a webhook, relay, proxy, or chat posting on the account's
+behalf. Absent or ambiguous provenance is not protected. A refusal at a cap full
+of protected work is retryable backpressure under every `drop` policy and spends
+no retry attempt; durable ingress paces the retry (1 second, doubling to 3
+minutes), and later messages in that conversation wait behind it. Each refusal leaves
+one log record. Messages that mention the agent keep the usual capacity rules. The
+protection applies in every queue mode; under `collect`, a protected room event also
+runs ahead of ambient ones.
 
 Discord, Slack, and Telegram verify account provenance:
 
@@ -194,7 +190,7 @@ Discord, Slack, and Telegram verify account provenance:
   (anonymous administrators, linked channels, automatic forwards) or
   `sender_business_bot`.
 
-Every other channel is unsupported, and an owner there stays ambient. This
+Every other channel is unsupported, and a listed sender there stays ambient. This
 includes Feishu and Mattermost, whose bot flags are not reviewed as account
 provenance, and channels with no such signal, such as iMessage, IRC, LINE,
 Microsoft Teams, Signal, SMS, and WhatsApp.
