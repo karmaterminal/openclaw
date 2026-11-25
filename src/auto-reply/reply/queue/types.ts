@@ -42,7 +42,7 @@ export function bindReplyOperationQueueDisposition(
 
 /** Admission-owned image facts stay out of the public FollowupRun contract. */
 export type InternalFollowupRun = FollowupRun & {
-  /** Bounded background data expires with this turn; retries attach it only once. */
+  /** Bounded background data expires with this turn; retries state it only once. */
   ambientOverflowContext?: {
     entries: Array<{
       sequence: number;

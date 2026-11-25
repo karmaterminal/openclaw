@@ -339,48 +339,59 @@ describe("a Discord room backlog behind a busy turn (#1415)", () => {
     );
   });
 
-  it.each([
-    ["did not opt in", OPTED_OUT],
-    ["opted in", FLEET],
-  ])(
-    "states what the cap shed, naming no other sender in a turn of a room that %s",
-    async (_, room_) => {
-      const lines = room.map(({ id, author, text }): Line => ({ id, author, text })).slice(0, 4);
-      const [shed, kept] = [lines.slice(0, 2), lines.slice(2)];
-      const fleet: OpenClawConfig = {
-        ...room_,
-        messages: { ...room_.messages, queue: { ...room_.messages?.queue, cap: 2 } },
-      };
-      await drainBacklog(
-        lines,
-        (harness) => {
-          const [first] = harness.calls;
-          if (room_ === FLEET) {
-            expect(harness.calls).toHaveLength(1);
-            expectCarries(first, kept);
-            expect(shedContext(first)).toMatchObject(
-              shed.map(({ id, author }) => ({ sender: author.name, messageId: id })),
-            );
-            return;
-          }
-          expect(harness.calls).toEqual(kept.map(({ id }) => harness.runs.get(id)));
-          for (const [index, call] of harness.calls.entries()) {
-            expect(modelInput(call)).toContain(kept[index]!.text);
-            for (const { id, author, text } of shed) {
-              for (const theirs of [author.name, author.id, text, id]) {
-                expect(modelInput(call)).not.toContain(theirs);
-              }
+  // At a cap of 2 the first two lines are shed. peer-a speaks again, peer-b does not.
+  const overCap: Line[] = [
+    { id: "1001", author: PEER_A, text: "it passes here" },
+    { id: "1002", author: PEER_B, text: "green for me too" },
+    { id: "1003", author: PEER_A, text: "mine is still running" },
+    { id: "1004", author: BOT_A, text: "same on arm" },
+  ];
+  const kept = overCap.slice(2);
+  const capped = (fleet: OpenClawConfig): BacklogOptions => ({
+    fleet: {
+      ...fleet,
+      messages: { ...fleet.messages, queue: { ...fleet.messages?.queue, cap: 2 } },
+    },
+    shed: 2,
+  });
+  const previewOf = ({ id, author }: Line) => ({ sender: author.name, messageId: id });
+
+  it("previews a shed line only in its own sender's turn in a room that did not opt in", async () => {
+    await drainBacklog(
+      overCap,
+      (harness) => {
+        expect(harness.calls).toEqual(kept.map(({ id }) => harness.runs.get(id)));
+        for (const [index, call] of harness.calls.entries()) {
+          expect(modelInput(call)).toContain(kept[index]!.text);
+          const others = overCap.filter(({ author }) => author !== kept[index]!.author);
+          for (const { id, author, text } of others) {
+            for (const theirs of [author.name, author.id, id, text]) {
+              expect(modelInput(call)).not.toContain(theirs);
             }
           }
-          expect(harness.calls.map((call) => shedCounts(call))).toEqual([
-            [{ shed: 2, previewed: 0 }],
-            [],
-          ]);
-        },
-        { fleet, shed: shed.length },
-      );
-    },
-  );
+        }
+        expect(harness.calls.map((call) => shedCounts(call))).toEqual([
+          [{ shed: 2, previewed: 1 }],
+          [],
+        ]);
+        expect(shedContext(harness.calls[0])).toMatchObject([previewOf(overCap[0]!)]);
+      },
+      capped(OPTED_OUT),
+    );
+  });
+
+  it("previews every shed bot's line in the one turn of a room that opted in", async () => {
+    await drainBacklog(
+      overCap,
+      (harness) => {
+        expect(harness.calls).toHaveLength(1);
+        expectCarries(harness.calls[0], kept);
+        expect(shedCounts(harness.calls[0])).toEqual([{ shed: 2, previewed: 2 }]);
+        expect(shedContext(harness.calls[0])).toMatchObject(overCap.slice(0, 2).map(previewOf));
+      },
+      capped(FLEET),
+    );
+  });
 
   it("keeps a person's line out of the bots' turns", async () => {
     const guest: Line = { id: "10031", author: GUEST, text: "same on arm", replyTo: "1001" };

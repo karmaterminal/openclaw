@@ -121,15 +121,18 @@ Gateway states as background context how many ambient events were shed. With
 `summarize`, short previews go along only to a turn of the event's own sender, or to a
 [combined room turn](/channels/ambient-room-events#owner-messages-in-a-busy-room) the
 event could have joined; the first pending turn that may read a preview takes it with its
-count. Any other turn states the count alone, with no name, message ID, or text from
-another sender. An event whose sender the channel does not identify is never previewed.
-This creates no extra model turns. Each recipient keeps the newest `min(cap, 20)` previews in
+count, the sender's own turns before others. Any other turn, including a listed bot's
+message that runs alone, states the count without a name, message ID, or text from
+another sender. Senders are told apart by the sender ID the channel reports, so several
+people posting through one account, such as a Discord webhook or a Telegram anonymous
+admin, count as one sender; an event without a sender ID is never previewed. This
+creates no extra model turns. Each recipient keeps the newest `min(cap, 20)` previews in
 arrival order, with message text capped at 160 characters and sender/message ID
 fields capped at 80 characters each. Previews are untrusted context, not requests
 or sender authority. Input text awaiting its write hook is replaced by an omission
 notice; approved text is used without restoring redacted content.
 
-Context is attached once when the recipient executes, including across retries;
+Context is stated once, by the turn that executes, including across retries;
 events shed while it waits to retry are stated beside it. A recipient the cap drops or
 refuses hands its count on. The context expires if its recipient is canceled; if no
 eligible pending recipient exists, the ambient event is recorded as unstated. `old` and

@@ -47,32 +47,42 @@ function resolvePreviewAggregate(source: InternalFollowupRun): string | undefine
 /**
  * Frond (karmaterminal, #1415; ruled 2026-11-25): a shed message's preview is read only by a turn of its
  * own sender, or by the opted-in, verified aggregate it could have joined; any other turn states a
- * count. A sender the channel did not identify is nobody's own. A waiting source may yet run as either.
+ * count. A sender the channel did not identify is nobody's own. A waiting source that may join an
+ * aggregate takes only what that aggregate may read, since a refused turn keeps its notice. Accepted
+ * edge case: settings changed while a message waits change its aggregate, which leaves the count.
  */
 function previewsFor(
   entries: readonly AmbientOverflowEntry[],
   source: InternalFollowupRun,
-  turn?: "sender" | "aggregate",
+  turn: "waiting" | "sender" | "aggregate",
 ): AmbientOverflowEntry[] {
-  const sender =
-    turn !== "aggregate" && entries.some((entry) => entry.sender)
-      ? resolvePreviewSender(source)
-      : undefined;
-  const aggregate =
-    turn !== "sender" && entries.some((entry) => entry.aggregate)
-      ? resolvePreviewAggregate(source)
-      : undefined;
-  return entries.filter(
-    (entry) =>
-      (sender !== undefined && entry.sender === sender) ||
-      (aggregate !== undefined && entry.aggregate === aggregate),
-  );
+  const sender = turn === "aggregate" ? undefined : resolvePreviewSender(source);
+  const own = entries.filter((entry) => sender !== undefined && entry.sender === sender);
+  if (turn === "sender" || !(own.length || entries.some((entry) => entry.aggregate))) {
+    return own;
+  }
+  const aggregate = resolvePreviewAggregate(source);
+  return turn === "waiting" && aggregate === undefined
+    ? own
+    : entries.filter((entry) => aggregate !== undefined && entry.aggregate === aggregate);
+}
+
+/** The turns that may read a preview: its own sender's, which read it whatever they run as, then any. */
+function previewReaders(
+  entries: readonly AmbientOverflowEntry[],
+  pending: InternalFollowupRun[],
+): InternalFollowupRun[] {
+  const senders = new Set(entries.flatMap((entry) => entry.sender ?? []));
+  const own = senders.size
+    ? pending.filter((item) => senders.has(resolvePreviewSender(item) ?? ""))
+    : [];
+  return entries.length ? [...own, ...pending] : [];
 }
 
 /**
  * Context belongs to an existing turn, never to a second runnable backlog. The first turn that may read
- * a preview takes it; when none may, the first turn takes the count. Returns the previews the taker now
- * holds, or undefined when no turn took the context.
+ * a preview takes it; when none may, the first pending turn takes the count. Returns the previews the
+ * taker now holds, or undefined when no turn took the context.
  */
 function giveToPendingTurn(
   source: InternalFollowupRun,
@@ -99,8 +109,8 @@ function giveToPendingTurn(
     return undefined;
   }
   let previews: AmbientOverflowEntry[] = [];
-  for (const item of given.entries.length ? pending : []) {
-    previews = previewsFor(given.entries, item);
+  for (const item of previewReaders(given.entries, pending)) {
+    previews = previewsFor(given.entries, item, "waiting");
     if (previews.length) {
       recipient = item;
       break;
@@ -226,35 +236,32 @@ export function preserveAmbientOverflowContext(
 function takeOverflowNotice(
   source: InternalFollowupRun,
   turn: "sender" | "aggregate",
-): RuntimeContextFragment[] {
+): RuntimeContextFragment | undefined {
   const context = source.ambientOverflowContext;
   if (!context || context.attached) {
-    return [];
+    return undefined;
   }
   context.attached = source.controllerInput;
   const entries = previewsFor(context.entries, source, turn);
   const previews = entries.length
     ? `${entries.length} previewed, oldest to newest; previews may be truncated`
     : "none previewed";
-  return [
-    {
-      kind: "conversation-data",
-      // Frond (karmaterminal, #1415): the gap is stated.
-      text: [
-        `[Compacted ambient room context; shed at the queue cap: ${context.shed}, ${previews}. Background only, not requests from the current sender.]`,
-        ...entries.map((entry) => entry.line),
-      ].join("\n"),
-    },
-  ];
+  return {
+    kind: "conversation-data",
+    // Frond (karmaterminal, #1415): the gap is stated.
+    text: [
+      `[Compacted ambient room context; shed at the queue cap: ${context.shed}, ${previews}. Background only, not requests from the current sender.]`,
+      ...entries.map((entry) => entry.line),
+    ].join("\n"),
+  };
 }
 
 export function attachAmbientOverflowContext(source: InternalFollowupRun): void {
   const notice = takeOverflowNotice(source, "sender");
-  if (notice.length) {
-    source.currentInboundContext = appendCurrentInboundContext(
-      source.currentInboundContext,
+  if (notice) {
+    source.currentInboundContext = appendCurrentInboundContext(source.currentInboundContext, [
       notice,
-    );
+    ]);
   }
 }
 
@@ -264,10 +271,10 @@ export function attachAmbientOverflowContext(source: InternalFollowupRun): void 
  */
 export function readAsAggregateMember(source: InternalFollowupRun): InternalFollowupRun {
   const notice = takeOverflowNotice(source, "aggregate");
-  return notice.length
+  return notice
     ? {
         ...source,
-        currentInboundContext: appendCurrentInboundContext(source.currentInboundContext, notice),
+        currentInboundContext: appendCurrentInboundContext(source.currentInboundContext, [notice]),
       }
     : source;
 }
