@@ -31,7 +31,7 @@ afterEach(() => controllerTesting.resetSessionControllerForTest());
 
 /** A room line quoting another message, as Discord records it under replyToMode batched. */
 const quoting =
-  (replyTo: string | undefined, extra: Partial<FollowupRun> = {}) =>
+  (replyTo: string, extra: Partial<FollowupRun> = {}) =>
   () => ({
     originatingReplyToId: replyTo,
     originatingReplyToMode: "batched" as const,
@@ -43,7 +43,7 @@ describe("room chatter batches whatever message it quotes (#1415)", () => {
     const rows: Row[] = ["alice", "bob", "carol", "dave"].map((id, index) => ({
       id: `q${index + 1}`,
       from: sender(id),
-      source: quoting(index ? `m${index}` : undefined),
+      source: quoting(`m${index}`),
     }));
     await withRoomIngress(rows, async (harness) => {
       await harness.dispatchRows();
@@ -165,12 +165,25 @@ describe("addressed requests and the principal run ahead of room chatter (#1415)
       { id: "i1", from: sender("alice") },
       { id: "i2", source: () => ({ currentInboundEventKind: undefined }) },
       { id: "i3", from: sender("bob") },
-      { id: "i4", kind: "user_request", from: sender("asker") },
+      {
+        id: "i4",
+        kind: "user_request",
+        from: { inputProvenance: { kind: "internal_system", sourceTool: "heartbeat" } },
+      },
+      { id: "i5", from: sender("carol") },
+      { id: "i6", kind: "user_request", from: sender("asker") },
     ];
     await withRoomIngress(rows, async (harness) => {
       await harness.dispatchRows();
       await harness.endActiveTurn();
-      expect(harness.calls.map((call) => call.messageId)).toEqual(["i1", "i2", "i4", "i3"]);
+      expect(harness.calls.map((call) => call.messageId)).toEqual([
+        "i1",
+        "i2",
+        "i3",
+        "i4",
+        "i6",
+        "i5",
+      ]);
     });
   });
 
@@ -290,7 +303,11 @@ describe("room chatter's wait is bounded (#1415)", () => {
       aged(60_001),
       async (harness) => {
         await harness.dispatchRows();
-        await harness.endActiveTurn();
+        await harness.endActiveTurn(undefined, () => {
+          const mailbox = getExistingFollowupQueue(harness.key)!;
+          expect(mailbox.timer).toBeUndefined();
+          expect(mailbox.preparing).toBe(true);
+        });
         expectRoomTurns(harness, rows, {});
       },
       { settings: { debounceMs: 45_000 } },
