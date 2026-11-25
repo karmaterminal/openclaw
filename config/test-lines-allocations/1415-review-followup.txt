@@ -1,0 +1,2 @@
+# Review follow-up to room backlog coalescing (karmaterminal/openclaw#1415): the principal's line at the cap, uniform shed accounting, elapsed-time waits, the named plugin gate and the fold's pinned scope. Exact net test-line growth against 9994eb4ef6.
+797
