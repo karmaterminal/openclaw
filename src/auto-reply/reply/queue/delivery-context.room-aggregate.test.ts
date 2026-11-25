@@ -37,8 +37,14 @@ const GROUP = {
 const groupChat = {
   ambientOwnerAggregate: true,
   ambientOwnerAggregatePeers: [
-    ...["peer-a", "peer-b", "peer-c", "peer-x"],
-    ...["grantee", "restricted", "agent-restricted", "group-restricted"],
+    "peer-a",
+    "peer-b",
+    "peer-c",
+    "peer-x",
+    "grantee",
+    "restricted",
+    "agent-restricted",
+    "group-restricted",
   ],
 };
 const config = {
@@ -89,7 +95,7 @@ function member(id: string, patch: Patch = {}, origin: typeof ROOM | typeof GROU
 }
 
 /** The same from a prince: a bot that is a command owner, with the trace grant the owner bit derives. */
-const owner: typeof member = (id, patch = {}, origin) =>
+const owner = (id: string, patch: Patch = {}, origin?: typeof ROOM | typeof GROUP) =>
   member(
     id,
     { ...patch, run: { senderIsOwner: true, traceAuthorized: true, ...patch.run } },
@@ -169,7 +175,6 @@ describe("room aggregate eligibility (#1415)", () => {
     messages,
     agents: { entries: { agent: { ...config.agents.entries.agent, groupChat: agent } } },
   });
-  const { ambientOwnerAggregatePeers } = groupChat;
 
   describe.each(LISTED)("%s", (_, peer) => {
     it.each(exclusions)("with %s keeps its own key", (__, patch) => {

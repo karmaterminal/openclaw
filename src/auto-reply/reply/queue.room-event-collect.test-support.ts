@@ -329,7 +329,7 @@ export const owner = sender("owner", {
 });
 
 // Frond (karmaterminal, #1415): a room opted in to combining the listed bots' unaddressed prose.
-export const optedIn = (peers: string[]): OpenClawConfig => ({
+export const optedIn = (peers: Array<string | number>): OpenClawConfig => ({
   messages: {
     groupChat: {
       unmentionedInbound: "room_event",
@@ -341,8 +341,14 @@ export const optedIn = (peers: string[]): OpenClawConfig => ({
 
 /** The fleet's room: its princes (one in the typed owner-list form) and four other bots listed. */
 export const AMBIENT = optedIn([
-  ...["peer-a", "discord:peer-b", "peer-c", "peer-d"],
-  ...["bot-a", "bot-b", "bot-c", "bot-d"],
+  "peer-a",
+  "discord:peer-b",
+  "peer-c",
+  "peer-d",
+  "bot-a",
+  "bot-b",
+  "bot-c",
+  "bot-d",
 ]);
 
 /** A bot account with no command authority, as channel admission records it. */

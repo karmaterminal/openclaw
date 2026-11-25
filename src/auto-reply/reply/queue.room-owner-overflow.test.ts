@@ -435,8 +435,10 @@ describe.each(["collect", "followup", "steer"] as const)(
               getExistingFollowupQueue(harness.key)?.items.map((item) => item.messageId),
             ).toEqual(kept);
             await harness.endActiveTurn();
-            // Only collect orders the listed line ahead of chatter; either way each runs once.
-            expect(harness.calls.map((call) => call.messageId).toSorted()).toEqual(kept.toSorted());
+            // Only collect orders the listed line ahead of chatter.
+            expect(harness.calls.map((call) => call.messageId)).toEqual(
+              mode === "collect" ? ["o3", ...kept.filter((id) => id !== "o3")] : kept,
+            );
             await expectSettledOnce(
               harness,
               rows.map((row) => row.id),
