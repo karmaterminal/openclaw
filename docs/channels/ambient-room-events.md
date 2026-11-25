@@ -243,12 +243,12 @@ Supported room-event channels keep recent ambient room messages as context. Tele
 When a busy session reaches its queue cap, optional room events are discarded
 before user requests, without generating overflow-summary turns. The default
 `summarize` policy retains bounded previews on an eligible pending turn from the
-same conversation and states how many messages were shed; `old` and `new` discard them. This sheds ambient processing,
+same conversation; under every policy that turn states how many messages were shed. This sheds ambient processing,
 not channel history; the configured history window still
 bounds which recent messages are available as context. See [Queue options](/concepts/queue#queue-options).
-Room messages from the owner's accounts listed in
-`messages.groupChat.ownerQueueProtectionAccounts` (Discord, Slack, and Telegram;
-unset by default) are kept instead; see [Owner room messages at capacity](/concepts/queue#owner-room-messages-at-capacity).
+Room messages a command owner, or an account listed in
+`messages.groupChat.ownerQueueProtectionAccounts`, posted from its own verified
+account (Discord, Slack, and Telegram) are kept instead; see [Owner room messages at capacity](/concepts/queue#owner-room-messages-at-capacity).
 
 ## Troubleshooting
 

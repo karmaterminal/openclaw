@@ -115,24 +115,28 @@ backpressure. Summarized entries retain their source receipts until the summary
 is adopted or discarded.
 
 At capacity, optional ambient room events yield to user requests before these drop
-policies apply; incoming room events cannot evict user requests. With `summarize`,
-OpenClaw preserves short previews as background context on an eligible pending
-turn in the same channel, account, room, thread, and Gateway. This creates no
-extra model turns. Each recipient keeps the newest `min(cap, 20)` previews in
+policies apply; incoming room events cannot evict user requests. Under every
+policy, an eligible pending turn in the same channel, account, room, thread, and
+Gateway states as background context how many ambient events were shed; with
+`summarize` it also carries short previews. This creates no extra model turns.
+Each recipient keeps the newest `min(cap, 20)` previews in
 arrival order, with message text capped at 160 characters and sender/message ID
 fields capped at 80 characters each. Previews are untrusted context, not requests
 or sender authority. Input text awaiting its write hook is replaced by an omission
 notice; approved text is used without restoring redacted content.
 
-Context is attached once when the recipient executes, including across retries.
-It expires if that recipient is canceled or discarded; if no eligible pending
-recipient exists, the ambient event is discarded without a preview. `old` and
-`new` discard overflow ambient events without previews. Among ambient
+Context is attached once when the recipient executes, including across retries;
+events shed while it waits to retry are stated beside it. A recipient the cap cuts
+hands its count on. The context expires if its recipient is canceled; if no eligible
+pending recipient exists, the ambient event is recorded as unstated. `old` and
+`new` state the count without previews. Among ambient
 events, `drop: "new"` keeps the existing events, while the other policies keep the
 newest. Surviving messages retain FIFO order. Active turns, protected recovery
 work, and events requiring a reply are not eligible for ambient shedding. Each
-discard is logged without message content, and its channel receipt is settled so
-durable ingress does not retry it. Recent room history remains subject to the
+message the cap sheds, drops, or refuses leaves one log record without message
+content (policy, disposition, and where it went on; a warning when no turn states
+it), and a shed event's channel receipt is settled so durable ingress does not
+retry it. Recent room history remains subject to the
 channel's configured history window.
 
 Gateway followup and collect debounce windows measure elapsed time, so wall-clock corrections do not shorten or extend them.
@@ -141,9 +145,10 @@ The queue uses a built-in 500ms debounce. `cap` defaults to `20`, and `drop` def
 
 ### Owner room messages at capacity
 
-No one's room messages are protected at capacity by default. List the owner's own
-accounts in `messages.groupChat.ownerQueueProtectionAccounts` to keep their
-unaddressed room messages instead of shedding them as ambient events:
+A command owner's unaddressed room messages are never shed as ambient events when
+their channel verified that the owner's own account posted them. To protect
+accounts that hold no command authority too, list them in
+`messages.groupChat.ownerQueueProtectionAccounts`:
 
 ```json5
 {
@@ -156,19 +161,21 @@ unaddressed room messages instead of shedding them as ambient events:
 ```
 
 Each entry is a sender id with its channel prefix, in the grammar
-`commands.ownerAllowFrom` uses; wildcards and duplicates are rejected. The setting
-is separate from command authority: an account in `commands.ownerAllowFrom` gets
-no queue protection unless it is listed here, the owner bit (operator profiles,
-`operator.admin`) grants none, and listing an account here grants no command
-authority. It is global; agents cannot override it.
+`commands.ownerAllowFrom` uses; wildcards and duplicates are rejected. Listing an
+account here grants no command authority. The setting is global; agents cannot
+override it.
 
-A listed account's room event is protected only when its channel verified, from
-platform account metadata, that the account itself posted it: not a bot or app
-account, and not a webhook, relay, proxy, or chat posting on the account's
-behalf. Absent or ambiguous provenance is not protected. A refusal at a cap full
-of protected work is retryable backpressure under every `drop` policy and spends
-no retry attempt; durable ingress paces the retry (1 second, doubling to 3
-minutes). Messages that mention the agent keep the usual capacity rules.
+A command owner's or listed account's room event is protected only when its channel
+verified, from platform account metadata, that the account itself posted it: not a
+bot or app account, and not a webhook, relay, proxy, or chat posting on the
+account's behalf. Absent or ambiguous provenance is not protected, whatever
+authority the sender shows.
+
+A protected room event sheds ambient events to make room but displaces no request,
+and nothing displaces it. At a cap with nothing left to shed, it is retryable
+backpressure under every `drop` policy and spends no retry attempt; durable ingress
+paces the retry (1 second, doubling to 3 minutes). Messages that mention the agent
+keep the usual capacity rules.
 
 Discord, Slack, and Telegram verify account provenance:
 
@@ -184,7 +191,7 @@ Discord, Slack, and Telegram verify account provenance:
   (anonymous administrators, linked channels, automatic forwards) or
   `sender_business_bot`.
 
-Every other channel is unsupported, and a listed sender there stays ambient. This
+Every other channel is unsupported, and an owner there stays ambient. This
 includes Feishu and Mattermost, whose bot flags are not reviewed as account
 provenance, and channels with no such signal, such as iMessage, IRC, LINE,
 Microsoft Teams, Signal, SMS, and WhatsApp.
