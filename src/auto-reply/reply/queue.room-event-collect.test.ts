@@ -31,6 +31,7 @@ import {
   expectRoomTurns,
   expectSettledOnce,
   expectShedAtCap,
+  modelInput,
   openRoomIngress,
   optedIn,
   owner,
@@ -810,12 +811,16 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
         expect(error).toHaveBeenCalledWith(expect.stringContaining("refused a mixed claim"));
         // Each member of the refused claim runs as itself; b4, left alone, runs as itself too.
         expect(harness.calls).toEqual(["b1h", "b3", "b4"].map((id) => harness.runs.get(id)));
-        // The owner's turn holds the shed previews as background, under its own authority.
-        expect(shedContext(harness.calls[0])).toEqual([
-          { sender: "bot-a", messageId: "b1", text: textOf(rows[0]!) },
-          { sender: "bot-b", messageId: "b2", text: textOf(rows[2]!) },
-        ]);
         expect(harness.calls[0]?.run).toMatchObject({ senderId: "owner", senderIsOwner: true });
+        // b3 could have previewed the shed lines in the aggregate; in its own turn it counts them.
+        expect(harness.calls.map((call) => shedCounts(call))).toEqual([
+          [],
+          [{ shed: 2, previewed: 0 }],
+          [],
+        ]);
+        for (const call of harness.calls) {
+          expect(modelInput(call)).not.toMatch(/bot-a|bot-b|message b[12]\b/u);
+        }
         await expectSettledOnce(
           harness,
           rows.map((row) => row.id),

@@ -23,7 +23,10 @@ import {
 } from "../src/auto-reply/reply/queue.js";
 import {
   expectSettledOnce,
+  modelInput,
   openRoomIngress,
+  shedContext,
+  shedCounts,
   type Harness,
 } from "../src/auto-reply/reply/queue.room-event-collect.test-support.js";
 import { installQueueRuntimeErrorSilencer } from "../src/auto-reply/reply/queue.test-helpers.js";
@@ -232,13 +235,15 @@ type BacklogOptions = {
   late?: readonly Line[];
   debounceMs?: number;
   fleet?: OpenClawConfig;
+  /** How many of the lines the queue cap sheds before the turn ends. */
+  shed?: number;
 };
 
 /** The lines arrive while the room's turn runs; its end drains the mailbox. */
 async function drainBacklog(
   lines: readonly Line[],
   check: (harness: Harness) => void | Promise<void>,
-  { prioritizePending, late = [], debounceMs = 0, fleet = FLEET }: BacklogOptions = {},
+  { prioritizePending, late = [], debounceMs = 0, fleet = FLEET, shed = 0 }: BacklogOptions = {},
 ) {
   await withTempState(async (stateDir) => {
     const active = createReplyOperation({
@@ -265,10 +270,9 @@ async function drainBacklog(
         await harness.addRow({ id });
         await harness.dispatchRows(1);
       }
-      const settlements = (getExistingFollowupQueue(SESSION_KEY)?.entries ?? []).map(
-        (input) => input.settlement.promise,
-      );
-      expect(settlements).toHaveLength(lines.length + late.length);
+      const queue = getExistingFollowupQueue(SESSION_KEY);
+      const settlements = (queue?.entries ?? []).map((input) => input.settlement.promise);
+      expect(queue?.items).toHaveLength(lines.length + late.length - shed);
       await Promise.allSettled(settlements);
       await harness.drain.waitForIdle();
       await check(harness);
@@ -334,6 +338,49 @@ describe("a Discord room backlog behind a busy turn (#1415)", () => {
       { fleet: OPTED_OUT },
     );
   });
+
+  it.each([
+    ["did not opt in", OPTED_OUT],
+    ["opted in", FLEET],
+  ])(
+    "states what the cap shed, naming no other sender in a turn of a room that %s",
+    async (_, room_) => {
+      const lines = room.map(({ id, author, text }): Line => ({ id, author, text })).slice(0, 4);
+      const [shed, kept] = [lines.slice(0, 2), lines.slice(2)];
+      const fleet: OpenClawConfig = {
+        ...room_,
+        messages: { ...room_.messages, queue: { ...room_.messages?.queue, cap: 2 } },
+      };
+      await drainBacklog(
+        lines,
+        (harness) => {
+          const [first] = harness.calls;
+          if (room_ === FLEET) {
+            expect(harness.calls).toHaveLength(1);
+            expectCarries(first, kept);
+            expect(shedContext(first)).toMatchObject(
+              shed.map(({ id, author }) => ({ sender: author.name, messageId: id })),
+            );
+            return;
+          }
+          expect(harness.calls).toEqual(kept.map(({ id }) => harness.runs.get(id)));
+          for (const [index, call] of harness.calls.entries()) {
+            expect(modelInput(call)).toContain(kept[index]!.text);
+            for (const { id, author, text } of shed) {
+              for (const theirs of [author.name, author.id, text, id]) {
+                expect(modelInput(call)).not.toContain(theirs);
+              }
+            }
+          }
+          expect(harness.calls.map((call) => shedCounts(call))).toEqual([
+            [{ shed: 2, previewed: 0 }],
+            [],
+          ]);
+        },
+        { fleet, shed: shed.length },
+      );
+    },
+  );
 
   it("keeps a person's line out of the bots' turns", async () => {
     const guest: Line = { id: "10031", author: GUEST, text: "same on arm", replyTo: "1001" };

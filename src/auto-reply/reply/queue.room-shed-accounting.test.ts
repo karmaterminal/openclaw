@@ -15,11 +15,16 @@ import {
   type QueueSettings,
 } from "./queue.js";
 import {
+  aggregated,
   createRoomRun,
   expectSettledOnce,
+  modelInput,
+  optedIn,
+  peer,
   sender,
   shedContext,
   shedCounts,
+  textOf,
   withRoomIngress,
   type Harness,
   type Row,
@@ -63,7 +68,7 @@ const ask = (id: string, from = sender("asker")): Row => ({
   // Each request keeps its own turn, so the turns name the rows that ran.
   source: () => ({ disableCollectBatching: true }),
 });
-const chatter = (id: string): Row => ({ id, from: sender("alice") });
+const chatter = (id: string, from = sender("alice")): Row => ({ id, from });
 
 /** Dispatches every row into a full queue, ends the turn, and returns what the cap decided. */
 async function overflow(
@@ -73,6 +78,7 @@ async function overflow(
     harness: Harness,
     dispositions: Array<[id: string, disposition: string]>,
   ) => Promise<void> | void,
+  execute?: (run: FollowupRun, harness: Harness) => Promise<void>,
 ) {
   const dispositions: Array<[id: string, disposition: string]> = [];
   const ref: { harness?: Harness } = {};
@@ -81,7 +87,7 @@ async function overflow(
     async (harness) => {
       ref.harness = harness;
       await harness.dispatchRows();
-      await harness.endActiveTurn();
+      await harness.endActiveTurn(execute && ((run) => execute(run, harness)));
       await check(harness, dispositions);
     },
     {
@@ -106,8 +112,10 @@ function stated(calls: readonly FollowupRun[]) {
   };
 }
 
-const line = (prompt: string) =>
-  createQueueTestRun({ prompt, currentInboundEventKind: "room_event" });
+/** One person's messages, as a channel that names its sender admits them. */
+const said = (params: Parameters<typeof createQueueTestRun>[0]) =>
+  createQueueTestRun(params, { messageProvider: "discord", senderId: "asker" });
+const line = (prompt: string) => said({ prompt, currentInboundEventKind: "room_event" });
 
 /** Refuses the queued head before execution; it waits, its context attached, for a fresh kick. */
 async function refuseOnce(q: ReturnType<typeof createQueueCase>) {
@@ -125,7 +133,7 @@ async function refuseOnce(q: ReturnType<typeof createQueueCase>) {
 
 describe("shed room chatter is counted under every drop policy (#1415)", () => {
   it.each(POLICIES)("states and records each shed line once under drop:%s", async (dropPolicy) => {
-    const rows = [ask("r1"), ...["r2", "r3", "r4", "r5"].map(chatter)];
+    const rows = [ask("r1"), ...["r2", "r3", "r4", "r5"].map((id) => chatter(id))];
     await overflow(rows, { cap: 2, dropPolicy }, async (harness, dispositions) => {
       const shed = dropPolicy === "new" ? ["r3", "r4", "r5"] : ["r2", "r3", "r4"];
       const disposition = dropPolicy === "new" ? "queue-cap-new" : "queue-cap-old";
@@ -133,10 +141,11 @@ describe("shed room chatter is counted under every drop policy (#1415)", () => {
       // Every row ran or is stated: none vanishes between the queue and the turns.
       const ran = rows.map((row) => row.id).filter((id) => !shed.includes(id));
       expect(harness.calls).toEqual(ran.map((id) => harness.runs.get(id)));
-      // Each turn previews the newest min(cap, 20).
+      // Only alice's own turn previews alice's lines, the newest min(cap, 20).
       const previewed = dropPolicy === "summarize" ? 2 : 0;
       expect(stated(harness.calls)).toEqual({ shed: shed.length, previewed });
-      expect(shedContext(harness.calls[0])).toHaveLength(previewed);
+      expect(shedContext(harness.calls[0])).toEqual([]);
+      expect(shedContext(harness.calls[1])).toHaveLength(previewed);
       expect(records).toEqual(
         shed.map(() =>
           expect.objectContaining({
@@ -156,23 +165,15 @@ describe("shed room chatter is counted under every drop policy (#1415)", () => {
     });
   });
 
-  it("carries other senders' shed lines as background of a turn that stays its sender's own", async () => {
-    // No opt-in: nothing crosses senders but the bounded previews drop:summarize states (#191733).
-    const senders = ["alice", "bob", "carol", "dave"];
-    const rows = senders.map((id, index): Row => ({ id: `r${index + 1}`, from: sender(id) }));
-    await overflow(rows, { cap: 2, dropPolicy: "summarize" }, (harness) => {
-      expect(harness.calls).toEqual(["r3", "r4"].map((id) => harness.runs.get(id)));
-      expect(shedContext(harness.calls[0])).toMatchObject([{ sender: "alice" }, { sender: "bob" }]);
-      expect(harness.calls[0]?.run.senderId).toBe("carol");
-      expect(shedContext(harness.calls[1])).toEqual([]);
-    });
-  });
-
   it.each(["old", "summarize"] as const)(
     "keeps the count when the request carrying it is itself cut under drop:%s",
     async (dropPolicy) => {
       // r2 is shed into r1's turn; r3 to r6 then push requests out of a queue full of requests.
-      const rows = [ask("r1"), chatter("r2"), ...["r3", "r4", "r5", "r6"].map((id) => ask(id))];
+      const rows = [
+        ask("r1"),
+        chatter("r2", sender("asker")),
+        ...["r3", "r4", "r5", "r6"].map((id) => ask(id)),
+      ];
       await overflow(rows, { cap: 1, dropPolicy }, async (harness) => {
         expect(stated(harness.calls)).toEqual({
           shed: 1,
@@ -218,14 +219,14 @@ describe("shed room chatter is counted under every drop policy (#1415)", () => {
     "states lines shed while their turn waits to retry beside those it already stated under drop:%s, cut %s",
     async (dropPolicy, cut) => {
       const q = createQueueCase({ mode: "followup", cap: 1, dropPolicy });
-      q.add(createQueueTestRun({ prompt: "@bot status?" }));
+      q.add(said({ prompt: "@bot status?" }));
       q.add(line("before the first try"));
       await refuseOnce(q);
       const park = (run: FollowupRun) =>
         enqueueFollowupRun(q.key, run, q.settings, "message-id", undefined, false);
       park(line("before the retry"));
       if (cut) {
-        park(createQueueTestRun({ prompt: "@bot and now?" }));
+        park(said({ prompt: "@bot and now?" }));
       }
       await q.drain();
       const previewed = dropPolicy === "summarize" ? 1 : 0;
@@ -242,12 +243,212 @@ describe("shed room chatter is counted under every drop policy (#1415)", () => {
   );
 });
 
+// 🌊's ruling, 2026-11-25 (karmaterminal/openclaw#1415): a shed preview carries text only to a turn of
+// its own sender, or into the opted-in, verified aggregate. Any other turn states a count.
+describe("a shed preview stays out of other senders' turns (#1415)", () => {
+  const names = ["alice", "bob", "carol", "dave"];
+  const listed = optedIn(names);
+  const optedOut = (ambientOwnerAggregate: false | undefined) => ({
+    messages: { groupChat: { ...listed.messages?.groupChat, ambientOwnerAggregate } },
+  });
+  const summarize = { dropPolicy: "summarize" } as const;
+
+  type From = (id: string) => Row["from"];
+  it.each<[string, From, Partial<QueueSettings>?]>([
+    ["nothing configured", (id) => sender(id)],
+    ["nothing configured, in followup mode", (id) => sender(id), { mode: "followup" }],
+    ["nothing configured, in steer mode", (id) => sender(id), { mode: "steer" }],
+    ["listed bots, opt-in unset", (id) => peer(id, optedOut(undefined))],
+    ["listed bots, opted out", (id) => peer(id, optedOut(false))],
+    ["opted in, no bot listed", (id) => peer(id, optedIn([]))],
+    ["opted in, people listed", (id) => sender(id, { config: listed, senderIsBot: false })],
+    ["opted in, bots not verified as bots", (id) => sender(id, { config: listed })],
+    [
+      "opted in, a person's turn after listed bots' lines",
+      (id) => (id < "carol" ? peer(id, listed) : sender(id, { config: listed })),
+    ],
+    ["opted in, outside collect mode", (id) => peer(id, listed), { mode: "followup" }],
+  ])("states only their count: %s", async (_, from, settings) => {
+    const rows = names.map((id, index): Row => ({ id: `r${index + 1}`, from: from(id) }));
+    await overflow(rows, { cap: 2, ...summarize, ...settings }, async (harness) => {
+      expect(harness.calls).toEqual(["r3", "r4"].map((id) => harness.runs.get(id)));
+      const [carol, dave] = harness.calls;
+      // No other sender's name, id or words.
+      expect(modelInput(carol)).not.toMatch(/alice|bob|message r[12]/u);
+      expect(modelInput(dave)).not.toMatch(/alice|bob|message r[12]/u);
+      // The turn is its sender's own, whole, and states how many room messages were shed.
+      expect(carol).toMatchObject({ prompt: textOf(rows[2]!), run: { senderId: "carol" } });
+      expect(shedCounts(carol)).toEqual([{ shed: 2, previewed: 0 }]);
+      expect(shedCounts(dave)).toEqual([]);
+      expect(records.map((record) => record.outcome)).toEqual(["counted", "counted"]);
+      await expectSettledOnce(
+        harness,
+        rows.map((row) => row.id),
+      );
+    });
+  });
+
+  it("previews each sender's own shed lines in that sender's own turn", async () => {
+    const rows = ["alice", "bob", "alice", "bob"].map((id, index) =>
+      chatter(`r${index + 1}`, sender(id)),
+    );
+    await overflow(rows, { cap: 2, ...summarize }, (harness) => {
+      expect(harness.calls).toEqual(["r3", "r4"].map((id) => harness.runs.get(id)));
+      expect(harness.calls.map((call) => shedContext(call))).toEqual(
+        rows
+          .slice(0, 2)
+          .map((row) => [{ sender: row.from?.senderName, messageId: row.id, text: textOf(row) }]),
+      );
+      expect(harness.calls.map((call) => shedCounts(call))).toEqual([
+        [{ shed: 1, previewed: 1 }],
+        [{ shed: 1, previewed: 1 }],
+      ]);
+      expect(records.map((record) => record.outcome)).toEqual(["previewed", "previewed"]);
+    });
+  });
+
+  it("previews a sender's shed line in that sender's request, not in one that waits before it", async () => {
+    const rows = [ask("q1", sender("bob")), ask("q2", sender("alice")), chatter("r3")];
+    await overflow(rows, { cap: 2, ...summarize }, (harness) => {
+      expect(harness.calls).toEqual(["q1", "q2"].map((id) => harness.runs.get(id)));
+      expect(harness.calls[0]?.currentInboundContext).toBeUndefined();
+      expect(shedContext(harness.calls[1])).toEqual([
+        { sender: "alice", messageId: "r3", text: textOf(rows[2]!) },
+      ]);
+    });
+  });
+
+  it("drops the text, not the count, of a preview its sender's turn hands on", async () => {
+    // r2 sheds into r1's turn of the same sender; bob's requests then push alice's out of the queue.
+    const rows = [
+      ask("r1", sender("alice")),
+      chatter("r2"),
+      ...["r3", "r4", "r5"].map((id) => ask(id, sender("bob"))),
+    ];
+    await overflow(rows, { cap: 1, ...summarize }, (harness) => {
+      expect(records[0]).toMatchObject({ outcome: "previewed" });
+      expect(stated(harness.calls)).toEqual({ shed: 1, previewed: 0 });
+      for (const call of harness.calls) {
+        expect(call.run.senderId).toBe("bob");
+        expect(modelInput(call)).not.toMatch(/alice|message r2/u);
+      }
+    });
+  });
+
+  it.each<[string, Partial<FollowupRun["run"]>, Partial<FollowupRun["run"]>]>([
+    ["no sender on either", { messageProvider: "discord" }, { messageProvider: "discord" }],
+    [
+      "one display name, two accounts",
+      { messageProvider: "discord", senderName: "alice", senderId: "1" },
+      { messageProvider: "discord", senderName: "alice", senderId: "2" },
+    ],
+    [
+      "one account, another linked person",
+      { messageProvider: "discord", senderId: "1", operatorProfileId: "a" },
+      { messageProvider: "discord", senderId: "1", operatorProfileId: "b" },
+    ],
+  ])("treats an unproven sender as another one: %s", async (_, shed, survivor) => {
+    const q = createQueueCase({ mode: "followup", cap: 1 });
+    q.add(createQueueTestRun({ prompt: "@bot status?" }, survivor));
+    q.add(createQueueTestRun({ prompt: "lunch?", currentInboundEventKind: "room_event" }, shed));
+    await q.drain();
+    expect(modelInput(q.calls[0])).not.toMatch(/lunch|alice/u);
+    expect(shedCounts(q.calls[0])).toEqual([{ shed: 1, previewed: 0 }]);
+  });
+
+  describe("in a room opted in to the aggregate", () => {
+    const bot = (id: string, from: string, source?: Row["source"]): Row => ({
+      id,
+      from: peer(from, listed),
+      source,
+    });
+    const preview = (row: Row) => ({
+      sender: row.from?.senderName,
+      messageId: row.id,
+      text: textOf(row),
+    });
+
+    it("previews listed bots' lines in their aggregate, and in no turn that waits before it", async () => {
+      const rows = [
+        ask("q1", sender("erin", { config: listed })),
+        ...names.map((id, index) => bot(`r${index + 2}`, id)),
+      ];
+      await overflow(rows, { cap: 3, ...summarize }, (harness) => {
+        expect(harness.calls).toHaveLength(2);
+        expect(harness.calls[0]).toBe(harness.runs.get("q1"));
+        expect(harness.calls[0]?.currentInboundContext).toBeUndefined();
+        aggregated(harness.calls[1], rows.slice(3));
+        expect(shedContext(harness.calls[1])).toEqual(rows.slice(1, 3).map(preview));
+        expect(shedCounts(harness.calls[1])).toEqual([{ shed: 2, previewed: 2 }]);
+      });
+    });
+
+    it("keeps them out of a listed bot's turn that runs as itself", async () => {
+      const rows = [bot("r1", "alice"), bot("r2", "bob")];
+      await overflow(rows, { cap: 1, ...summarize }, (harness) => {
+        expect(harness.calls).toEqual([harness.runs.get("r2")]);
+        expect(harness.calls[0]?.run.senderId).toBe("bob");
+        expect(modelInput(harness.calls[0])).not.toMatch(/alice|message r1/u);
+        expect(shedCounts(harness.calls[0])).toEqual([{ shed: 1, previewed: 0 }]);
+      });
+    });
+
+    it("keeps a listed bot's line that would not fold out of the aggregate", async () => {
+      const directive = bot("r1", "alice", () => ({ ambientRoomProse: false }));
+      const rows = [directive, bot("r2", "alice"), bot("r3", "bob")];
+      await overflow(rows, { cap: 2, ...summarize }, (harness) => {
+        expect(harness.calls).toHaveLength(1);
+        aggregated(harness.calls[0], rows.slice(1));
+        expect(modelInput(harness.calls[0])).not.toContain(textOf(directive));
+        expect(shedCounts(harness.calls[0])).toEqual([{ shed: 1, previewed: 0 }]);
+      });
+    });
+
+    it.each(["together", "alone"])(
+      "gives them to no member retried %s as itself",
+      async (retried) => {
+        const left = new AbortController();
+        const rows = [
+          bot("r1", "alice"),
+          bot("r2", "bob"),
+          bot("r3", "carol", () => ({ abortSignal: left.signal })),
+        ];
+        const check = (harness: Harness) => {
+          const [refused, retry] = harness.calls;
+          expect(harness.calls).toHaveLength(2);
+          aggregated(refused, rows.slice(1));
+          expect(shedContext(refused)).toEqual([preview(rows[0]!)]);
+          if (retried === "together") {
+            aggregated(retry, rows.slice(1));
+            expect(retry?.currentInboundContext).toEqual(refused?.currentInboundContext);
+          } else {
+            expect(retry).toBe(harness.runs.get("r2"));
+            expect(modelInput(retry)).not.toMatch(/alice|message r1/u);
+            expect(shedCounts(retry)).toEqual([{ shed: 1, previewed: 0 }]);
+          }
+        };
+        await overflow(rows, { cap: 2, ...summarize }, check, async (run, harness) => {
+          if (harness.calls.length > 0) {
+            await harness.adoptAndRecord(run);
+            return;
+          }
+          harness.calls.push(run);
+          if (retried === "alone") {
+            left.abort();
+          }
+          rejectQueuePreparation(run, new Error("reply lane not ready"));
+        });
+      },
+    );
+  });
+});
+
 describe("a count stays with one turn (#1415)", () => {
   it("is not handed on again while the summary turn that states it runs", async () => {
     const q = createQueueCase({ mode: "followup", cap: 1, dropPolicy: "summarize" });
-    const request = (prompt: string) => createQueueTestRun({ prompt });
+    const request = (prompt: string) => said({ prompt });
     q.add(request("q1"));
-    q.add(createQueueTestRun({ prompt: "lunch?", currentInboundEventKind: "room_event" }));
+    q.add(said({ prompt: "lunch?", currentInboundEventKind: "room_event" }));
     q.add(request("q2"));
     const calls: FollowupRun[] = [];
     scheduleFollowupDrain(q.key, async (run) => {
@@ -267,7 +468,7 @@ describe("a count stays with one turn (#1415)", () => {
       enqueueFollowupRun(q.key, run, q.settings, "message-id", undefined, false);
     // Exclusive admissions never share a summary turn, so each states its own context.
     const request = (prompt: string) =>
-      createQueueTestRun({
+      said({
         prompt,
         turnAdoptionLifecycle: { admission: "exclusive", onAdopted: async () => {} },
       });
@@ -287,14 +488,14 @@ describe("a count stays with one turn (#1415)", () => {
     const q = createQueueCase({ mode: "followup", cap: 1, dropPolicy: "new" });
     const park = (run: FollowupRun, position?: "front") =>
       enqueueFollowupRun(q.key, run, q.settings, "none", undefined, false, { position });
-    park(createQueueTestRun({ prompt: "q1" }));
+    park(said({ prompt: "q1" }));
     park(line("lunch?"));
     const calls: FollowupRun[] = [];
     scheduleFollowupDrain(q.key, async (run) => {
       calls.push(run);
       if (calls.length === 1) {
         // q1's turn has read its notice; its recovery finds the queue full again.
-        park(createQueueTestRun({ prompt: "q2" }));
+        park(said({ prompt: "q2" }));
         const recovery = buildTranscriptFollowupRun(run, {
           prompt: "recover",
           sourceTool: "test",
@@ -314,12 +515,12 @@ describe("a count stays with one turn (#1415)", () => {
   it("passes from a refused request to the turn that keeps its place", async () => {
     const q = createQueueCase({ mode: "followup", cap: 1, dropPolicy: "new" });
     // Reserved first, parked last: the steer's fallback puts it ahead of the request at the cap.
-    const steer = createQueueTestRun({ prompt: "steer" });
+    const steer = said({ prompt: "steer" });
     submitSessionControllerInput(q.key, steer, q.settings);
     const park = (run: FollowupRun) =>
       enqueueFollowupRun(q.key, run, q.settings, "message-id", undefined, false);
-    park(createQueueTestRun({ prompt: "carrier" }));
-    park(createQueueTestRun({ prompt: "lunch?", currentInboundEventKind: "room_event" }));
+    park(said({ prompt: "carrier" }));
+    park(said({ prompt: "lunch?", currentInboundEventKind: "room_event" }));
     reserveSteerCandidate(q.key, steer, q.settings, q.runFollowup)!.fallback();
     expect(records).toMatchObject([
       { outcome: "counted", roomEvent: true },
@@ -420,10 +621,8 @@ describe("requests the cap cuts are recorded under every drop policy (#1415)", (
       const rows: Row[] = [ask("q1"), { id: "r2", from: unlisted }];
       await overflow(rows, { cap: 1, dropPolicy }, async (harness, dispositions) => {
         expect(dispositions).toEqual([["r2", "queue-cap-new"]]);
-        expect(stated(harness.calls).shed).toBe(1);
-        expect(records).toMatchObject([
-          { roomEvent: true, outcome: dropPolicy === "summarize" ? "previewed" : "counted" },
-        ]);
+        expect(stated(harness.calls)).toEqual({ shed: 1, previewed: 0 });
+        expect(records).toMatchObject([{ roomEvent: true, outcome: "counted" }]);
         await expectSettledOnce(harness, ["q1", "r2"]);
       });
     },

@@ -266,14 +266,21 @@ export async function expectShedAtCap(harness: Harness, kept: string[], shed: st
   expect([...harness.writes.fail.keys()]).toEqual([]);
 }
 
+/** Everything a queued turn gives its model: the prompt, its transcript text and the background. */
+export function modelInput(run: FollowupRun | undefined): string {
+  return JSON.stringify([run?.prompt, run?.transcriptPrompt, run?.currentInboundContext]);
+}
+
 const SHED_CONTEXT = "[Compacted ambient room context; ";
 
 /** For each shed notice in a turn, how many room messages it counts and how many it previews. */
 export function shedCounts(run: FollowupRun | undefined) {
   const text = run?.currentInboundContext?.text ?? "";
-  return [...text.matchAll(/shed at the queue cap: (\d+), (?:newest (\d+)|none) previewed/gu)].map(
-    ([, shed, previewed]) => ({ shed: Number(shed), previewed: Number(previewed ?? 0) }),
-  );
+  const notice = /shed at the queue cap: (\d+), (?:newest (\d+)[^,;]*|none) previewed/gu;
+  return [...text.matchAll(notice)].map(([, shed, previewed]) => ({
+    shed: Number(shed),
+    previewed: Number(previewed ?? 0),
+  }));
 }
 
 /** The shed rows' previews a turn carries as background context under drop:summarize (#191733). */

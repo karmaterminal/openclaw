@@ -12,6 +12,9 @@ import { clearFollowupQueue } from "./queue/state.js";
 
 installQueueRuntimeErrorSilencer();
 
+// Frond (karmaterminal, #1415): only its own sender's turn previews a shed message.
+const ada = { messageProvider: "telegram", senderId: "ada" };
+
 describe("followup queue overflow summary context", () => {
   it("replays a request evicted by other requests with its own sender context", async () => {
     const q = createQueueCase({ mode: "followup", cap: 2 }, 3);
@@ -52,7 +55,7 @@ describe("followup queue overflow summary context", () => {
     "sheds ambient overflow before requests without replay turns with drop:%s",
     async (dropPolicy) => {
       const q = createQueueCase({ mode: "followup", cap: 2, dropPolicy }, 2);
-      const request = createRun({ prompt: "@bot deploy?", messageId: "request" });
+      const request = createRun({ prompt: "@bot deploy?", messageId: "request" }, ada);
       const lifecycles = [0, 1].map(() => ({
         onAdopted: vi.fn(),
         onAbandoned: vi.fn(),
@@ -69,24 +72,30 @@ describe("followup queue overflow summary context", () => {
       const beginDiscarded = vi.fn(() =>
         correlation.begin(q.key, { ...event, markInboundEventDelivered: vi.fn() }, options),
       );
-      const ambient = createRun({
-        prompt: "lunch?",
-        messageId: "ambient",
-        currentInboundEventKind: "room_event",
-        turnAdoptionLifecycle: lifecycles[0],
-        deliveryCorrelations: [{ begin: beginDiscarded }],
-        onQueueDisposition: vi.fn(),
-      });
+      const ambient = createRun(
+        {
+          prompt: "lunch?",
+          messageId: "ambient",
+          currentInboundEventKind: "room_event",
+          turnAdoptionLifecycle: lifecycles[0],
+          deliveryCorrelations: [{ begin: beginDiscarded }],
+          onQueueDisposition: vi.fn(),
+        },
+        ada,
+      );
       q.add(request);
       q.add(ambient);
       q.add(createRun({ prompt: "@bot status?", messageId: "second" }));
-      const incoming = createRun({
-        ...ambient,
-        messageId: "incoming",
-        controllerInput: undefined,
-        turnAdoptionLifecycle: lifecycles[1],
-        deliveryCorrelations: [{ begin: beginDiscarded }],
-      });
+      const incoming = createRun(
+        {
+          ...ambient,
+          messageId: "incoming",
+          controllerInput: undefined,
+          turnAdoptionLifecycle: lifecycles[1],
+          deliveryCorrelations: [{ begin: beginDiscarded }],
+        },
+        ada,
+      );
       expect(q.add(incoming)).toBe(false);
       await q.drain();
       expect(q.calls.map((run) => run.prompt)).toEqual(["@bot deploy?", "@bot status?"]);
@@ -148,9 +157,9 @@ describe("followup queue overflow summary context", () => {
 
   it("bounds an ambient burst without summarizing the older request", async () => {
     const q = createQueueCase({ mode: "followup", cap: 3 }, 3);
-    q.add(createRun({ prompt: "@bot deploy?" }));
+    q.add(createRun({ prompt: "@bot deploy?" }, ada));
     for (let index = 0; index < 25; index++) {
-      q.add(createRun({ prompt: `room ${index}`, currentInboundEventKind: "room_event" }));
+      q.add(createRun({ prompt: `room ${index}`, currentInboundEventKind: "room_event" }, ada));
     }
     await q.drain();
     expect(q.calls.map((run) => run.prompt)).toEqual(["@bot deploy?", "room 23", "room 24"]);
@@ -160,8 +169,8 @@ describe("followup queue overflow summary context", () => {
     expect(context).not.toContain('"text":"room 19"');
   });
 
-  it.each(["same", "thread", "account", "gateway"] as const)(
-    "preserves bounded cross-sender context only within the same room scope: %s",
+  it.each(["same", "sender", "thread", "account", "gateway"] as const)(
+    "preserves bounded context only for the same sender within the same room scope: %s",
     async (scope) => {
       const q = createQueueCase({ mode: "followup", cap: 1 });
       const route = {
@@ -197,16 +206,22 @@ describe("followup queue overflow summary context", () => {
             }),
           },
         },
-        { senderName: "Grace", senderId: "grace", senderIsOwner: true },
+        scope === "sender"
+          ? { senderName: "Grace", senderId: "grace", senderIsOwner: true }
+          : { senderName: "Ada", senderId: "ada", senderIsOwner: true },
       );
       withGateway(scope === "gateway" ? gatewayB : gatewayA, () => q.add(ambient));
       await q.drain();
       const context = q.calls[0]?.currentInboundContext?.text;
       if (scope === "same") {
-        expect(context).toContain('"sender":"Grace"');
+        expect(context).toContain('"sender":"Ada"');
         expect(context).toContain('"text":"approved ' + "x".repeat(150) + '…"');
         expect(context).not.toContain("raw secret");
         expect(context).not.toContain("x".repeat(151));
+      } else if (scope === "sender") {
+        // Frond (karmaterminal, #1415): another sender's turn states a count, with no name or text.
+        expect(context).not.toMatch(/grace|approved/iu);
+        expect(context).toContain("shed at the queue cap: 1, none previewed");
       } else {
         expect(context).toBeUndefined();
       }
@@ -218,18 +233,24 @@ describe("followup queue overflow summary context", () => {
   it("does not bypass an unstaged input hook or append context again on preparation retries", async () => {
     const q = createQueueCase({ mode: "followup", cap: 1 }, 2);
     q.add(
-      createRun({ prompt: "@bot status?", currentInboundContext: { text: "original context" } }),
+      createRun(
+        { prompt: "@bot status?", currentInboundContext: { text: "original context" } },
+        ada,
+      ),
     );
     q.add(
-      createRun({
-        prompt: "raw secret",
-        currentInboundEventKind: "room_event",
-        userTurnTranscriptRecorder: createTestUserTurnRecorder({
-          role: "user",
-          content: "raw secret",
-          timestamp: 1,
-        }),
-      }),
+      createRun(
+        {
+          prompt: "raw secret",
+          currentInboundEventKind: "room_event",
+          userTurnTranscriptRecorder: createTestUserTurnRecorder({
+            role: "user",
+            content: "raw secret",
+            timestamp: 1,
+          }),
+        },
+        ada,
+      ),
     );
     const contexts: Array<string | undefined> = [];
     await q.drain(async (run) => {
