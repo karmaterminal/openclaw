@@ -276,3 +276,72 @@ describe("ambient owner room aggregate eligibility (#1415)", () => {
     expect(joins(owner("peer-x", { run: { config: grant } }))).toBe(false);
   });
 });
+
+// The fold's scope as ruled so far, pinned so a ruling changes it on purpose. A room line's batch
+// identity ignores the message it quotes, so every fold here also crosses quotes.
+describe("what folds across senders, whatever each line quotes (#1415)", () => {
+  const groupChat = { ambientOwnerAggregatePeers: ["peer-a", "figs"] };
+  const optedOut: OpenClawConfig = { ...config, messages: { groupChat } };
+  const optedIn: OpenClawConfig = {
+    ...config,
+    messages: { groupChat: { ...groupChat, ambientOwnerAggregate: true } },
+  };
+  const quoting = (messageId: string, source: Patch["source"] = {}) => ({
+    originatingReplyToId: messageId,
+    originatingReplyToMode: "batched" as const,
+    ...source,
+  });
+  const bot = { senderIsBot: true };
+  const ownerBot = { ...bot, senderIsOwner: true, traceAuthorized: true };
+  const ownerHuman = { senderIsOwner: true, traceAuthorized: true, senderAccountVerified: true };
+  const prose = { ambientRoomProse: true };
+  type Case = [label: string, folds: boolean, id: string, Patch];
+  const always: Case[] = [
+    // No opt-in: non-owner room events fold at the room baseline, people and bots alike.
+    ["a non-owner's prose", true, "bob", { source: prose }],
+    ["a non-owner bot's prose", true, "other-bot", { source: prose, run: bot }],
+    // Text the channel did not classify as a command grants a non-owner nothing; it folds as text.
+    ["a non-owner's directive-shaped text", true, "bob", { source: { ambientRoomProse: false } }],
+    ["a mention", false, "bob", { source: { currentInboundEventKind: "user_request" } }],
+    [
+      "an owner's mention",
+      false,
+      "peer-a",
+      { source: { currentInboundEventKind: "user_request" }, run: ownerBot },
+    ],
+    // Channels classify control and native commands as requests (classifyChannelInboundEvent).
+    [
+      "an owner's command or directive",
+      false,
+      "peer-a",
+      { source: { ambientRoomProse: false }, run: ownerBot },
+    ],
+    [
+      "a skill command",
+      false,
+      "bob",
+      { source: { explicitSkillSelections: [{ name: "s", path: "/s" }] } },
+    ],
+    // Even listed as a peer, a human owner is the principal.
+    ["the principal's prose", false, "figs", { source: prose, run: ownerHuman }],
+  ];
+
+  it.each<[mode: "on" | "off", ...Case]>([
+    ...always.map((row): ["on" | "off", ...Case] => ["off", ...row]),
+    ...always.map((row): ["on" | "off", ...Case] => ["on", ...row]),
+    ["off", "a listed owner bot's prose", false, "peer-a", { source: prose, run: ownerBot }],
+    ["on", "a listed owner bot's prose", true, "peer-a", { source: prose, run: ownerBot }],
+    ["on", "an unlisted owner bot's prose", false, "peer-b", { source: prose, run: ownerBot }],
+  ])("with ambientOwnerAggregate %s, %s folds: %s", (mode, _, folds, id, patch) => {
+    const at = (messageId: string, sender: string, from: Patch) =>
+      resolveFollowupBatchKey(
+        member(sender, {
+          source: quoting(messageId, from.source),
+          run: { ...from.run, config: mode === "on" ? optedIn : optedOut },
+        }),
+      );
+    const room = at("m1", "alice", { source: prose });
+    expect(at("m2", id, patch) === room).toBe(folds);
+    expect(at("m1", id, patch) === room).toBe(folds);
+  });
+});

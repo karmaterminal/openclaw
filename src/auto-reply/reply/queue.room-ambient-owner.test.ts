@@ -76,6 +76,39 @@ describe("the ambient owner room aggregate (#1415)", () => {
     });
   });
 
+  // The fold's scope as ruled so far, end to end, for lines that quote different messages: non-owner
+  // prose folds at the room baseline without any opt-in, owner prose only with it, and a mention or
+  // the principal's line never does.
+  it.each<[string, OpenClawConfig, own: string[]]>([
+    ["off", { messages: { groupChat: { unmentionedInbound: "room_event" } } }, ["f3"]],
+    ["on", AMBIENT, []],
+  ])("folds quoting lines across senders with the owner opt-in %s", async (_, config, own) => {
+    const quoting = (messageId: string) => () => ({
+      ...prose(),
+      originatingReplyToId: messageId,
+      originatingReplyToMode: "batched" as const,
+    });
+    const people = (id: string) => sender(id, { config });
+    const rows: Row[] = [
+      { id: "f1", from: people("alice"), source: quoting("m1") },
+      { id: "f2", from: people("bob"), source: quoting("m2") },
+      { id: "f3", from: ownerPeer("peer-a", config), source: quoting("m3") },
+      { id: "f4", kind: "user_request", from: people("asker"), source: quoting("m1") },
+      { id: "f5", from: principal(config), source: quoting("m1") },
+      { id: "f6", from: people("carol"), source: quoting("m4") },
+      { id: "f7", from: people("dave"), source: quoting("m1") },
+    ];
+    await withRoomIngress(rows, async (harness) => {
+      await harness.dispatchRows();
+      await harness.endActiveTurn();
+      expectRoomTurns(harness, rows, { direct: ["f4", "f5"], own });
+      await expectSettledOnce(
+        harness,
+        rows.map((row) => row.id),
+      );
+    });
+  });
+
   it("keeps owner commands, mentions, directives and elevated grants as their own turns", async () => {
     const people = (id: string) => sender(id, { config: AMBIENT });
     // Same-millisecond ingress claims order by id, so ids sort in arrival order.
