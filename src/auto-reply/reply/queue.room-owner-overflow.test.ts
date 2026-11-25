@@ -533,7 +533,7 @@ describe("the principal's room message at capacity (#1415)", () => {
   });
 
   it("wakes a full queue that waits for a fresh kick", async () => {
-    const q = createQueueCase({ mode: "collect", cap: 1, dropPolicy: "old" }, 2);
+    const q = createQueueCase({ mode: "collect", cap: 1, dropPolicy: "old" });
     const request = createQueueTestRun({ prompt: "request", messageId: "request" });
     q.add(request);
     let refused = false;
@@ -548,8 +548,7 @@ describe("the principal's room message at capacity (#1415)", () => {
     });
     const held = room("principal", principal);
     expect(enqueueFollowupRun(q.key, held, q.settings, "message-id", q.runFollowup)).toBe(true);
-    await q.done.promise;
-    expect(q.calls).toEqual([request, held]);
+    await vi.waitFor(() => expect(q.calls).toEqual([request, held]));
   });
 });
 
