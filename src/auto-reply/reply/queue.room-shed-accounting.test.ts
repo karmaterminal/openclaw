@@ -36,6 +36,7 @@ import {
   installQueueRuntimeErrorSilencer,
   rejectQueuePreparation,
 } from "./queue.test-helpers.js";
+import { stageGatewayPluginInventory } from "./queue/room-aggregate-plugin-gate.test-support.js";
 import { getExistingFollowupQueue } from "./queue/state.js";
 import { buildTranscriptFollowupRun } from "./transcript-followup-run.js";
 
@@ -483,6 +484,27 @@ describe("a shed preview stays out of other senders' turns (#1415)", () => {
         enqueueFollowupRun(key, createRoomRun(key, bot("r3", "bob")), settings, "message-id");
         rejectQueuePreparation(run, new Error("reply lane not ready"));
       });
+    });
+
+    it("keeps it out of an aggregate its sender's turn joins once the plugin gate reopens", async () => {
+      const directive = bot("r1", "alice", () => ({ ambientRoomProse: false }));
+      // The gate closes as r3 sheds r1, so r2 takes r1's preview as a line of its sender's own.
+      const closing = bot("r3", "bob", () => {
+        clearCurrentPluginMetadataSnapshot();
+        return {};
+      });
+      const rows = [ask("q0"), directive, bot("r2", "alice"), closing];
+      const check = (harness: Harness) => {
+        expect(harness.calls).toHaveLength(2);
+        aggregated(harness.calls[1], rows.slice(2));
+        expect(modelInput(harness.calls[1])).not.toContain(textOf(directive));
+        expect(shedCounts(harness.calls[1])).toEqual([{ shed: 1, previewed: 0 }]);
+      };
+      await overflow(rows, { cap: 3, ...summarize }, check, async (run, harness) => {
+        stageGatewayPluginInventory();
+        await harness.adoptAndRecord(run);
+      });
+      expect(records).toMatchObject([{ outcome: "previewed" }]);
     });
 
     it("previews a listed bot's line in its own request before an aggregate that may split", async () => {
