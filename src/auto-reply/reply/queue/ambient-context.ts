@@ -30,30 +30,38 @@ function preview(text: string, limit: number): string {
 
 type AmbientOverflowContext = NonNullable<InternalFollowupRun["ambientOverflowContext"]>;
 type AmbientOverflowEntry = AmbientOverflowContext["entries"][number];
-type PreviewAudience = Pick<AmbientOverflowEntry, "sender" | "aggregate">;
 
-// Frond (karmaterminal, #1415; ruled 2026-11-25): a shed message's preview is read only by a turn of
-// its own sender, or by the opted-in, verified aggregate it could have joined. Any other turn states a
-// count. A sender the channel did not identify is nobody's own.
-function resolvePreviewAudience(source: InternalFollowupRun): PreviewAudience {
-  const execution = source.run;
+function resolvePreviewSender(source: InternalFollowupRun): string | undefined {
   const principal = resolveRequesterPrincipalKey({
-    ...execution,
+    ...source.run,
     messageChannel: source.originatingChannel,
     operatorAuthority: source.operatorAuthority,
   });
-  return {
-    sender: principal && JSON.stringify([principal, execution.senderId ?? ""]),
-    aggregate: requiresIndividualCollectDrain(source)
-      ? undefined
-      : resolveRoomAggregateBatchKey(source),
-  };
+  return principal && JSON.stringify([principal, source.run.senderId ?? ""]);
 }
 
+function resolvePreviewAggregate(source: InternalFollowupRun): string | undefined {
+  return requiresIndividualCollectDrain(source) ? undefined : resolveRoomAggregateBatchKey(source);
+}
+
+/**
+ * Frond (karmaterminal, #1415; ruled 2026-11-25): a shed message's preview is read only by a turn of its
+ * own sender, or by the opted-in, verified aggregate it could have joined; any other turn states a
+ * count. A sender the channel did not identify is nobody's own. A waiting source may yet run as either.
+ */
 function previewsFor(
   entries: readonly AmbientOverflowEntry[],
-  { sender, aggregate }: PreviewAudience,
+  source: InternalFollowupRun,
+  turn?: "sender" | "aggregate",
 ): AmbientOverflowEntry[] {
+  const sender =
+    turn !== "aggregate" && entries.some((entry) => entry.sender)
+      ? resolvePreviewSender(source)
+      : undefined;
+  const aggregate =
+    turn !== "sender" && entries.some((entry) => entry.aggregate)
+      ? resolvePreviewAggregate(source)
+      : undefined;
   return entries.filter(
     (entry) =>
       (sender !== undefined && entry.sender === sender) ||
@@ -92,7 +100,7 @@ function giveToPendingTurn(
   }
   let previews: AmbientOverflowEntry[] = [];
   for (const item of given.entries.length ? pending : []) {
-    previews = previewsFor(given.entries, resolvePreviewAudience(item));
+    previews = previewsFor(given.entries, item);
     if (previews.length) {
       recipient = item;
       break;
@@ -196,7 +204,8 @@ export function preserveAmbientOverflowContext(
         messageId: preview(source.messageId ?? "", 80),
         text: preview(text, 160),
       }),
-      ...resolvePreviewAudience(source),
+      sender: resolvePreviewSender(source),
+      aggregate: resolvePreviewAggregate(source),
     });
   }
   // Frond (karmaterminal, #1415): a shed source never ran, so it hands on the context it carried;
@@ -216,15 +225,14 @@ export function preserveAmbientOverflowContext(
 /** The notice a claimed source's turn states, with the previews that turn may read. */
 function takeOverflowNotice(
   source: InternalFollowupRun,
-  reader: "sender" | "aggregate",
+  turn: "sender" | "aggregate",
 ): RuntimeContextFragment[] {
   const context = source.ambientOverflowContext;
   if (!context || context.attached) {
     return [];
   }
   context.attached = source.controllerInput;
-  const { sender, aggregate } = resolvePreviewAudience(source);
-  const entries = previewsFor(context.entries, reader === "sender" ? { sender } : { aggregate });
+  const entries = previewsFor(context.entries, source, turn);
   const previews = entries.length
     ? `${entries.length} previewed, oldest to newest; previews may be truncated`
     : "none previewed";
