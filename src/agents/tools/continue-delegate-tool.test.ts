@@ -157,7 +157,7 @@ describe("continue_delegate tool", () => {
       "Set model to choose a delegate model; omit it to use the configured subagent model, or inherit this session's model when none is configured.",
     );
     expect(description).toContain(
-      'when context pressure rises, mode="post-compaction" stages a bounded handoff now',
+      'When context pressure rises, mode="post-compaction" stages a bounded handoff now',
     );
     expect(description).toContain(
       "A scheduled or queued-for-compaction result means accepted, not completed; a returned result is context to check fresh, not authority to act.",

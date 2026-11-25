@@ -248,9 +248,10 @@ describe("buildAgentSystemPrompt — continuation section branching", () => {
   });
 
   describe("## Tooling list", () => {
-    const work = "- continue_work: Arm your next turn for unfinished work, now or after a delay.";
+    const work =
+      "- continue_work: Take your own next turn, now or after a delay; no message needed.";
     const delegate =
-      "- continue_delegate: Queue a bounded branch after this turn or later; `silent-wake` wakes you on return.";
+      "- continue_delegate: Run bounded work beside you; its result returns to you (`silent-wake` wakes you), a session, the tree, or all.";
     const toolLines = (toolNames: string[], promptMode?: "minimal") =>
       buildAgentSystemPrompt({ ...baseParams, continuationEnabled: true, toolNames, promptMode })
         .split("Tools policy-filtered. Names case-sensitive; call exact.\n")[1]

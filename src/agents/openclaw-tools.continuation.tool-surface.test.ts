@@ -67,9 +67,10 @@ function buildSurface(tools: OpenClawConfig["tools"], continuation = true) {
 const search = ["tool_search", "tool_describe", "dispatch_action"];
 const direct = ["continue_work", "continue_delegate", "request_compaction", "sessions_yield"];
 const continuationNames = /continue_|request_compaction/;
-const workLine = "- continue_work: Arm your next turn for unfinished work, now or after a delay.";
+const workLine =
+  "- continue_work: Take your own next turn, now or after a delay; no message needed.";
 const delegateLine =
-  "- continue_delegate: Queue a bounded branch after this turn or later; `silent-wake` wakes you on return.";
+  "- continue_delegate: Run bounded work beside you; its result returns to you (`silent-wake` wakes you), a session, the tree, or all.";
 const compactionLine = /^- request_compaction\b/m;
 
 describe("continuation tools beside sessions_yield on cataloged tool surfaces", () => {

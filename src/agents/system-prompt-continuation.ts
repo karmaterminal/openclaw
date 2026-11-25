@@ -26,7 +26,11 @@ export function buildContinuationLines(
     lines.push(
       "## Continuation & Delegation",
       "### How you wake",
-      `You control your own turn cycle: ${["continue_work", "continue_delegate", "request_compaction"]
+      `You control your own turn cycle: ${[
+        "continue_work",
+        "continue_delegate",
+        "request_compaction",
+      ]
         .filter((name) => availableTools.has(name))
         .map((name) => `\`${name}\``)
         .join(", ")} are how.`,

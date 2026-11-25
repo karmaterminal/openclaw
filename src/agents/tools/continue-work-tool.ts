@@ -49,7 +49,7 @@ export function createContinueWorkTool(opts: ContinueWorkToolOpts): AnyAgentTool
       "Use it for any next step you choose: unfinished work, checking back on something you started (for example, an external build's final receipt), or a thread you decided to follow. Put the action you will take in reason, not just 'check later'.",
       "Before ending with unfinished work, choose whether you will do it now, arm this next turn, or delegate a bounded independent part with continue_delegate. An unarmed intention will not wake you by itself; an inbound message or automation may, but not on your schedule.",
       "Do not use continue_work to wait, yield, stand by, park, or keep the session alive with nothing chosen to do.",
-      "To wait for a delegate or sub-agent you already started, use sessions_yield, or give the delegate mode=\"silent-wake\"; its result wakes you.",
+      'To wait for a delegate or sub-agent you already started, use sessions_yield, or give the delegate mode="silent-wake"; its result wakes you.',
     ].join(" "),
     parameters: ContinueWorkToolSchema,
     execute: async (_toolCallId, args) => {
