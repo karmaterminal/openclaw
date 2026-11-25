@@ -89,7 +89,6 @@ const FLEET: OpenClawConfig = {
     queue: {
       mode: "steer",
       byChannel: { discord: "collect" },
-      debounceMsByChannel: { discord: 0 },
       cap: 50,
       drop: "summarize",
     },
@@ -106,11 +105,17 @@ async function stageDiscordLine(params: {
   stateDir: string;
   line: Line;
   lifecycle: ChannelIngressDispatchLifecycle;
+  debounceMs: number;
 }): Promise<FollowupRun> {
   const { line, stateDir } = params;
   const { buildDiscordRoomLineContext } = await loadDiscordRoomLineFixture();
   const storePath = `${stateDir}/agents/main/sessions/sessions.json`;
-  const cfg: OpenClawConfig = { ...FLEET, session: { store: storePath } };
+  const queue = { ...FLEET.messages?.queue, debounceMsByChannel: { discord: params.debounceMs } };
+  const cfg: OpenClawConfig = {
+    ...FLEET,
+    messages: { ...FLEET.messages, queue },
+    session: { store: storePath },
+  };
   const ctxPayload = await buildDiscordRoomLineContext({
     cfg,
     storePath,
@@ -186,8 +191,10 @@ async function stageDiscordLine(params: {
   if (admission.kind !== "ready") {
     throw new Error("Expected reply admission");
   }
-  // Configured collect queues behind the active turn: nothing steers it.
-  expect(admission).toMatchObject({ shouldSteer: false, isActive: true });
+  // Configured collect queues behind the active turn, or behind what that turn left queued: nothing
+  // steers it.
+  expect(admission.shouldSteer).toBe(false);
+  expect(admission.isActive || admission.hasQueuedFollowups).toBe(true);
   runReplyAgent.mockClear();
   await executePreparedReplyRun(admission, () => cfg);
   const run: FollowupRun = runReplyAgent.mock.calls[0]?.[0]?.followupRun;
@@ -206,11 +213,18 @@ async function stageDiscordLine(params: {
   return run;
 }
 
+type BacklogOptions = {
+  prioritizePending?: (id: string) => boolean;
+  /** Lines arriving after the turn ended, while its queue waits out `debounceMs`. */
+  late?: readonly Line[];
+  debounceMs?: number;
+};
+
 /** The lines arrive while the room's turn runs; its end drains the mailbox. */
 async function drainBacklog(
   lines: readonly Line[],
   check: (harness: Harness) => void | Promise<void>,
-  prioritizePending?: (id: string) => boolean,
+  { prioritizePending, late = [], debounceMs = 0 }: BacklogOptions = {},
 ) {
   await withTempState(async (stateDir) => {
     const active = createReplyOperation({
@@ -219,30 +233,34 @@ async function drainBacklog(
       resetTriggered: false,
     });
     active.setPhase("running");
-    const byId = new Map(lines.map((line) => [line.id, line]));
+    const byId = new Map([...lines, ...late].map((line) => [line.id, line]));
     const harness = await openRoomIngress(
       stateDir,
       lines.map(({ id }) => ({ id })),
       {
         prioritizePending,
         enqueue: (row, lifecycle) =>
-          stageDiscordLine({ stateDir, line: byId.get(row.id)!, lifecycle }),
+          stageDiscordLine({ stateDir, line: byId.get(row.id)!, lifecycle, debounceMs }),
       },
     );
     try {
       await harness.dispatchRows();
       active.complete();
+      scheduleFollowupDrain(SESSION_KEY, harness.adoptAndRecord);
+      for (const { id } of late) {
+        await harness.addRow({ id });
+        await harness.dispatchRows(1);
+      }
       const settlements = (getExistingFollowupQueue(SESSION_KEY)?.entries ?? []).map(
         (input) => input.settlement.promise,
       );
-      expect(settlements).toHaveLength(lines.length);
-      scheduleFollowupDrain(SESSION_KEY, harness.adoptAndRecord);
+      expect(settlements).toHaveLength(lines.length + late.length);
       await Promise.allSettled(settlements);
       await harness.drain.waitForIdle();
       await check(harness);
       await expectSettledOnce(
         harness,
-        lines.map((line) => line.id),
+        [...lines, ...late].map((line) => line.id),
       );
     } finally {
       active.complete();
@@ -327,8 +345,20 @@ describe("a Discord room backlog behind a busy turn (#1415)", () => {
           expect(harness.runs.get(MENTION)?.originatingReplyToId).toBe("1000");
           expectCarries(harness.calls[2], ambient);
         },
-        prioritizePending,
+        { prioritizePending },
       );
     },
   );
+
+  it("admits a line arriving after the turn ended into the same waiting turn", async () => {
+    const [late] = room.slice(-1);
+    await drainBacklog(
+      room.slice(0, 3),
+      (harness) => {
+        expect(harness.calls).toHaveLength(1);
+        expectCarries(harness.calls[0], [...room.slice(0, 3), late!]);
+      },
+      { late: [late!], debounceMs: 2_000 },
+    );
+  });
 });

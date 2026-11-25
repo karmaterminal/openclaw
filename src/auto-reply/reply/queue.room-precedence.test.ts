@@ -22,7 +22,11 @@ import {
   withRoomIngress,
   type Row,
 } from "./queue.room-event-collect.test-support.js";
-import { createQueueTestRun, installQueueRuntimeErrorSilencer } from "./queue.test-helpers.js";
+import {
+  createQueueTestRun,
+  installQueueRuntimeErrorSilencer,
+  rejectQueuePreparation,
+} from "./queue.test-helpers.js";
 import { clearFollowupQueue, getExistingFollowupQueue } from "./queue/state.js";
 import { prepareReplySourceInput } from "./reply-source-binding.js";
 
@@ -215,15 +219,22 @@ describe("an arrival while chatter waits out its debounce (#1415)", () => {
     ...AMBIENT,
     commands: { ownerAllowFrom: ["discord:figs", "discord:peer-a"] },
     messages: {
-      ...AMBIENT.messages,
+      groupChat: {
+        ...AMBIENT.messages?.groupChat,
+        ownerQueueProtectionAccounts: ["discord:keeper"],
+      },
       queue: { mode: "collect", debounceMsByChannel: { discord: debounceMs } },
     },
   });
 
-  async function arrive(ctx: Partial<MsgContext>, earlier: Array<Partial<MsgContext>> = []) {
+  async function arrive(
+    ctx: Partial<MsgContext>,
+    earlier: Array<Partial<MsgContext>> = [],
+    queued = ["alice", "bob"],
+  ) {
     let claimed: boolean | undefined;
     await withRoomIngress(
-      ["alice", "bob"].map((id, index) => ({
+      queued.map((id, index) => ({
         id: `w${index + 1}`,
         from: sender(id, { agentId: "main" }),
       })),
@@ -249,6 +260,7 @@ describe("an arrival while chatter waits out its debounce (#1415)", () => {
         }
         const input = await reserve(ctx);
         expect(input.mailbox).toBe(getExistingFollowupQueue(harness.key));
+        expect(input.mailbox.items.map((item) => item.run.senderId)).toEqual(queued);
         const claim = tryClaimSessionControllerTask(input, "visible");
         claimed = claim !== undefined;
         expect(harness.calls).toEqual([]);
@@ -268,7 +280,7 @@ describe("an arrival while chatter waits out its debounce (#1415)", () => {
     SenderIsBot: true,
   } as const;
 
-  it.each<[string, boolean, Partial<MsgContext>, Array<Partial<MsgContext>>?]>([
+  it.each<[string, boolean, ...Parameters<typeof arrive>]>([
     ["a mention", true, mention],
     ["the principal's line", true, { InboundEventKind: "room_event", SenderId: "figs" }],
     ["a mention behind chatter still preparing", true, mention, [chatter]],
@@ -283,8 +295,22 @@ describe("an arrival while chatter waits out its debounce (#1415)", () => {
       },
     ],
     ["a mention behind a request still preparing", false, mention, [mention]],
-  ])("%s runs at once: %s", async (_, atOnce, ctx, earlier) => {
-    expect(await arrive(ctx, earlier)).toBe(atOnce);
+    [
+      "a mention behind a line the queue may protect once it binds",
+      false,
+      mention,
+      [{ InboundEventKind: "room_event", SenderId: "keeper", SenderAccountVerified: true }],
+    ],
+    // With nothing queued, the mailbox does not know yet that this session collects.
+    [
+      "a mention behind chatter still preparing, with nothing queued",
+      false,
+      mention,
+      [chatter],
+      [],
+    ],
+  ])("%s runs at once: %s", async (_, atOnce, ...arrival) => {
+    expect(await arrive(...arrival)).toBe(atOnce);
   });
 });
 
@@ -349,6 +375,34 @@ describe("room chatter's wait is bounded (#1415)", () => {
         expect(stamps[1]).toBe(stamps[0]);
         // Another request does.
         expect(stamps[2]).toBeGreaterThan(stamps[1]!);
+      },
+      { settings: { debounceMs: 45_000 } },
+    );
+  });
+
+  it("keeps a refused batch's full retry backoff, however old its lines", async () => {
+    await withRoomIngress(
+      aged(60_001),
+      async (harness) => {
+        await harness.dispatchRows();
+        let refused: () => void;
+        const refusal = new Promise<void>((resolve) => {
+          refused = resolve;
+        });
+        scheduleFollowupDrain(harness.key, async (run) => {
+          refused();
+          return rejectQueuePreparation(run, new Error("database busy"));
+        });
+        await refusal;
+        const mailbox = getExistingFollowupQueue(harness.key)!;
+        await vi.waitFor(() => expect(mailbox.claim).toBeUndefined());
+        const backoff = mailbox.lastEnqueuedAt;
+        expect(mailbox.timer).toBeDefined();
+        // Another overdue line joins the batch without cutting the backoff short.
+        await harness.addRow({ id: "a3", from: sender("carol") });
+        await harness.dispatchRows(1);
+        expect(mailbox.lastEnqueuedAt).toBe(backoff);
+        expect(mailbox.claim).toBeUndefined();
       },
       { settings: { debounceMs: 45_000 } },
     );

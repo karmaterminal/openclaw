@@ -18,6 +18,7 @@ import {
   tryClaimSessionControllerTask,
   trackSessionControllerSourceWork,
 } from "../../sessions/session-controller.mailbox.js";
+import { joinsQueuedRoomInput } from "../../sessions/session-controller.room-precedence.js";
 import { waitForReplyOperationSourceRelease } from "../../sessions/session-controller.settlement.js";
 import { captureSessionTarget } from "../../sessions/session-controller.target.js";
 import { observeAgentRunStart } from "../agent-run-start.js";
@@ -367,8 +368,8 @@ export function createDispatchReplyOperationCoordinator(
         if (input.abortSignal.aborted || input.retirementRequested) {
           return { status: "aborted" };
         }
-        const active = input.mailbox.owner.active;
-        if (active) {
+        // Frond (karmaterminal, #1415): room chatter joins queued room input instead of waiting here.
+        if (input.mailbox.owner.active || joinsQueuedRoomInput(input)) {
           return { status: "ready" };
         }
         const predecessors = input.mailbox.entries.filter(

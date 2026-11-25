@@ -50,6 +50,31 @@ import {
 const RECENT_MESSAGE_ID_TTL = 5 * 60 * 1000;
 const MAX_RECENT_MESSAGE_IDS = 10_000;
 
+// Frond (karmaterminal, #1415): room chatter collects until the room is quiet for the configured
+// debounce, but its oldest line waits at most this long for the batch, or one debounce when longer.
+const ROOM_CHATTER_MAX_WAIT_MS = 60_000;
+
+function restartQueueDebounce(queue: ReturnType<typeof getFollowupQueue>, run: FollowupRun): void {
+  const now = performance.now();
+  if (resolveRoomPrecedence(run) !== "chatter") {
+    queue.lastEnqueuedAt = now;
+    return;
+  }
+  const waiting = queue.items.filter((item) => !queue.inFlight.has(item));
+  // Chatter never extends the debounce of a waiting request or principal line.
+  if (waiting.some((item) => resolveRoomPrecedence(item) === "direct")) {
+    return;
+  }
+  const oldest = [run, ...waiting]
+    .filter((item) => resolveRoomPrecedence(item) === "chatter")
+    .reduce((at, item) => Math.min(at, item.enqueuedAt), run.enqueuedAt);
+  const overdue =
+    Date.now() - oldest + queue.debounceMs - Math.max(queue.debounceMs, ROOM_CHATTER_MAX_WAIT_MS);
+  const restarted = now - Math.max(0, overdue);
+  // A later stamp on queued lines is a refused claim's backoff, which an overdue batch waits out.
+  queue.lastEnqueuedAt = waiting.length ? Math.max(queue.lastEnqueuedAt, restarted) : restarted;
+}
+
 function followupMessageRouteIdentityKey(run: FollowupRun): string {
   return JSON.stringify([
     channelRouteDedupeKey({
@@ -175,16 +200,7 @@ export function enqueueFollowupRun(
     }
     const front =
       options.position === "front" && (!deferOverflow || options.steerCandidate === true);
-    // Frond (karmaterminal, #1415): room chatter never restarts the debounce of a waiting request or
-    // principal line.
-    if (
-      resolveRoomPrecedence(run) !== "chatter" ||
-      !queue.items.some(
-        (item) => !queue.inFlight.has(item) && resolveRoomPrecedence(item) === "direct",
-      )
-    ) {
-      queue.lastEnqueuedAt = performance.now();
-    }
+    restartQueueDebounce(queue, run);
     queue.lastRun = run.run;
     run.queueAbortSignal = queue.abortController.signal;
     const queuedInput = run.controllerInput!;

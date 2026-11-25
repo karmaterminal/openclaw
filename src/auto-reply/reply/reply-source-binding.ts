@@ -15,6 +15,7 @@ import {
 } from "../../sessions/session-controller.mailbox.js";
 import { reserveRoomPrecedence } from "../../sessions/session-controller.room-precedence.js";
 import { isConfiguredCommandOwner } from "../command-auth.js";
+import { getCommandOwnerAuthority } from "../command-owner-authority.js";
 import { resolveCommandTurnTargetSessionKey } from "../command-turn-context.js";
 import type { TurnAdoptionLifecycle } from "../get-reply-options.types.js";
 import type { MsgContext } from "../templating.js";
@@ -74,6 +75,7 @@ export function readReplySourceInput(
 
 // Frond (karmaterminal, #1415): resolveRoomPrecedence's reading of a source, from the channel facts
 // known before preparation resolves command authority. It orders the mailbox and grants nothing.
+// An account the queue may protect once its source binds keeps FIFO until then.
 function resolveReservedRoomPrecedence(
   ctx: MsgContext,
   cfg: OpenClawConfig,
@@ -85,15 +87,26 @@ function resolveReservedRoomPrecedence(
   if (ctx.InboundEventKind !== "room_event") {
     return undefined;
   }
-  const isPrincipal =
-    ctx.SenderIsBot !== true &&
-    isConfiguredCommandOwner(cfg, {
-      channel: ctx.Provider,
-      accountId: ctx.AccountId,
-      senderId: ctx.SenderId,
-      senderE164: ctx.SenderE164,
-    });
-  return isPrincipal ? "direct" : policy.mode === "collect" ? "chatter" : undefined;
+  if (ctx.SenderIsBot !== true) {
+    const isOwner =
+      getCommandOwnerAuthority(ctx)?.isCurrent() === true ||
+      isConfiguredCommandOwner(cfg, {
+        channel: ctx.Provider,
+        accountId: ctx.AccountId,
+        senderId: ctx.SenderId,
+        senderE164: ctx.SenderE164,
+      });
+    if (isOwner) {
+      return "direct";
+    }
+    if (
+      ctx.SenderAccountVerified === true &&
+      cfg.messages?.groupChat?.ownerQueueProtectionAccounts?.length
+    ) {
+      return undefined;
+    }
+  }
+  return policy.mode === "collect" ? "chatter" : undefined;
 }
 
 /** Capture only an actual physical source scope, before asynchronous preparation. */

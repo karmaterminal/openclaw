@@ -12,8 +12,9 @@
  * Unlike Matrix, a Discord turn's history is rendered before the turn waits in the session's
  * follow-up queue. A history read therefore also counts turns already dispatched ahead of it:
  * the session runs those first, so their windows have been seen by the time this turn runs.
- * Accepted edge case (karmaterminal, #1415): the principal's room line overtakes queued chatter, so
- * its history marks those lines seen before they run; they still arrive as their own turn's messages.
+ * Accepted edge case (karmaterminal, #1415): a request or the principal's room line overtakes queued
+ * chatter, so a history can mark those lines seen before they run; they still arrive as their own
+ * turn's messages.
  *
  * State is in memory, as in Matrix. After a restart no watermark exists and every message reads
  * new, which is the behaviour before watermarks. A session reset needs no extra handling:

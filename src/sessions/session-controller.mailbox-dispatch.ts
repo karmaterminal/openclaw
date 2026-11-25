@@ -4,10 +4,7 @@ import {
   resolveFollowupBatchKey,
 } from "../auto-reply/reply/queue/delivery-context.js";
 import { runOutsideAdmittedGenerationScopes } from "../auto-reply/reply/queue/drain-admission-scope.js";
-import {
-  requiresIndividualCollectDrain,
-  resolveRoomPrecedence,
-} from "../auto-reply/reply/queue/envelope.js";
+import { requiresIndividualCollectDrain } from "../auto-reply/reply/queue/envelope.js";
 import { updateFollowupRetryHeartbeatsWithCustody } from "../auto-reply/reply/queue/pre-adoption-heartbeat.js";
 import {
   FollowupRunDeferredError,
@@ -52,10 +49,6 @@ type MailboxSelection = {
   isSummary: boolean;
   prepareDelivery: boolean;
 };
-
-// Frond (karmaterminal, #1415): room chatter collects until the room is quiet for the configured
-// debounce, but its oldest line waits at most this long for the batch, or one debounce when longer.
-const ROOM_CHATTER_MAX_WAIT_MS = 60_000;
 
 function selectSessionControllerMailbox(
   mailbox: SessionControllerMailbox,
@@ -169,17 +162,7 @@ export function pumpSessionControllerMailbox(mailbox: SessionControllerMailbox):
   const delay =
     first.ready || first.task || priority
       ? 0
-      : Math.max(
-          0,
-          Math.min(
-            mailbox.lastEnqueuedAt + mailbox.debounceMs - performance.now(),
-            first.source && resolveRoomPrecedence(first.source) === "chatter"
-              ? first.source.enqueuedAt +
-                  Math.max(mailbox.debounceMs, ROOM_CHATTER_MAX_WAIT_MS) -
-                  Date.now()
-              : Number.POSITIVE_INFINITY,
-          ),
-        );
+      : Math.max(0, mailbox.lastEnqueuedAt + mailbox.debounceMs - performance.now());
   if (delay > 0) {
     clearTimeout(mailbox.timer);
     mailbox.timer = setTimeout(() => {
