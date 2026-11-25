@@ -338,7 +338,17 @@ describe("a shed preview stays out of other senders' turns (#1415)", () => {
     });
   });
 
+  const origin = {
+    sessionKey: "agent:main:discord:channel:room",
+    messageProvider: "discord",
+    senderId: "1",
+  };
   it.each<[string, Partial<FollowupRun["run"]>, Partial<FollowupRun["run"]>]>([
+    [
+      "a turn started on the sender's behalf",
+      { messageProvider: "discord", senderId: "1", requesterOrigin: origin },
+      { messageProvider: "discord", requesterOrigin: origin },
+    ],
     ["no sender on either", { messageProvider: "discord" }, { messageProvider: "discord" }],
     [
       "one display name, two accounts",
@@ -386,13 +396,42 @@ describe("a shed preview stays out of other senders' turns (#1415)", () => {
       });
     });
 
-    it("keeps them out of a listed bot's turn that runs as itself", async () => {
-      const rows = [bot("r1", "alice"), bot("r2", "bob")];
+    it("leaves a listed bot's turn that runs as itself only its own", async () => {
+      const rows = [bot("r1", "alice"), bot("r2", "bob"), bot("r3", "bob")];
       await overflow(rows, { cap: 1, ...summarize }, (harness) => {
-        expect(harness.calls).toEqual([harness.runs.get("r2")]);
+        expect(harness.calls).toEqual([harness.runs.get("r3")]);
         expect(harness.calls[0]?.run.senderId).toBe("bob");
         expect(modelInput(harness.calls[0])).not.toMatch(/alice|message r1/u);
-        expect(shedCounts(harness.calls[0])).toEqual([{ shed: 1, previewed: 0 }]);
+        expect(shedContext(harness.calls[0])).toEqual([preview(rows[1]!)]);
+        expect(shedCounts(harness.calls[0])).toEqual([{ shed: 2, previewed: 1 }]);
+      });
+    });
+
+    it("states the count in an aggregate that summarizes cut lines", async () => {
+      const owed = (id: string, from: string): Row => ({
+        id,
+        from: peer(from, listed, { terminalReplyExpectation: "required" }),
+      });
+      const rows = [
+        owed("r1", "alice"),
+        owed("r2", "bob"),
+        bot("r3", "dave"),
+        owed("r4", "alice"),
+        owed("r5", "bob"),
+      ];
+      await overflow(rows, { cap: 2, ...summarize }, (harness) => {
+        expect(harness.calls).toHaveLength(2);
+        expect(harness.calls[0]?.prompt).toMatch(/^\[Queue overflow\]/u);
+        for (const row of rows.slice(0, 2)) {
+          expect(harness.calls[0]?.prompt).toContain(
+            `(from ${row.from?.senderName}) ${textOf(row)}`,
+          );
+        }
+        expect(modelInput(harness.calls[0])).not.toMatch(/dave|message r3/u);
+        expect(harness.calls.map((call) => shedCounts(call))).toEqual([
+          [{ shed: 1, previewed: 0 }],
+          [],
+        ]);
       });
     });
 
