@@ -25,7 +25,7 @@ import {
   resolveFollowupDeliveryStorageKey,
 } from "./delivery-context.js";
 import { dropAbortedFollowups, rememberFollowupDrainCallback } from "./drain.js";
-import { resolveRoomPrecedence } from "./envelope.js";
+import { isPrincipalSender, resolveRoomPrecedence } from "./envelope.js";
 import {
   admitFollowupRunLifecycle,
   completeFollowupRunLifecycle,
@@ -112,7 +112,7 @@ export function enqueueFollowupRun(
   if (isFollowupRunAborted(run)) {
     return false;
   }
-  if (options.position === "front" || isConfiguredOwnerAccountRoomEvent(run)) {
+  if (options.position === "front" || isOwnerAccountRoomEvent(run)) {
     run.protectFromQueueOverflow = true;
   }
   // Peek before getFollowupQueue: rejecting a redelivery after the original
@@ -291,11 +291,11 @@ function settleFollowupQueueRefusal(
   queue: ReturnType<typeof getFollowupQueue>,
   run: FollowupRun,
 ): void {
-  // Frond (karmaterminal, #1564): the configured owner's room message, posted from the owner's own
-  // account, is never lost to capacity. Under every policy, drop:new included, its refusal is
-  // retryable backpressure that spends no retry budget; the ingress owner paces the retry. Requests
-  // and other senders keep their accounting.
-  if (isConfiguredOwnerAccountRoomEvent(run)) {
+  // Frond (karmaterminal, #1564): the owner's room message, posted from the owner's own account, is
+  // never lost to capacity. Under every policy, drop:new included, its refusal is retryable
+  // backpressure that spends no retry budget; the ingress owner paces the retry. Requests and other
+  // senders keep their accounting.
+  if (isOwnerAccountRoomEvent(run)) {
     run.onQueueDisposition?.("queue-cap");
     completeFollowupRunLifecycle(run, "backpressure");
     return;
@@ -329,32 +329,34 @@ const OWNER_ACCOUNT_PROVENANCE_CHANNELS: ReadonlySet<string> = new Set([
 ]);
 
 // Frond (karmaterminal, #1564): queue policy for this cut, not a criterion for whose words count. The
-// configured owner's unaddressed room message, posted from the owner's own account, is not ambient
-// chatter. The owner's accounts are the sender ids in messages.groupChat.ownerQueueProtectionAccounts,
-// which is unset (nobody protected) by default and never derived from command authority:
-// commands.ownerAllowFrom, the owner bit, operator.admin scope and operator profiles grant nothing
-// here. The channel must also have verified that the account itself posted it, not a bot or app
-// account, webhook, relay or proxy speaking for it; absent or ambiguous provenance is not protected.
+// owner's unaddressed room message, posted from the owner's own account, is not ambient chatter. The
+// owner's accounts are the principal's (#1415: the command owner the queue already runs ahead of
+// chatter keeps its line at the cap too) and the sender ids in
+// messages.groupChat.ownerQueueProtectionAccounts, which need no command authority. Either way the
+// channel must have verified that the account itself posted it, not a bot or app account, webhook,
+// relay or proxy speaking for it; absent or ambiguous provenance is not protected, whatever authority
+// the sender shows.
 // Agent and Gateway traffic stays bounded by ordinary ambient discard and the cap on purpose: Gateway
 // error storms have flooded rooms. A designated agent lane would need its own authenticated,
 // storm-safe contract (loop and rate limits, a circuit breaker); it is not part of this policy.
-function isConfiguredOwnerAccountRoomEvent(run: FollowupRun): boolean {
+function isOwnerAccountRoomEvent(run: FollowupRun): boolean {
   const execution = run.run;
   return (
     run.currentInboundEventKind === "room_event" &&
     execution.senderAccountVerified === true &&
     OWNER_ACCOUNT_PROVENANCE_CHANNELS.has(execution.messageProvider ?? "") &&
-    isSenderInOwnerAllowFromList(
-      execution.config,
-      {
-        channel: execution.messageProvider,
-        accountId: execution.agentAccountId,
-        senderId: execution.senderId,
-        senderE164: execution.senderE164,
-      },
-      // Always a list: the matcher reads commands.ownerAllowFrom when given none.
-      execution.config.messages?.groupChat?.ownerQueueProtectionAccounts ?? [],
-    )
+    (isPrincipalSender(execution) ||
+      isSenderInOwnerAllowFromList(
+        execution.config,
+        {
+          channel: execution.messageProvider,
+          accountId: execution.agentAccountId,
+          senderId: execution.senderId,
+          senderE164: execution.senderE164,
+        },
+        // Always a list: the matcher reads commands.ownerAllowFrom when given none.
+        execution.config.messages?.groupChat?.ownerQueueProtectionAccounts ?? [],
+      ))
   );
 }
 
@@ -416,6 +418,12 @@ function applyFollowupQueueOverflow(
         queue,
         queue.items.filter((item) => !queue.inFlight.has(item)),
       );
+      return false;
+    }
+    // Frond (karmaterminal, #1415): nor may the owner's room message. With no chatter left to make
+    // room it waits in durable ingress, and nothing is shed for it.
+    if (isOwnerAccountRoomEvent(run) && ambient.length < needed) {
+      settleFollowupQueueRefusal(queue, run);
       return false;
     }
     const survivors = queue.items.filter(

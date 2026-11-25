@@ -286,14 +286,18 @@ export function requiresIndividualCollectDrain(item: FollowupRun): boolean {
   );
 }
 
+/** Frond (karmaterminal, #1415): a command owner the channel did not report as a bot. */
+export function isPrincipalSender(execution: FollowupRun["run"]): boolean {
+  return execution.senderIsOwner === true && execution.senderIsBot !== true;
+}
+
 // Frond (karmaterminal, #1415): the principal's unaddressed room line is not chatter: a source the
-// queue protects, or a command owner the channel did not report as a bot. The same reading keeps the
-// principal out of the ambient owner aggregate (delivery-context.ts).
+// queue protects, or one from a principal sender. The same reading keeps the principal out of the
+// ambient owner aggregate (delivery-context.ts).
 function isPrincipalRoomEvent(item: FollowupRun): boolean {
   return (
     item.currentInboundEventKind === "room_event" &&
-    (item.protectFromQueueOverflow === true ||
-      (item.run.senderIsOwner === true && item.run.senderIsBot !== true))
+    (item.protectFromQueueOverflow === true || isPrincipalSender(item.run))
   );
 }
 

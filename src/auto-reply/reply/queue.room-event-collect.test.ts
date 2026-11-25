@@ -559,7 +559,10 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
       "without account provenance",
       sender("owner", { senderIsOwner: true, traceAuthorized: true, config: owner.config }),
     ],
-    ["on an account the setting does not list", { ...owner, config: {} }],
+    [
+      "from an account its channel reports as a bot",
+      { ...owner, config: {}, senderIsBot: true, senderAccountVerified: undefined },
+    ],
   ])("sheds the owner bit %s at the cap like ambient chatter", async (_, from) => {
     const rows = capped(from);
     await withRoomIngress(
