@@ -103,7 +103,7 @@ are still validated.
 Per-session `/queue` options apply to queued delivery. The `debounce` option also sets the Codex steering quiet window in `steer` mode:
 
 - `debounce`: quiet window before draining queued followups or collect batches; in Codex `steer` mode, quiet window before sending batched `turn/steer`. Bare numbers are milliseconds; units `ms`, `s`, `m`, `h`, and `d` are accepted.
-- `cap`: max queued messages per session. Values below `1` are ignored.
+- `cap`: max queued messages per session, apart from [owner room messages](#owner-room-messages-at-capacity) held over it. Values below `1` are ignored.
 - `drop: "summarize"` (default): drop the oldest queued entries as needed, keep compact summaries, and inject them as a synthetic followup prompt. Each summarized entry keeps its own sender and conversation context.
 - `drop: "old"`: drop the oldest queued entries as needed, without preserving summaries.
 - `drop: "new"`: reject the newest message when the queue is already full.
@@ -115,7 +115,7 @@ backpressure. Summarized entries retain their source receipts until the summary
 is adopted or discarded.
 
 At capacity, optional ambient room events yield to user requests before these drop
-policies apply; incoming room events cannot evict user requests. Under every
+policies apply; incoming ambient room events cannot evict user requests. Under every
 policy, an eligible pending turn in the same channel, account, room, thread, and
 Gateway states as background context how many ambient events were shed; with
 `summarize` it also carries short previews. This creates no extra model turns.
@@ -146,8 +146,9 @@ The queue uses a built-in 500ms debounce. `cap` defaults to `20`, and `drop` def
 
 A command owner's unaddressed room message is never shed, dropped, or refused at
 capacity when its channel verified that the owner's own account posted it. Ambient
-events shed to make room for it; with none left it stays queued over the cap. It does
-not count against other people's requests, and nothing displaces it.
+events shed to make room for it; with none left it stays queued over the cap, and
+collect takes at most `cap` messages per turn. It does not count against other
+people's requests, and nothing displaces it.
 
 To protect further accounts that hold no command authority, list them in
 `messages.groupChat.ownerQueueProtectionAccounts`:

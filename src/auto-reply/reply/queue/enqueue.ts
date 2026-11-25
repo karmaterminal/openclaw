@@ -15,7 +15,11 @@ import {
 import { extractTextFromChatContent } from "../../../shared/chat-content.js";
 import { applyQueueDropPolicy, countPendingQueueItems } from "../../../utils/queue-helpers.js";
 import { isSenderInOwnerAllowFromList } from "../../command-auth.js";
-import { handOnAmbientOverflowContext, preserveAmbientOverflowContext } from "./ambient-context.js";
+import {
+  handOnAmbientOverflowContext,
+  handOnUnattachedContext,
+  preserveAmbientOverflowContext,
+} from "./ambient-context.js";
 import { recordQueueCapacity } from "./capacity-record.js";
 import {
   createOverflowSummaryRetrySource,
@@ -212,6 +216,14 @@ export function enqueueFollowupRun(
     if (!deferOverflow && !applyFollowupQueueOverflow(queue, run)) {
       return false;
     }
+    if (
+      !deferOverflow &&
+      queue.cap > 0 &&
+      isPrincipalAccountRoomEvent(run) &&
+      countPendingQueueItems(queue.items, queue.inFlight) >= queue.cap
+    ) {
+      recordQueueCapacity(run, { kind: "held" });
+    }
     const front =
       options.position === "front" && (!deferOverflow || options.steerCandidate === true);
     restartQueueDebounce(queue, run);
@@ -367,9 +379,9 @@ function isVerifiedAccountRoomEvent(run: FollowupRun): boolean {
 }
 
 // Frond (karmaterminal, #1415): the principal's room line, which the queue already runs ahead of
-// chatter, is never lost to the cap either. It is one person's typing, so it is held over the cap
-// rather than refused: a refused row would hold its ingress lane, where a request to stop may wait.
-// Accepted edge case: nothing but that person's pace bounds how many lines wait.
+// chatter, is never lost to the cap either. It is held over the cap rather than refused: a refused row
+// would hold its ingress lane, where a request to stop may wait. Accepted edge case: only the pace of
+// the accounts' typing bounds how many lines wait, and outside collect each one runs as its own turn.
 function isPrincipalAccountRoomEvent(run: FollowupRun): boolean {
   return isVerifiedAccountRoomEvent(run) && isPrincipalSender(run.run);
 }
@@ -471,9 +483,6 @@ function applyFollowupQueueOverflow(
     }
   }
   if (isPrincipalAccountRoomEvent(run)) {
-    if (queue.cap > 0 && countPendingQueueItems(queue.items, queue.inFlight) >= queue.cap) {
-      recordQueueCapacity(run, { kind: "held" });
-    }
     return true;
   }
   const elidedSummaryLines: string[] = [];
@@ -536,17 +545,11 @@ function applyFollowupQueueOverflow(
         throw new Error("followup queue summary source lost its elided line");
       }
       const contextKey = resolveFollowupDeliveryStorageKey(item);
-      // Frond (karmaterminal, #1415): a summary turn renders only the newest cap sources' context,
-      // so an elided source hands its shed count to one that keeps its place. One already attached
-      // belongs to the turn it runs in.
-      const { ambientOverflowContext }: InternalFollowupRun = item;
-      if (!ambientOverflowContext?.attached) {
-        handOnAmbientOverflowContext(
-          item,
-          [...summarySources, ...capacity.items, run].filter((next) => !queue.inFlight.has(next)),
-          queue.cap,
-        );
-      }
+      handOnUnattachedContext(
+        item,
+        [...summarySources, ...capacity.items, run].filter((next) => !queue.inFlight.has(next)),
+        queue.cap,
+      );
       let elision = queue.summaryElisions.at(-1);
       const compactSource = createOverflowSummaryRetrySource(item);
       if (compactSource.controllerInput) {

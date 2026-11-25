@@ -492,9 +492,9 @@ describe("the principal's room message at capacity (#1415)", () => {
             ["r7", "queue-cap-new"],
           ]);
           await harness.endActiveTurn();
-          expect(harness.calls).toHaveLength(2);
-          collected(harness.calls[0], [rows[1]!, rows[2]!, rows[4]!]);
-          expect(harness.calls[1]).toBe(harness.runs.get("r6"));
+          expect(harness.calls).toHaveLength(3);
+          collected(harness.calls[0], rows.slice(1, 3));
+          expect(harness.calls.slice(1)).toEqual(["r5", "r6"].map((id) => harness.runs.get(id)));
           await expectSettledOnce(
             harness,
             rows.map((row) => row.id),
@@ -532,7 +532,27 @@ describe("the principal's room message at capacity (#1415)", () => {
     expect(q.calls).toEqual([held]);
   });
 
-  it("wakes a full queue that waits for a fresh kick", async () => {
+  it("collects held lines at most a cap at a time, in order", async () => {
+    const rows = ["r1", "r2", "r3", "r4", "r5"].map(line);
+    await withRoomIngress(
+      rows,
+      async (harness) => {
+        await harness.dispatchRows();
+        await harness.endActiveTurn();
+        expect(harness.calls).toHaveLength(3);
+        collected(harness.calls[0], rows.slice(0, 2));
+        collected(harness.calls[1], rows.slice(2, 4));
+        expect(harness.calls[2]).toBe(harness.runs.get("r5"));
+        await expectSettledOnce(
+          harness,
+          rows.map((row) => row.id),
+        );
+      },
+      { settings: { mode: "collect", cap: 2 } },
+    );
+  });
+
+  it("is accepted by a full queue that waits for a fresh kick, so its dispatch wakes it", async () => {
     const q = createQueueCase({ mode: "collect", cap: 1, dropPolicy: "old" });
     const request = createQueueTestRun({ prompt: "request", messageId: "request" });
     q.add(request);
@@ -547,7 +567,11 @@ describe("the principal's room message at capacity (#1415)", () => {
       expect(queue.claim).toBeUndefined();
     });
     const held = room("principal", principal);
-    expect(enqueueFollowupRun(q.key, held, q.settings, "message-id", q.runFollowup)).toBe(true);
+    // As agent-runner-run does: only an accepted source schedules the drain.
+    expect(enqueueFollowupRun(q.key, held, q.settings, "message-id", q.runFollowup, false)).toBe(
+      true,
+    );
+    q.start();
     await vi.waitFor(() => expect(q.calls).toEqual([request, held]));
   });
 });

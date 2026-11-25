@@ -47,7 +47,8 @@ export type InternalFollowupRun = FollowupRun & {
     entries: Array<{ sequence: number; line: string }>;
     /** Frond (karmaterminal, #1415): every room message shed into this context, previewed or not. */
     shed: number;
-    attached?: true;
+    /** The input whose turn states it. */
+    attached?: FollowupRun["controllerInput"];
     /** Frond (karmaterminal, #1415): attached for a try that was refused before execution. */
     attachedEarlier?: InternalFollowupRun["ambientOverflowContext"];
   };

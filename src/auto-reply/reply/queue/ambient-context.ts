@@ -63,35 +63,38 @@ function giveToPendingTurn(
   return true;
 }
 
-/** Everything the cap shed into a source that has not run, attached for an earlier try or not. */
+/**
+ * What the cap shed into a source and no model has read: not attached yet, or attached for a try of
+ * this same input. A recovery copy carries its base's context, which the base's turn has read.
+ */
 function unreadContext(
-  context: AmbientOverflowContext | undefined,
+  source: InternalFollowupRun,
 ): Pick<AmbientOverflowContext, "entries" | "shed"> {
-  if (!context) {
-    return { entries: [], shed: 0 };
+  const unread: Pick<AmbientOverflowContext, "entries" | "shed"> = { entries: [], shed: 0 };
+  for (let context = source.ambientOverflowContext; context; context = context.attachedEarlier) {
+    if (!context.attached || context.attached === source.controllerInput) {
+      unread.entries.unshift(...context.entries);
+      unread.shed += context.shed;
+    }
   }
-  const earlier = unreadContext(context.attachedEarlier);
-  return {
-    entries: [...earlier.entries, ...context.entries],
-    shed: earlier.shed + context.shed,
-  };
+  return unread;
 }
 
 /** How many room messages go unstated when this source leaves the queue without running. */
 export function countUnreadSheds(source: InternalFollowupRun): number {
-  return unreadContext(source.ambientOverflowContext).shed;
+  return unreadContext(source).shed;
 }
 
 /**
- * Frond (karmaterminal, #1415): a source the cap cuts hands on the context it carried, which no model
- * has read. Returns how many room messages no pending turn took over.
+ * Frond (karmaterminal, #1415): a source the cap cuts hands on the context it carried. Returns how many
+ * room messages no pending turn took over.
  */
 export function handOnAmbientOverflowContext(
   source: InternalFollowupRun,
   candidates: InternalFollowupRun[],
   cap: number,
 ): number {
-  const context = unreadContext(source.ambientOverflowContext);
+  const context = unreadContext(source);
   if (context.shed === 0) {
     return 0;
   }
@@ -100,6 +103,21 @@ export function handOnAmbientOverflowContext(
   }
   source.ambientOverflowContext = undefined;
   return 0;
+}
+
+/**
+ * Frond (karmaterminal, #1415): a summary turn renders only the newest cap sources' context, so an
+ * elided source hands on what it has not attached; what it has stays with the turn it runs in.
+ */
+export function handOnUnattachedContext(
+  source: InternalFollowupRun,
+  candidates: InternalFollowupRun[],
+  cap: number,
+): void {
+  const context = source.ambientOverflowContext;
+  if (context && !context.attached && giveToPendingTurn(source, candidates, cap, context)) {
+    source.ambientOverflowContext = context.attachedEarlier;
+  }
 }
 
 /**
@@ -133,7 +151,7 @@ export function preserveAmbientOverflowContext(
   }
   // Frond (karmaterminal, #1415): a shed source never ran, so it hands on the context it carried;
   // nothing goes uncounted.
-  const inherited = unreadContext(source.ambientOverflowContext);
+  const inherited = unreadContext(source);
   const shed = 1 + inherited.shed;
   return giveToPendingTurn(source, candidates, cap, {
     entries: [...inherited.entries, ...entries],
@@ -148,7 +166,7 @@ export function attachAmbientOverflowContext(source: InternalFollowupRun): void 
   if (!context || context.attached) {
     return;
   }
-  context.attached = true;
+  context.attached = source.controllerInput;
   const previews = context.entries.length
     ? `newest ${context.entries.length} previewed, oldest to newest; previews may be truncated`
     : "none previewed";

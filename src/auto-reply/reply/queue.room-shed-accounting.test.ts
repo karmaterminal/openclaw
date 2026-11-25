@@ -30,6 +30,7 @@ import {
   rejectQueuePreparation,
 } from "./queue.test-helpers.js";
 import { getExistingFollowupQueue } from "./queue/state.js";
+import { buildTranscriptFollowupRun } from "./transcript-followup-run.js";
 
 installQueueRuntimeErrorSilencer();
 
@@ -103,6 +104,23 @@ function stated(calls: readonly FollowupRun[]) {
     shed: counts.reduce((total, count) => total + count.shed, 0),
     previewed: counts.reduce((total, count) => total + count.previewed, 0),
   };
+}
+
+const line = (prompt: string) =>
+  createQueueTestRun({ prompt, currentInboundEventKind: "room_event" });
+
+/** Refuses the queued head before execution; it waits, its context attached, for a fresh kick. */
+async function refuseOnce(q: ReturnType<typeof createQueueCase>) {
+  let refused = false;
+  scheduleFollowupDrain(q.key, async (run) => {
+    refused = true;
+    rejectQueuePreparation(run, new AgentDatabaseExecutionAdmissionClosedError("closing"));
+  });
+  const queue = getExistingFollowupQueue(q.key)!;
+  await vi.waitFor(() => {
+    expect(refused).toBe(true);
+    expect(queue.claim).toBeUndefined();
+  });
 }
 
 describe("shed room chatter is counted under every drop policy (#1415)", () => {
@@ -188,20 +206,9 @@ describe("shed room chatter is counted under every drop policy (#1415)", () => {
     "states lines shed while their turn waits to retry beside those it already stated under drop:%s, cut %s",
     async (dropPolicy, cut) => {
       const q = createQueueCase({ mode: "followup", cap: 1, dropPolicy });
-      const line = (prompt: string) =>
-        createQueueTestRun({ prompt, currentInboundEventKind: "room_event" });
       q.add(createQueueTestRun({ prompt: "@bot status?" }));
       q.add(line("before the first try"));
-      let refused = false;
-      scheduleFollowupDrain(q.key, async (run) => {
-        refused = true;
-        rejectQueuePreparation(run, new AgentDatabaseExecutionAdmissionClosedError("closing"));
-      });
-      const queue = getExistingFollowupQueue(q.key)!;
-      await vi.waitFor(() => {
-        expect(refused).toBe(true);
-        expect(queue.claim).toBeUndefined();
-      });
+      await refuseOnce(q);
       const park = (run: FollowupRun) =>
         enqueueFollowupRun(q.key, run, q.settings, "message-id", undefined, false);
       park(line("before the retry"));
@@ -240,6 +247,56 @@ describe("a count stays with one turn (#1415)", () => {
     });
     await vi.waitFor(() => expect(getExistingFollowupQueue(q.key)).toBeUndefined());
     expect(calls.map((call) => shedCounts(call))).toEqual([[{ shed: 1, previewed: 1 }], [], []]);
+  });
+
+  it("stays with an elided summary that already states it, beside what that summary hands on", async () => {
+    const q = createQueueCase({ mode: "followup", cap: 1, dropPolicy: "summarize" }, 3);
+    const park = (run: FollowupRun) =>
+      enqueueFollowupRun(q.key, run, q.settings, "message-id", undefined, false);
+    // Exclusive admissions never share a summary turn, so each states its own context.
+    const request = (prompt: string) =>
+      createQueueTestRun({
+        prompt,
+        turnAdoptionLifecycle: { admission: "exclusive", onAdopted: async () => {} },
+      });
+    park(request("q1"));
+    park(line("before the first try"));
+    await refuseOnce(q);
+    park(line("before the retry"));
+    // q2 cuts q1 to a summary; q3 cuts q2, which elides q1's.
+    park(request("q2"));
+    park(request("q3"));
+    await q.drain();
+    expect(q.calls).toHaveLength(3);
+    expect(stated(q.calls)).toEqual({ shed: 2, previewed: 2 });
+  });
+
+  it("is not stated again for a recovery turn the cap refuses", async () => {
+    const q = createQueueCase({ mode: "followup", cap: 1, dropPolicy: "new" });
+    const park = (run: FollowupRun, position?: "front") =>
+      enqueueFollowupRun(q.key, run, q.settings, "none", undefined, false, { position });
+    park(createQueueTestRun({ prompt: "q1" }));
+    park(line("lunch?"));
+    const calls: FollowupRun[] = [];
+    scheduleFollowupDrain(q.key, async (run) => {
+      calls.push(run);
+      if (calls.length === 1) {
+        // q1's turn has read its notice; its recovery finds the queue full again.
+        park(createQueueTestRun({ prompt: "q2" }));
+        const recovery = buildTranscriptFollowupRun(run, {
+          prompt: "recover",
+          sourceTool: "test",
+          expiredSkillAuthoringMessage: "expired",
+        });
+        expect(park(recovery, "front")).toBe(false);
+      }
+    });
+    await vi.waitFor(() => expect(getExistingFollowupQueue(q.key)).toBeUndefined());
+    expect(calls.map((call) => [call.prompt, shedCounts(call).length])).toEqual([
+      ["q1", 1],
+      ["q2", 0],
+    ]);
+    expect(records.at(-1)).toMatchObject({ level: "info", outcome: "dropped" });
   });
 
   it("passes from a refused request to the turn that keeps its place", async () => {
@@ -338,6 +395,19 @@ describe("requests the cap cuts are recorded under every drop policy (#1415)", (
         },
       },
     );
+  });
+
+  it("does not record a held principal line again when a steer settles", () => {
+    const q = createQueueCase({ mode: "collect", cap: 1, dropPolicy: "old" });
+    const held = createQueueTestRun(
+      { prompt: "held", currentInboundEventKind: "room_event" },
+      { messageProvider: "discord", senderIsOwner: true, senderAccountVerified: true },
+    );
+    q.add(createQueueTestRun({ prompt: "request" }));
+    q.add(held);
+    const steer = createQueueTestRun({ prompt: "steer" });
+    reserveSteerCandidate(q.key, steer, q.settings, q.runFollowup)!.consume("consumed");
+    expect(records).toMatchObject([{ outcome: "held" }]);
   });
 
   it("records a principal line held over the cap once, with no shed disposition", async () => {
