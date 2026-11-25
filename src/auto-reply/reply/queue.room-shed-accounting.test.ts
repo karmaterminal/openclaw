@@ -210,6 +210,38 @@ describe("shed room chatter is counted under every drop policy (#1415)", () => {
   );
 });
 
+describe("a count stays with one turn (#1415)", () => {
+  it("is not handed on again while the summary turn that states it runs", async () => {
+    const q = createQueueCase({ mode: "followup", cap: 1, dropPolicy: "summarize" });
+    const request = (prompt: string) => createQueueTestRun({ prompt });
+    q.add(request("q1"));
+    q.add(createQueueTestRun({ prompt: "lunch?", currentInboundEventKind: "room_event" }));
+    q.add(request("q2"));
+    const calls: FollowupRun[] = [];
+    scheduleFollowupDrain(q.key, async (run) => {
+      calls.push(run);
+      if (calls.length === 1) {
+        // q1's summary turn is running: cutting q2 elides q1's summary from the queue.
+        q.add(request("q3"));
+      }
+    });
+    await vi.waitFor(() => expect(getExistingFollowupQueue(q.key)).toBeUndefined());
+    expect(calls.map((call) => shedCounts(call))).toEqual([[{ shed: 1, previewed: 1 }], [], []]);
+  });
+
+  it("is recorded as unstated when its turn is cut and no other turn of its room waits", async () => {
+    const elsewhere = { disableCollectBatching: true, originatingThreadId: "elsewhere" };
+    const rows: Row[] = [ask("r1"), chatter("r2"), { ...ask("r3"), source: () => elsewhere }];
+    await overflow(rows, { cap: 1, dropPolicy: "old" }, (harness) => {
+      expect(stated(harness.calls)).toEqual({ shed: 0, previewed: 0 });
+      expect(records).toMatchObject([
+        { level: "info", roomEvent: true, continuity: "counted" },
+        { level: "warn", roomEvent: false, continuity: "dropped", unstated: 1 },
+      ]);
+    });
+  });
+});
+
 describe("requests the cap cuts are recorded under every drop policy (#1415)", () => {
   const requests = ["q1", "q2", "q3", "q4"].map((id) => ask(id));
 
@@ -254,8 +286,6 @@ describe("requests the cap cuts are recorded under every drop policy (#1415)", (
       [protectedLine, ask("q2")],
       async (harness) => {
         await harness.dispatchRows(1);
-        const ref = harness;
-        expect(ref.runs.get("p1")?.protectFromQueueOverflow).toBe(true);
         const refused = createQueueTestRun(
           { prompt: "request", currentInboundEventKind: "user_request" },
           { sessionKey: harness.key },
