@@ -48,6 +48,11 @@ describe("buildAgentSystemPrompt — continuation section branching", () => {
 
     it("leads with the wake model and drops RFC jargon", () => {
       expect(prompt).toContain("### How you wake");
+      expect(prompt).toContain("can choose this session's next turn");
+      expect(prompt).toContain(
+        "A delegate can elect its own continue_work turns or further delegates",
+      );
+      expect(prompt).toContain("fan out to chain ancestors");
       expect(prompt).toContain(
         "You run only when an inbound message arrives, a scheduled automation fires, or a continuation you armed wakes you.",
       );
