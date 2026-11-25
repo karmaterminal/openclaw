@@ -293,7 +293,11 @@ describe("what folds across senders, whatever each line quotes (#1415)", () => {
   });
   const bot = { senderIsBot: true };
   const ownerBot = { ...bot, senderIsOwner: true, traceAuthorized: true };
-  const ownerHuman = { senderIsOwner: true, traceAuthorized: true, senderAccountVerified: true };
+  const ownerHuman = {
+    senderIsOwner: true,
+    traceAuthorized: true,
+    senderAccountVerified: true as const,
+  };
   const prose = { ambientRoomProse: true };
   type Case = [label: string, folds: boolean, id: string, Patch];
   const always: Case[] = [
@@ -326,22 +330,22 @@ describe("what folds across senders, whatever each line quotes (#1415)", () => {
     ["the principal's prose", false, "figs", { source: prose, run: ownerHuman }],
   ];
 
-  it.each<[mode: "on" | "off", ...Case]>([
-    ...always.map((row): ["on" | "off", ...Case] => ["off", ...row]),
-    ...always.map((row): ["on" | "off", ...Case] => ["on", ...row]),
-    ["off", "a listed owner bot's prose", false, "peer-a", { source: prose, run: ownerBot }],
-    ["on", "a listed owner bot's prose", true, "peer-a", { source: prose, run: ownerBot }],
-    ["on", "an unlisted owner bot's prose", false, "peer-b", { source: prose, run: ownerBot }],
-  ])("with ambientOwnerAggregate %s, %s folds: %s", (mode, _, folds, id, patch) => {
-    const at = (messageId: string, sender: string, from: Patch) =>
-      resolveFollowupBatchKey(
-        member(sender, {
-          source: quoting(messageId, from.source),
-          run: { ...from.run, config: mode === "on" ? optedIn : optedOut },
-        }),
-      );
-    const room = at("m1", "alice", { source: prose });
-    expect(at("m2", id, patch) === room).toBe(folds);
-    expect(at("m1", id, patch) === room).toBe(folds);
+  describe.each(["off", "on"] as const)("with ambientOwnerAggregate %s", (mode) => {
+    it.each<Case>([
+      ...always,
+      ["a listed owner bot's prose", mode === "on", "peer-a", { source: prose, run: ownerBot }],
+      ["an unlisted owner bot's prose", false, "peer-b", { source: prose, run: ownerBot }],
+    ])("%s folds: %s", (_, folds, id, patch) => {
+      const at = (messageId: string, sender: string, from: Patch) =>
+        resolveFollowupBatchKey(
+          member(sender, {
+            source: quoting(messageId, from.source),
+            run: { ...from.run, config: mode === "on" ? optedIn : optedOut },
+          }),
+        );
+      const room = at("m1", "alice", { source: prose });
+      expect(at("m2", id, patch) === room).toBe(folds);
+      expect(at("m1", id, patch) === room).toBe(folds);
+    });
   });
 });
