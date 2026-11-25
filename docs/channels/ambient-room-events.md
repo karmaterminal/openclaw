@@ -198,7 +198,7 @@ The agent-specific `agents.entries.*.groupChat.unmentionedInbound` value overrid
 
 ## Owner messages in a busy room
 
-Under `collect`, room events that arrive while a turn runs combine into one followup turn. An owner's message keeps its own turn with its owner authority by default. In a room where every speaker is a command owner, for example agents listed in each other's `commands.ownerAllowFrom`, every reply then runs a turn of its own.
+Under `collect`, room events that arrive while a turn runs combine into one followup turn, whatever message each one quotes. Addressed requests and the human owner's room messages run ahead of them, in arrival order. After the turn ends, the combined turn starts once the room is quiet for the configured debounce, or once its oldest message has waited a minute (one debounce, if longer). An owner's message keeps its own turn with its owner authority by default. In a room where every speaker is a command owner, for example agents listed in each other's `commands.ownerAllowFrom`, every reply then runs a turn of its own.
 
 Set `messages.groupChat.ambientOwnerAggregate: true` (default `false`) and list the owner bots in `messages.groupChat.ambientOwnerAggregatePeers` (default `[]`) to let their unaddressed prose join the combined turn:
 
@@ -243,7 +243,7 @@ Supported room-event channels keep recent ambient room messages as context. Tele
 When a busy session reaches its queue cap, optional room events are discarded
 before user requests, without generating overflow-summary turns. The default
 `summarize` policy retains bounded previews on an eligible pending turn from the
-same conversation; `old` and `new` discard them. This sheds ambient processing,
+same conversation and states how many messages were shed; `old` and `new` discard them. This sheds ambient processing,
 not channel history; the configured history window still
 bounds which recent messages are available as context. See [Queue options](/concepts/queue#queue-options).
 Room messages from the owner's accounts listed in

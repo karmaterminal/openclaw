@@ -111,7 +111,6 @@ const FLEET: OpenClawConfig = {
 /** The queued source one Discord frame becomes: Discord's context, then core's reply run. */
 async function stageDiscordLine(params: {
   stateDir: string;
-  config: OpenClawConfig;
   line: Line;
   lifecycle: ChannelIngressDispatchLifecycle;
 }): Promise<FollowupRun> {
@@ -122,7 +121,7 @@ async function stageDiscordLine(params: {
     buildDiscordMessageProcessContext,
   } = await loadDiscordMessageContextFixture();
   const storePath = `${stateDir}/agents/main/sessions/sessions.json`;
-  const cfg: OpenClawConfig = { ...params.config, session: { store: storePath } };
+  const cfg: OpenClawConfig = { ...FLEET, session: { store: storePath } };
   const kind = line.kind ?? "room_event";
   const { message, author } = mapGatewayDispatchData(
     { rest: {} } as never,
@@ -280,7 +279,7 @@ async function stageDiscordLine(params: {
 async function drainBacklog(
   lines: readonly Line[],
   check: (harness: Harness) => void | Promise<void>,
-  config = FLEET,
+  prioritizePending?: (id: string) => boolean,
 ) {
   await withTempState(async (stateDir) => {
     const active = createReplyOperation({
@@ -294,8 +293,9 @@ async function drainBacklog(
       stateDir,
       lines.map(({ id }) => ({ id })),
       {
+        prioritizePending,
         enqueue: (row, lifecycle) =>
-          stageDiscordLine({ stateDir, config, line: byId.get(row.id)!, lifecycle }),
+          stageDiscordLine({ stateDir, line: byId.get(row.id)!, lifecycle }),
       },
     );
     try {
@@ -359,29 +359,44 @@ describe("a Discord room backlog behind a busy turn (#1415)", () => {
     });
   });
 
-  it("runs the principal and a mention first, in order, then one ambient turn", async () => {
-    const lines: Line[] = [
-      ...room.slice(0, 2),
-      { id: "10021", author: FIGS, text: "also check the arm runner" },
-      ...room.slice(2, 4).map((line, index) => ({ ...line, id: `1003${index}` })),
-      {
-        id: "10040",
-        author: PEER_B,
-        text: "can you look at the arm job?",
-        replyTo: "1000",
-        kind: "user_request",
-      },
-      { id: "10041", author: OTHER, text: "mine is still running" },
-    ];
-    const first = lines.filter((line) => line.author === FIGS || line.kind === "user_request");
-    const ambient = lines.filter((line) => !first.includes(line));
-    await drainBacklog(lines, (harness) => {
-      expect(harness.calls).toHaveLength(3);
-      // Each first-class line keeps its own run and its own authority.
-      expect(harness.calls.slice(0, 2)).toEqual(first.map(({ id }) => harness.runs.get(id)));
-      expect(harness.calls[0]?.run).toMatchObject({ senderId: FIGS.id, senderIsOwner: true });
-      expect(harness.calls[1]?.originatingReplyToId).toBe("1000");
-      expectCarries(harness.calls[2], ambient);
-    });
-  });
+  const FIGS_LINE = "10021";
+  const MENTION = "10040";
+  it.each<[string, string[], ((id: string) => boolean)?]>([
+    ["in arrival order", [FIGS_LINE, MENTION]],
+    // Discord claims a recent native mention ahead of other pending rows (#1531).
+    ["the mention claimed first", [MENTION, FIGS_LINE], (id) => id === MENTION],
+  ])(
+    "runs the principal and a mention first, %s, then one ambient turn",
+    async (_, first, prioritizePending) => {
+      const lines: Line[] = [
+        ...room.slice(0, 2),
+        { id: FIGS_LINE, author: FIGS, text: "also check the arm runner" },
+        ...room.slice(2, 4).map((line, index) => ({ ...line, id: `1003${index}` })),
+        {
+          id: MENTION,
+          author: PEER_B,
+          text: "can you look at the arm job?",
+          replyTo: "1000",
+          kind: "user_request",
+        },
+        { id: "10041", author: OTHER, text: "mine is still running" },
+      ];
+      const ambient = lines.filter((line) => !first.includes(line.id));
+      await drainBacklog(
+        lines,
+        (harness) => {
+          expect(harness.calls).toHaveLength(3);
+          // Each keeps its own run and its own authority.
+          expect(harness.calls.slice(0, 2)).toEqual(first.map((id) => harness.runs.get(id)));
+          expect(harness.runs.get(FIGS_LINE)?.run).toMatchObject({
+            senderId: FIGS.id,
+            senderIsOwner: true,
+          });
+          expect(harness.runs.get(MENTION)?.originatingReplyToId).toBe("1000");
+          expectCarries(harness.calls[2], ambient);
+        },
+        prioritizePending,
+      );
+    },
+  );
 });

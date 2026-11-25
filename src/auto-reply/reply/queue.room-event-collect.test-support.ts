@@ -94,6 +94,8 @@ export async function openRoomIngress(
     claimLeaseMs?: number;
     /** Defaults to an immediate retry; pass the production policy to measure pacing. */
     retryPolicy?: IngressRetryPolicyConfig;
+    /** Claim these pending rows first, as Discord claims recent native mentions (#1531). */
+    prioritizePending?: (id: string) => boolean;
     /** Give each source the transcript recorder a real admission carries. */
     transcripts?: boolean;
     enqueue?: (
@@ -150,6 +152,9 @@ export async function openRoomIngress(
     retryPolicy: options.retryPolicy ?? { baseMs: 1, maxMs: 1 },
     ...(options.now ? { now: options.now } : {}),
     ...(options.claimLeaseMs ? { claimLeaseMs: options.claimLeaseMs } : {}),
+    ...(options.prioritizePending
+      ? { prioritizePending: (record: { id: string }) => options.prioritizePending!(record.id) }
+      : {}),
     ...(options.supersedes
       ? {
           shouldSupersedePending: (candidate: { id: string }, pending: { id: string }): boolean =>

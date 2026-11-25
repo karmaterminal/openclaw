@@ -75,6 +75,45 @@ it.each([
   }
 });
 
+// Frond (karmaterminal, #1415): the request overtakes the chatter, so it is the next queued input.
+it("hands completed-reply context past the room chatter the next request overtakes", async () => {
+  const key = "completed-reply-chatter";
+  const route = { originatingChannel: "discord", originatingTo: "channel:A" } as const;
+  const source = createRun(
+    { prompt: "answered request", currentInboundEventKind: "user_request", ...route },
+    { sessionKey: key, sourceReplyDeliveryMode: "message_tool_only" },
+  );
+  const operation = createReplyOperation({
+    sessionKey: key,
+    sessionId: source.run.sessionId,
+    resetTriggered: false,
+  });
+  const chatter = createRun(
+    { ...source, prompt: "room chatter", currentInboundEventKind: "room_event" },
+    source.run,
+  );
+  const next = createRun({ ...source, prompt: "fresh request" }, source.run);
+  const settings: QueueSettings = { mode: "collect", debounceMs: 0, cap: 10 };
+  const turns: Array<[string, string | undefined]> = [];
+  try {
+    enqueueFollowupRun(key, chatter, settings);
+    enqueueFollowupRun(key, next, settings);
+    handoffCompletedSourceReply(operation, source);
+    scheduleFollowupDrain(key, async (run) => {
+      turns.push([run.prompt, run.currentInboundContext?.text]);
+    });
+    operation.complete();
+    await chatter.controllerInput!.settlement.promise;
+    expect(turns).toEqual([
+      ["fresh request", expect.stringContaining("preceding turn already delivered")],
+      ["room chatter", undefined],
+    ]);
+  } finally {
+    operation.complete();
+    clearFollowupQueue(key);
+  }
+});
+
 it.each([
   ["S1", true, "S2"],
   ["unrelated", true, undefined],
