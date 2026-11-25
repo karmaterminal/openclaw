@@ -28,6 +28,7 @@ import {
 import {
   aggregated,
   collected,
+  expectRoomTurns,
   expectSettledOnce,
   expectShedAtCap,
   openRoomIngress,
@@ -35,6 +36,7 @@ import {
   ROOM_ORIGIN,
   sender,
   shedContext,
+  shedCounts,
   textOf,
   widenNextClaim,
   withRoomIngress,
@@ -306,7 +308,7 @@ describe("mid-turn room events over durable ingress (#1415)", () => {
     );
   });
 
-  it("never merges room events with an addressed request and keeps addressed isolation", async () => {
+  it("runs addressed requests first, each alone, and never merges them with room events", async () => {
     const rows: Row[] = [
       { id: "r1" },
       { id: "r2" },
@@ -318,13 +320,12 @@ describe("mid-turn room events over durable ingress (#1415)", () => {
     await withRoomIngress(rows, async (harness) => {
       await harness.dispatchRows();
       await harness.endActiveTurn();
-      expect(harness.calls).toHaveLength(4);
-      collected(harness.calls[0], rows.slice(0, 2));
+      expect(harness.calls).toHaveLength(3);
       // Distinct exclusive admissions for addressed input still run one per turn (#103695).
-      expect(harness.calls[1]?.prompt).toBe(textOf(rows[2]!));
-      expect(harness.calls[2]?.prompt).toBe(textOf(rows[3]!));
-      expect(harness.calls[1]?.currentInboundEventKind).toBe("user_request");
-      collected(harness.calls[3], rows.slice(4));
+      expect(harness.calls[0]?.prompt).toBe(textOf(rows[2]!));
+      expect(harness.calls[1]?.prompt).toBe(textOf(rows[3]!));
+      expect(harness.calls[0]?.currentInboundEventKind).toBe("user_request");
+      collected(harness.calls[2], [...rows.slice(0, 2), ...rows.slice(4)]);
       await expectSettledOnce(
         harness,
         rows.map((row) => row.id),
@@ -377,10 +378,15 @@ describe("mid-turn room events over durable ingress (#1415)", () => {
               undefined,
             ]);
           }
-          // r1's preview rode r2 and left with it when r2 was shed in turn.
-          expect(shedContext(harness.calls[0])).toEqual([
-            { sender: "peer", messageId: "r2", text: textOf(rows[1]!) },
-          ]);
+          // r1's preview rode r2, which handed it on when it was shed in turn.
+          expect(shedContext(harness.calls[0])).toEqual(
+            rows.slice(0, 2).map((row) => ({
+              sender: "peer",
+              messageId: row.id,
+              text: textOf(row),
+            })),
+          );
+          expect(shedCounts(harness.calls[0])).toEqual({ shed: 2, previewed: 2 });
           expect(harness.calls[0]?.currentInboundEventKind).toBe("room_event");
           await expectSettledOnce(harness, ["r1", "r2", "r3", "r4", "r5"]);
         },
@@ -496,7 +502,7 @@ describe("mid-turn room events over durable ingress (#1415)", () => {
 });
 
 describe("a multi-sender room burst runs as one least-authority aggregate (#1415)", () => {
-  it("gives the owner's room message its own turn, in order, between non-owner aggregates", async () => {
+  it("runs the owner's room message first, as its own turn, then one non-owner aggregate", async () => {
     const rows: Row[] = [
       { id: "n1", from: sender("alice") },
       { id: "n2", from: sender("bob") },
@@ -507,12 +513,9 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
     await withRoomIngress(rows, async (harness) => {
       await harness.dispatchRows();
       await harness.endActiveTurn();
-      expect(harness.calls).toHaveLength(3);
-      aggregated(harness.calls[0], rows.slice(0, 2));
       // The owner's turn is the owner's own run, owner authority intact.
-      expect(harness.calls[1]).toBe(harness.runs.get("n3o"));
-      expect(harness.calls[1]?.run).toMatchObject({ senderId: "owner", senderIsOwner: true });
-      aggregated(harness.calls[2], rows.slice(3));
+      expectRoomTurns(harness, rows, { direct: ["n3o"] });
+      expect(harness.calls[0]?.run).toMatchObject({ senderId: "owner", senderIsOwner: true });
       await expectSettledOnce(
         harness,
         rows.map((row) => row.id),
@@ -648,13 +651,12 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
         expect(harness.calls).toHaveLength(1);
         aggregated(harness.calls[0], rows.slice(2));
         // The preview never bypasses the shed row's transcript write hook, still pending here.
+        const text = "[Content omitted: input write hook has not approved this message.]";
         expect(shedContext(harness.calls[0])).toEqual([
-          {
-            sender: "bob",
-            messageId: "s2",
-            text: "[Content omitted: input write hook has not approved this message.]",
-          },
+          { sender: "alice", messageId: "s1", text },
+          { sender: "bob", messageId: "s2", text },
         ]);
+        expect(shedCounts(harness.calls[0])).toEqual({ shed: 2, previewed: 2 });
         expect(readUserTurnRequesterOrigin(harness.calls[0]?.userTurnTranscriptRecorder)).toEqual(
           ROOM_ORIGIN,
         );
@@ -771,10 +773,11 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
     onTestFinished(() => error.mockRestore());
     const check = async (harness: Harness) => {
       await harness.dispatchRows();
+      // The held row runs first, so its claim is the one widened over the waiting b1.
       await harness.endActiveTurn(undefined, () => widenNextClaim(harness.key));
       // Neither runs as the senderless baseline: each member's turn runs as that member.
       expect(harness.calls.slice(0, 2).map((call) => call.run)).toEqual(
-        rows.slice(0, 2).map((row) => harness.runs.get(row.id)?.run),
+        ["b1h", "b1"].map((id) => harness.runs.get(id)?.run),
       );
       expect(error).toHaveBeenCalledWith(expect.stringContaining("refused a mixed claim"));
       expect(harness.calls).toHaveLength(3);
@@ -844,15 +847,19 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
           await harness.endActiveTurn();
           expect(harness.calls).toHaveLength(1);
           aggregated(harness.calls[0], kept);
-          // Each preview rides the oldest survivor, which the next arrival sheds in turn, so only
-          // the newest shed row's preview reaches the turn.
-          const last = shed.at(-1)!;
+          // Each preview rides the oldest survivor, which the next arrival sheds in turn; it hands
+          // on what it carried, so the turn states all 50 and previews the newest 20.
           if (dropPolicy === "old") {
             expect(harness.calls[0]?.currentInboundContext).toBeUndefined();
           } else {
-            expect(shedContext(harness.calls[0])).toEqual([
-              { sender: last.from?.senderName, messageId: last.id, text: textOf(last) },
-            ]);
+            expect(shedCounts(harness.calls[0])).toEqual({ shed: 50, previewed: 20 });
+            expect(shedContext(harness.calls[0])).toEqual(
+              shed.slice(-20).map((row) => ({
+                sender: row.from?.senderName,
+                messageId: row.id,
+                text: textOf(row),
+              })),
+            );
           }
           await expectSettledOnce(
             harness,
@@ -865,7 +872,7 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
     },
   );
 
-  it("keeps owner and addressed messages as their own turns, in order, inside a 100-sender burst", async () => {
+  it("runs owner and addressed messages first, in order, then one turn for a 100-sender burst", async () => {
     const rows = crowd(100);
     // Interleaved inside the 50 newest rows, which the cap keeps: it sheds the oldest chatter.
     rows.splice(59, 0, { id: "p059o", from: owner });
@@ -880,17 +887,8 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
         rows.slice(0, -50).map((row) => row.id),
       );
       await harness.endActiveTurn();
-      const own = ["p059o", "p073m", "p087o"];
-      expect(harness.calls).toHaveLength(own.length * 2 + 1);
-      let start = 0;
-      for (const [index, id] of own.entries()) {
-        const end = kept.findIndex((row) => row.id === id);
-        aggregated(harness.calls[index * 2], kept.slice(start, end));
-        // Each keeps its own run: the owner's authority, the asker's addressed request.
-        expect(harness.calls[index * 2 + 1]).toBe(harness.runs.get(id));
-        start = end + 1;
-      }
-      aggregated(harness.calls.at(-1), kept.slice(start));
+      // Each keeps its own run: the owner's authority, the asker's addressed request.
+      expectRoomTurns(harness, kept, { direct: ["p059o", "p073m", "p087o"] });
       await expectSettledOnce(
         harness,
         rows.map((row) => row.id),

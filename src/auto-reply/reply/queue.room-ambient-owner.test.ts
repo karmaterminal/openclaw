@@ -13,6 +13,7 @@ import type { FollowupRun } from "./queue.js";
 import {
   aggregated,
   AMBIENT,
+  expectRoomTurns,
   expectSettledOnce,
   ownerPeer,
   principal,
@@ -33,7 +34,7 @@ describe("the ambient owner room aggregate (#1415)", () => {
     // Channel ingress binds an owner's live command-owner check to its run; copies keep it.
     const lastOwner = ownerPeer("peer-c", AMBIENT);
     bindCommandOwnerAuthority(lastOwner, { isCurrent: () => true });
-    // Owner prose, an addressed line that ends the batch, then people: two collected turns.
+    // Owner prose, an owner command line that ends the batch, then people: two collected turns.
     const rows: Row[] = [
       { id: "x1", from: ownerPeer("peer-a", AMBIENT), source: prose },
       { id: "x2", from: ownerPeer("peer-b", AMBIENT), source: prose },
@@ -43,7 +44,7 @@ describe("the ambient owner room aggregate (#1415)", () => {
         from: lastOwner,
         source: () => ({ ...prose(), memoryAudienceSenderIsOwner: true }),
       },
-      { id: "x4", kind: "user_request", from: sender("asker", { config: AMBIENT }) },
+      { id: "x4", from: ownerPeer("peer-d", AMBIENT), source: () => ({ ambientRoomProse: false }) },
       { id: "x5", from: sender("alice", { config: AMBIENT }) },
       { id: "x6", from: sender("bob", { config: AMBIENT }) },
       { id: "x7", from: sender("carol", { config: AMBIENT }) },
@@ -114,19 +115,9 @@ describe("the ambient owner room aggregate (#1415)", () => {
     await withRoomIngress(rows, async (harness) => {
       await harness.dispatchRows();
       await harness.endActiveTurn();
-      const own = ["a03", "a06", "a09", "a12"];
-      expect(harness.calls).toHaveLength(own.length * 2 + 1);
-      let start = 0;
-      for (const [index, id] of own.entries()) {
-        const end = rows.findIndex((row) => row.id === id);
-        // Owners and people aggregate together only when every member passes.
-        aggregated(harness.calls[index * 2], rows.slice(start, end));
-        // Each excluded owner runs as itself, its authority intact.
-        expect(harness.calls[index * 2 + 1]).toBe(harness.runs.get(id));
-        expect(harness.calls[index * 2 + 1]?.run).toMatchObject({ senderIsOwner: true });
-        start = end + 1;
-      }
-      aggregated(harness.calls.at(-1), rows.slice(start));
+      // Owners and people aggregate together only when every member passes. Each excluded owner
+      // runs as itself, its authority intact, the mention first.
+      expectRoomTurns(harness, rows, { direct: ["a06"], own: ["a03", "a09", "a12"] });
       await expectSettledOnce(
         harness,
         rows.map((row) => row.id),
@@ -172,25 +163,9 @@ describe("the ambient owner room aggregate (#1415)", () => {
     await withRoomIngress(rows, async (harness) => {
       await harness.dispatchRows();
       await harness.endActiveTurn();
-      const own = ["p03", "p06", "p09", "p12"];
-      expect(harness.calls).toHaveLength(own.length * 2 + 1);
-      let start = 0;
-      for (const [index, id] of own.entries()) {
-        const end = rows.findIndex((row) => row.id === id);
-        aggregated(harness.calls[index * 2], rows.slice(start, end));
-        expect(harness.calls[index * 2]?.controllerClaim?.sources).not.toContain(
-          harness.runs.get(id),
-        );
-        // The excluded owner runs as itself: its sender fields and owner authority intact.
-        expect(harness.calls[index * 2 + 1]).toBe(harness.runs.get(id));
-        expect(harness.calls[index * 2 + 1]?.run).toMatchObject({
-          ...rows[end]?.from,
-          senderIsOwner: true,
-          traceAuthorized: true,
-        });
-        start = end + 1;
-      }
-      aggregated(harness.calls.at(-1), rows.slice(start));
+      // Each excluded owner runs as itself, its sender fields and owner authority intact. Those the
+      // channel does not report as bots are the principal, or may speak for it, and run first.
+      expectRoomTurns(harness, rows, { direct: ["p03", "p06"], own: ["p09", "p12"] });
       await expectSettledOnce(
         harness,
         rows.map((row) => row.id),

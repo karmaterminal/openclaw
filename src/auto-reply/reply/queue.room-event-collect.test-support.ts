@@ -258,7 +258,15 @@ export async function expectShedAtCap(harness: Harness, kept: string[], shed: st
   expect([...harness.writes.fail.keys()]).toEqual([]);
 }
 
-const SHED_CONTEXT = "[Compacted ambient room context;";
+const SHED_CONTEXT = "[Compacted ambient room context; ";
+
+/** How many room messages a turn says were shed into its context, and how many it previews. */
+export function shedCounts(run: FollowupRun | undefined) {
+  const counts = /(\d+) room messages shed at the queue cap, newest (\d+) previewed/u.exec(
+    run?.currentInboundContext?.text ?? "",
+  );
+  return counts && { shed: Number(counts[1]), previewed: Number(counts[2]) };
+}
 
 /** The shed rows' previews a turn carries as background context under drop:summarize (#191733). */
 export function shedContext(run: FollowupRun | undefined): unknown[] {
@@ -363,6 +371,43 @@ export function aggregated(
     expect(run?.prompt).toContain(`Queued #${index + 1} (from ${row.from?.senderName})`);
   }
   expectRoomBaseline(run, shared);
+}
+
+/**
+ * The turns a burst drains as. Direct rows (addressed requests, the principal's lines) run first and
+ * the `own` rows in their place, each as itself; the chatter around them aggregates, in order.
+ */
+export function expectRoomTurns(
+  harness: Harness,
+  rows: readonly Row[],
+  { direct = [], own = [] }: { direct?: string[]; own?: string[] },
+) {
+  const turns: Array<Row | Row[]> = direct.map((id) => rows.find((row) => row.id === id)!);
+  let batch: Row[] = [];
+  const closeBatch = () => {
+    if (batch.length) {
+      turns.push(batch);
+    }
+    batch = [];
+  };
+  for (const row of rows.filter(({ id }) => !direct.includes(id))) {
+    if (own.includes(row.id)) {
+      closeBatch();
+      turns.push(row);
+    } else {
+      batch.push(row);
+    }
+  }
+  closeBatch();
+  expect(harness.calls).toHaveLength(turns.length);
+  for (const [index, turn] of turns.entries()) {
+    if (Array.isArray(turn)) {
+      aggregated(harness.calls[index], turn);
+    } else {
+      expect(harness.calls[index]).toBe(harness.runs.get(turn.id));
+      expect(harness.calls[index]?.run).toMatchObject({ ...turn.from });
+    }
+  }
 }
 
 /**
