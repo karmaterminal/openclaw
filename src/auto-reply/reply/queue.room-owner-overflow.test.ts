@@ -419,25 +419,26 @@ describe.each(["collect", "followup", "steer"] as const)(
       "sheds an unlisted command owner's lines for a listed line and chatter under drop:%s, listed %s",
       async (dropPolicy, _, from) => {
         const admission = openAdmission();
+        // Ids sort in arrival order, as above.
         const rows: Row[] = [
-          { id: "k1", from: kin },
-          { id: "k2", from: kin },
-          { id: "o3", from },
-          { id: "n4", from: sender("alice") },
+          { id: "r1", from: kin },
+          { id: "r2", from: kin },
+          { id: "r3", from },
+          { id: "r4", from: sender("alice") },
         ];
         await withRoomIngress(
           rows,
           async (harness) => {
             admission.bind(harness);
             await harness.dispatchRows();
-            const kept = dropPolicy === "new" ? ["k2", "o3"] : ["o3", "n4"];
+            const kept = dropPolicy === "new" ? ["r2", "r3"] : ["r3", "r4"];
             expect(
               getExistingFollowupQueue(harness.key)?.items.map((item) => item.messageId),
             ).toEqual(kept);
             await harness.endActiveTurn();
             // Only collect orders the listed line ahead of chatter.
             expect(harness.calls.map((call) => call.messageId)).toEqual(
-              mode === "collect" ? ["o3", ...kept.filter((id) => id !== "o3")] : kept,
+              mode === "collect" ? ["r3", ...kept.filter((id) => id !== "r3")] : kept,
             );
             await expectSettledOnce(
               harness,
