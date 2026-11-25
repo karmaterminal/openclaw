@@ -5,14 +5,9 @@ export { RequestClient } from "./src/internal/discord.js";
 // Core queue fixtures drive the per-agent room-history watermark the Discord monitor owns.
 export { createDiscordRoomHistoryWatermarks } from "./src/monitor/room-history-watermark.js";
 // Core queue fixtures build queued sources from the Discord gateway frames the monitor admits.
-export const loadDiscordMessageContextFixture = async () => {
-  const [{ mapGatewayDispatchData }, context, harness] = await Promise.all([
-    import("./src/internal/gateway-dispatch.js"),
-    import("./src/monitor/message-handler.context.js"),
-    import("./src/monitor/message-handler.test-harness.js"),
-  ]);
-  return { mapGatewayDispatchData, ...context, ...harness };
-};
+export type { DiscordRoomLine } from "./src/monitor/message-handler.room-line.test-support.js";
+export const loadDiscordRoomLineFixture = () =>
+  import("./src/monitor/message-handler.room-line.test-support.js");
 export {
   discordVoiceTranscriptsSourceProvider,
   setDiscordTranscriptsVoiceManager,

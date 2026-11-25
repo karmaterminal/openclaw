@@ -3,9 +3,11 @@
 // reply context, admission and execution, real durable ingress and the session mailbox; only the
 // agent runner and the Discord transport are replaced. The sources queue while the room's turn runs;
 // its end admits the whole ambient backlog as one turn, behind the mention and the principal.
-import { GatewayDispatchEvents, MessageType } from "discord-api-types/v10";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadDiscordMessageContextFixture } from "../extensions/discord/test-api.js";
+import {
+  loadDiscordRoomLineFixture,
+  type DiscordRoomLine,
+} from "../extensions/discord/test-api.js";
 import { parseInlineSessionDirectives } from "../src/auto-reply/reply/directive-handling.parse.js";
 import { prepareReplyRunAdmission } from "../src/auto-reply/reply/get-reply-run-admission.js";
 import { prepareReplyRunContext } from "../src/auto-reply/reply/get-reply-run-context.js";
@@ -33,7 +35,6 @@ import {
   prepareReplySourceInput,
 } from "../src/auto-reply/reply/reply-source-binding.js";
 import { createTypingController } from "../src/auto-reply/reply/typing.js";
-import type { InboundEventKind } from "../src/channels/inbound-event/kind.js";
 import {
   bindIngressLifecycleToReplyOptions,
   type ChannelIngressDispatchLifecycle,
@@ -71,17 +72,9 @@ installQueueRuntimeErrorSilencer();
 afterEach(() => controllerTesting.resetSessionControllerForTest());
 
 const SESSION_KEY = "agent:main:discord:channel:room";
-const CHANNEL_ID = "room";
 
-type Line = {
-  /** A snowflake: arrival order. */
-  id: string;
-  author: { id: string; name: string; bot?: true; owner?: true };
-  text: string;
-  /** The message this one quotes, as Discord's reply button sends it. */
-  replyTo?: string;
-  kind?: InboundEventKind;
-};
+type Line = Omit<DiscordRoomLine, "author" | "kind"> &
+  Partial<Pick<DiscordRoomLine, "kind">> & { author: DiscordRoomLine["author"] & { owner?: true } };
 
 const FIGS = { id: "9001", name: "figs", owner: true } as const;
 const PEER_A = { id: "7001", name: "peer-a", bot: true, owner: true } as const;
@@ -115,79 +108,17 @@ async function stageDiscordLine(params: {
   lifecycle: ChannelIngressDispatchLifecycle;
 }): Promise<FollowupRun> {
   const { line, stateDir } = params;
-  const {
-    mapGatewayDispatchData,
-    createBaseDiscordMessageContext,
-    buildDiscordMessageProcessContext,
-  } = await loadDiscordMessageContextFixture();
+  const { buildDiscordRoomLineContext } = await loadDiscordRoomLineFixture();
   const storePath = `${stateDir}/agents/main/sessions/sessions.json`;
   const cfg: OpenClawConfig = { ...FLEET, session: { store: storePath } };
-  const kind = line.kind ?? "room_event";
-  const { message, author } = mapGatewayDispatchData(
-    { rest: {} } as never,
-    GatewayDispatchEvents.MessageCreate,
-    {
-      id: line.id,
-      channel_id: CHANNEL_ID,
-      guild_id: "g1",
-      timestamp: new Date(Number(line.id)).toISOString(),
-      type: line.replyTo ? MessageType.Reply : MessageType.Default,
-      content: line.text,
-      attachments: [],
-      author: {
-        id: line.author.id,
-        username: line.author.name,
-        discriminator: "0",
-        global_name: null,
-        avatar: null,
-        ...(line.author.bot ? { bot: true } : {}),
-      },
-      ...(line.replyTo
-        ? { message_reference: { channel_id: CHANNEL_ID, message_id: line.replyTo } }
-        : {}),
-    } as never,
-  ) as { message: unknown; author: unknown };
-  const discord = await createBaseDiscordMessageContext(
-    {
-      cfg,
-      inboundEventKind: kind,
-      replyToMode: "batched",
-      message,
-      author,
-      sender: {
-        id: line.author.id,
-        label: line.author.name,
-        name: line.author.name,
-        isPluralKit: false,
-      },
-      messageChannelId: CHANNEL_ID,
-      baseText: line.text,
-      messageText: line.text,
-      shouldRequireMention: false,
-      effectiveWasMentioned: kind === "user_request",
-      baseSessionKey: SESSION_KEY,
-      route: {
-        agentId: "main",
-        channel: "discord",
-        accountId: "default",
-        sessionKey: SESSION_KEY,
-        mainSessionKey: "agent:main:main",
-      },
-    },
-    { storePath },
-  );
-  const built = await buildDiscordMessageProcessContext({
-    ctx: discord,
-    text: line.text,
-    mediaList: [],
+  const ctxPayload = await buildDiscordRoomLineContext({
+    cfg,
+    storePath,
+    sessionKey: SESSION_KEY,
+    channelId: "room",
+    line: { kind: "room_event", ...line },
   });
-  if (!built) {
-    throw new Error("Expected a Discord message context");
-  }
-  const ctx = finalizeInboundContext({
-    ...built.ctxPayload,
-    BodyStripped: built.ctxPayload.BodyForAgent,
-  });
+  const ctx = finalizeInboundContext({ ...ctxPayload, BodyStripped: ctxPayload.BodyForAgent });
   const entry: SessionEntry = { sessionId: "room-session", updatedAt: 1 };
   // Dispatch reserves the physical source before preparation (reply-source-binding).
   const source = await prepareReplySourceInput(
