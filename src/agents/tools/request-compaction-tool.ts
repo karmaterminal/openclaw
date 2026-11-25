@@ -293,10 +293,9 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
     // Tool Search and Code Mode never hide it behind a catalog.
     catalogMode: "direct-only",
     description: [
-      "Trigger compaction volitionally — but FIRST stage working-state survival via continue_delegate(mode='post-compaction', task='<state-summary>'), THEN call this — vs becoming subject to forced compaction at context exhaustion with no warning.",
-      "Working state is NOT preserved automatically — the paired post-compaction delegate is what carries state across the seam, and you must stage it before requesting compaction.",
+      "You choose when you compact: land it at a seam you pick, instead of being compacted mid-thought at context exhaustion with no warning.",
+      "Working state is NOT preserved automatically: FIRST stage it via continue_delegate(mode='post-compaction', task='<state-summary>'), THEN call this; the paired post-compaction delegate is what carries state across the seam.",
       "Typically called after receiving a [system:context-pressure] event, which fires as your context approaches compaction.",
-      "Reach for this when you've felt context pressure and want to land compaction at a chosen moment rather than obligatorily at context exhaustion, which may occur mid-thought or otherwise be inopportune.",
       "Async: enqueues compaction; runs after this turn completes — safe to call mid-turn.",
       "Guards return as structured rejections (not errors): requires >=70% context usage and at most one request per 5 minutes per session.",
     ].join(" "),

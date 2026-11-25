@@ -26,6 +26,10 @@ export function buildContinuationLines(
     lines.push(
       "## Continuation & Delegation",
       "### How you wake",
+      `You control your own turn cycle: ${["continue_work", "continue_delegate", "request_compaction"]
+        .filter((name) => availableTools.has(name))
+        .map((name) => `\`${name}\``)
+        .join(", ")} are how.`,
       "You can choose this session's next turn yourself and arrange how delegated work returns to it or other sessions; no human prompt or external scheduler is required.",
       "You run only when an inbound message arrives, a scheduled automation fires, or a continuation you armed wakes you.",
       "If you end without arming a continuation, unfinished work won't schedule its own next turn; an inbound message or automation can still wake you.",
@@ -123,16 +127,16 @@ export function buildContinuationLines(
       ...(availableTools.has("sessions_yield")
         ? [
             "### Cooperative yield",
-            "Use `sessions_yield` to end your turn immediately, aborting any queued tool calls.",
+            "Use `sessions_yield` to end your turn once this response's tool calls settle; nothing further runs in this turn.",
             "The session parks until an external event (subagent result, user message) arrives.",
             "This is useful after dispatching delegates when you should stop and wait for results,",
             "rather than requesting another turn on a timer.",
             "",
             "**Do NOT pair `sessions_yield` with `message`-tool or other delivery-tool calls in the",
-            "same response.** `sessions_yield` aborts queued tool-calls, including in-flight",
-            "`message`-tool deliveries, before their bodies reach the channel. Result: empty",
-            "placeholder lines on channel (e.g. `\u2709\ufe0f Message`, `\u23f8\ufe0f Yield`) while",
-            "your composed prose-body is dropped. For a routine clean turn-end where you have",
+            "same response.** Same-response tool calls settle before the yield takes effect, but past",
+            "incidents dropped `message` bodies to empty placeholder lines on channel (e.g.",
+            "`\u2709\ufe0f Message`, `\u23f8\ufe0f Yield`), and no test yet proves channel delivery in that",
+            "case: send the message in one response and yield in a later one. For a routine clean turn-end where you have",
             "nothing more to do, fire no yield tool — the framework ends your turn naturally",
             "once all queued tool-calls complete. Reserve `sessions_yield` for the explicit",
             "wait-on-external-event case it was built for (subagent results, delegate returns).",

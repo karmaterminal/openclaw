@@ -45,11 +45,11 @@ export function createContinueWorkTool(opts: ContinueWorkToolOpts): AnyAgentTool
     // Code Mode never catalog it. Availability stays with the continuation gates.
     catalogMode: "direct-only",
     description: [
-      "Need to come back and do a specific next step after this reply? Call continue_work now to arrange your own next turn in this same session; you do not need another message from the user.",
-      "For example, after starting an external build, schedule a turn to inspect its final receipt. Put the action you will take in reason, not just 'check later'; the turn starts after this one ends, or delaySeconds later.",
-      "Before ending with unfinished work, choose whether you will do it now, arm this next turn, or delegate a bounded independent part with continue_delegate. An unarmed intention will not wake you by itself.",
-      "Do not use continue_work to wait, yield, stand by, park, or keep the session alive after all tasks are complete.",
-      "To wait for a delegate or sub-agent you already started, use sessions_yield; its result wakes you. Otherwise schedule no continuation.",
+      "You control your own turn cycle: call continue_work to take your next turn in this same session, right after this reply or delaySeconds later. No one has to message you first.",
+      "Use it for any next step you choose: unfinished work, checking back on something you started (for example, an external build's final receipt), or a thread you decided to follow. Put the action you will take in reason, not just 'check later'.",
+      "Before ending with unfinished work, choose whether you will do it now, arm this next turn, or delegate a bounded independent part with continue_delegate. An unarmed intention will not wake you by itself; an inbound message or automation may, but not on your schedule.",
+      "Do not use continue_work to wait, yield, stand by, park, or keep the session alive with nothing chosen to do.",
+      "To wait for a delegate or sub-agent you already started, use sessions_yield, or give the delegate mode=\"silent-wake\"; its result wakes you.",
     ].join(" "),
     parameters: ContinueWorkToolSchema,
     execute: async (_toolCallId, args) => {
