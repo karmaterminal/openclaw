@@ -13,6 +13,7 @@ import {
 import { defaultRuntime } from "../../../runtime.js";
 import type { ReplyOperation } from "../../../sessions/session-controller.contracts.js";
 import { deferSessionControllerClaimBeforeExecution } from "../../../sessions/session-controller.mailbox-claim.js";
+import { findSessionControllerMailboxHead } from "../../../sessions/session-controller.mailbox-dispatch.js";
 import { isSessionControllerSourceQueued } from "../../../sessions/session-controller.mailbox-source.js";
 import {
   detachSessionControllerSources,
@@ -67,12 +68,15 @@ type AdmissionSessionRebind = { from: string; to: string };
 /** The queued input owns this fact through preparation retries and consumes it with its turn. */
 export function handoffCompletedSourceReply(operation: ReplyOperation, source: FollowupRun): void {
   const mailbox = getSessionControllerEntryForOperation(operation).mailbox;
-  const next = mailbox?.entries.find(
-    (input) =>
-      !input.claim &&
-      isSessionControllerSourceQueued(input) &&
-      !input.retirementRequested &&
-      !input.abortSignal.aborted,
+  // Frond (karmaterminal, #1415): the successor selection picks, past the room chatter it overtakes.
+  const next = findSessionControllerMailboxHead(
+    mailbox?.entries.filter(
+      (input) =>
+        !input.claim &&
+        isSessionControllerSourceQueued(input) &&
+        !input.retirementRequested &&
+        !input.abortSignal.aborted,
+    ) ?? [],
   )?.source;
   if (
     operation.result ||

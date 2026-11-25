@@ -25,6 +25,7 @@ import {
   resolveFollowupDeliveryStorageKey,
 } from "./delivery-context.js";
 import { dropAbortedFollowups, rememberFollowupDrainCallback } from "./drain.js";
+import { resolveRoomPrecedence } from "./envelope.js";
 import {
   admitFollowupRunLifecycle,
   completeFollowupRunLifecycle,
@@ -174,7 +175,16 @@ export function enqueueFollowupRun(
     }
     const front =
       options.position === "front" && (!deferOverflow || options.steerCandidate === true);
-    queue.lastEnqueuedAt = performance.now();
+    // Frond (karmaterminal, #1415): room chatter never restarts the debounce of a waiting request or
+    // principal line.
+    if (
+      resolveRoomPrecedence(run) !== "chatter" ||
+      !queue.items.some(
+        (item) => !queue.inFlight.has(item) && resolveRoomPrecedence(item) === "direct",
+      )
+    ) {
+      queue.lastEnqueuedAt = performance.now();
+    }
     queue.lastRun = run.run;
     run.queueAbortSignal = queue.abortController.signal;
     const queuedInput = run.controllerInput!;

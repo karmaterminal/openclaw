@@ -4,7 +4,10 @@ import {
   resolveFollowupBatchKey,
 } from "../auto-reply/reply/queue/delivery-context.js";
 import { runOutsideAdmittedGenerationScopes } from "../auto-reply/reply/queue/drain-admission-scope.js";
-import { requiresIndividualCollectDrain } from "../auto-reply/reply/queue/envelope.js";
+import {
+  requiresIndividualCollectDrain,
+  resolveRoomPrecedence,
+} from "../auto-reply/reply/queue/envelope.js";
 import { updateFollowupRetryHeartbeatsWithCustody } from "../auto-reply/reply/queue/pre-adoption-heartbeat.js";
 import {
   FollowupRunDeferredError,
@@ -49,8 +52,37 @@ type MailboxSelection = {
   prepareDelivery: boolean;
 };
 
+// Frond (karmaterminal, #1415): room chatter collects until the room is quiet for the configured
+// debounce, but its oldest line waits at most this long for the batch, or one debounce when longer.
+const ROOM_CHATTER_MAX_WAIT_MS = 60_000;
+
+/**
+ * Frond (karmaterminal, #1415): the queued input that runs next. Unclaimed room chatter yields to the
+ * first runnable direct input behind it; direct inputs keep arrival order among themselves. Anything
+ * else behind the chatter, such as an internal turn or a request still preparing, keeps FIFO.
+ * Accepted edge case: requests arriving faster than turns end hold the chatter until the queue cap
+ * sheds it into their context.
+ */
+export function findSessionControllerMailboxHead(
+  inputs: readonly SessionControllerInput[],
+): SessionControllerInput | undefined {
+  const precedenceOf = (input: SessionControllerInput) =>
+    input.claim || input.injection || input.withdrawalHolds || input.retirementRequested
+      ? undefined
+      : input.source
+        ? resolveRoomPrecedence(input.source)
+        : input.roomPrecedence;
+  const next = inputs.find((input) => precedenceOf(input) !== "chatter");
+  return next?.phase === "waiting" &&
+    (next.ready || next.task || next.payload !== "unbound") &&
+    precedenceOf(next) === "direct"
+    ? next
+    : inputs[0];
+}
+
 function selectSessionControllerMailbox(
   mailbox: SessionControllerMailbox,
+  preparing?: SessionControllerInput,
 ): MailboxSelection | undefined {
   const { owner, priority } = mailbox;
   const summaries = summaryCandidates(mailbox);
@@ -58,8 +90,12 @@ function selectSessionControllerMailbox(
     (input) => input.phase !== "consumed" && !input.claim?.operation?.admissionRetired,
   );
   // A mutation awaits its own turn, so that turn precedes inputs its fence keeps waiting.
+  // Frond (karmaterminal, #1415): an input arriving while a batch prepares does not restart it.
   const first =
-    eligible.find((input) => isMutationOwnedTurn(owner, input)) ?? priority ?? eligible[0];
+    eligible.find((input) => isMutationOwnedTurn(owner, input)) ??
+    priority ??
+    eligible.find((input) => input === preparing) ??
+    findSessionControllerMailboxHead(eligible);
   if (!first) {
     return undefined;
   }
@@ -156,7 +192,17 @@ export function pumpSessionControllerMailbox(mailbox: SessionControllerMailbox):
   const delay =
     first.ready || first.task || priority
       ? 0
-      : Math.max(0, mailbox.lastEnqueuedAt + mailbox.debounceMs - performance.now());
+      : Math.max(
+          0,
+          Math.min(
+            mailbox.lastEnqueuedAt + mailbox.debounceMs - performance.now(),
+            first.source && resolveRoomPrecedence(first.source) === "chatter"
+              ? first.source.enqueuedAt +
+                  Math.max(mailbox.debounceMs, ROOM_CHATTER_MAX_WAIT_MS) -
+                  Date.now()
+              : Number.POSITIVE_INFINITY,
+          ),
+        );
   if (delay > 0) {
     clearTimeout(mailbox.timer);
     mailbox.timer = setTimeout(() => {
@@ -187,7 +233,7 @@ async function prepareSessionControllerMailboxSelection(
   const matchesGateway = captureGatewayScopeMatcher(getGatewayContextResolver(selection.first));
   let currentSelection = selection;
   const assertCurrent = () => {
-    const current = selectSessionControllerMailbox(mailbox);
+    const current = selectSessionControllerMailbox(mailbox, selection.first);
     if (
       generation !== mailbox.abortController ||
       generation.signal.aborted ||

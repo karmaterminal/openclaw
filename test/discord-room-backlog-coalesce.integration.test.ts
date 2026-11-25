@@ -24,7 +24,10 @@ import {
   type Harness,
 } from "../src/auto-reply/reply/queue.room-event-collect.test-support.js";
 import { installQueueRuntimeErrorSilencer } from "../src/auto-reply/reply/queue.test-helpers.js";
-import { clearFollowupQueue, getExistingFollowupQueue } from "../src/auto-reply/reply/queue/state.js";
+import {
+  clearFollowupQueue,
+  getExistingFollowupQueue,
+} from "../src/auto-reply/reply/queue/state.js";
 import {
   bindReplySourceToFollowup,
   prepareReplySourceInput,
@@ -113,8 +116,11 @@ async function stageDiscordLine(params: {
   lifecycle: ChannelIngressDispatchLifecycle;
 }): Promise<FollowupRun> {
   const { line, stateDir } = params;
-  const { mapGatewayDispatchData, createBaseDiscordMessageContext, buildDiscordMessageProcessContext } =
-    await loadDiscordMessageContextFixture();
+  const {
+    mapGatewayDispatchData,
+    createBaseDiscordMessageContext,
+    buildDiscordMessageProcessContext,
+  } = await loadDiscordMessageContextFixture();
   const storePath = `${stateDir}/agents/main/sessions/sessions.json`;
   const cfg: OpenClawConfig = { ...params.config, session: { store: storePath } };
   const kind = line.kind ?? "room_event";

@@ -3,8 +3,11 @@ import type { HumanMention } from "@openclaw/gateway-protocol";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import type { MediaImageLayout } from "../../../agents/embedded-agent-runner/run/prompt-image-metadata.js";
 import { runAgentHarnessBeforeMessageWriteHook } from "../../../agents/harness/hook-helpers.js";
+import { isRequiredReplyExpectation } from "../../../agents/reply-completion.js";
 import { resolveSessionStorePathCore } from "../../../config/sessions.js";
 import { readSessionEntryReadOnlyInWorker } from "../../../config/sessions/session-entry-read-runtime.js";
+import { isHostGeneratedInputProvenance } from "../../../sessions/input-provenance.js";
+import type { SessionControllerInput } from "../../../sessions/session-controller.contracts.js";
 import {
   buildPersistedUserTurnMediaInputsFromFields,
   createUserTurnTranscriptRecorder,
@@ -43,7 +46,12 @@ export function resolveOriginRoutingMetadata(items: FollowupRun[]): OriginRoutin
   if (!source) {
     return {};
   }
-  return getFollowupOriginRouting(source);
+  const routing = getFollowupOriginRouting(source);
+  // Frond (karmaterminal, #1415): a room batch whose lines quote different messages quotes none.
+  return source.currentInboundEventKind === "room_event" &&
+    items.some((item) => item.originatingReplyToId !== routing.originatingReplyToId)
+    ? { ...routing, originatingReplyToId: undefined }
+    : routing;
 }
 
 export function renderCollectItem(item: FollowupRun, idx: number): string {
@@ -277,6 +285,34 @@ export function requiresIndividualCollectDrain(item: FollowupRun): boolean {
       item.controllerInput?.policy.mode !== "collect") ||
     item.currentInboundAudio === true
   );
+}
+
+// Frond (karmaterminal, #1415): the principal's unaddressed room line is not chatter: a source the
+// queue protects, or a command owner the channel did not report as a bot. The same reading keeps the
+// principal out of the ambient owner aggregate (delivery-context.ts).
+function isPrincipalRoomEvent(item: FollowupRun): boolean {
+  return (
+    item.currentInboundEventKind === "room_event" &&
+    (item.protectFromQueueOverflow === true ||
+      (item.run.senderIsOwner === true && item.run.senderIsBot !== true))
+  );
+}
+
+// Frond (karmaterminal, #1415): optional room chatter a configured collect batches yields to direct
+// input: a request a person or peer addressed to the agent, or the principal's own room line. Every
+// other source, internal turns included, keeps its place in the queue.
+export function resolveRoomPrecedence(item: FollowupRun): SessionControllerInput["roomPrecedence"] {
+  if (item.currentInboundEventKind === "user_request") {
+    return isHostGeneratedInputProvenance(item.run.inputProvenance) ? undefined : "direct";
+  }
+  if (isPrincipalRoomEvent(item)) {
+    return "direct";
+  }
+  return item.currentInboundEventKind === "room_event" &&
+    item.controllerInput?.policy.mode === "collect" &&
+    !isRequiredReplyExpectation(item.run.terminalReplyExpectation)
+    ? "chatter"
+    : undefined;
 }
 
 type AggregateCancellation = {

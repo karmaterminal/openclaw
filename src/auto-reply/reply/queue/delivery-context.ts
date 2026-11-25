@@ -414,7 +414,13 @@ function resolveFollowupReplyAnchor(run: FollowupRun): string | undefined {
   if (run.originatingReplyToMode === "off") {
     return undefined;
   }
-  const replyToId = normalizeOptionalString(run.originatingReplyToId);
+  // Frond (karmaterminal, #1415): the message a room event quotes is context, not a delivery target.
+  // Its turn never replies on its own (followup-turn-execution.ts), and threads ride the route's
+  // thread id, so quoting different messages does not keep a room's lines apart.
+  const replyToId =
+    run.currentInboundEventKind === "room_event"
+      ? undefined
+      : normalizeOptionalString(run.originatingReplyToId);
   if (replyToId || normalizeMessageChannel(run.originatingChannel) !== "slack") {
     return replyToId;
   }

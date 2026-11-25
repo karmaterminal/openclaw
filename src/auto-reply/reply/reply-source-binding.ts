@@ -4,6 +4,7 @@ import {
   resolveSessionStorePathCore,
 } from "../../config/sessions/paths.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { isHostGeneratedInputProvenance } from "../../sessions/input-provenance.js";
 import { captureSessionTarget } from "../../sessions/session-controller.lifecycle.js";
 import {
   bindSessionControllerSource,
@@ -12,13 +13,14 @@ import {
   retireSessionControllerInput,
   type SessionControllerInput,
 } from "../../sessions/session-controller.mailbox.js";
+import { isConfiguredCommandOwner } from "../command-auth.js";
 import { resolveCommandTurnTargetSessionKey } from "../command-turn-context.js";
 import type { TurnAdoptionLifecycle } from "../get-reply-options.types.js";
 import type { MsgContext } from "../templating.js";
 import type { InternalGetReplyOptions } from "./get-reply.types.js";
 // Frond (karmaterminal, #1415): shared room-event queue-mode rule.
 import { resolveQueueSettingsCore, resolveRoomEventQueueMode } from "./queue/settings.js";
-import type { FollowupRun } from "./queue/types.js";
+import type { FollowupRun, QueueSettings } from "./queue/types.js";
 import { replySource, type ReplySourceBinding } from "./reply-source-binding.types.js";
 import { readChannelSourceTurnId } from "./source-turn-id.js";
 
@@ -68,6 +70,30 @@ export function readReplySourceInput(
   return direct[replySource] ?? lifecycle?.[replySource];
 }
 
+// Frond (karmaterminal, #1415): resolveRoomPrecedence's reading of a source, from the channel facts
+// known before preparation resolves command authority. It orders the mailbox and grants nothing.
+function resolveReservedRoomPrecedence(
+  ctx: MsgContext,
+  cfg: OpenClawConfig,
+  policy: QueueSettings,
+): SessionControllerInput["roomPrecedence"] {
+  if (ctx.InboundEventKind === "user_request") {
+    return isHostGeneratedInputProvenance(ctx.InputProvenance) ? undefined : "direct";
+  }
+  if (ctx.InboundEventKind !== "room_event") {
+    return undefined;
+  }
+  const isPrincipal =
+    ctx.SenderIsBot !== true &&
+    isConfiguredCommandOwner(cfg, {
+      channel: ctx.Provider,
+      accountId: ctx.AccountId,
+      senderId: ctx.SenderId,
+      senderE164: ctx.SenderE164,
+    });
+  return isPrincipal ? "direct" : policy.mode === "collect" ? "chatter" : undefined;
+}
+
 /** Capture only an actual physical source scope, before asynchronous preparation. */
 export async function prepareReplySourceInput(
   ctx: MsgContext,
@@ -113,6 +139,7 @@ export async function prepareReplySourceInput(
     sourceTurnId: readChannelSourceTurnId(ctx),
     protocolRunId: options?.runId,
     policy,
+    roomPrecedence: resolveReservedRoomPrecedence(ctx, cfg, policy),
     target: captureSessionTarget({
       storeScope: storePath,
       sessionKey,
