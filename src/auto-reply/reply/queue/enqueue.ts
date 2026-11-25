@@ -2,10 +2,7 @@ import { normalizeOptionalString } from "@openclaw/normalization-core/string-coe
 import { isRequiredReplyExpectation } from "../../../agents/reply-completion.js";
 import { normalizeChatType } from "../../../channels/chat-type.js";
 import { racePromiseWithAbortSignal } from "../../../infra/abort-signal.js";
-import {
-  diagnosticLogger,
-  logMessageQueuedWithBacklogPolicy,
-} from "../../../logging/diagnostic-runtime.js";
+import { logMessageQueuedWithBacklogPolicy } from "../../../logging/diagnostic-runtime.js";
 import { channelRouteDedupeKey } from "../../../plugin-sdk/channel-route.js";
 import { defaultRuntime } from "../../../runtime.js";
 import { settleSessionControllerSourceInjectionOrder } from "../../../sessions/session-controller.mailbox-source.js";
@@ -18,7 +15,7 @@ import {
 import { extractTextFromChatContent } from "../../../shared/chat-content.js";
 import { applyQueueDropPolicy, countPendingQueueItems } from "../../../utils/queue-helpers.js";
 import { isSenderInOwnerAllowFromList } from "../../command-auth.js";
-import { preserveAmbientOverflowContext } from "./ambient-context.js";
+import { handOnAmbientOverflowContext, preserveAmbientOverflowContext } from "./ambient-context.js";
 import {
   createOverflowSummaryRetrySource,
   resolveFollowupAuthorizationKey,
@@ -32,6 +29,7 @@ import {
   markFollowupRunEnqueued,
   releaseBeforeTurnAdoptionRetry,
 } from "./lifecycle.js";
+import { recordQueueShed } from "./shed-record.js";
 import {
   followupSourceRunners,
   getExistingFollowupQueue,
@@ -178,7 +176,12 @@ export function enqueueFollowupRun(
         !queue.items.some((item) => !queue.inFlight.has(item) && isDiscardableRoomEvent(item)))
     ) {
       if (isDiscardableRoomEvent(run)) {
-        discardOverflowRoomEvent(run, "queue-cap-new", queue);
+        discardOverflowRoomEvent(
+          run,
+          "queue-cap-new",
+          queue,
+          queue.items.filter((item) => !queue.inFlight.has(item)),
+        );
       } else {
         settleFollowupQueueRefusal(queue, run);
       }
@@ -301,7 +304,7 @@ function settleFollowupQueueRefusal(
   // backpressure that spends no retry budget; the ingress owner paces the retry. Requests and other
   // senders keep their accounting.
   if (isOwnerAccountRoomEvent(run)) {
-    run.onQueueDisposition?.("queue-cap");
+    recordQueueShed(run, "queue-cap", "refused");
     completeFollowupRunLifecycle(run, "backpressure");
     return;
   }
@@ -315,7 +318,7 @@ function settleFollowupQueueRefusal(
   // That is retryable backpressure under every policy, including drop:new.
   const reason =
     queue.dropPolicy === "new" && protectedPendingCount < queue.cap ? "queue-cap-new" : "queue-cap";
-  run.onQueueDisposition?.(reason);
+  recordQueueShed(run, reason, reason === "queue-cap-new" ? "dropped" : "refused");
   completeFollowupRunLifecycle(
     run,
     reason === "queue-cap-new" ? { kind: "dropped", reason } : undefined,
@@ -377,19 +380,19 @@ function discardOverflowRoomEvent(
   run: FollowupRun,
   disposition: "queue-cap-old" | "queue-cap-new",
   queue: ReturnType<typeof getFollowupQueue>,
-  candidates: FollowupRun[] = [],
+  candidates: FollowupRun[],
 ): void {
-  const contextPreserved =
-    queue.dropPolicy === "summarize" && preserveAmbientOverflowContext(run, candidates, queue.cap);
+  const previewed = queue.dropPolicy === "summarize";
+  const stated = preserveAmbientOverflowContext(run, candidates, queue.cap, previewed);
   if (run.controllerInput) {
     run.controllerInput.payload = "unbound";
   }
-  run.onQueueDisposition?.(disposition);
-  diagnosticLogger.info("followup queue discarded ambient room event at capacity", {
-    sessionId: run.run.sessionId,
-    disposition,
-    contextPreserved,
-  });
+  if (stated) {
+    recordQueueShed(run, disposition, previewed ? "previewed" : "counted");
+  } else {
+    const { ambientOverflowContext }: InternalFollowupRun = run;
+    recordQueueShed(run, disposition, "none", 1 + (ambientOverflowContext?.shed ?? 0));
+  }
   // This is a terminal policy decision, not abandonment: reopening durable ingress
   // would replay the chatter we just shed. Adoption only settles source custody;
   // no model or tool execution is admitted here.
@@ -470,13 +473,15 @@ function applyFollowupQueueOverflow(
         summarySources.push(...dropped);
         return;
       }
+      const survivors = capacity.items.filter((item) => !queue.inFlight.has(item));
       for (const item of dropped) {
         // Remove pending visibility immediately, while the input retains its
         // asynchronous source-cleanup custody until the actual receipt settles.
         if (item.controllerInput) {
           item.controllerInput.payload = "unbound";
         }
-        item.onQueueDisposition?.("queue-cap-old");
+        const unstated = handOnAmbientOverflowContext(item, [...survivors, run], queue.cap);
+        recordQueueShed(item, "queue-cap-old", "dropped", unstated);
         completeFollowupRunLifecycle(item, { kind: "dropped", reason: "queue-cap-old" });
       }
     },
@@ -496,6 +501,17 @@ function applyFollowupQueueOverflow(
         throw new Error("followup queue summary source lost its elided line");
       }
       const contextKey = resolveFollowupDeliveryStorageKey(item);
+      // Frond (karmaterminal, #1415): a summary turn renders only the newest cap sources' context,
+      // so an elided source hands its shed count to one that keeps its place. One already attached
+      // belongs to the turn it runs in.
+      const { ambientOverflowContext }: InternalFollowupRun = item;
+      if (!ambientOverflowContext?.attached) {
+        handOnAmbientOverflowContext(
+          item,
+          [...summarySources, ...capacity.items, run].filter((next) => !queue.inFlight.has(next)),
+          queue.cap,
+        );
+      }
       let elision = queue.summaryElisions.at(-1);
       const compactSource = createOverflowSummaryRetrySource(item);
       if (compactSource.controllerInput) {

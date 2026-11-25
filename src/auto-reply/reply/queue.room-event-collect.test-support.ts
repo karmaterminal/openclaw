@@ -266,12 +266,12 @@ export async function expectShedAtCap(harness: Harness, kept: string[], shed: st
 
 const SHED_CONTEXT = "[Compacted ambient room context; ";
 
-/** How many room messages a turn says were shed into its context, and how many it previews. */
+/** For each shed notice in a turn, how many room messages it counts and how many it previews. */
 export function shedCounts(run: FollowupRun | undefined) {
-  const counts = /shed at the queue cap: (\d+), newest (\d+) previewed/u.exec(
-    run?.currentInboundContext?.text ?? "",
+  const text = run?.currentInboundContext?.text ?? "";
+  return [...text.matchAll(/shed at the queue cap: (\d+), (?:newest (\d+)|none) previewed/gu)].map(
+    ([, shed, previewed]) => ({ shed: Number(shed), previewed: Number(previewed ?? 0) }),
   );
-  return counts && { shed: Number(counts[1]), previewed: Number(counts[2]) };
 }
 
 /** The shed rows' previews a turn carries as background context under drop:summarize (#191733). */

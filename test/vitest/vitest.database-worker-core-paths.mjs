@@ -377,6 +377,8 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/reply/queue.room-ambient-owner.test.ts",
   // Frond (karmaterminal, #1415): room chatter batches and yields to direct input, same ingress.
   "src/auto-reply/reply/queue.room-precedence.test.ts",
+  // Frond (karmaterminal, #1415): what the cap sheds is counted and settled once, same ingress.
+  "src/auto-reply/reply/queue.room-shed-accounting.test.ts",
   // Frond (karmaterminal, #1564): the human owner's room message at queue capacity, same ingress.
   "src/auto-reply/reply/queue.room-owner-overflow.test.ts",
   "test/discord-room-ambient-owner-echo.integration.test.ts",

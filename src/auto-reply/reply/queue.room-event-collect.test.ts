@@ -386,7 +386,7 @@ describe("mid-turn room events over durable ingress (#1415)", () => {
               text: textOf(row),
             })),
           );
-          expect(shedCounts(harness.calls[0])).toEqual({ shed: 2, previewed: 2 });
+          expect(shedCounts(harness.calls[0])).toEqual([{ shed: 2, previewed: 2 }]);
           expect(harness.calls[0]?.currentInboundEventKind).toBe("room_event");
           await expectSettledOnce(harness, ["r1", "r2", "r3", "r4", "r5"]);
         },
@@ -659,7 +659,7 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
           { sender: "alice", messageId: "s1", text },
           { sender: "bob", messageId: "s2", text },
         ]);
-        expect(shedCounts(harness.calls[0])).toEqual({ shed: 2, previewed: 2 });
+        expect(shedCounts(harness.calls[0])).toEqual([{ shed: 2, previewed: 2 }]);
         expect(readUserTurnRequesterOrigin(harness.calls[0]?.userTurnTranscriptRecorder)).toEqual(
           ROOM_ORIGIN,
         );
@@ -855,7 +855,7 @@ describe("a multi-sender room burst runs as one least-authority aggregate (#1415
           if (dropPolicy === "old") {
             expect(harness.calls[0]?.currentInboundContext).toBeUndefined();
           } else {
-            expect(shedCounts(harness.calls[0])).toEqual({ shed: 50, previewed: 20 });
+            expect(shedCounts(harness.calls[0])).toEqual([{ shed: 50, previewed: 20 }]);
             expect(shedContext(harness.calls[0])).toEqual(
               shed.slice(-20).map((row) => ({
                 sender: row.from?.senderName,

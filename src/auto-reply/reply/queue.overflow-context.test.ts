@@ -96,10 +96,12 @@ describe("followup queue overflow summary context", () => {
         expect(context?.text).toContain('"messageId":"incoming"');
         expect(context?.text).toContain('"text":"lunch?"');
         expect(context?.fragments?.at(-1)?.kind).toBe("conversation-data");
-        expect(q.calls[1]?.currentInboundContext).toBeUndefined();
       } else {
-        expect(context).toBeUndefined();
+        // Frond (karmaterminal, #1415): no preview, but the turn states how many were shed.
+        expect(context?.text).toContain("shed at the queue cap: 2, none previewed");
+        expect(context?.text).not.toContain("lunch?");
       }
+      expect(q.calls[1]?.currentInboundContext).toBeUndefined();
       for (const [index, room] of [ambient, incoming].entries()) {
         await room.controllerInput?.settlement.promise;
         expect(room.turnAdoptionLifecycle?.onAdopted).toHaveBeenCalledOnce();

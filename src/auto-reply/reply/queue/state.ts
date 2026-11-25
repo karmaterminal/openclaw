@@ -20,7 +20,8 @@ import {
 } from "../../../sessions/session-controller.target.js";
 import { normalizeThinkLevel } from "../../thinking.js";
 import { cancelFollowupRunLifecycle, completeFollowupRunLifecycle } from "./lifecycle.js";
-import type { FollowupRun, QueueDropPolicy, QueueSettings } from "./types.js";
+import { recordQueueShed } from "./shed-record.js";
+import type { FollowupRun, InternalFollowupRun, QueueDropPolicy, QueueSettings } from "./types.js";
 
 export const DEFAULT_QUEUE_DEBOUNCE_MS = 500;
 export const DEFAULT_QUEUE_CAP = 20;
@@ -120,7 +121,8 @@ export function trimSummaryElisionsToCap(queue: SummaryElisionCapState): void {
       if (source.controllerInput) {
         source.controllerInput.payload = "unbound";
       }
-      source.onQueueDisposition?.("queue-cap-old");
+      const { ambientOverflowContext }: InternalFollowupRun = source;
+      recordQueueShed(source, "queue-cap-old", "dropped", ambientOverflowContext?.shed);
       // Selection closes now; source custody lasts through the durable drop receipt.
       completeFollowupRunLifecycle(source, { kind: "dropped", reason: "queue-cap-old" });
       if (entry.entries.length === 0) {
