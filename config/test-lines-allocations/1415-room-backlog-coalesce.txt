@@ -1,2 +1,2 @@
 # Room backlog coalescing (karmaterminal/openclaw#1415): quoted-reply batches, direct input ahead of chatter, bounded waits and counted overflow. Exact net test-line growth against ab5a30ea79.
-852
+869

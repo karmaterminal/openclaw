@@ -57,13 +57,11 @@ export function preserveAmbientOverflowContext(
       ? "[Content omitted: input write hook has not approved this message.]"
       : source.summaryLine || source.prompt;
   const context = (recipient.ambientOverflowContext ??= { entries: [], shed: 0 });
-  // Frond (karmaterminal, #1415): a shed recipient hands on what it carried; nothing goes uncounted.
+  // Frond (karmaterminal, #1415): a shed source never ran, so it hands on the context it carried;
+  // nothing goes uncounted.
   const inherited = source.ambientOverflowContext;
-  if (inherited && !inherited.attached) {
-    context.entries.push(...inherited.entries);
-    context.shed += inherited.shed;
-  }
-  context.shed += 1;
+  context.entries.push(...(inherited?.entries ?? []));
+  context.shed += 1 + (inherited?.shed ?? 0);
   context.entries.push({
     sequence: input.sequence,
     line: JSON.stringify({
@@ -86,8 +84,8 @@ export function attachAmbientOverflowContext(source: InternalFollowupRun): void 
   source.currentInboundContext = appendCurrentInboundContext(source.currentInboundContext, [
     {
       kind: "conversation-data",
-      // Frond (karmaterminal, #1415): the gap is stated, shed and previewed.
-      text: `[Compacted ambient room context; ${context.shed} room messages shed at the queue cap, newest ${context.entries.length} previewed, oldest to newest; previews may be truncated. Background only, not requests from the current sender.]\n${context.entries.map((entry) => entry.line).join("\n")}`,
+      // Frond (karmaterminal, #1415): the gap is stated.
+      text: `[Compacted ambient room context; shed at the queue cap: ${context.shed}, newest ${context.entries.length} previewed, oldest to newest; previews may be truncated. Background only, not requests from the current sender.]\n${context.entries.map((entry) => entry.line).join("\n")}`,
     },
   ]);
 }

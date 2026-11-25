@@ -267,7 +267,7 @@ const SHED_CONTEXT = "[Compacted ambient room context; ";
 
 /** How many room messages a turn says were shed into its context, and how many it previews. */
 export function shedCounts(run: FollowupRun | undefined) {
-  const counts = /(\d+) room messages shed at the queue cap, newest (\d+) previewed/u.exec(
+  const counts = /shed at the queue cap: (\d+), newest (\d+) previewed/u.exec(
     run?.currentInboundContext?.text ?? "",
   );
   return counts && { shed: Number(counts[1]), previewed: Number(counts[2]) };
