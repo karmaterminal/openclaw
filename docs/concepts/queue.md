@@ -117,9 +117,13 @@ is adopted or discarded.
 At capacity, optional ambient room events yield to user requests before these drop
 policies apply; incoming ambient room events cannot evict user requests. Under every
 policy, an eligible pending turn in the same channel, account, room, thread, and
-Gateway states as background context how many ambient events were shed; with
-`summarize` it also carries short previews. This creates no extra model turns.
-Each recipient keeps the newest `min(cap, 20)` previews in
+Gateway states as background context how many ambient events were shed. With
+`summarize`, short previews go along only to a turn of the event's own sender, or to a
+[combined room turn](/channels/ambient-room-events#owner-messages-in-a-busy-room) the
+event could have joined; the first pending turn that may read a preview takes it with its
+count. Any other turn states the count alone, with no name, message ID, or text from
+another sender. An event whose sender the channel does not identify is never previewed.
+This creates no extra model turns. Each recipient keeps the newest `min(cap, 20)` previews in
 arrival order, with message text capped at 160 characters and sender/message ID
 fields capped at 80 characters each. Previews are untrusted context, not requests
 or sender authority. Input text awaiting its write hook is replaced by an omission

@@ -242,8 +242,9 @@ Supported room-event channels keep recent ambient room messages as context. Tele
 
 When a busy session reaches its queue cap, optional room events are discarded
 before user requests, without generating overflow-summary turns. The default
-`summarize` policy retains bounded previews on an eligible pending turn from the
-same conversation; under every policy that turn states how many messages were shed. This sheds ambient processing,
+`summarize` policy retains bounded previews for a pending turn of the message's own sender, or for a
+combined turn it could have joined, in the same conversation; under every policy a pending turn states
+how many messages were shed. This sheds ambient processing,
 not channel history; the configured history window still
 bounds which recent messages are available as context. See [Queue options](/concepts/queue#queue-options).
 Room messages from the owner's accounts listed in

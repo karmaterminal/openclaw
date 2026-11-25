@@ -1,9 +1,13 @@
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import { appendCurrentInboundContext } from "../../../agents/embedded-agent-runner/run/runtime-context-prompt.js";
+import type { RuntimeContextFragment } from "../../../agents/internal-runtime-context.js";
+import { resolveRequesterPrincipalKey } from "../../../agents/requester-origin.js";
 import { captureGatewayScopeMatcher } from "../../../gateway/session-runtime-scope.js";
 import { channelRouteDedupeKey } from "../../../plugin-sdk/channel-route.js";
 import { getGatewayContextResolver } from "../../../plugins/runtime/gateway-request-scope.js";
 import { extractTextFromChatContent } from "../../../shared/chat-content.js";
+import { resolveRoomAggregateBatchKey } from "./delivery-context.js";
+import { requiresIndividualCollectDrain } from "./envelope.js";
 import { isFollowupRunAborted, type InternalFollowupRun } from "./types.js";
 
 function roomKey(source: InternalFollowupRun): string {
@@ -25,21 +29,56 @@ function preview(text: string, limit: number): string {
 }
 
 type AmbientOverflowContext = NonNullable<InternalFollowupRun["ambientOverflowContext"]>;
+type AmbientOverflowEntry = AmbientOverflowContext["entries"][number];
+type PreviewAudience = Pick<AmbientOverflowEntry, "sender" | "aggregate">;
 
-/** Context belongs to an existing turn, never to a second runnable backlog. */
+// Frond (karmaterminal, #1415; ruled 2026-11-25): a shed message's preview is read only by a turn of
+// its own sender, or by the opted-in, verified aggregate it could have joined. Any other turn states a
+// count. A sender the channel did not identify is nobody's own.
+function resolvePreviewAudience(source: InternalFollowupRun): PreviewAudience {
+  const execution = source.run;
+  const principal = resolveRequesterPrincipalKey({
+    ...execution,
+    messageChannel: source.originatingChannel,
+    operatorAuthority: source.operatorAuthority,
+  });
+  return {
+    sender: principal && JSON.stringify([principal, execution.senderId ?? ""]),
+    aggregate: requiresIndividualCollectDrain(source)
+      ? undefined
+      : resolveRoomAggregateBatchKey(source),
+  };
+}
+
+function previewsFor(
+  entries: readonly AmbientOverflowEntry[],
+  { sender, aggregate }: PreviewAudience,
+): AmbientOverflowEntry[] {
+  return entries.filter(
+    (entry) =>
+      (sender !== undefined && entry.sender === sender) ||
+      (aggregate !== undefined && entry.aggregate === aggregate),
+  );
+}
+
+/**
+ * Context belongs to an existing turn, never to a second runnable backlog. The first turn that may read
+ * a preview takes it; when none may, the first turn takes the count. Returns the previews the taker now
+ * holds, or undefined when no turn took the context.
+ */
 function giveToPendingTurn(
   source: InternalFollowupRun,
   candidates: InternalFollowupRun[],
   cap: number,
   given: Pick<AmbientOverflowContext, "entries" | "shed">,
-): boolean {
+): AmbientOverflowEntry[] | undefined {
   const input = source.controllerInput;
   if (!input) {
-    return false;
+    return undefined;
   }
   const route = roomKey(source);
   const matchesGateway = captureGatewayScopeMatcher(getGatewayContextResolver(input));
-  const recipient = candidates.find(
+  const pending = candidates.filter(
     (item) =>
       item !== source &&
       item.controllerInput &&
@@ -47,8 +86,17 @@ function giveToPendingTurn(
       matchesGateway(item.controllerInput) &&
       roomKey(item) === route,
   );
+  let recipient = pending[0];
   if (!recipient) {
-    return false;
+    return undefined;
+  }
+  let previews: AmbientOverflowEntry[] = [];
+  for (const item of given.entries.length ? pending : []) {
+    previews = previewsFor(given.entries, resolvePreviewAudience(item));
+    if (previews.length) {
+      recipient = item;
+      break;
+    }
   }
   // Frond (karmaterminal, #1415): a turn waiting to retry already states an attached context; what
   // is shed meanwhile is stated beside it.
@@ -57,10 +105,10 @@ function giveToPendingTurn(
     current && !current.attached ? current : { entries: [], shed: 0, attachedEarlier: current };
   recipient.ambientOverflowContext = context;
   context.shed += given.shed;
-  context.entries.push(...given.entries);
+  context.entries.push(...previews);
   context.entries.sort((a, b) => a.sequence - b.sequence);
   context.entries.splice(0, Math.max(0, context.entries.length - Math.min(20, Math.floor(cap))));
-  return true;
+  return context.entries;
 }
 
 /**
@@ -122,16 +170,17 @@ export function handOnUnattachedContext(
 
 /**
  * Counts a shed room message in the turn that outlives it, whatever the drop policy; only
- * drop:summarize adds a preview. Returns how many room messages no pending turn took over.
+ * drop:summarize adds a preview, for a turn that may read it. Returns whether a turn holds that
+ * preview, and how many room messages no pending turn took over.
  */
 export function preserveAmbientOverflowContext(
   source: InternalFollowupRun,
   candidates: InternalFollowupRun[],
   cap: number,
-  previewed: boolean,
-): number {
-  const entries: AmbientOverflowContext["entries"] = [];
-  if (previewed && source.controllerInput) {
+  summarize: boolean,
+): { previewed: boolean; unstated: number } {
+  const entries: AmbientOverflowEntry[] = [];
+  if (summarize && source.controllerInput) {
     const approved = source.userTurnTranscriptRecorder?.getPendingInputMessage?.();
     // Unstaged sources still owe their write hook. Never bypass it by copying raw
     // text into another turn's context, or restore text the hook already redacted.
@@ -147,37 +196,80 @@ export function preserveAmbientOverflowContext(
         messageId: preview(source.messageId ?? "", 80),
         text: preview(text, 160),
       }),
+      ...resolvePreviewAudience(source),
     });
   }
   // Frond (karmaterminal, #1415): a shed source never ran, so it hands on the context it carried;
   // nothing goes uncounted.
   const inherited = unreadContext(source);
   const shed = 1 + inherited.shed;
-  return giveToPendingTurn(source, candidates, cap, {
+  const held = giveToPendingTurn(source, candidates, cap, {
     entries: [...inherited.entries, ...entries],
     shed,
-  })
-    ? 0
-    : shed;
+  });
+  return {
+    previewed: held?.some((entry) => entry.sequence === source.controllerInput?.sequence) ?? false,
+    unstated: held ? 0 : shed,
+  };
 }
 
-export function attachAmbientOverflowContext(source: InternalFollowupRun): void {
+/** The notice a claimed source's turn states, with the previews that turn may read. */
+function takeOverflowNotice(
+  source: InternalFollowupRun,
+  reader: "sender" | "aggregate",
+): RuntimeContextFragment[] {
   const context = source.ambientOverflowContext;
   if (!context || context.attached) {
-    return;
+    return [];
   }
   context.attached = source.controllerInput;
-  const previews = context.entries.length
-    ? `newest ${context.entries.length} previewed, oldest to newest; previews may be truncated`
+  const { sender, aggregate } = resolvePreviewAudience(source);
+  const entries = previewsFor(context.entries, reader === "sender" ? { sender } : { aggregate });
+  const previews = entries.length
+    ? `${entries.length} previewed, oldest to newest; previews may be truncated`
     : "none previewed";
-  source.currentInboundContext = appendCurrentInboundContext(source.currentInboundContext, [
+  return [
     {
       kind: "conversation-data",
       // Frond (karmaterminal, #1415): the gap is stated.
       text: [
         `[Compacted ambient room context; shed at the queue cap: ${context.shed}, ${previews}. Background only, not requests from the current sender.]`,
-        ...context.entries.map((entry) => entry.line),
+        ...entries.map((entry) => entry.line),
       ].join("\n"),
     },
-  ]);
+  ];
+}
+
+export function attachAmbientOverflowContext(source: InternalFollowupRun): void {
+  const notice = takeOverflowNotice(source, "sender");
+  if (notice.length) {
+    source.currentInboundContext = appendCurrentInboundContext(
+      source.currentInboundContext,
+      notice,
+    );
+  }
+}
+
+/**
+ * Frond (karmaterminal, #1415): a cross-sender aggregate's member as that turn reads it. The member
+ * itself, which a refused turn may retry as its own sender, never holds the other senders' previews.
+ */
+export function readAsAggregateMember(source: InternalFollowupRun): InternalFollowupRun {
+  const notice = takeOverflowNotice(source, "aggregate");
+  return notice.length
+    ? {
+        ...source,
+        currentInboundContext: appendCurrentInboundContext(source.currentInboundContext, notice),
+      }
+    : source;
+}
+
+/** Frond (karmaterminal, #1415): the aggregate was refused before its model read the notice. */
+export function returnAggregateMember(
+  source: InternalFollowupRun,
+  read: InternalFollowupRun | undefined,
+): void {
+  if (read && read !== source && source.ambientOverflowContext) {
+    source.ambientOverflowContext.attached = undefined;
+  }
 }

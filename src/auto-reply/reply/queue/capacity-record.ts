@@ -6,8 +6,9 @@ import type { FollowupQueueDisposition } from "../queue-policy.js";
 import type { FollowupRun } from "./types.js";
 
 type QueueCapacityOutcome = {
-  kind: /** A pending turn states it in its count, with a preview under drop:summarize. */
+  kind: /** A pending turn that may read its drop:summarize preview holds it, beside the count. */
     | "previewed"
+    /** A pending turn states it in its count alone. */
     | "counted"
     /** No pending turn can state it; its settled receipt and this record remain. */
     | "unstated"

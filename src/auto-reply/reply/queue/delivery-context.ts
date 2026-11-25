@@ -244,7 +244,7 @@ function resolveRoomAggregateSource(source: FollowupRun): FollowupRun | undefine
     : undefined;
 }
 
-function resolveRoomAggregateBatchKey(run: FollowupRun): string | undefined {
+export function resolveRoomAggregateBatchKey(run: FollowupRun): string | undefined {
   const baseline = resolveRoomAggregateSource(run);
   return (
     baseline && JSON.stringify(["room-aggregate", resolveFollowupDeliveryStorageKey(baseline)])

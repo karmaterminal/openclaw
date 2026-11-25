@@ -353,8 +353,12 @@ function discardOverflowRoomEvent(
   queue: ReturnType<typeof getFollowupQueue>,
   candidates: FollowupRun[],
 ): void {
-  const previewed = queue.dropPolicy === "summarize";
-  const unstated = preserveAmbientOverflowContext(run, candidates, queue.cap, previewed);
+  const { previewed, unstated } = preserveAmbientOverflowContext(
+    run,
+    candidates,
+    queue.cap,
+    queue.dropPolicy === "summarize",
+  );
   if (run.controllerInput) {
     run.controllerInput.payload = "unbound";
   }

@@ -31,7 +31,11 @@ import {
 import { createUserTurnTranscriptRecorder } from "../../../sessions/user-turn-transcript.js";
 import { AgentDatabaseExecutionAdmissionClosedError } from "../../../state/agent-database-admission-error.js";
 import { buildCollectPrompt, previewQueueSummaryPrompt } from "../../../utils/queue-helpers.js";
-import { attachAmbientOverflowContext } from "./ambient-context.js";
+import {
+  attachAmbientOverflowContext,
+  readAsAggregateMember,
+  returnAggregateMember,
+} from "./ambient-context.js";
 import {
   collectCurrentInboundContext,
   collectRuntimeMetadata,
@@ -219,9 +223,8 @@ async function executeClaim(
       }
     }
   };
-  for (const item of sources) {
-    attachAmbientOverflowContext(item);
-    if (claim.summary) {
+  if (claim.summary) {
+    for (const item of sources) {
       queue.activeSummarySources.add(item);
     }
   }
@@ -237,6 +240,14 @@ async function executeClaim(
   // closed before execution, refused like a pre-execution rejection: each member retries alone,
   // or is released unadopted when the claim can no longer be deferred.
   const refuseMixedClaim = mixedSenders && !crossSender;
+  // Frond (karmaterminal, #1415): a shed preview crosses senders only in the aggregate's own context.
+  const readers = sources.map((item) => {
+    if (crossSender) {
+      return readAsAggregateMember(item);
+    }
+    attachAmbientOverflowContext(item);
+    return item;
+  });
   const readSummaryLine = (item: FollowupRun) => {
     const entry = queue.summaryEntries.find((candidate) => candidate.source === item);
     if (entry) {
@@ -290,10 +301,14 @@ async function executeClaim(
     run = {
       ...source,
       ...resolveOriginRoutingMetadata(sources),
-      ...collectRuntimeMetadata(sources, cancellation.signal),
+      ...collectRuntimeMetadata(readers, cancellation.signal),
       ...collectQueuedPromptMedia(sources),
       ...(claim.summary
-        ? { currentInboundContext: collectCurrentInboundContext(summarizedSources) }
+        ? {
+            currentInboundContext: collectCurrentInboundContext(
+              readers.slice(-summarizedSources.length),
+            ),
+          }
         : {}),
       prompt,
       transcriptPrompt: claim.summary ? prompt : buildCollectTranscriptInput(sources).text,
@@ -420,6 +435,7 @@ async function executeClaim(
     }
     for (const item of retrySources) {
       item.controllerInput!.payload = claim.summary ? "summary" : "ready";
+      returnAggregateMember(item, readers[sources.indexOf(item)]);
     }
     if (retrySources.length) {
       queue.lastEnqueuedAt = performance.now();

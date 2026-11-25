@@ -254,7 +254,7 @@ describe("a shed preview stays out of other senders' turns (#1415)", () => {
   const summarize = { dropPolicy: "summarize" } as const;
 
   type From = (id: string) => Row["from"];
-  it.each<[string, From, Partial<QueueSettings>?]>([
+  it.each<[string, From, Partial<QueueSettings>?, string?]>([
     ["nothing configured", (id) => sender(id)],
     ["nothing configured, in followup mode", (id) => sender(id), { mode: "followup" }],
     ["nothing configured, in steer mode", (id) => sender(id), { mode: "steer" }],
@@ -266,9 +266,12 @@ describe("a shed preview stays out of other senders' turns (#1415)", () => {
     [
       "opted in, a person's turn after listed bots' lines",
       (id) => (id < "carol" ? peer(id, listed) : sender(id, { config: listed })),
+      {},
+      // bob's line may read alice's preview; carol's, which outlives both, may not.
+      "previewed",
     ],
     ["opted in, outside collect mode", (id) => peer(id, listed), { mode: "followup" }],
-  ])("states only their count: %s", async (_, from, settings) => {
+  ])("states only their count: %s", async (_, from, settings, first = "counted") => {
     const rows = names.map((id, index): Row => ({ id: `r${index + 1}`, from: from(id) }));
     await overflow(rows, { cap: 2, ...summarize, ...settings }, async (harness) => {
       expect(harness.calls).toEqual(["r3", "r4"].map((id) => harness.runs.get(id)));
@@ -280,7 +283,7 @@ describe("a shed preview stays out of other senders' turns (#1415)", () => {
       expect(carol).toMatchObject({ prompt: textOf(rows[2]!), run: { senderId: "carol" } });
       expect(shedCounts(carol)).toEqual([{ shed: 2, previewed: 0 }]);
       expect(shedCounts(dave)).toEqual([]);
-      expect(records.map((record) => record.outcome)).toEqual(["counted", "counted"]);
+      expect(records.map((record) => record.outcome)).toEqual([first, "counted"]);
       await expectSettledOnce(
         harness,
         rows.map((row) => row.id),

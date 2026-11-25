@@ -44,7 +44,13 @@ export function bindReplyOperationQueueDisposition(
 export type InternalFollowupRun = FollowupRun & {
   /** Bounded background data expires with this turn; retries attach it only once. */
   ambientOverflowContext?: {
-    entries: Array<{ sequence: number; line: string }>;
+    entries: Array<{
+      sequence: number;
+      line: string;
+      /** Frond (karmaterminal, #1415): who wrote it, when known, and the aggregate it may join. */
+      sender?: string;
+      aggregate?: string;
+    }>;
     /** Frond (karmaterminal, #1415): every room message shed into this context, previewed or not. */
     shed: number;
     /** The input whose turn states it. */
