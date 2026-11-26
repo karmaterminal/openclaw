@@ -438,6 +438,19 @@ fact. Supply these facts for each turn. Harnesses with a separate static prompt
 can use the same interface's `buildUiPresentationPrompt` for stable UI guidance,
 leaving delivery and target instructions in late context.
 
+Harnesses that assemble their own instructions render continuation guidance with
+`buildContinuationGuidancePrompt({ config, promptMode, toolNames })` from the same
+interface. It applies the OpenClaw system prompt's gate: `agents.defaults.continuation.enabled`
+turns it on, `none` prompts omit it, minimal prompts get chain delegation, and the callable
+tool names choose the tool or bracket-token form. Pass the prompt mode your harness renders
+with: attempts carry the caller's `promptMode` unresolved, and only the embedded runner maps an
+unset mode to minimal for subagent and cron sessions. Its output depends only on config, prompt
+mode, and the tool set, so it belongs in session-stable instructions. To register `continue_work`,
+`continue_delegate`, and `request_compaction`, forward the attempt's
+`continueWorkOpts`, `requestCompactionOpts`, `drainsContinuationDelegateQueue`, and
+`disableContinuationTools` to the host tool surface. Omit `requestCompactionOpts` when the
+harness has no `compact` operation, because `request_compaction` would always fail there.
+
 For auxiliary session control calls, `resolveSessionModelRef` from
 `openclaw/plugin-sdk/model-session-runtime` resolves the current model selection.
 `prepareAgentRuntimeAuth` from `openclaw/plugin-sdk/agent-harness-runtime` selects

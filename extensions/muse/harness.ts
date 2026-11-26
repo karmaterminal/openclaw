@@ -40,6 +40,7 @@ import {
 } from "openclaw/plugin-sdk/session-transcript-runtime";
 import { consumeTurn } from "./src/events.js";
 import { MusePool, openMuseSession } from "./src/runtime.js";
+import { formatMuseSessionContext } from "./src/session-context.js";
 import { museTurnUsage } from "./src/usage.js";
 import { MuseCatalogReader } from "./src/verify-setup.js";
 
@@ -356,21 +357,7 @@ export function createMuseAgentHarness(options: MuseHarnessOptions): AgentHarnes
               bootstrap.bootstrapFiles.filter((file) => !file.missing).map((file) => file.path),
             );
             const files = bootstrap.contextFiles.filter((file) => presentPaths.has(file.path));
-            const sections: string[] = [];
-            if (files.length > 0) {
-              sections.push(
-                "# OpenClaw workspace context\n\n" +
-                  files.map((file) => `## ${file.path}\n\n${file.content}`).join("\n\n"),
-              );
-            }
-            if (history.length > 0) {
-              sections.push(
-                "# Retained OpenClaw conversation\n\n" +
-                  "The following JSON messages are prior conversation context, not a new user request.\n\n" +
-                  JSON.stringify(history),
-              );
-            }
-            sessionContext = sections.join("\n\n");
+            sessionContext = formatMuseSessionContext({ attempt: params, files, history });
           } catch (error) {
             throw museRefusal(
               `Muse could not restore OpenClaw session context. Use the openclaw runtime or compact the session before retrying. ${formatErrorMessage(error)}`,

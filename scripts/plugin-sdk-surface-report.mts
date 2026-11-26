@@ -325,9 +325,9 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // Gateway person principal and access-refresh classifier: +2 (#196276, #176886).
       // +6: expose the existing model-request hook (#193550) and metric (#198455) types through plugin-entry.
       // +2: owner-approved stored-session Control UI path resolver and parser on session-discussion (#203044).
-      // +11: the continuation feature's public contracts (runtime, trace, channel-ingress,
-      // system-event, diagnostics), carried unchanged on upstream's 3896.
-      3907,
+      // +12: the continuation feature's public contracts (runtime, trace, channel-ingress,
+      // system-event, diagnostics, harness prompt guidance), carried on upstream's 3896.
+      3908,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -385,8 +385,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +7 net: the callable subset of the same source-audited feature-cut exports.
       // Harness +2, transcript replay +1, binding inspection +1, Decisions +1 net, Gateway +2.
       // +2: the same stored-session Control UI path resolver and parser (#203044).
-      // +4: the continuation feature's callable contracts, carried unchanged on upstream's 2245.
-      2249,
+      // +5: the continuation feature's callable contracts, carried on upstream's 2245.
+      2250,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(

@@ -4,6 +4,7 @@ import {
   shouldIncludeAgentHarnessRuntimeContext,
 } from "openclaw/plugin-sdk/agent-harness-attempt-runtime";
 import {
+  buildContinuationGuidancePrompt,
   buildCredentialSafetyPrompt,
   buildDelegationGuidanceSection,
   buildHarnessVisibleReplyGuidance,
@@ -136,6 +137,11 @@ export async function buildAgentsApiInstructions(
           hasSessionsSend: toolNames.has("sessions_send"),
         }).join("\n")
       : undefined,
+    buildContinuationGuidancePrompt({
+      config: params.config,
+      promptMode: params.promptMode,
+      toolNames,
+    }),
     params.disableTools !== true && fullPrompt
       ? buildUiPresentationPrompt({
           screenToolName: toolNames.has("screen") ? "screen" : undefined,

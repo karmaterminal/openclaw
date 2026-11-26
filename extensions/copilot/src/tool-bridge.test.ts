@@ -15,8 +15,12 @@ import {
 } from "openclaw/plugin-sdk/agent-runtime-test-contracts";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import { readMemoryArtifactProvenance } from "openclaw/plugin-sdk/memory-core-host-runtime-core";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { withTempDir } from "openclaw/plugin-sdk/test-env";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createCopilotTestHostCapabilities } from "./host-capability.test-support.js";
 import {
   convertOpenClawToolToSdkToolForTest as toSdk,
@@ -416,6 +420,35 @@ describe("createCopilotToolBridge", () => {
       }
     });
   });
+
+  it.each([true, false])(
+    "registers the runner's continuation tools (drains delegates: %s)",
+    async (drains) => {
+      const requestContinuation = vi.fn();
+      const config = { ...directConfig, agents: { defaults: { continuation: { enabled: true } } } };
+      setRuntimeConfigSnapshot(config);
+      onTestFinished(clearRuntimeConfigSnapshot);
+      const bridge = await createBridge({
+        attemptParams: {
+          config,
+          continueWorkOpts: { requestContinuation },
+          requestCompactionOpts: { getContextUsage: () => 0.9, triggerCompaction: vi.fn() },
+          drainsContinuationDelegateQueue: drains,
+          sessionKey: "agent:agent-1:main",
+        },
+        createOpenClawCodingTools: createRealOpenClawCodingTools,
+      });
+      const names = bridge.promptToolPolicy.apply().callableToolNames;
+      expect(names).toEqual(expect.arrayContaining(["continue_work", "request_compaction"]));
+      expect(names.includes("continue_delegate")).toBe(drains);
+      await expect(run(bridge, "continue_work", { reason: "finish the audit" })).resolves.toEqual(
+        expect.objectContaining({ resultType: "success" }),
+      );
+      expect(requestContinuation).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: "finish the audit", delaySeconds: 0 }),
+      );
+    },
+  );
 
   it("does NOT force a message tool when disableMessageTool is true (disable wins over force)", async () => {
     const result = await bridgeWithTools(makeTools("read", "message"), {

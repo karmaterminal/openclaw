@@ -1,9 +1,11 @@
 // "RFC §" references herein cite docs/design/continue-work-signal-v2.md (Agent Self-Elected Turn Continuation / CONTINUE_WORK).
 /**
  * Continuation prompt guidance (CONTINUE_WORK / continue_delegate / request_compaction)
- * rendered into the OpenClaw system prompt and the harness base prompt when the continuation
- * feature is enabled.
+ * rendered into the OpenClaw system prompt, the harness base prompt, and plugin harness
+ * prompts when the continuation feature is enabled.
  */
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { PromptMode } from "./system-prompt.types.js";
 
 /** The continuation tools that let a session drive its own turn cycle. */
 const CONTINUATION_TURN_CONTROL_TOOL_NAMES = [
@@ -242,4 +244,36 @@ export function buildContinuationLines(
     }
   }
   return lines;
+}
+
+/**
+ * The delegate hint and continuation section for harness prompts that assemble their own
+ * sections, under the OpenClaw system prompt's gate: config enables it, `none` prompts omit it,
+ * minimal prompts get chain delegation, and the callable tools choose tool or bracket form.
+ * `promptMode` is taken as the harness renders it. Harness attempts receive the caller's mode
+ * unresolved; only the embedded runner maps an unset mode to minimal for subagent and cron
+ * sessions and under a restrictive `toolsAllow`.
+ */
+export function buildContinuationGuidancePrompt(params: {
+  config?: OpenClawConfig;
+  promptMode?: PromptMode;
+  /** The run's callable tool names; with no continuation tool, the guide teaches the bracket tokens. */
+  toolNames: Iterable<string>;
+}): string | undefined {
+  if (params.promptMode === "none") {
+    return undefined;
+  }
+  const availableTools = new Set([...params.toolNames].map((name) => name.trim().toLowerCase()));
+  const guide = [
+    ...delegateToolHint(availableTools),
+    ...buildContinuationLines(
+      { continuationEnabled: params.config?.agents?.defaults?.continuation?.enabled === true },
+      params.promptMode === "minimal",
+      availableTools,
+    ),
+  ]
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return guide || undefined;
 }

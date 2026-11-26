@@ -1,0 +1,2 @@
+# Continuation guidance in the remaining harness builders: Copilot developer-instruction and tool-surface pins (guide forms, continue_work/request_compaction wiring, delegate-queue drain), Agents API instruction and tool-surface pins (continue_work wired, request_compaction honestly absent), Muse and ACPX first-turn bracket-form pins (ACPX harness-attempt had no coverage), and the plugin helper's parity with the embedded prompt. Measured net, not a cap. Pending review; no approval claimed.
+228

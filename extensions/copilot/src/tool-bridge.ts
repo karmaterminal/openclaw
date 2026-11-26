@@ -354,6 +354,12 @@ async function buildOpenClawCodingToolsOptions(
     computerContextEpoch: input.computerContextEpoch,
     onToolOutcome: a.onToolOutcome,
     isTurnTainted: a.isTurnTainted,
+    // The runner's continuation callbacks; Copilot compacts through the SDK, so
+    // request_compaction has a working target.
+    drainsContinuationDelegateQueue: a.drainsContinuationDelegateQueue,
+    disableContinuationTools: a.disableContinuationTools,
+    continueWorkOpts: a.continueWorkOpts,
+    requestCompactionOpts: a.requestCompactionOpts,
     onYield: (message, acknowledgment) => {
       // Record the yield before abort can settle the attempt; a callback failure
       // must not prevent interruption of the native session.

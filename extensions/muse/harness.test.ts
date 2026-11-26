@@ -313,6 +313,19 @@ describe("Muse native MSP harness", () => {
     const turns = (await readRequests(log)).filter((request) => request.method === "turn/start");
     expect(turns).toHaveLength(2);
     expect(turns[0].params.input[0].text).toContain("Speak like a patient astronomer.");
+    expect(turns[0].params.input[0].text).not.toContain("CONTINUE_WORK");
+    expect(turns[1].params.input[0].text).toBe("next");
+  });
+
+  // Muse exposes no OpenClaw tools; the reply runner parses the bracket tokens from its reply.
+  it("teaches the bracket-form continuation guide once per native session", async () => {
+    const { run, log } = setup(true);
+    const config = { agents: { defaults: { continuation: { enabled: true } } } };
+    await run({ config });
+    await run({ config, prompt: "next" });
+    const turns = (await readRequests(log)).filter((request) => request.method === "turn/start");
+    expect(turns[0].params.input[0].text).toContain("End your response with CONTINUE_WORK");
+    expect(turns[0].params.input[0].text).toContain("[[CONTINUE_DELEGATE: task description]]");
     expect(turns[1].params.input[0].text).toBe("next");
   });
 

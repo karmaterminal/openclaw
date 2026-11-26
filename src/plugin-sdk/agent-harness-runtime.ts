@@ -370,6 +370,7 @@ export {
 export { buildHarnessVisibleReplyGuidance } from "../auto-reply/source-reply-delivery-mode.js";
 export { buildCredentialSafetyPrompt } from "../agents/credential-safety-prompt.js";
 export { buildAgentHarnessBasePrompt } from "../agents/system-prompt-harness-base.js";
+export { buildContinuationGuidancePrompt } from "../agents/system-prompt-continuation.js";
 export { buildUiPresentationPrompt } from "../agents/ui-presentation-prompt.js";
 export { normalizeQuestionTimeoutSeconds } from "../agents/tools/ask-user-tool-normalization.js";
 export { resolveAttemptFsWorkspaceOnly } from "../agents/embedded-agent-runner/run/attempt-prompt-helpers.js";
