@@ -413,13 +413,16 @@ describe("a shed preview stays out of other senders' turns (#1415)", () => {
     });
 
     it("leaves a listed bot's turn that runs as itself only its own", async () => {
-      const rows = [bot("r1", "alice"), bot("r2", "bob"), bot("r3", "bob")];
-      await overflow(rows, { cap: 1, ...summarize }, (harness) => {
-        expect(harness.calls).toEqual([harness.runs.get("r3")]);
-        expect(harness.calls[0]?.run.senderId).toBe("bob");
-        expect(modelInput(harness.calls[0])).not.toMatch(/alice|message r1/u);
-        expect(shedContext(harness.calls[0])).toEqual([preview(rows[1]!)]);
-        expect(shedCounts(harness.calls[0])).toEqual([{ shed: 2, previewed: 1 }]);
+      // r3 holds alice's preview for an aggregate it could have joined, then runs alone.
+      const erin = sender("erin", { config: listed });
+      const rows = [bot("r1", "alice"), bot("r2", "bob"), bot("r3", "bob"), ask("q4", erin)];
+      await overflow(rows, { cap: 2, ...summarize }, (harness) => {
+        expect(harness.calls).toEqual(["q4", "r3"].map((id) => harness.runs.get(id)));
+        const bob = harness.calls[1];
+        expect(bob?.run.senderId).toBe("bob");
+        expect(modelInput(bob)).not.toMatch(/alice|message r1/u);
+        expect(shedContext(bob)).toEqual([preview(rows[1]!)]);
+        expect(shedCounts(bob)).toEqual([{ shed: 2, previewed: 1 }]);
       });
     });
 

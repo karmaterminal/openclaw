@@ -1,2 +1,2 @@
 # Shed previews across senders become counts only (karmaterminal/openclaw#1415, ruled 2026-11-25): no opt-in, same sender, opted-in aggregate, hand-on and refused-retry controls. Exact net test-line growth against 6ca8fd5721.
-431
+434
