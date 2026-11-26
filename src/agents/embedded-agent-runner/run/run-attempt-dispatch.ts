@@ -27,6 +27,7 @@ import { mapThinkingLevelForProvider } from "../utils.js";
 import { createAttemptContinuationRetryCount } from "./attempt-continuation-retry.js";
 import { withPreparedEmbeddedGatewayTools } from "./attempt-gateway-tools.js";
 import { resolveEmbeddedAttemptMemoryAudience } from "./attempt-memory-audience.js";
+import { resolveAttemptPromptMode } from "./attempt-prompt-helpers.js";
 import { applyResolvedToolPromptFinalizer } from "./attempt-prompt-support.js";
 import { createPreparedSessionTargetAssertion } from "./attempt-session-target.js";
 import { EMBEDDED_RUN_ATTEMPT_DISPATCH_STAGE } from "./attempt-stage-timing.js";
@@ -615,7 +616,13 @@ export async function prepareAndDispatchEmbeddedRunAttempt(
     modelRun: params.modelRun,
     disableTrajectory: params.disableTrajectory,
     skillLibraryAuthoring: params.skillLibraryAuthoring,
-    promptMode: params.promptMode,
+    // Harnesses build their own prompts from this mode, so every runtime renders the same one.
+    promptMode: resolveAttemptPromptMode({
+      promptMode: params.promptMode,
+      modelRun: params.modelRun,
+      sessionKey: resolvedSessionKey,
+      toolsAllow: params.toolsAllow,
+    }),
     ownerNumbers: params.ownerNumbers,
     enforceFinalTag: params.enforceFinalTag,
     silentExpected: params.silentExpected,

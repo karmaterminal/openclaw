@@ -34,7 +34,6 @@ import { resolveAgentRuntimePrompt } from "../../runtime-prompt.js";
 import { buildSubagentStandingInstructions } from "../../subagents/spawn/subagent-system-prompt.js";
 import type { buildConfiguredAgentSystemPrompt } from "../../system-prompt-config.js";
 import { buildSystemPromptReport } from "../../system-prompt-report.js";
-import { toolPolicyRestrictsTools } from "../../tool-policy.js";
 import type { ToolSearchCatalogRef } from "../../tool-search.js";
 import { buildToolSchemaDirectoryPrompt } from "../../tool-search.js";
 import {
@@ -43,7 +42,7 @@ import {
 } from "../../watched-sessions-prompt.js";
 import { buildEmbeddedSandboxInfo, resolveEmbeddedSandboxInfoExecPolicy } from "../sandbox-info.js";
 import type { prepareEmbeddedAttemptBootstrap } from "./attempt-bootstrap-prepare.js";
-import { resolvePromptModeForSession } from "./attempt-prompt-helpers.js";
+import { resolveAttemptPromptMode } from "./attempt-prompt-helpers.js";
 import type { EmbeddedAttemptSetup } from "./attempt-setup.js";
 import { buildAttemptSystemPrompt, type SystemPromptRefresh } from "./attempt-system-prompt.js";
 import {
@@ -247,12 +246,9 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
     chatType: runtimePrompt.runtimeInfo.chatType,
     channel: runtimePrompt.runtimeInfo.channel,
   };
-  const promptMode =
-    attempt.promptMode ??
-    (params.isRawModelRun ? "none" : resolvePromptModeForSession(attempt.sessionKey));
+  // Dispatched attempts arrive resolved; worker turns call this prepare directly.
+  const effectivePromptMode = resolveAttemptPromptMode(attempt);
   const promptSurface = resolveAgentPromptSurfaceForSessionKey(attempt.sessionKey);
-  const toolPolicyRestricted = toolPolicyRestrictsTools({ allow: attempt.toolsAllow });
-  const effectivePromptMode = toolPolicyRestricted ? ("minimal" as const) : promptMode;
   phases.mark("attempt.system-prompt.provider");
   const providerPromptContext = {
     config: attempt.config,

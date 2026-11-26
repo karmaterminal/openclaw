@@ -22,7 +22,9 @@ import { resolveProcessToolScopeKey } from "../../bash-process-scope.js";
 import { wrapPluginSystemContextSection } from "../../hook-system-context-boundary.js";
 import { resolvePluginTurnContext } from "../../plugin-turn-context.js";
 import { resolveModelCallUrgency } from "../../run-trigger.js";
+import type { PromptMode } from "../../system-prompt.types.js";
 import { resolveEffectiveToolFsWorkspaceOnly } from "../../tool-fs-policy.js";
+import { toolPolicyRestrictsTools } from "../../tool-policy.js";
 import { deriveContextPromptTokens, type NormalizedUsage } from "../../usage.js";
 import { buildEmbeddedCompactionRuntimeContext } from "../compaction-runtime-context.js";
 import { resolveContextEngineCapabilities } from "../context-engine-capabilities.js";
@@ -102,8 +104,25 @@ export async function resolvePromptBuildHookResult(params: {
   };
 }
 
-export function resolvePromptModeForSession(sessionKey?: string): "minimal" | "full" {
+function resolvePromptModeForSession(sessionKey?: string): "minimal" | "full" {
   return isSubagentSessionKey(sessionKey) || isCronSessionKey(sessionKey) ? "minimal" : "full";
+}
+
+/**
+ * The prompt mode an attempt renders in every runtime: an explicit mode wins, raw model runs
+ * render none, subagent and cron sessions minimal, others full. A restrictive tool allowlist
+ * shrinks a full prompt to minimal. Host dispatch resolves it once for the embedded runner
+ * and every harness, which build their prompts from the attempt's `promptMode`.
+ */
+export function resolveAttemptPromptMode(
+  attempt: Pick<EmbeddedRunAttemptParams, "promptMode" | "modelRun" | "sessionKey" | "toolsAllow">,
+): PromptMode {
+  const promptMode =
+    attempt.promptMode ??
+    (attempt.modelRun === true ? "none" : resolvePromptModeForSession(attempt.sessionKey));
+  return promptMode === "full" && toolPolicyRestrictsTools({ allow: attempt.toolsAllow })
+    ? "minimal"
+    : promptMode;
 }
 
 /** User-visible runs warn when transcript repair had to merge an orphaned user turn. */

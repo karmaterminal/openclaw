@@ -59,7 +59,7 @@ import { resolveCompactionContextTokenBudget } from "./compaction-runtime-contex
 import type { DirectCompactionPreparation } from "./direct-compaction-preparation.js";
 import { applyFinalEffectiveToolPolicy } from "./effective-tool-policy.js";
 import { log } from "./logger.js";
-import { resolvePromptModeForSession } from "./run/attempt-prompt-helpers.js";
+import { resolveAttemptPromptMode } from "./run/attempt-prompt-helpers.js";
 import { resolveAttemptSpawnWorkspaceDir } from "./run/attempt-thread-helpers.js";
 import { applyEmbeddedAttemptToolsAllow } from "./run/attempt-tool-construction-plan.js";
 import { buildEmbeddedSandboxInfo, resolveEmbeddedSandboxInfoExecPolicy } from "./sandbox-info.js";
@@ -474,9 +474,10 @@ export async function buildPreparedCompactionRuntime(
       model: effectiveModel,
     });
     const promptSurface = resolveAgentPromptSurfaceForSessionKey(params.sessionKey);
-    const promptMode = promptPolicyRestricted
-      ? "minimal"
-      : resolvePromptModeForSession(params.sessionKey);
+    const promptMode = resolveAttemptPromptMode({
+      sessionKey: params.sessionKey,
+      toolsAllow: params.toolsAllow,
+    });
     const nativeCommandGuidanceLines = listRegisteredPluginAgentPromptGuidance({
       surface: promptSurface,
     });

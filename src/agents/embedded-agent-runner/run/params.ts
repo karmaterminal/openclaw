@@ -115,7 +115,7 @@ export type RunEmbeddedAgentParams = Pick<
   retryTransientErrors?: boolean;
   /** Disable trajectory persistence for auxiliary runs with no durable session owner. */
   disableTrajectory?: boolean;
-  /** Explicit system prompt mode override for trusted callers. */
+  /** Explicit prompt mode for trusted callers; dispatched attempts carry the resolved mode. */
   promptMode?: PromptMode;
   /** Keep the message tool available even when a narrow profile would omit it. */
   forceMessageTool?: boolean;

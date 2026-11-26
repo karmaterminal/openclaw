@@ -43,7 +43,7 @@ const codex = await loadBundledPluginFacade<{
     dynamicTools: [];
     appServer: unknown;
   }) => Promise<{
-    threadStartParams: { config?: Record<string, unknown> };
+    threadStartParams: { config?: Record<string, unknown>; baseInstructions?: string };
     threadResumeParams: { config?: Record<string, unknown> };
   }>;
 }>({ pluginId: "codex", artifactBasename: "test-api.js" });
@@ -485,6 +485,50 @@ describe("embedded run retry dispatch", () => {
             expect(request.config?.model_context_window).toBe(contextTokens);
           }
         }
+      } finally {
+        host.close();
+      }
+    },
+  );
+
+  it.each([
+    { sessionKey: "agent:main:subagent:child", expected: "minimal" },
+    { sessionKey: "agent:main:cron:nightly", expected: "minimal" },
+    { sessionKey: "agent:main:session-1", toolsAllow: ["read"], expected: "minimal" },
+    { sessionKey: "agent:main:session-1", toolsAllow: ["*"], expected: "full" },
+  ])(
+    "hands every runtime the embedded prompt mode for $sessionKey (tools $toolsAllow)",
+    async ({ sessionKey, toolsAllow, expected }) => {
+      const dispatchFor = async (harnessId: string) => {
+        const input = makeDispatchInput();
+        input.runInput.resolvedSessionKey = sessionKey;
+        input.runInput.runParams.config = {
+          agents: { defaults: { continuation: { enabled: true } } },
+        };
+        input.runInput.runParams.toolsAllow = toolsAllow;
+        input.preparedRuntime.snapshot().agentHarness.id = harnessId;
+        input.preparedRuntime.snapshot().pluginHarnessOwnsTransport = harnessId !== "openclaw";
+        return (await dispatch(input)).dispatchedAttempt.preparedAttempt;
+      };
+      expect((await dispatchFor("openclaw")).promptMode).toBe(expected);
+      const attempt = await dispatchFor("codex");
+      expect(attempt.promptMode).toBe(expected);
+      const host = createAgentHarnessHostCapabilities({ attempt, pluginId: "codex" });
+      try {
+        const { threadStartParams } = await codex.buildCodexHarnessPromptSnapshot({
+          attempt: { ...attempt, hostCapabilities: host.capabilities },
+          cwd: attempt.workspaceDir,
+          threadId: "persisted-thread",
+          dynamicTools: [],
+          appServer: codex.resolveCodexPromptSnapshotAppServerOptions(),
+        });
+        // The Codex base renders the minimal chain-hop guide exactly where embedded does.
+        const [present, absent] =
+          expected === "minimal"
+            ? ["## Chain Delegation", "### Self-elected turns"]
+            : ["### Self-elected turns", "## Chain Delegation"];
+        expect(threadStartParams.baseInstructions).toContain(present);
+        expect(threadStartParams.baseInstructions).not.toContain(absent);
       } finally {
         host.close();
       }
