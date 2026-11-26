@@ -3,6 +3,7 @@ import {
   embeddedAgentLog,
   formatErrorMessage,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
+import { sleepWithAbort } from "openclaw/plugin-sdk/runtime-env";
 import type { CodexEphemeralThreadPolicy } from "./client-thread-owner.js";
 import {
   isCodexAppServerOverloadError,
@@ -166,30 +167,70 @@ export function assertCodexSupervisionThreadLineage(
   }
 }
 
+/**
+ * A busy thread is polled, never refused at once: a turn can outlive its Gateway, and a
+ * native command can outlive its turn (its claim lasts until the command settles).
+ */
+const CODEX_ACTIVE_THREAD_POLL_MS = 1_000;
+const CODEX_ACTIVE_THREAD_WAIT_MS = 120_000;
+
 /** Passive refusal must precede releasing or acquiring any native subscription. */
 export async function assertAdoptedCodexThreadResumeAllowed(
-  params: CodexStartOrResumeThreadParams,
+  params: Pick<
+    CodexStartOrResumeThreadParams,
+    "client" | "params" | "signal" | "authority" | "busyThreadWaitDeadlineAt"
+  >,
   threadId: string,
   context: {
     lifecycleTiming: Pick<CodexThreadLifecycleTimingTracker, "measure">;
     throwIfAborted: () => void;
   },
   assertCurrent: () => void,
+  isClaimedElsewhere?: () => boolean,
 ): Promise<CodexThread> {
-  const { thread } = await context.lifecycleTiming.measure("thread-read-adoption-status", () =>
-    params.client.request(
-      "thread/read",
-      { threadId, includeTurns: false },
-      { signal: params.signal, assertCurrent, withCurrent: params.authority?.withCurrent },
-    ),
+  const provenance = params.params.inputProvenance;
+  const restartInput =
+    provenance?.kind === "internal_system" && provenance.sourceTool === "restart";
+  const deadline = Math.min(
+    Date.now() + CODEX_ACTIVE_THREAD_WAIT_MS,
+    params.busyThreadWaitDeadlineAt ?? Number.POSITIVE_INFINITY,
   );
-  context.throwIfAborted();
-  if (thread.id !== threadId) {
-    throw new Error("Codex returned another thread during adoption status read");
-  }
-  assertCodexThreadAcceptsDirectInput(thread);
-  if (thread.status?.type === "active") {
-    throw new CodexAdoptedThreadActiveError();
-  }
-  return thread;
+  // One span: a wait is a single stage, however many reads it takes.
+  return await context.lifecycleTiming.measure("thread-read-adoption-status", async () => {
+    for (;;) {
+      const { thread } = await params.client.request(
+        "thread/read",
+        { threadId, includeTurns: false },
+        { signal: params.signal, assertCurrent, withCurrent: params.authority?.withCurrent },
+      );
+      context.throwIfAborted();
+      if (thread.id !== threadId) {
+        throw new Error("Codex returned another thread during adoption status read");
+      }
+      assertCodexThreadAcceptsDirectInput(thread);
+      if (thread.status?.type !== "active" && !isClaimedElsewhere?.()) {
+        return thread;
+      }
+      // Wait for the earlier work; never interrupt or adopt it.
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        throw restartInput
+          ? new CodexAdoptedThreadActiveError(
+              "Codex turn from before the Gateway restart is still active after the restart wait",
+              {
+                userMessage:
+                  "The Gateway restarted while the agent was working on this request. That work is still running and its result will not appear in this reply. Send a new message after it finishes to continue.",
+              },
+            )
+          : new CodexAdoptedThreadActiveError(
+              "Codex thread is still active after the wait for earlier work",
+              {
+                userMessage:
+                  "Earlier work in this conversation is still running, so this message was not processed. Send it again after that work finishes.",
+              },
+            );
+      }
+      await sleepWithAbort(Math.min(CODEX_ACTIVE_THREAD_POLL_MS, remaining), params.signal);
+    }
+  });
 }

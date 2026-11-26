@@ -108,6 +108,8 @@ export type CodexStartOrResumeThreadParams = Omit<
   /** Acknowledged selection suffix for reuse; fresh threads always receive the full bootstrap. */
   historyDeltaItems?: JsonValue[];
   signal?: AbortSignal;
+  /** Epoch ms by which a wait for a busy thread must refuse; the caller's timeout follows. */
+  busyThreadWaitDeadlineAt?: number;
   /**
    * Runs synchronously when `signal` ends a wait for a previous owner's exit
    * before `client` wrote thread state, so the caller may keep `client`.

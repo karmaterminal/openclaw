@@ -38,6 +38,15 @@ changes that would release it without trying fallback models. Wait for that work
 to finish or stop it before retrying. The original thread and its configuration
 remain available.
 
+A message that arrives while the conversation's Codex thread is still busy with
+earlier work, such as a turn still running in Codex or a native command that
+outlived its turn, waits for that work instead of failing. OpenClaw checks the
+thread every second for up to two minutes, never interrupting it, and runs the
+message once the thread is free. A turn with a shorter timeout waits only within
+its own startup budget. If the work is still running when the wait ends, the
+reply says so and asks you to send the message again after it finishes. Restart
+recovery after a Gateway restart waits the same way.
+
 To diagnose a blocked reply after context refresh, set the existing
 [log file level](/gateway/logging) to `debug`. The
 `codex app-server context-engine binding changed; starting a new thread` record

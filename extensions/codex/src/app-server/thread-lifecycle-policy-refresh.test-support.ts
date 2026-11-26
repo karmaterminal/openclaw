@@ -411,11 +411,20 @@ export function registerThreadPolicyRefreshTests({
         );
         const resume = run(developerInstructions);
         if (nativeStatus === "active") {
-          await expect(resume).rejects.toThrow("Codex session became active in another runner");
+          void resume.catch(() => {});
+          // The turn waits for the busy thread; one that never settles ends at the bound.
+          await vi.waitFor(() =>
+            expect(requests.map(({ method }) => method)).toContain("thread/read"),
+          );
+          vi.useFakeTimers({ toFake: ["Date"] });
+          vi.setSystemTime(Date.now() + 121_000);
+          await expect(resume).rejects.toThrow("still active after the wait for earlier work");
+          vi.useRealTimers();
           expect(requests.map(({ method }) => method)).toEqual([
             ...configReads,
             "thread/start",
             ...configReads,
+            "thread/read",
             "thread/read",
           ]);
           expect((await readCodexAppServerBinding(sessionFile))?.threadId).toBe(first.threadId);
