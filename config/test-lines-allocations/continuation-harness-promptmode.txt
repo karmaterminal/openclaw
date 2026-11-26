@@ -1,0 +1,2 @@
+# Host dispatch resolves the attempt prompt mode for every runtime (#1575): one table-driven dispatch test (subagent, cron, capped and wildcard allowlists) that hands the built-in runtime and the Codex harness the embedded mode and renders the real Codex thread/start base. Measured net, not a cap. Pending review; no approval claimed.
+44
