@@ -474,10 +474,7 @@ export async function buildPreparedCompactionRuntime(
       model: effectiveModel,
     });
     const promptSurface = resolveAgentPromptSurfaceForSessionKey(params.sessionKey);
-    const promptMode = resolveAttemptPromptMode({
-      sessionKey: params.sessionKey,
-      toolsAllow: params.toolsAllow,
-    });
+    const promptMode = resolveAttemptPromptMode(params);
     const nativeCommandGuidanceLines = listRegisteredPluginAgentPromptGuidance({
       surface: promptSurface,
     });
