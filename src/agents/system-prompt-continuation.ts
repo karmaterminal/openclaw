@@ -18,6 +18,24 @@ function turnCycleLine(availableTools: ReadonlySet<string>): string[] {
   ];
 }
 
+/** "How you wake": what wakes this session and which control arms its next turn. */
+function howYouWakeLines(availableTools: ReadonlySet<string>): string[] {
+  return [
+    "### How you wake",
+    ...turnCycleLine(availableTools),
+    "You can choose this session's next turn yourself and arrange how delegated work returns to it or other sessions; no human prompt or external scheduler is required.",
+    "You run only when an inbound message arrives, a scheduled automation fires, or a continuation you armed wakes you.",
+    "If you end without arming a continuation, unfinished work won't schedule its own next turn; an inbound message or automation can still wake you.",
+    "- Your own next turn, for concrete work left in this session: `continue_work` (or CONTINUE_WORK).",
+    "- Work that should run beside you or later: `continue_delegate`.",
+    ...(availableTools.has("sessions_yield")
+      ? [
+          "- Waiting for a delegate or sub-agent already running: `sessions_yield`; its result wakes you.",
+        ]
+      : []),
+  ];
+}
+
 /** Tooling-list hint steering delegate work to `continue_delegate` when the tool is available. */
 export function delegateToolHint(availableTools: ReadonlySet<string>): string[] {
   return availableTools.has("continue_delegate")
@@ -27,7 +45,11 @@ export function delegateToolHint(availableTools: ReadonlySet<string>): string[] 
     : [];
 }
 
-/** Continuation & delegation sections; main sessions get the full guide, sub-agents chain hops. */
+/**
+ * Continuation & delegation sections; main sessions get the full guide. Minimal prompts (cron,
+ * toolsAllow-capped and sub-agent runs) get the wake lines when a turn control is callable, then
+ * chain hops.
+ */
 export function buildContinuationLines(
   params: { continuationEnabled?: boolean },
   isMinimal: boolean,
@@ -39,18 +61,7 @@ export function buildContinuationLines(
   if (!isMinimal && params.continuationEnabled) {
     lines.push(
       "## Continuation & Delegation",
-      "### How you wake",
-      ...turnCycleLine(availableTools),
-      "You can choose this session's next turn yourself and arrange how delegated work returns to it or other sessions; no human prompt or external scheduler is required.",
-      "You run only when an inbound message arrives, a scheduled automation fires, or a continuation you armed wakes you.",
-      "If you end without arming a continuation, unfinished work won't schedule its own next turn; an inbound message or automation can still wake you.",
-      "- Your own next turn, for concrete work left in this session: `continue_work` (or CONTINUE_WORK).",
-      "- Work that should run beside you or later: `continue_delegate`.",
-      ...(availableTools.has("sessions_yield")
-        ? [
-            "- Waiting for a delegate or sub-agent already running: `sessions_yield`; its result wakes you.",
-          ]
-        : []),
+      ...howYouWakeLines(availableTools),
       "",
       "### Self-elected turns",
       ...(availableTools.has("continue_work")
@@ -177,6 +188,9 @@ export function buildContinuationLines(
 
   // Sub-agent chain-hop continuation — teach tool-primary when available, bracket fallback otherwise
   if (isMinimal && params.continuationEnabled) {
+    if (turnCycleLine(availableTools).length > 0) {
+      lines.push("## Continuation & Delegation", ...howYouWakeLines(availableTools), "");
+    }
     lines.push("## Chain Delegation");
     if (availableTools.has("continue_delegate")) {
       lines.push(

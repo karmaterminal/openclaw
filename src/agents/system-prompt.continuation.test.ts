@@ -265,6 +265,28 @@ describe("buildAgentSystemPrompt — continuation section branching", () => {
     });
   });
 
+  // Cron, toolsAllow-capped (the room heartbeat) and sub-agent runs get the minimal prompt.
+  describe("minimal prompt", () => {
+    const render = (toolNames: string[], promptMode?: "minimal") =>
+      buildAgentSystemPrompt({ ...baseParams, continuationEnabled: true, toolNames, promptMode });
+    const wakeBlock = (prompt: string) =>
+      prompt.slice(prompt.indexOf("### How you wake"), prompt.indexOf("\n### Self-elected turns"));
+
+    it("carries the full prompt's wake lines when a turn control is callable", () => {
+      const prompt = render(["continue_work"], "minimal");
+      const wake = wakeBlock(render(["continue_work"]));
+      expect(wake).toContain("You control your own turn cycle: `continue_work` is how.");
+      expect(prompt).toContain(`## Continuation & Delegation\n${wake}\n## Chain Delegation`);
+      expect(prompt).not.toContain("### Self-elected turns");
+    });
+
+    it("keeps only the chain-delegation fallback when no turn control is callable", () => {
+      const prompt = render([], "minimal");
+      expect(prompt).toContain("## Chain Delegation");
+      expect(prompt).not.toContain("### How you wake");
+    });
+  });
+
   describe("## Tooling list", () => {
     const work =
       "- continue_work: Take your own next turn, now or after a delay; no message needed.";
