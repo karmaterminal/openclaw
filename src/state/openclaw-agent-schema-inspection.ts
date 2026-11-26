@@ -22,6 +22,7 @@ import {
   hasPendingCurrentVersionAgentDatabaseMigration,
   assertOpenClawAgentSchemaContains,
   getOpenClawAgentMigrationSchema,
+  readOpenClawAgentHistoricalSchema,
 } from "./openclaw-agent-db-schema-helpers.js";
 import type { OpenClawAgentSchemaPreflightResult } from "./openclaw-database-preflight.types.js";
 import { OPENCLAW_SQLITE_BUSY_TIMEOUT_MS } from "./openclaw-state-db-contract.js";
@@ -78,7 +79,7 @@ function isEmptyAgentStore(
   assertOpenClawAgentSchemaContains(
     database,
     input.pathname,
-    getOpenClawAgentMigrationSchema(metadata.schemaVersion),
+    readOpenClawAgentHistoricalSchema(database, input.pathname, metadata.schemaVersion),
   );
   for (const table of readMainTableList(database, { includeInternal: true })) {
     if (table.type === "shadow" || table.name === "sqlite_schema") {

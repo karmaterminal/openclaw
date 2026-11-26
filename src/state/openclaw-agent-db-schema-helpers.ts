@@ -25,7 +25,11 @@ import {
   SqliteSchemaMismatchError,
   throwSqliteSchemaMismatches,
 } from "../infra/sqlite-schema-issues.js";
-import { extractSqliteTableSchema, quoteSqliteIdentifier } from "../infra/sqlite-schema-sql.js";
+import {
+  extractSqliteTableSchema,
+  normalizeSqlWhitespace,
+  quoteSqliteIdentifier,
+} from "../infra/sqlite-schema-sql.js";
 import { readMainTableList } from "../infra/sqlite-strict.js";
 import { readSqliteUserVersion, writeSqliteUserVersion } from "../infra/sqlite-user-version.js";
 import { normalizeAgentId } from "../routing/session-key.js";
@@ -53,7 +57,11 @@ import {
   ensureOpenClawAgentProgressCardSchemaInTransaction,
   AGENT_PROGRESS_CARD_SCHEMA_SQL,
 } from "./openclaw-agent-progress-card-schema.js";
-import { RETIRED_AGENT_STATE_LEASE_SCHEMA_SQL } from "./openclaw-agent-schema-history.js";
+import { sessionRecipientAuthoritySchemaSql } from "./openclaw-agent-recipient-authority-schema.js";
+import {
+  getOpenClawAgentMigrationSchema,
+  RETIRED_AGENT_STATE_LEASE_SCHEMA_SQL,
+} from "./openclaw-agent-schema-history.js";
 import { OPENCLAW_AGENT_SCHEMA_SQL } from "./openclaw-agent-schema.js";
 import {
   AGENT_V14_ADDITIVE_SCHEMA_SQL,
@@ -71,6 +79,56 @@ export {
 } from "./openclaw-agent-db-schema-read.js";
 
 export { getOpenClawAgentMigrationSchema } from "./openclaw-agent-schema-history.js";
+
+export function isOpenClawAgentFleet42(db: DatabaseSync, version: number): boolean {
+  return (
+    version === 42 &&
+    tableExists(db, "session_recipient_authority") &&
+    !tableExists(db, "agent_tool_usage")
+  );
+}
+
+/** Fleet 42 predates upstream 42: it is upstream 41 plus recipient authority.
+ * Admit that physical history only when its markers agree. The full historical
+ * schema assertion below checks every other table and constraint before a write.
+ */
+export function readOpenClawAgentHistoricalSchema(
+  db: DatabaseSync,
+  pathname: string,
+  version: number,
+): string {
+  if (version !== 42) {
+    return getOpenClawAgentMigrationSchema(version);
+  }
+  const authority = tableExists(db, "session_recipient_authority");
+  const toolUsage = tableExists(db, "agent_tool_usage");
+  if (!authority && toolUsage) {
+    return getOpenClawAgentMigrationSchema(42);
+  }
+  if (authority && !toolUsage) {
+    const actual = db
+      .prepare(
+        "SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'session_recipient_authority'",
+      )
+      .get() as { sql?: string } | undefined;
+    const expected = sessionRecipientAuthoritySchemaSql(OPENCLAW_AGENT_SCHEMA_SQL).replace(
+      "CREATE TABLE IF NOT EXISTS ",
+      "CREATE TABLE ",
+    );
+    if (
+      normalizeSqlWhitespace(actual?.sql ?? "") !==
+      normalizeSqlWhitespace(expected).replace(/;$/u, "")
+    ) {
+      throw new SqliteSchemaMismatchError(
+        `OpenClaw agent database ${pathname} has a drifted fleet schema-42 recipient authority table.`,
+      );
+    }
+    return getOpenClawAgentMigrationSchema(41);
+  }
+  throw new SqliteSchemaMismatchError(
+    `OpenClaw agent database ${pathname} has an unrecognized schema-42 shape (recipient authority: ${authority}, tool usage: ${toolUsage}); restore its pre-upgrade copy rather than migrating it.`,
+  );
+}
 
 const PUBLISHED_MEMORY_FTS_TABLES = ["memory_index_chunks_fts", "memory_index_paths_fts"] as const;
 /** Exact FTS5 module tables. SQLite reports these as shadows; a same-named ordinary table is not one. */

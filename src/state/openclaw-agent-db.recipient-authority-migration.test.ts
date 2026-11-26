@@ -25,7 +25,10 @@ import {
 } from "./openclaw-agent-db.js";
 import { removeCanonicalValidationFromHistoricalAgentFixture } from "./openclaw-agent-db.test-support.js";
 import { withoutAgentPendingInputEndings } from "./openclaw-agent-pending-input-endings-schema.js";
-import { withoutSessionRecipientAuthoritySchema } from "./openclaw-agent-recipient-authority-schema.js";
+import {
+  sessionRecipientAuthoritySchemaSql,
+  withoutSessionRecipientAuthoritySchema,
+} from "./openclaw-agent-recipient-authority-schema.js";
 import { materializeV21WorkerAgentDatabase } from "./openclaw-agent-schema-v21.test-support.js";
 import { OPENCLAW_AGENT_SCHEMA_SQL } from "./openclaw-agent-schema.js";
 import { withoutAgentToolUsage } from "./openclaw-agent-tool-usage-schema.js";
@@ -321,6 +324,51 @@ describe("openclaw agent database", () => {
   // the way, its 39 widens the transcript payload CHECK, its 40 adds creation receipts, its 41 the
   // empty active-event-facts companion, its 42 tool usage and its 43 pending-input endings.
   // Upstream's own 39-43 run from captured DDL below.
+  it("migrates the fleet's schema-42 shape without replacing recipient authority", async () => {
+    const env = { OPENCLAW_STATE_DIR: createTempStateDir() };
+    const pathname = stageAgentDatabase(
+      env,
+      `${readCapturedAgentSchema("openclaw-agent-schema-v41.sql")}\n${sessionRecipientAuthoritySchemaSql(OPENCLAW_AGENT_SCHEMA_SQL)}`,
+      42,
+    );
+    const { DatabaseSync } = requireNodeSqlite();
+    const before = new DatabaseSync(pathname);
+    try {
+      before
+        .prepare(
+          "INSERT INTO session_recipient_authority (session_key, epoch, created_at, updated_at) VALUES (?, ?, 1, 2)",
+        )
+        .run(AUTHORITY.sessionKey, AUTHORITY.epoch);
+    } finally {
+      before.close();
+    }
+
+    const migrated = await migrateAndOpenLegacyAgentDatabaseForTest({ agentId: "main", env });
+    expect(readSchemaMarkers(migrated.db)).toEqual({ userVersion: 44, schemaVersion: 44 });
+    expect(
+      migrated.db.prepare("SELECT session_key, epoch FROM session_recipient_authority").all(),
+    ).toEqual([{ session_key: AUTHORITY.sessionKey, epoch: AUTHORITY.epoch }]);
+    expect(
+      migrated.db.prepare("SELECT name FROM sqlite_schema WHERE name = 'agent_tool_usage'").get(),
+    ).toEqual({ name: "agent_tool_usage" });
+    expect(migrated.db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  });
+
+  it("refuses a mixed schema-42 shape before changing its marker", async () => {
+    const env = { OPENCLAW_STATE_DIR: createTempStateDir() };
+    const pathname = stageAgentDatabase(
+      env,
+      `${readCapturedAgentSchema("openclaw-agent-schema-v42.sql")}\n${sessionRecipientAuthoritySchemaSql(OPENCLAW_AGENT_SCHEMA_SQL)}`,
+      42,
+    );
+    await expect(
+      migrateAndOpenLegacyAgentDatabaseForTest({ agentId: "main", env }),
+    ).rejects.toThrow(/unrecognized schema-42 shape/u);
+    const { DatabaseSync } = requireNodeSqlite();
+    using unchanged = new DatabaseSync(pathname, { readOnly: true });
+    expect(readSchemaMarkers(unchanged)).toEqual({ userVersion: 42, schemaVersion: 42 });
+  });
+
   it.each([32, 33, 34, 35, 36, 37, 38])(
     "adds recipient authority to upstream's schema-%i database",
     async (version) => {

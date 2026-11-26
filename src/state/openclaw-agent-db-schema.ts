@@ -74,6 +74,8 @@ import { registerOpenClawAgentDatabase } from "./openclaw-agent-db-registry.js";
 import { admitOpenClawAgentDatabaseSchema } from "./openclaw-agent-db-schema-admission.js";
 import {
   getOpenClawAgentMigrationSchema,
+  isOpenClawAgentFleet42,
+  readOpenClawAgentHistoricalSchema,
   assertExistingAgentSchemaOwner,
   assertOpenClawAgentCurrentRuntimeSchema,
   assertOpenClawAgentSchemaContains,
@@ -282,6 +284,7 @@ function ensureAgentSchema(
       const metadata = readExistingAgentSchemaMeta(db);
       assertExistingAgentSchemaOwner(metadata, agentId, pathname);
       const previousVersion = assertSupportedAgentSchemaVersion(db, pathname);
+      const fleet42 = isOpenClawAgentFleet42(db, previousVersion);
       const integrity = resolveSchemaMigrationIntegrityCheck(
         { kind: "agent", foundVersion: previousVersion, supportedVersion: targetVersion },
         integrityCheck,
@@ -398,7 +401,7 @@ function ensureAgentSchema(
         if (crossesVersion(AGENT_ACTIVE_EVENT_FACTS_SCHEMA_VERSION)) {
           db.exec(AGENT_ACTIVE_EVENT_FACTS_SQL);
         }
-        if (crossesVersion(AGENT_TOOL_USAGE_SCHEMA_VERSION)) {
+        if (crossesVersion(AGENT_TOOL_USAGE_SCHEMA_VERSION) || fleet42) {
           db.exec(AGENT_TOOL_USAGE_SQL);
         }
         if (crossesVersion(AGENT_PENDING_INPUT_ENDINGS_SCHEMA_VERSION)) {
@@ -453,7 +456,7 @@ function ensureAgentSchema(
         assertAgentSchemaVersion(
           db,
           { agentId, pathname, version: previousVersion },
-          getOpenClawAgentMigrationSchema(previousVersion),
+          readOpenClawAgentHistoricalSchema(db, pathname, previousVersion),
         );
         // Schema-25 writers predate later startup columns; read-only session
         // readers refuse a migrated database that still lacks them.
