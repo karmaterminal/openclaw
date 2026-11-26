@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { activateWorkshopPluginForTest } from "../skills/test-support/workshop-plugin.test-support.js";
-import { delegateToolHint } from "./system-prompt-continuation.js";
+import { buildContinuationGuidancePrompt, delegateToolHint } from "./system-prompt-continuation.js";
 import { buildAgentHarnessBasePrompt } from "./system-prompt-harness-base.js";
 import { buildAgentSystemPrompt } from "./system-prompt.js";
 
@@ -82,15 +82,29 @@ describe("buildAgentHarnessBasePrompt", () => {
         continuationEnabled: on,
       });
       const base = buildAgentHarnessBasePrompt({ config, toolNames: names, promptMode: mode });
+      // Plugin harness builders that assemble their own sections take the same guide.
+      const plugin = buildContinuationGuidancePrompt({
+        config,
+        toolNames: names,
+        promptMode: mode,
+      });
       const heading = mode === "full" ? "## Continuation & Delegation" : "## Chain Delegation";
       // The regular prompt drops blank lines; the guidance lines themselves are shared.
-      const lines = (prompt: string) =>
+      const lines = (prompt = "") =>
         prompt.includes(heading) ? sectionBody(prompt, heading).split("\n").filter(Boolean) : [];
       expect(lines(base)).toEqual(lines(regular));
+      expect(lines(plugin)).toEqual(lines(regular));
       expect(lines(base).length > 0).toBe(on);
       for (const hint of delegateToolHint(new Set(cont))) {
         expect(base).toContain(hint);
+        expect(plugin).toContain(hint);
       }
+      const none = buildContinuationGuidancePrompt({
+        config,
+        toolNames: names,
+        promptMode: "none",
+      });
+      expect(none).toBeUndefined();
     },
   );
 });

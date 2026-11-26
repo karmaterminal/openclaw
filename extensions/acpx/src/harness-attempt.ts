@@ -5,6 +5,7 @@ import type {
 } from "acpx/runtime";
 import { consumeAcpTurnStream } from "openclaw/plugin-sdk/acp-runtime";
 import {
+  buildContinuationGuidancePrompt,
   clearActiveEmbeddedRun,
   emitAgentEvent,
   resolveBootstrapContextForRun,
@@ -189,6 +190,16 @@ export async function runAcpHarnessAttempt(params: {
       messages,
       developerInstructions: [
         ...(bootstrap?.contextFiles.map((file) => `${file.path}\n${file.content}`) ?? []),
+        // ACP agents never get the continuation tools (the MCP bridges serve cron, openclaw and
+        // plugin tools), so the guide teaches the bracket tokens the reply runner parses. The
+        // native session keeps it, like the bootstrap files.
+        bootstrap
+          ? buildContinuationGuidancePrompt({
+              config: input.config,
+              promptMode: input.promptMode,
+              toolNames: [],
+            })
+          : undefined,
         input.extraSystemPrompt,
       ]
         .filter(Boolean)

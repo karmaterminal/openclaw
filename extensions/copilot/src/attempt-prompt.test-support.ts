@@ -67,6 +67,24 @@ export function registerCopilotPromptTests({
       },
     );
 
+    it.each([
+      ["full", ["continue_work", "continue_delegate", "request_compaction"], true],
+      ["minimal", ["continue_delegate"], true],
+      ["full", ["continue_delegate"], false],
+    ] as const)(
+      "carries the %s continuation guide for callable %j (enabled: %s)",
+      async (promptMode, tools, enabled) => {
+        const { sdk, run } = makeAttempt();
+        stubToolBridge(() => createStubToolBridge(tools.map(makeSdkTool)));
+        const config = { agents: { defaults: { continuation: { enabled } } } };
+        await run({ config, promptMode, disableTools: false });
+        const content = requireSystemMessage(sdk);
+        const heading = promptMode === "full" ? "### Self-elected turns" : "## Chain Delegation";
+        expect(content.includes(heading)).toBe(enabled);
+        expect(content.includes(`You control your own turn cycle: \`${tools[0]}\``)).toBe(enabled);
+      },
+    );
+
     it("wraps minimal context without inventing workspace sections", async () => {
       const { sdk, run } = makeAttempt();
       await run({ extraSystemPrompt: "Child policy.", promptMode: "minimal" });

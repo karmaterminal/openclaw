@@ -1,6 +1,7 @@
 import type { SessionConfig } from "@github/copilot-sdk";
 import type { AgentMessage } from "openclaw/plugin-sdk/agent-harness-runtime";
 import {
+  buildContinuationGuidancePrompt,
   buildCredentialSafetyPrompt,
   buildDelegationGuidanceSection,
   buildHarnessVisibleReplyGuidance,
@@ -128,6 +129,11 @@ export async function createCopilotSessionSetup(params: {
             promptPolicyResult.toolSchemaDirectoryPrompt,
             listToolPromptGuidance(callableTools).join("\n\n"),
             delegationGuidance,
+            buildContinuationGuidancePrompt({
+              config: input.config,
+              promptMode: input.promptMode,
+              toolNames: callableTools,
+            }),
             buildHarnessVisibleReplyGuidance({
               sourceReplyDeliveryMode: input.sourceReplyDeliveryMode,
               messageToolAvailable: callableTools.has("message"),

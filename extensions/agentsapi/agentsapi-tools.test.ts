@@ -150,6 +150,30 @@ describe("a delivered send to a configured delivery target", () => {
   );
 });
 
+// The harness has no compact operation, so request_compaction could only ever fail here.
+it("registers the runner's continue_work but not request_compaction", async () => {
+  await withOpenClawTestState({ label: "agentsapi-continuation" }, async (state) => {
+    const requestContinuation = vi.fn();
+    const attempt = createAttemptParams({
+      workspaceDir: state.workspaceDir,
+      agentDir: state.agentDir(),
+      sessionFile: state.statePath("continuation-session.jsonl"),
+      config: { plugins: { allow: [] }, agents: { defaults: { continuation: { enabled: true } } } },
+      continueWorkOpts: { requestContinuation },
+      requestCompactionOpts: { getContextUsage: () => 0.9, triggerCompaction: vi.fn() },
+    });
+    await withSurface(attempt, new AbortController(), async (surface) => {
+      const names = surface.declarations.map((tool) => tool.name);
+      expect(names).toEqual(expect.arrayContaining(["continue_work", "continue_delegate"]));
+      expect(names).not.toContain("request_compaction");
+      await execute(surface, "continue_work", "wake", { reason: "finish the audit" });
+      expect(requestContinuation).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: "finish the audit", delaySeconds: 0 }),
+      );
+    });
+  });
+});
+
 async function withFixtureTool(
   tool: AnyAgentTool,
   run: (surface: Awaited<ReturnType<typeof buildAgentsApiToolSurface>>) => Promise<void>,

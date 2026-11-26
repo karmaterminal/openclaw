@@ -149,6 +149,11 @@ export async function buildAgentsApiToolSurface(
             : {}),
           inputProvenance: params.inputProvenance,
           trustedInternalHandoff: params.trustedInternalHandoff,
+          // The runner's continuation callbacks, without requestCompactionOpts: this
+          // harness has no compact operation, so request_compaction could only fail.
+          drainsContinuationDelegateQueue: params.drainsContinuationDelegateQueue,
+          disableContinuationTools: params.disableContinuationTools,
+          continueWorkOpts: params.continueWorkOpts,
           delegationCapability: params.delegationCapability,
           allowGatewaySubagentBinding: params.allowGatewaySubagentBinding,
           githubPublicationAvailable: params.githubPublicationAvailable,
