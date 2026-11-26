@@ -178,7 +178,7 @@ function resolveBuiltInContextPressure(params: {
   sessionEntry: SessionEntry;
   sessionKey: string;
 }) {
-  const { cfg, followupRun, sessionEntry, sessionKey } = params;
+  const { cfg, followupRun, sessionKey } = params;
   const runtimeId = resolveFollowupAgentRuntimeId(params);
   if (!followupRunsBuiltInCompaction(params, runtimeId)) {
     return undefined;
@@ -194,7 +194,6 @@ function resolveBuiltInContextPressure(params: {
       provider,
       modelId: model,
     }),
-    admittedToolNames: resolveRecordedToolNames(sessionEntry),
     isRequestCompactionAdmitted: (entry: SessionEntry) =>
       evaluateRequestCompactionGuards({
         sessionKey,
@@ -318,6 +317,9 @@ async function executePreparedReplyAgentRunWithCompletion(
         }) ?? DEFAULT_CONTEXT_TOKENS,
       earlyWarningBand,
       postCompaction: preflightCompactionApplied,
+      // Every runtime names the handoff tools from the session's recorded run inventory: each
+      // harness reports its callable tools, and scheduled turns keep the user-facing record.
+      admittedToolNames: resolveRecordedToolNames(activeSessionEntry),
       ...(enabled
         ? resolveBuiltInContextPressure({
             cfg,

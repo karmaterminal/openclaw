@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { loadSessionEntry } from "../../config/sessions/session-accessor.js";
+import type { SessionSystemPromptReport } from "../../config/sessions/session-system-prompt-report.js";
 import { resetAgentEventsForTest } from "../../infra/agent-events.js";
 import { peekSystemEventEntries, resetSystemEventsForTest } from "../../infra/system-events.js";
 import {
@@ -51,11 +52,15 @@ function mockOverflowRetrySuccess(params: {
   };
   overflowMessage?: string;
   beforeCompact?: () => void;
+  overflowAttempt?: Parameters<typeof makeAttemptResult>[0];
 }) {
   const overflowError = makeOverflowError(params.overflowMessage);
 
   params.runEmbeddedAttempt.mockResolvedValueOnce(
-    makeCaseAttemptResult({ terminal: { kind: "failed", source: "prompt", error: overflowError } }),
+    makeCaseAttemptResult({
+      ...params.overflowAttempt,
+      terminal: { kind: "failed", source: "prompt", error: overflowError },
+    }),
   );
   params.runEmbeddedAttempt.mockResolvedValueOnce(makeCaseAttemptResult());
   params.compactDirect.mockImplementationOnce(async () => {
@@ -200,5 +205,31 @@ describe("runEmbeddedAgent overflow recovery continuation", () => {
 
     expect(sawCanonicalPressureEvent).toBe(true);
     expectLogExcludes(mockedLog.warn, "[session-key:missing] site=pi-runner.overflow-compaction");
+  });
+
+  it("names the handoff tool the overflowing attempt reported", async () => {
+    const config = {
+      agents: { defaults: { continuation: { enabled: true, contextPressureThreshold: 0.8 } } },
+    };
+    const report = {
+      tools: { entries: [{ name: "continue_delegate" }] },
+    } as unknown as SessionSystemPromptReport;
+    let warnings: string[] = [];
+    mockOverflowRetrySuccess({
+      runEmbeddedAttempt: mockedRunEmbeddedAttempt,
+      compactDirect: mockedCompactDirect,
+      overflowMessage: "prompt is too long: 135000 tokens > 134000 maximum",
+      overflowAttempt: { systemPromptReport: report },
+      beforeCompact: () => {
+        warnings = peekSystemEventEntries(overflowBaseRunParams.sessionKey)
+          .map((event) => event.text)
+          .filter((text) => text.includes("[system:context-pressure]"));
+      },
+    });
+
+    await runEmbeddedAgent({ ...overflowBaseRunParams, config });
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("continue_delegate(mode='post-compaction'");
   });
 });

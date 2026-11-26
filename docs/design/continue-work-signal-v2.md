@@ -651,7 +651,10 @@ The system prompt branches on tool availability in `src/agents/system-prompt.ts`
 
 - when tools are present, the prompt teaches the tool path first and labels response tokens as fallback;
 - when tools are absent, the prompt teaches response tokens only;
-- visible `continue_work` and `continue_delegate` each get a core `## Tooling` slot beside `sessions_yield`, with a one-line action (`src/agents/system-prompt-tool-list.ts`); `request_compaction` is listed there by name. Like `sessions_yield`, all three are `catalogMode: "direct-only"`, so Tool Search (on by default) and Code Mode never catalog them: they stay direct provider tools in `## Tooling` and never appear under `### Deferred Tool Schemas`.
+- visible `continue_work` and `continue_delegate` each get a core `## Tooling` slot beside `sessions_yield`, with a one-line action (`src/agents/system-prompt-tool-list.ts`); `request_compaction` is listed there by name. Like `sessions_yield`, all three are `catalogMode: "direct-only"`, so Tool Search (on by default) and Code Mode never catalog them: they stay direct provider tools in `## Tooling` and never appear under `### Deferred Tool Schemas`;
+- minimal prompts (cron, `toolsAllow`-capped and sub-agent runs) keep the `### How you wake` lines when any turn control is callable, then the `## Chain Delegation` hop guide; the parameter tables stay in the full prompt.
+
+Cron jobs that run as a turn of a shared session (`sessionTarget` `main` or `session:<key>`, such as a room heartbeat) go through the reply pipeline, which settles `continue_work` elections and drains delegates after the turn, so they keep the continuation tools their `toolsAllow` admits. Detached cron runs (isolated or `current` jobs, hooks, join intros, trigger scripts) have no host that services those callbacks and register none.
 
 This keeps the agent’s taught interface aligned with the actual capability surface.
 
@@ -816,7 +819,9 @@ The practical bands depend on who owns compaction.
 
 The headrooms are named in `context-pressure.ts`: `TURN_HEADROOM_TOKENS` (8000) plus `TOOL_CALL_HEADROOM_TOKENS` (2000) make the second warning's 10000, and the first doubles it. A warning reaches the model with the next turn's prompt, so each headroom covers the turn in flight and then the turn that reads the warning and makes its call. A trigger that cannot hold 20000 tokens keeps only the second warning, and one that cannot hold 10000 has none. At or past the trigger nothing warns, including overflow and timeout recovery: compaction owns the session by then. `contextPressureThreshold` only enables these events on the built-in runtime, and `earlyWarningBand` does not apply.
 
-The second warning names `request_compaction` only when the tool's own guard, `evaluateRequestCompactionGuards`, would admit the call, so it never cues a request the tool will reject. A window whose second warning sits below the guard's 70% floor never shows that cue. Either warning names a tool only if the session's last run recorded it. `lastContextPressureBand` holds the ordinal (1, 2) here and a percentage on the ratio path.
+The second warning names `request_compaction` only when the tool's own guard, `evaluateRequestCompactionGuards`, would admit the call, so it never cues a request the tool will reject. A window whose second warning sits below the guard's 70% floor never shows that cue. `lastContextPressureBand` holds the ordinal (1, 2) here and a percentage on the ratio path.
+
+On both policies, a warning names `continue_delegate` or `request_compaction` only when the session's recorded run inventory (`systemPromptReport.tools.entries`) lists it, and is tool-less only when it lists neither. Every harness records the tools its run could call: the embedded runner from its tool list, Codex from its dynamic tool specs. Scheduled (cron) and other internal turns keep the user-facing record, so the inventory is what the next ordinary turn, the one that reads the warning, is offered. A session's first turn has no record yet, so its warning is tool-less, and the first turn after a config change reads the record from before it. Overflow and timeout recovery run inside an attempt and name that attempt's own recorded tools.
 
 Both policies count only fresh v2 totals, the check `request_compaction` applies. A v1 total left by an upgrade is no evidence of pressure.
 
