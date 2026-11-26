@@ -172,16 +172,20 @@ export type PluginCodingToolsOptions = Omit<
 
 /**
  * Adds the continuation tool options forwarded to createOpenClawTools.
- * Memory-flush runs cannot schedule post-turn continuation work. Cron-runner jobs (scheduled,
- * hook and join-intro turns) own their retry lifecycle: same-session continuation dispatch is an
- * auto-reply turn contract and would strand work from that lane.
+ * Memory-flush runs cannot schedule post-turn continuation work. Detached cron-runner jobs
+ * (isolated scheduled, hook and join-intro turns) own their retry lifecycle: same-session
+ * continuation dispatch is an auto-reply turn contract and would strand work from that lane. A
+ * job that runs as a turn of a shared session (main or session:<key>, such as a room heartbeat)
+ * runs through that contract, whose host passes continueWorkOpts, so it keeps the tools.
  */
 export function withContinuationOpts<T extends object>(
   options: OpenClawCodingToolsOptions | undefined,
   base: T,
 ) {
   const cronRunnerJob =
-    (options?.trigger === "cron" || options?.trigger === "event") && Boolean(options.jobId?.trim());
+    (options?.trigger === "cron" || options?.trigger === "event") &&
+    Boolean(options.jobId?.trim()) &&
+    !options.continueWorkOpts;
   return {
     ...base,
     drainsContinuationDelegateQueue: options?.drainsContinuationDelegateQueue,

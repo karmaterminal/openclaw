@@ -259,7 +259,9 @@ it("lets a later user turn send with message in a series a cron turn started", a
   expect(JSON.stringify(refused.content)).toContain("message cannot send on this turn");
 });
 
-// Continuation (karmaterminal): cron-runner, memory and compaction turns may not continue.
+// Continuation (karmaterminal): detached cron-runner, memory and compaction turns may not
+// continue. A detached cron host (an isolated or current job, a hook, a join intro) passes no
+// runner callbacks; a host that services them runs the job as a turn of its session.
 it("keeps the continuation tools in a series a cron-runner turn started", async () => {
   const continuation: OpenClawConfig = {
     ...config,
@@ -267,13 +269,13 @@ it("keeps the continuation tools in a series a cron-runner turn started", async 
     tools: { ...config.tools, alsoAllow: ["computer", "continue_work", "continue_delegate"] },
   };
   setRuntimeConfigSnapshot(continuation);
-  const turn = (options: ToolOptions) => ({
+  const turn = (options: ToolOptions, callbacks = true) => ({
     ...options,
     config: continuation,
-    ...buildInventoryContinuationToolOpts(continuation),
+    ...(callbacks ? buildInventoryContinuationToolOpts(continuation) : {}),
   });
   using chat = retainEmbeddedSessionPromptState(sessionId);
-  const cron = send(chat.state, turn(turns.cron!));
+  const cron = send(chat.state, turn(turns.cron!, false));
   const user = send(chat.state, turn(turns.user!));
   expect(definitions(cron.built)).toEqual(definitions(user.built));
   const work = (tools: AnyAgentTool[]) => tools.find((tool) => tool.name === "continue_work")!;
@@ -294,22 +296,27 @@ it("refuses every continuation effect on a cron-runner turn in a series a user t
   };
   setRuntimeConfigSnapshot(continuation);
   // Live runner callbacks: the wake a continue_work call schedules, the compaction a request starts.
+  // A detached cron host passes none.
   const requestContinuation = vi.fn();
   const triggerCompaction = vi.fn(async () => ({ ok: true, compacted: true }));
-  const turn = (options: ToolOptions): ToolOptions => ({
+  const turn = (options: ToolOptions, callbacks = true): ToolOptions => ({
     ...options,
     config: continuation,
-    continueWorkOpts: { requestContinuation },
-    requestCompactionOpts: {
-      sessionId,
-      contextUsageOrigin: "live_runner",
-      getContextUsage: () => 0.95,
-      triggerCompaction,
-    },
+    ...(callbacks
+      ? {
+          continueWorkOpts: { requestContinuation },
+          requestCompactionOpts: {
+            sessionId,
+            contextUsageOrigin: "live_runner",
+            getContextUsage: () => 0.95,
+            triggerCompaction,
+          },
+        }
+      : {}),
   });
   using chat = retainEmbeddedSessionPromptState(sessionId);
   const user = send(chat.state, turn(turns.user!));
-  const cron = send(chat.state, turn(turns.cron!));
+  const cron = send(chat.state, turn(turns.cron!, false));
   const find = (tools: AnyAgentTool[], name: string) => tools.find((tool) => tool.name === name)!;
   const text = (result: { content: unknown }) => JSON.stringify(result.content);
   const refusal = (name: string) => `${name} is not available in this turn. Do not retry ${name}.`;
@@ -352,6 +359,12 @@ it("refuses every continuation effect on a cron-runner turn in a series a user t
   expect(requestContinuation).toHaveBeenCalledTimes(1);
   await find(user, "request_compaction").execute("user-compact", { reason: "context is full" });
   expect(triggerCompaction).toHaveBeenCalledTimes(1);
+  // A cron-runner turn whose host services the callbacks (a main or session:<key> job, such as a
+  // room heartbeat) runs as a turn of this session, on the same listing, and reaches them.
+  const shared = send(chat.state, turn(turns.cron!));
+  expect(definitions(shared)).toEqual(definitions(user));
+  await find(shared, "continue_work").execute("shared-continue", { reason: "more" });
+  expect(requestContinuation).toHaveBeenCalledTimes(2);
 });
 
 it("lists no continuation tool on any turn while continuation is disabled", async () => {

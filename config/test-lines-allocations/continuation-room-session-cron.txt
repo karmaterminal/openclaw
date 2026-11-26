@@ -1,0 +1,2 @@
+# Continuation on room-session cron turns and minimal prompts: the session:<key> scheduled turn through the real reply execution (continue_* kept), the minimal-prompt wake-line pins, and the fixed-listing pins that a detached cron host refuses the calls while a host that services the callbacks reaches them. Measured net, not a cap. Pending review; no approval claimed.
+100

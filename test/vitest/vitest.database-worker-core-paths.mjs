@@ -766,6 +766,8 @@ export const databaseWorkerCoreTestFiles = [
   "src/auto-reply/reply/agent-runner-execution-conversation-failures.test.ts",
   "src/auto-reply/reply/agent-runner-execution-direct-delivery.test.ts",
   "src/auto-reply/reply/agent-runner-execution-heartbeat-source.test.ts",
+  // A scheduled shared-session turn through the real reply execution and session rows.
+  "src/auto-reply/reply/agent-runner-execution-scheduled-continuation.test.ts",
   "src/auto-reply/reply/agent-runner-execution-lifecycle.test.ts",
   "src/auto-reply/reply/agent-runner-execution-mcp-context.test.ts",
   "src/auto-reply/reply/agent-runner-execution-message-authority.test.ts",

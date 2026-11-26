@@ -651,7 +651,10 @@ The system prompt branches on tool availability in `src/agents/system-prompt.ts`
 
 - when tools are present, the prompt teaches the tool path first and labels response tokens as fallback;
 - when tools are absent, the prompt teaches response tokens only;
-- each visible continuation tool gets a core `## Tooling` slot beside `sessions_yield`, with a one-line action (`src/agents/system-prompt-tool-list.ts`). Like `sessions_yield`, all three are `catalogMode: "direct-only"`, so Tool Search (on by default) and Code Mode never catalog them: they stay direct provider tools in `## Tooling` and never appear under `### Deferred Tool Schemas`.
+- each visible continuation tool gets a core `## Tooling` slot beside `sessions_yield`, with a one-line action (`src/agents/system-prompt-tool-list.ts`). Like `sessions_yield`, all three are `catalogMode: "direct-only"`, so Tool Search (on by default) and Code Mode never catalog them: they stay direct provider tools in `## Tooling` and never appear under `### Deferred Tool Schemas`;
+- minimal prompts (cron, `toolsAllow`-capped and sub-agent runs) keep the `### How you wake` lines when any turn control is callable, then the `## Chain Delegation` hop guide; the parameter tables stay in the full prompt.
+
+Cron jobs that run as a turn of a shared session (`sessionTarget` `main` or `session:<key>`, such as a room heartbeat) go through the reply pipeline, which settles `continue_work` elections and drains delegates after the turn, so they keep the continuation tools their `toolsAllow` admits. Detached cron runs (isolated or `current` jobs, hooks, join intros, trigger scripts) have no host that services those callbacks and register none; on a fixed tool listing they list the series' continuation tools and refuse the calls.
 
 This keeps the agent’s taught interface aligned with the actual capability surface.
 
