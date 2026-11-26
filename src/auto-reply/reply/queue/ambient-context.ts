@@ -49,7 +49,9 @@ function resolvePreviewAggregate(source: InternalFollowupRun): string | undefine
  * own sender, or by the opted-in, verified aggregate it could have joined; any other turn states a
  * count. A sender the channel did not identify is nobody's own. A waiting source that may join an
  * aggregate takes only what that aggregate may read, since a refused turn keeps its notice. Accepted
- * edge case: settings changed while a message waits change its aggregate, which leaves the count.
+ * edge cases: the plugin gate changing while a message waits changes its aggregate. Closing leaves the
+ * count; opening after a refused lone try lets the notice that try stated, its sender's own previews,
+ * into an aggregate the message then joins.
  */
 function previewsFor(
   entries: readonly AmbientOverflowEntry[],
