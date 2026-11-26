@@ -36,15 +36,20 @@ describe("scheduled turn in a shared session", () => {
     let toolNames: string[] | undefined;
     state.runEmbeddedAgentMock.mockImplementationOnce(
       async (runParams: RunEmbeddedAgentInternalParams) => {
-        expect(runParams).toMatchObject({ trigger: "cron", jobId: expect.any(String) });
-        // The run's own parameters through the gate and factory that build its continuation tools.
+        const { trigger, jobId, continueWorkOpts, requestCompactionOpts } = runParams;
+        expect({ trigger, jobId }).toEqual({ trigger: "cron", jobId: expect.any(String) });
+        // The facts the attempt hands its tool assembly, through the gate and factory that build
+        // its continuation tools.
         toolNames = createOpenClawContinuationTools(
-          withContinuationOpts(runParams, {
-            config: runParams.config,
-            agentSessionKey: runParams.sessionKey,
-            sessionId: runParams.sessionId,
-            runId: runParams.runId,
-          }),
+          withContinuationOpts(
+            { trigger, jobId, continueWorkOpts, requestCompactionOpts },
+            {
+              config: runParams.config,
+              agentSessionKey: runParams.sessionKey,
+              sessionId: runParams.sessionId,
+              runId: runParams.runId,
+            },
+          ),
         ).map((tool) => tool.name);
         return { payloads: [], meta: {} };
       },

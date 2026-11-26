@@ -1,2 +1,2 @@
 # Continuation guidance on every turn type (#1575): the room-session scheduled turn through the real reply execution (continue_* kept), the minimal-prompt wake-line pins, the Codex window-ratio pressure cue from the recorded inventory, and the overflow-recovery cue from the attempt's report. Measured net, not a cap. Pending review; no approval claimed.
-135
+140
