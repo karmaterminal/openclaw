@@ -6,10 +6,15 @@ import {
   type JsonObject,
 } from "./protocol.js";
 import {
+  createThreadRequestAppServerOptions,
+  createThreadRequestAttemptParams,
+} from "./thread-lifecycle.test-fixtures.js";
+import {
   buildDeveloperInstructions,
   resolveCodexOpenClawBaseInstructions,
   type CodexThreadPromptContext,
 } from "./thread-prompt.js";
+import { buildThreadResumeParams, buildThreadStartParams } from "./thread-requests.js";
 
 function tool(
   name: string,
@@ -284,5 +289,43 @@ describe("buildDeveloperInstructions delivery-mode stability", () => {
 
     expect(instructions[1]).toBe(instructions[0]);
     expect(instructions[2]).toBe(instructions[0]);
+  });
+});
+
+describe("Codex thread continuation guidance", () => {
+  // The pinned base is the only system-level carrier on this runtime; an authored native base
+  // moves OpenClaw's base into the developer carrier, and a cold resume re-renders it.
+  it.each([
+    [true, undefined, "baseInstructions"],
+    [true, { instructions: "Operator policy" }, "developerInstructions"],
+    [false, undefined, "baseInstructions"],
+  ] as const)("thread/start and resume carry it (enabled: %s, %j)", async (on, native, carrier) => {
+    const params = {
+      ...createThreadRequestAttemptParams({ provider: "openai" }),
+      config: { agents: { defaults: { continuation: { enabled: on } } } },
+    };
+    const names = ["continue_work", "continue_delegate", "request_compaction"];
+    const options = {
+      appServer: createThreadRequestAppServerOptions(),
+      config: native,
+      dynamicTools: on
+        ? [
+            namespace(
+              names.map((name) => tool(name)),
+              CODEX_OPENCLAW_DIRECT_DYNAMIC_TOOL_NAMESPACE,
+            ),
+          ]
+        : [],
+    };
+    const start = await buildThreadStartParams(params, { ...options, cwd: "/repo" });
+    const resume = await buildThreadResumeParams(params, { ...options, threadId: "root" });
+    for (const line of [
+      "## Continuation & Delegation",
+      "You control your own turn cycle: `continue_work`, `continue_delegate`, `request_compaction` are how.",
+      "Use the `continue_delegate` tool to queue background sub-agents",
+    ]) {
+      expect(start[carrier]?.includes(line), line).toBe(on);
+      expect(resume[carrier]?.includes(line), line).toBe(on);
+    }
   });
 });

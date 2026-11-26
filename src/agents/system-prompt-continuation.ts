@@ -1,7 +1,8 @@
 // "RFC §" references herein cite docs/design/continue-work-signal-v2.md (Agent Self-Elected Turn Continuation / CONTINUE_WORK).
 /**
  * Continuation prompt guidance (CONTINUE_WORK / continue_delegate / request_compaction)
- * rendered into the OpenClaw system prompt when the continuation feature is enabled.
+ * rendered into the OpenClaw system prompt and the harness base prompt when the continuation
+ * feature is enabled.
  */
 
 /** The continuation tools that let a session drive its own turn cycle. */
