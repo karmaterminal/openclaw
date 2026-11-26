@@ -111,8 +111,9 @@ function resolvePromptModeForSession(sessionKey?: string): "minimal" | "full" {
 /**
  * The prompt mode an attempt renders in every runtime: an explicit mode wins, raw model runs
  * render none, subagent and cron sessions minimal, others full. A restrictive tool allowlist
- * shrinks a full prompt to minimal. Host dispatch resolves it once for the embedded runner
- * and every harness, which build their prompts from the attempt's `promptMode`.
+ * shrinks a full prompt to minimal. Host dispatch hands the result to the embedded runner and
+ * every harness, which build their prompts from the attempt's `promptMode`; resolving a
+ * resolved attempt again returns the same mode.
  */
 export function resolveAttemptPromptMode(
   attempt: Pick<EmbeddedRunAttemptParams, "promptMode" | "modelRun" | "sessionKey" | "toolsAllow">,

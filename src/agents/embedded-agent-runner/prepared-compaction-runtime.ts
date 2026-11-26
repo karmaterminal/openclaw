@@ -474,7 +474,11 @@ export async function buildPreparedCompactionRuntime(
       model: effectiveModel,
     });
     const promptSurface = resolveAgentPromptSurfaceForSessionKey(params.sessionKey);
-    const promptMode = resolveAttemptPromptMode(params);
+    // Compaction renders the session's mode; history-seed params also carry the turn's own.
+    const promptMode = resolveAttemptPromptMode({
+      sessionKey: params.sessionKey,
+      toolsAllow: params.toolsAllow,
+    });
     const nativeCommandGuidanceLines = listRegisteredPluginAgentPromptGuidance({
       surface: promptSurface,
     });

@@ -542,7 +542,7 @@ closes. This does not sandbox trusted in-process plugin code.
     launches or worktree writes, while accepted work retains its cleanup and
     completion responsibilities.
 
-    `promptMode: "minimal"` selects the bounded subagent prompt instead of the full conversation prompt. The plugin runtime exposes only this mode; omission keeps the full prompt. Use `disableTools: true` as well when the run must have an exact empty tool surface.
+    `promptMode: "minimal"` selects the bounded subagent prompt instead of the full conversation prompt. The plugin runtime exposes only this mode; omission resolves it from the session key, so subagent and cron keys get the minimal prompt and other keys the full prompt. Use `disableTools: true` as well when the run must have an exact empty tool surface.
 
     `completionDelivery: "current-requester"` is default-off and is only available while a `before_dispatch` hook is handling an authenticated inbound request. OpenClaw captures the resolved requester session and delivery route before invoking the plugin, then delivers the subagent completion through the normal announce path. Plugins cannot provide or override requester lineage or destination fields. Calls outside that requester-bound hook context are rejected.
 

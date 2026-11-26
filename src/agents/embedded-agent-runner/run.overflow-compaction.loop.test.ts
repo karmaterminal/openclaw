@@ -496,22 +496,18 @@ describe("embedded run retry dispatch", () => {
     { sessionKey: "agent:main:cron:nightly", expected: "minimal" },
     { sessionKey: "agent:main:session-1", toolsAllow: ["read"], expected: "minimal" },
     { sessionKey: "agent:main:session-1", toolsAllow: ["*"], expected: "full" },
+    { sessionKey: "agent:main:session-1", modelRun: true, expected: "none" },
   ])(
-    "hands every runtime the embedded prompt mode for $sessionKey (tools $toolsAllow)",
-    async ({ sessionKey, toolsAllow, expected }) => {
-      const dispatchFor = async (harnessId: string) => {
-        const input = makeDispatchInput();
-        input.runInput.resolvedSessionKey = sessionKey;
-        input.runInput.runParams.config = {
-          agents: { defaults: { continuation: { enabled: true } } },
-        };
-        input.runInput.runParams.toolsAllow = toolsAllow;
-        input.preparedRuntime.snapshot().agentHarness.id = harnessId;
-        input.preparedRuntime.snapshot().pluginHarnessOwnsTransport = harnessId !== "openclaw";
-        return (await dispatch(input)).dispatchedAttempt.preparedAttempt;
-      };
-      expect((await dispatchFor("openclaw")).promptMode).toBe(expected);
-      const attempt = await dispatchFor("codex");
+    "hands the harness the embedded prompt mode for $sessionKey (tools $toolsAllow, raw $modelRun)",
+    async ({ sessionKey, toolsAllow, modelRun, expected }) => {
+      const input = makeDispatchInput();
+      input.runInput.resolvedSessionKey = sessionKey;
+      Object.assign(input.runInput.runParams, {
+        config: { agents: { defaults: { continuation: { enabled: true } } } },
+        toolsAllow,
+        modelRun,
+      });
+      const attempt = (await dispatch(input)).dispatchedAttempt.preparedAttempt;
       expect(attempt.promptMode).toBe(expected);
       const host = createAgentHarnessHostCapabilities({ attempt, pluginId: "codex" });
       try {
@@ -522,13 +518,11 @@ describe("embedded run retry dispatch", () => {
           dynamicTools: [],
           appServer: codex.resolveCodexPromptSnapshotAppServerOptions(),
         });
-        // The Codex base renders the minimal chain-hop guide exactly where embedded does.
-        const [present, absent] =
-          expected === "minimal"
-            ? ["## Chain Delegation", "### Self-elected turns"]
-            : ["### Self-elected turns", "## Chain Delegation"];
-        expect(threadStartParams.baseInstructions).toContain(present);
-        expect(threadStartParams.baseInstructions).not.toContain(absent);
+        // The Codex base carries the guide form embedded renders, and none for a raw run.
+        const guides = { full: "### Self-elected turns", minimal: "## Chain Delegation" };
+        for (const [mode, heading] of Object.entries(guides)) {
+          expect(threadStartParams.baseInstructions?.includes(heading)).toBe(mode === expected);
+        }
       } finally {
         host.close();
       }

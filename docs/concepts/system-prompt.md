@@ -145,7 +145,7 @@ On channels with native approval cards/buttons, the prompt tells the agent to re
 
 ## Prompt modes
 
-OpenClaw renders smaller system prompts for sub-agents. It resolves a `promptMode` once per run attempt (not user-facing config), and every runtime, including Codex and other agent harnesses, renders that mode:
+OpenClaw renders smaller system prompts for sub-agents. It resolves a `promptMode` once per run attempt (not user-facing config), and the embedded runner and every agent harness, including Codex, render that mode (CLI backends always render the full prompt):
 
 - `full` (default): all sections above.
 - `minimal`: used for sub-agents, cron runs, and runs with a restrictive tool allowlist; omits the memory prompt section (bundled as **Memory Recall**), **Model Aliases**, **User Identity**, **Assistant Output Directives**, **Messaging**, **Collapsible Details**, and **Silent Replies**. Tooling, **Care** (including permission-block guidance), **Skills** (when supplied), Workspace, Sandbox, Runtime, and injected context stay available. The current date and time zone still arrive through turn context.
