@@ -48,6 +48,11 @@ describe("buildAgentSystemPrompt — continuation section branching", () => {
 
     it("leads with the wake model and drops RFC jargon", () => {
       expect(prompt).toContain("### How you wake");
+      expect(prompt).toContain("can choose this session's next turn");
+      expect(prompt).toContain(
+        "A delegate can elect its own continue_work turns or further delegates",
+      );
+      expect(prompt).toContain("fan out to chain ancestors");
       expect(prompt).toContain(
         "You run only when an inbound message arrives, a scheduled automation fires, or a continuation you armed wakes you.",
       );
@@ -242,10 +247,31 @@ describe("buildAgentSystemPrompt — continuation section branching", () => {
     });
   });
 
+  describe("turn-cycle line", () => {
+    const render = (toolNames: string[]) =>
+      buildAgentSystemPrompt({ ...baseParams, continuationEnabled: true, toolNames });
+    it("omits the line when no turn control is exposed", () => {
+      expect(render([])).not.toContain("You control your own turn cycle:");
+    });
+    it("names a single control with is", () => {
+      expect(render(["continue_work"])).toContain(
+        "You control your own turn cycle: `continue_work` is how.",
+      );
+    });
+    it("names every exposed control with are", () => {
+      expect(render(["continue_work", "continue_delegate", "request_compaction"])).toContain(
+        "You control your own turn cycle: `continue_work`, `continue_delegate`, `request_compaction` are how.",
+      );
+    });
+  });
+
   describe("## Tooling list", () => {
-    const work = "- continue_work: Arm your next turn for unfinished work, now or after a delay.";
+    const work =
+      "- continue_work: Take your own next turn, now or after a delay; no message needed.";
     const delegate =
-      "- continue_delegate: Queue a bounded branch after this turn or later; `silent-wake` wakes you on return.";
+      "- continue_delegate: Run bounded work beside you; its result returns to you (`silent-wake` wakes you), a session, the tree, or all.";
+    const compaction =
+      "- request_compaction: Compact at a moment you choose; stage working state first.";
     const toolLines = (toolNames: string[], promptMode?: "minimal") =>
       buildAgentSystemPrompt({ ...baseParams, continuationEnabled: true, toolNames, promptMode })
         .split("Tools policy-filtered. Names case-sensitive; call exact.\n")[1]
@@ -253,14 +279,16 @@ describe("buildAgentSystemPrompt — continuation section branching", () => {
         ?.split("\n");
 
     it.each([undefined, "minimal"] as const)(
-      "gives both core slots beside sessions_yield (promptMode %s)",
+      "gives all three core slots beside sessions_yield (promptMode %s)",
       (promptMode) => {
         // Shuffled input: the renderer owns core order and alphabetical extras.
-        const names = "zeta_x continue_delegate subagents continue_work sessions_yield alpha_x";
+        const names =
+          "zeta_x request_compaction continue_delegate subagents continue_work sessions_yield alpha_x";
         expect(toolLines(names.split(" "), promptMode)).toEqual([
           "- sessions_yield: End turn; await subagent events",
           work,
           delegate,
+          compaction,
           "- subagents: Subagent status/cancel",
           "- alpha_x",
           "- zeta_x",

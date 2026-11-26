@@ -62,9 +62,10 @@ export function buildSystemPromptToolLines(params: SystemPromptToolListParams): 
       ? `Spawn subagent/ACP (ACP ids from acp.allowedAgents${availableTools.has("agents_list") ? ", not agents_list" : ""})`
       : "Spawn subagent",
     sessions_yield: "End turn; await subagent events",
-    continue_work: "Arm your next turn for unfinished work, now or after a delay.",
+    continue_work: "Take your own next turn, now or after a delay; no message needed.",
     continue_delegate:
-      "Queue a bounded branch after this turn or later; `silent-wake` wakes you on return.",
+      "Run bounded work beside you; its result returns to you (`silent-wake` wakes you), a session, the tree, or all.",
+    request_compaction: "Compact at a moment you choose; stage working state first.",
     subagents: "Subagent status/cancel",
     session_status: "Session/model/usage/time/status; model override",
     skill_workshop: "Author reusable skills",

@@ -4,6 +4,26 @@
  * rendered into the OpenClaw system prompt when the continuation feature is enabled.
  */
 
+/** The continuation tools that let a session drive its own turn cycle. */
+const CONTINUATION_TURN_CONTROL_TOOL_NAMES = [
+  "continue_work",
+  "continue_delegate",
+  "request_compaction",
+] as const;
+
+/** "You control your own turn cycle" naming only the turn controls this turn exposes; omitted when none are. */
+function turnCycleLine(availableTools: ReadonlySet<string>): string[] {
+  const controls = CONTINUATION_TURN_CONTROL_TOOL_NAMES.filter((name) =>
+    availableTools.has(name),
+  ).map((name) => `\`${name}\``);
+  if (controls.length === 0) {
+    return [];
+  }
+  return [
+    `You control your own turn cycle: ${controls.join(", ")} ${controls.length === 1 ? "is" : "are"} how.`,
+  ];
+}
+
 /** Tooling-list hint steering delegate work to `continue_delegate` when the tool is available. */
 export function delegateToolHint(availableTools: ReadonlySet<string>): string[] {
   return availableTools.has("continue_delegate")
@@ -26,6 +46,8 @@ export function buildContinuationLines(
     lines.push(
       "## Continuation & Delegation",
       "### How you wake",
+      ...turnCycleLine(availableTools),
+      "You can choose this session's next turn yourself and arrange how delegated work returns to it or other sessions; no human prompt or external scheduler is required.",
       "You run only when an inbound message arrives, a scheduled automation fires, or a continuation you armed wakes you.",
       "If you end without arming a continuation, unfinished work won't schedule its own next turn; an inbound message or automation can still wake you.",
       "- Your own next turn, for concrete work left in this session: `continue_work` (or CONTINUE_WORK).",
@@ -49,6 +71,7 @@ export function buildContinuationLines(
       "Use it only when work remains; do not use it to wait, idle, or keep the session alive.",
       "",
       "### Delegated continuation",
+      "A delegate can elect its own continue_work turns or further delegates; its eventual return can wake this session, target another session, fan out to chain ancestors, or reach all known sessions on this host when policy allows.",
       ...(availableTools.has("continue_delegate")
         ? [
             "Use the `continue_delegate` tool to queue background sub-agents for dispatch after this response, after a delay,",
@@ -121,16 +144,16 @@ export function buildContinuationLines(
       ...(availableTools.has("sessions_yield")
         ? [
             "### Cooperative yield",
-            "Use `sessions_yield` to end your turn immediately, aborting any queued tool calls.",
+            "Use `sessions_yield` to end your turn once this response's tool calls settle; nothing further runs in this turn.",
             "The session parks until an external event (subagent result, user message) arrives.",
             "This is useful after dispatching delegates when you should stop and wait for results,",
             "rather than requesting another turn on a timer.",
             "",
             "**Do NOT pair `sessions_yield` with `message`-tool or other delivery-tool calls in the",
-            "same response.** `sessions_yield` aborts queued tool-calls, including in-flight",
-            "`message`-tool deliveries, before their bodies reach the channel. Result: empty",
-            "placeholder lines on channel (e.g. `\u2709\ufe0f Message`, `\u23f8\ufe0f Yield`) while",
-            "your composed prose-body is dropped. For a routine clean turn-end where you have",
+            "same response.** Same-response tool calls settle before the yield takes effect, but past",
+            "incidents dropped `message` bodies to empty placeholder lines on channel (e.g.",
+            "`\u2709\ufe0f Message`, `\u23f8\ufe0f Yield`), and no test yet proves channel delivery in that",
+            "case: send the message in one response and yield in a later one. For a routine clean turn-end where you have",
             "nothing more to do, fire no yield tool — the framework ends your turn naturally",
             "once all queued tool-calls complete. Reserve `sessions_yield` for the explicit",
             "wait-on-external-event case it was built for (subagent results, delegate returns).",

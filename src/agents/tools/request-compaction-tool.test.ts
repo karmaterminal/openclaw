@@ -517,6 +517,15 @@ describe("request_compaction tool", () => {
     );
   });
 
+  it("leads with the choice it gives and keeps the stage-first order", () => {
+    const { description } = makeTool();
+
+    expect(description).toMatch(/^You choose when you compact/);
+    expect(description).toContain(
+      "FIRST stage it via continue_delegate(mode='post-compaction', task='<state-summary>'), THEN call this",
+    );
+  });
+
   it("does not expose diagnostic traceparent as a model-facing parameter", () => {
     const tool = makeTool();
 

@@ -156,15 +156,14 @@ describe("continue_work tool", () => {
   it("tells models when the armed turn starts and not to use continue_work for wait or park loops", () => {
     const tool = makeTool();
 
-    expect(tool.description).toContain("arrange your own next turn in this same session");
+    expect(tool.description).toContain("You control your own turn cycle");
+    expect(tool.description).toContain("take your next turn in this same session");
     expect(tool.description).toContain("Put the action you will take in reason");
     expect(tool.description).toContain("Do not use continue_work to wait, yield, stand by, park");
     expect(tool.description).toContain("use sessions_yield");
-    expect(tool.description).toContain("An unarmed intention will not wake you by itself.");
+    expect(tool.description).toContain("An unarmed intention will not wake you by itself");
     expect(tool.description).not.toContain("nothing else wakes you");
-    expect(tool.description).toContain(
-      "the turn starts after this one ends, or delaySeconds later",
-    );
+    expect(tool.description).toContain("right after this reply or delaySeconds later");
   });
 
   it("does not expose diagnostic traceparent as a model-facing parameter", () => {

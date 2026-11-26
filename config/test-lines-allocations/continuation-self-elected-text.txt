@@ -1,0 +1,2 @@
+# Continuation self-elected text: the How-you-wake and delegate-return assertions, the turn-cycle line's empty/one/all render pins, the control-first continue_work and request_compaction description pins, and the three ## Tooling slots. Measured net, not a cap. Pending review; no approval claimed.
+37

@@ -651,7 +651,7 @@ The system prompt branches on tool availability in `src/agents/system-prompt.ts`
 
 - when tools are present, the prompt teaches the tool path first and labels response tokens as fallback;
 - when tools are absent, the prompt teaches response tokens only;
-- visible `continue_work` and `continue_delegate` each get a core `## Tooling` slot beside `sessions_yield`, with a one-line action (`src/agents/system-prompt-tool-list.ts`); `request_compaction` is listed there by name. Like `sessions_yield`, all three are `catalogMode: "direct-only"`, so Tool Search (on by default) and Code Mode never catalog them: they stay direct provider tools in `## Tooling` and never appear under `### Deferred Tool Schemas`.
+- each visible continuation tool gets a core `## Tooling` slot beside `sessions_yield`, with a one-line action (`src/agents/system-prompt-tool-list.ts`). Like `sessions_yield`, all three are `catalogMode: "direct-only"`, so Tool Search (on by default) and Code Mode never catalog them: they stay direct provider tools in `## Tooling` and never appear under `### Deferred Tool Schemas`.
 
 This keeps the agent’s taught interface aligned with the actual capability surface.
 
