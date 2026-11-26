@@ -792,6 +792,8 @@ describe("Codex native configuration lifecycle", () => {
           const response = await nativeRequest(...args);
           if (args[0] === "thread/read") {
             nativeReadCompleted = true;
+            // A native turn that never settles ends warm admission at the wait bound.
+            vi.setSystemTime(Date.now() + 121_000);
             // The wire read still completes normally. Change the durable lineage
             // while warm admission awaits it, without changing the native binding.
             if (rotateLineage) {
@@ -805,11 +807,13 @@ describe("Codex native configuration lifecycle", () => {
           }
           return response;
         });
+        vi.useFakeTimers({ toFake: ["Date"] });
         try {
           await expect(startOrResumeThread(common)).rejects.toThrow(
             "Codex warm thread ownership changed",
           );
         } finally {
+          vi.useRealTimers();
           bindingRead?.mockRestore();
           closeHost?.();
         }
