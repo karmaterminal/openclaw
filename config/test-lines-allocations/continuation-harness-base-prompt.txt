@@ -1,0 +1,2 @@
+# Continuation guidance in the harness base prompt (#1575): the base-vs-regular continuation line pins (full, minimal, bracket form, disabled) and the Codex thread/start + resume carrier pins (base, authored-base developer carrier, disabled).
+74

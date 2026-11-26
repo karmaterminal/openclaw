@@ -19,6 +19,7 @@ import {
   resolveSovereignPromptSnapshot,
   type SovereignPromptSpans,
 } from "./sovereign-prompts/runtime.js";
+import { buildContinuationLines, delegateToolHint } from "./system-prompt-continuation.js";
 import type { ProviderSystemPromptContribution } from "./system-prompt-contribution.js";
 import { buildOpenClawControlSection } from "./system-prompt-control.js";
 import { buildDocumentationSection } from "./system-prompt-documentation.js";
@@ -92,6 +93,7 @@ export function buildAgentHarnessBasePrompt(params: {
     buildRuntimeContextSection(sovereign),
     [""],
     params.nativeCommandGuidanceLines ?? [],
+    delegateToolHint(availableTools),
     availableTools.has("process")
       ? [
           "Before input: process log; log/poll shows waitingForInput/stdinWritable. Lost id: process list.",
@@ -125,6 +127,12 @@ export function buildAgentHarnessBasePrompt(params: {
     // Local docs paths need async resolution and differ per install, so a pinned prompt
     // names the public mirror.
     isMinimal ? [] : buildDocumentationSection({ availableTools, sandboxed: false }),
+    // Same gate as the regular prompt: config enables the section, the tools pick its form.
+    buildContinuationLines(
+      { continuationEnabled: params.config?.agents?.defaults?.continuation?.enabled === true },
+      isMinimal,
+      availableTools,
+    ),
   ];
   return placed(
     sections
