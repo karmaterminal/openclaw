@@ -1,0 +1,2 @@
+# Continuation guidance beside sovereign prompt slots on the Codex route (#1321 x #1575): an enforce agent whose generation places the unconverted continuation-section.md keeps the code-owned guidance in thread/start and resume baseInstructions, and both handoffs pass the sovereign check.
+37

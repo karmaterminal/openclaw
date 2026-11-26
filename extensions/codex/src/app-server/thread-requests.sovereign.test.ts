@@ -7,11 +7,13 @@ import path from "node:path";
 import { inspect } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  fixtureBody,
   SENTINEL,
   SOVEREIGN_BODIES as BODIES,
   STOCK_IDENTITY,
   writeSovereignGeneration as writeGeneration,
 } from "./sovereign-generation.test-support.js";
+import { checkCodexThreadHandoff } from "./sovereign-handoff.js";
 import {
   createThreadRequestAppServerOptions,
   createThreadRequestAttemptParams,
@@ -19,6 +21,7 @@ import {
 import { buildThreadResumeParams, buildThreadStartParams } from "./thread-requests.js";
 
 let tempRoot = "";
+const CONTINUATION_BODY = fixtureBody("continuation");
 // Codex test files are isolated, so this one config initializes the process registry.
 let config: NonNullable<ReturnType<typeof createThreadRequestAttemptParams>["config"]>;
 
@@ -33,11 +36,14 @@ beforeAll(() => {
   writeGeneration(main, "main", BODIES);
   const broken = agentDir("broken");
   writeGeneration(broken, "broken", { "identity-section.md": BODIES["identity-section.md"]! });
+  const cont = agentDir("cont");
+  writeGeneration(cont, "cont", { ...BODIES, "continuation-section.md": CONTINUATION_BODY });
   config = {
     agents: {
       entries: {
         main: { agentDir: main, sovereignPrompts: { mode: "enforce" } },
         broken: { agentDir: broken, sovereignPrompts: { mode: "enforce" } },
+        cont: { agentDir: cont, sovereignPrompts: { mode: "enforce" } },
         plain: { agentDir: agentDir("plain") },
       },
     },
@@ -117,5 +123,36 @@ describe.skipIf(process.platform === "win32")("Codex route: sovereign prompt tex
     });
     expect(plain.baseInstructions?.split("\n")[0]).toBe(STOCK_IDENTITY);
     expect(plain.baseInstructions).not.toContain(SENTINEL);
+  });
+
+  it("continuation guidance stays code text beside the loaded slots, and the handoff passes", async () => {
+    // continuation/main is a phase C slot this build has not converted: the agent's file there
+    // is loaded and digested, while the guidance renders from code (sovereign-prompts/registry.ts).
+    const params = {
+      ...attempt("cont"),
+      config: {
+        ...config,
+        agents: { ...config.agents, defaults: { continuation: { enabled: true } } },
+      },
+    };
+    const start = await buildThreadStartParams(params, {
+      ...options(),
+      cwd: "/repo",
+      dynamicTools: [],
+    });
+    const resume = await buildThreadResumeParams(params, { ...options(), threadId: "thread-1" });
+    const base = start.baseInstructions ?? "";
+    expect(base.split("\n")[0]).toBe(BODIES["identity-section.md"]);
+    expect(base).toContain("## Continuation & Delegation\n### How you wake");
+    expect(base).not.toContain(CONTINUATION_BODY);
+    expect(resume.baseInstructions).toBe(base);
+    for (const [site, request] of [
+      ["thread/start", start],
+      ["thread/resume", resume],
+    ] as const) {
+      expect(checkCodexThreadHandoff(params, site, request)?.verification?.result).toBe(
+        "handoff-verified",
+      );
+    }
   });
 });
