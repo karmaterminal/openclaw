@@ -289,6 +289,42 @@ afterEach(async () => {
 });
 
 describe("prepareEmbeddedAttemptSessionRuntime", () => {
+  it("never pins a sovereign prompt agent's prompt (#1321): no checkpoint or delta carries it", async () => {
+    const sovereign = createHistoryFixture();
+    Object.assign(sovereign.input.attempt, {
+      config: { agents: { entries: { main: { sovereignPrompts: { mode: "enforce" } } } } },
+    });
+    const runtime = await prepareEmbeddedAttemptSessionRuntime(sovereign.input);
+    expect(runtime.prepareSystemPromptUpdate).toBeUndefined();
+    await sovereign.persist(runtime);
+    expect(sovereign.entries).toEqual([]);
+    // The same route pins for an off agent.
+    const plain = await prepareEmbeddedAttemptSessionRuntime(createHistoryFixture().input);
+    expect(plain.prepareSystemPromptUpdate).toBeDefined();
+  });
+
+  it("records the provider request check's latest result in the run's prompt report (#1321)", async () => {
+    const fixture = createFixture();
+    const systemPromptReport = { sovereign: { agentId: "main" } };
+    Object.assign(fixture.input.systemPrompt, { systemPromptReport });
+    await fixture.prepare();
+    const [transport] = mocks.prepareTransport.mock.calls[0] as [
+      Parameters<typeof import("./attempt-stream-settle.js").prepareEmbeddedAttemptTransport>[0],
+    ];
+    const verified = {
+      result: "final-payload-verified" as const,
+      route: "openclaw",
+      boundary: "provider_request",
+      site: "anthropic-messages",
+    };
+
+    transport.onSovereignVerification?.(verified);
+    expect(systemPromptReport.sovereign).toEqual({ agentId: "main", verification: verified });
+    // A refused request withdraws it.
+    transport.onSovereignVerification?.(undefined);
+    expect(systemPromptReport.sovereign).toEqual({ agentId: "main", verification: undefined });
+  });
+
   it("clears an unsent prompt without reading history when prompt updates remain enabled", async () => {
     const fixture = createHistoryFixture();
     const first = await prepareEmbeddedAttemptSessionRuntime(fixture.input);

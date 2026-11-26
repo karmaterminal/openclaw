@@ -15,15 +15,25 @@ import type { PreparedTtsPreferences } from "../tts/tts-preferences.js";
 import { buildTtsSystemPromptHintAsync } from "../tts/tts-settings.js";
 import { resolveMainSessionDelegationMode } from "./delegation-guidance.js";
 import type { PreparedModelRuntimeSnapshot } from "./prepared-model-runtime.types.js";
+import {
+  beginSovereignPromptRender,
+  resolveSovereignPromptSnapshot,
+  type SovereignPromptSpans,
+} from "./sovereign-prompts/runtime.js";
 import { buildAgentSystemPrompt } from "./system-prompt.js";
 import { resolveEffectiveToolFsWorkspaceOnly } from "./tool-fs-policy.js";
 
-type ConfiguredAgentSystemPromptParams = Parameters<typeof buildAgentSystemPrompt>[0] & {
+type ConfiguredAgentSystemPromptParams = Omit<
+  Parameters<typeof buildAgentSystemPrompt>[0],
+  "sovereign"
+> & {
   config?: OpenClawConfig;
   agentId?: string;
   preparedTtsPreferences?: PreparedTtsPreferences;
   tools?: { name: string; parameters: unknown }[];
   preparedModelRuntime?: Pick<PreparedModelRuntimeSnapshot, "configuredModelAliases">;
+  /** The sovereign spans this render placed, for transform and provider request checks. */
+  onRenderedSovereignSpans?: (spans: SovereignPromptSpans) => void;
 };
 
 function buildModelAliasLines(owner: ConfiguredAgentSystemPromptParams["preparedModelRuntime"]) {
@@ -35,7 +45,14 @@ function buildModelAliasLines(owner: ConfiguredAgentSystemPromptParams["prepared
     .map(({ alias, provider, model }) => `- ${alias}: ${provider}/${model}`);
 }
 
-/** Builds the agent system prompt after applying config-derived prompt fields. */
+/**
+ * Builds the agent system prompt after applying config-derived prompt fields.
+ *
+ * The only production path to the renderer, so it is the sovereign prompt chokepoint
+ * (openclaw#1321, design § 4.6): a refused, unloaded or unresolvable `enforce` agent
+ * throws a content-free `SovereignPromptRefusal` here, before anything renders, on every
+ * caller (attempts, compaction, fork rebuilds, CLI backends, `/context`).
+ */
 export async function buildConfiguredAgentSystemPrompt(params: ConfiguredAgentSystemPromptParams) {
   const {
     config,
@@ -43,9 +60,26 @@ export async function buildConfiguredAgentSystemPrompt(params: ConfiguredAgentSy
     agentId: explicitAgentId,
     preparedModelRuntime,
     preparedTtsPreferences,
+    onRenderedSovereignSpans,
     ...renderParams
   } = params;
   const agentId = explicitAgentId ?? (tools ? params.runtimeInfo?.agentId : undefined);
+  const snapshot = resolveSovereignPromptSnapshot({
+    config,
+    agentId: explicitAgentId ?? params.runtimeInfo?.agentId,
+  });
+  const sovereign = snapshot ? beginSovereignPromptRender(snapshot) : undefined;
+  const render = (input: Omit<Parameters<typeof buildAgentSystemPrompt>[0], "sovereign">) => {
+    const prompt = buildAgentSystemPrompt({ ...input, sovereign });
+    if (sovereign) {
+      onRenderedSovereignSpans?.({
+        agentId: sovereign.agentId,
+        setDigest: sovereign.setDigest,
+        instances: sovereign.instances,
+      });
+    }
+    return prompt;
+  };
   if (tools) {
     renderParams.toolNames = tools.map((tool) => tool.name);
     renderParams.messageTool = tools.find((tool) => tool.name.trim().toLowerCase() === "message");
@@ -70,12 +104,12 @@ export async function buildConfiguredAgentSystemPrompt(params: ConfiguredAgentSy
     }));
   }
   if (!config) {
-    return buildAgentSystemPrompt(renderParams);
+    return render(renderParams);
   }
   const channel = normalizeOptionalLowercaseString(renderParams.runtimeInfo?.channel) ?? "";
   const includeFullSections =
     renderParams.promptMode !== "minimal" && renderParams.promptMode !== "none";
-  return buildAgentSystemPrompt({
+  return render({
     ...renderParams,
     openClawSetupIssue: describeSystemAgentConfigConflict(config),
     restartCommandsEnabled: isRestartEnabled(config),

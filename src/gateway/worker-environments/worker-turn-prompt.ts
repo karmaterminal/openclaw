@@ -21,6 +21,7 @@ import { prepareAgentPromptProjects } from "../../agents/prompt-projects.js";
 import type { AgentMessage } from "../../agents/runtime/index.js";
 import type { SessionPlacementTurnParams } from "../../agents/session-placement-admission.js";
 import type { SessionManager } from "../../agents/sessions/session-manager.js";
+import { assertSovereignPromptRoute } from "../../agents/sovereign-prompts/runtime.js";
 import type { TranscriptPolicy } from "../../agents/transcript-policy.types.js";
 import type { ContextEngineHostSupport } from "../../context-engine/host-compat.js";
 import type { ContextEngine } from "../../context-engine/types.js";
@@ -64,6 +65,9 @@ export async function prepareWorkerTurnPrompt(params: {
   assertCurrent: () => void;
 }) {
   const { turn, agentId, model, transcriptPolicy } = params;
+  // The rendered prompt ships to the worker, possibly another host. Sovereign text never
+  // leaves the Gateway host until a worker-side contract exists (design § 5.4, § 7.3).
+  assertSovereignPromptRoute({ config: turn.config, agentId, route: "worker-environment" });
   const bootstrapWorkspaceDir =
     turn.bootstrapWorkspaceDir ?? resolveAgentWorkspaceDir(turn.config ?? {}, agentId);
   const preparedModelRuntime = Object.freeze({

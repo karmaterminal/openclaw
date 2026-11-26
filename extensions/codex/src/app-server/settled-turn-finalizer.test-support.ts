@@ -2,6 +2,7 @@ import { createTestPluginApi } from "openclaw/plugin-sdk/plugin-test-api";
 import { createPluginRuntimeMock } from "openclaw/plugin-sdk/plugin-test-runtime";
 import { expect, vi } from "vitest";
 import plugin from "../../index.js";
+import * as authBridge from "./auth-bridge.js";
 import * as boundedTurn from "./bounded-turn.js";
 import { createNativeCommandItem } from "./event-projector-command.test-support.js";
 import {
@@ -24,11 +25,17 @@ import { codexTranscriptMirrorRuntime } from "./transcript-mirror.js";
 export { registerCodexEventProjectorTestLifecycle } from "./event-projector.test-harness.js";
 
 export async function createCodexSettledFinalizerTestFixture(
-  options: { failedTool?: boolean; terminalStatus?: "failed" | "completed" } = {},
+  options: {
+    failedTool?: boolean;
+    terminalStatus?: "failed" | "completed";
+    /** A final answer the settled turn authored after its tool. */
+    answer?: string;
+  } = {},
 ) {
   const runBounded = vi
     .spyOn(boundedTurn, "runBoundedCodexAppServerTurn")
     .mockImplementation(vi.fn<typeof boundedTurn.runBoundedCodexAppServerTurn>());
+  const authHandoff = vi.spyOn(authBridge, "resolveCodexAppServerPreparedAuthHandoff");
   const mirror = vi
     .spyOn(codexTranscriptMirrorRuntime, "mirror")
     .mockImplementation(async (input) => ({
@@ -88,6 +95,16 @@ export async function createCodexSettledFinalizerTestFixture(
       durationMs,
     },
   });
+  if (options.answer) {
+    await emit("item/completed", {
+      item: {
+        type: "agentMessage",
+        id: "answer-settled",
+        phase: "final_answer",
+        text: options.answer,
+      },
+    });
+  }
   await emit("turn/completed", {
     turn: {
       id: TURN_ID,
@@ -115,5 +132,12 @@ export async function createCodexSettledFinalizerTestFixture(
     }),
   );
   expect(registerAgentHarness).toHaveBeenCalledOnce();
-  return { attempt, params, harness: registerAgentHarness.mock.calls[0]![0], runBounded, mirror };
+  return {
+    attempt,
+    params,
+    harness: registerAgentHarness.mock.calls[0]![0],
+    runBounded,
+    authHandoff,
+    mirror,
+  };
 }

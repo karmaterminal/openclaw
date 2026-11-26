@@ -18,6 +18,7 @@ import { resolveUserTimezone } from "../date-time.js";
 import { buildBootstrapContextForFiles } from "../embedded-agent-helpers/bootstrap.js";
 import { convertToLlm, convertToLlmWithBlockImages } from "../sessions/messages.js";
 import { SessionManager } from "../sessions/session-manager.js";
+import { isSovereignPromptAgent } from "../sovereign-prompts/runtime.js";
 import { buildConfiguredAgentSystemPrompt } from "../system-prompt-config.js";
 import { resolveTranscriptPolicy } from "../transcript-policy.js";
 import { getHistoryLimitFromSessionKey, limitHistoryTurns } from "./history.js";
@@ -204,7 +205,12 @@ export async function prepareEmbeddedSessionForkContext(params: {
     tools = checkpoint.tools as Context["tools"];
   }
   // Updates to renderedPrefix are already appended to history; replay the stable prefix.
-  let systemPrompt = typeof checkpoint?.prefix === "string" ? checkpoint.prefix : undefined;
+  // A sovereign prompt agent always rebuilds: its checkpoints predate enforce (stock text)
+  // or would carry another generation, and it writes no new ones (openclaw#1321).
+  let systemPrompt =
+    typeof checkpoint?.prefix === "string" && !isSovereignPromptAgent(params.config, params.agentId)
+      ? checkpoint.prefix
+      : undefined;
   if (systemPrompt === undefined) {
     const bootstrapFiles = await resolveBootstrapFilesForPreparation({
       config: params.config,

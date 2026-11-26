@@ -424,3 +424,9 @@ cannot attest that an arbitrary native runtime honored those restrictions.
 `finalizeSettledTurn` remains optional for experimental third-party harness
 compatibility. When the selected harness omits it, OpenClaw preserves the
 existing incomplete-turn error instead of risking repeated side effects.
+
+For an agent whose sovereign prompts are `enforce`, OpenClaw never calls
+`finalizeSettledTurn`: the finalization prompt is code-owned and carries none of
+the agent's files, so core refuses before preparing it, on every harness, and the
+run ends with the same incomplete-turn error. See
+[Sovereign prompts CLI](/cli/sovereign) for the route ids.

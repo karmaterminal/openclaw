@@ -26,6 +26,7 @@ import type {
   CodexAppServerPendingSupervisionBranch,
   CodexAppServerThreadBinding,
 } from "./session-binding.js";
+import { checkCodexThreadHandoff, recordCodexThreadLoad } from "./sovereign-handoff.js";
 import type { CodexThreadConfigurationOptions } from "./thread-configuration-options.js";
 import {
   CodexThreadBindingConflictError,
@@ -252,6 +253,8 @@ export async function materializePendingSupervisionBranch(
       nativeModelProvider,
     };
     const startParams = await buildThreadStartParams(nativeAttempt, nativeStartOptions);
+    // The probe fork carried no base and ran no turn; this start hands the agent's.
+    const sovereignReceipt = checkCodexThreadHandoff(nativeAttempt, "thread/start", startParams);
     // Rendered from the probed native model, which the pre-startup estimate could not know.
     const openClawBaseInstructions = resolveCodexOpenClawBaseInstructions(
       nativeAttempt,
@@ -271,6 +274,7 @@ export async function materializePendingSupervisionBranch(
       otherThreadId: probeThreadId,
       role: "supervised branch",
     });
+    recordCodexThreadLoad(params.client, finalThreadId, sovereignReceipt);
     await trackPendingSupervisionArtifacts([finalThreadId]);
     params.throwIfAborted();
     const startResponse = assertCodexThreadStartResponse(rawStartResponse);
@@ -404,6 +408,7 @@ export async function materializePendingSupervisionBranch(
       modelProvider: bindingModelProvider,
       historyCoveredThrough,
       preparedOpenClawBaseInstructions: openClawBaseInstructions,
+      ...(sovereignReceipt ? { sovereignReceipt } : {}),
       lifecycle: { action: "forked" },
     };
   } catch (error) {

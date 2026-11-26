@@ -35,6 +35,7 @@ import { isOutOfTurnHistoryEntry } from "../../sessions/session-manager-codec.js
 import { sessionManagerOpenTranscriptCohort } from "../../sessions/session-manager-core.js";
 import { sessionManagerReadInitialContext } from "../../sessions/session-manager-current-turn.js";
 import { wrapToolDefinition } from "../../sessions/tools/tool-definition-wrapper.js";
+import { assertSovereignPromptNotReplaced } from "../../sovereign-prompts/runtime.js";
 import { resolveToolSearchCatalogTool } from "../../tool-search.js";
 import { runContextEngineMaintenance } from "../context-engine-maintenance.js";
 import { buildEmbeddedExtensionFactories } from "../extensions.js";
@@ -223,6 +224,8 @@ export async function prepareEmbeddedAttemptAgentSession(input: {
     beforeToolBatch: clientTools.catalogToolHookContext
       ? createToolLoopBatchAdmission(clientTools.catalogToolHookContext)
       : undefined,
+    assertSystemPromptReplacementAllowed: () =>
+      assertSovereignPromptNotReplaced(attempt.config, input.sessionAgentId, "before_agent_start"),
   });
   // Publish ownership before post-construction hooks. Outer cleanup must dispose
   // the session if prompt or terminal-hook installation fails.

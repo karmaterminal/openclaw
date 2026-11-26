@@ -307,7 +307,9 @@ export async function runEmbeddedAttemptPromptPhase(
       }
     }
 
-    if (!skipPromptSubmission) {
+    // The Google prompt cache sends the stable prompt in its own request and drops it from
+    // generateContent, outside the provider request check, so a sovereign run never uses it.
+    if (!skipPromptSubmission && !prepared.systemPrompt.sovereignSpans?.()) {
       const { resolvedApiKey } = attempt;
       const googlePromptCacheStreamFn = await prepareGooglePromptCacheStreamFn({
         apiKey: await resolveEmbeddedAgentApiKey({

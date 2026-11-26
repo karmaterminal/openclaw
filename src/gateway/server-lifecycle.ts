@@ -1,6 +1,7 @@
 import { closeAuthProfileUsage } from "../agents/auth-profiles/usage-lifecycle.js";
 import { prepareSandboxRegistryClose } from "../agents/sandbox/registry-lifecycle.js";
 import { fenceSessionSuspensionWritesForGatewayShutdown } from "../agents/session-suspension.js";
+import { loadSovereignPromptsForProcess } from "../agents/sovereign-prompts/runtime.js";
 import { prepareWorktreeRunEndClose } from "../agents/worktrees/run-end-lifecycle.js";
 import { listLoadedChannelPluginsForRegistry } from "../channels/plugins/registry-loaded.js";
 import { getRuntimeConfig } from "../config/io.js";
@@ -226,6 +227,9 @@ export async function prepareGatewayLifecycle(params: {
         DEFAULT_TERMINAL_DETACH_SECONDS) * 1000,
   });
   applyGatewayLaneConcurrency(resolveGatewayLaneConcurrency(cfgAtStart), { gatewayStart: true });
+  // Each `enforce` agent's sovereign prompt generation loads once here, before connections
+  // attach and agent work is admitted. A refusal fails that agent only (openclaw#1321).
+  loadSovereignPromptsForProcess(cfgAtStart, { log });
 
   runtimeStateRef.current = createGatewayServerLiveState({
     hooksConfig: initialHooksConfig,

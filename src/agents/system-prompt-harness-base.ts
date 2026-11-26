@@ -4,11 +4,21 @@
  * Reuses the regular prompt's policy sections and omits every turn, channel,
  * workspace, and catalog fact: those keep their own harness carriers, so a
  * routine turn cannot change the pinned bytes and invalidate the native thread.
+ *
+ * Like `buildConfiguredAgentSystemPrompt`, this renderer is a sovereign prompt chokepoint
+ * (openclaw#1321): a sovereign agent's identity and policy bodies come from its snapshot,
+ * and a refused or unloaded agent throws before anything renders. A snapshot is frozen
+ * for the process, so the pinned bytes stay stable until the next Gateway start.
  */
 import { isRestartEnabled } from "../config/commands.flags.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { describeSystemAgentConfigConflict } from "../system-agent/setup-config-snapshot.js";
 import { buildPromisedWorkPromptSection } from "./promised-work-prompt.js";
+import {
+  beginSovereignPromptRender,
+  resolveSovereignPromptSnapshot,
+  type SovereignPromptSpans,
+} from "./sovereign-prompts/runtime.js";
 import type { ProviderSystemPromptContribution } from "./system-prompt-contribution.js";
 import { buildOpenClawControlSection } from "./system-prompt-control.js";
 import { buildDocumentationSection } from "./system-prompt-documentation.js";
@@ -27,32 +37,59 @@ const HARNESS_IDENTITY = "You are a personal assistant running inside OpenClaw."
 
 export function buildAgentHarnessBasePrompt(params: {
   config?: OpenClawConfig;
+  /** The agent whose thread this is; selects its sovereign prompt files when it has any. */
+  agentId?: string;
   /** Unqualified callable tool names; deferred tools count because they stay callable. */
   toolNames: Iterable<string>;
   promptMode?: PromptMode;
   /** Only the thread-stable parts apply: the provider's dynamic suffix is not rendered. */
   promptContribution?: ProviderSystemPromptContribution;
   nativeCommandGuidanceLines?: readonly string[];
+  /** The sovereign spans this render placed, for the harness's handoff check. */
+  onRenderedSovereignSpans?: (spans: SovereignPromptSpans) => void;
 }): string {
   const promptMode = params.promptMode ?? "full";
+  const snapshot = resolveSovereignPromptSnapshot({
+    config: params.config,
+    agentId: params.agentId,
+  });
+  const sovereign = snapshot ? beginSovereignPromptRender(snapshot) : undefined;
+  const placed = (prompt: string) => {
+    if (sovereign) {
+      params.onRenderedSovereignSpans?.({
+        agentId: sovereign.agentId,
+        setDigest: sovereign.setDigest,
+        instances: sovereign.instances,
+      });
+    }
+    return prompt;
+  };
+  const identity = sovereign ? sovereign.slot("identity-section.md") : HARNESS_IDENTITY;
   if (promptMode === "none") {
-    return HARNESS_IDENTITY;
+    return placed(identity ?? "");
   }
   const isMinimal = promptMode === "minimal";
   const availableTools = new Set([...params.toolNames].map((name) => name.trim().toLowerCase()));
   const overrides = params.promptContribution?.sectionOverrides;
   const toolGuidance = listToolPromptGuidance(availableTools);
+  // A sovereign agent's own execution and tool sections outrank provider overrides.
+  const executionBiasOverride = sovereign
+    ? undefined
+    : normalizeProviderPromptBlock(overrides?.execution_bias);
+  const toolCallStyleOverride = sovereign
+    ? undefined
+    : normalizeProviderPromptBlock(overrides?.tool_call_style);
   const sections: (readonly (string | undefined | false)[])[] = [
-    [HARNESS_IDENTITY, ""],
+    [identity, ""],
     [normalizeProviderPromptBlock(overrides?.interaction_style)],
-    normalizeProviderPromptBlock(overrides?.execution_bias)
-      ? [normalizeProviderPromptBlock(overrides?.execution_bias)]
+    executionBiasOverride
+      ? [executionBiasOverride]
       : isMinimal
         ? []
-        : buildExecutionBiasSection(),
+        : buildExecutionBiasSection(sovereign),
     buildPromisedWorkPromptSection(),
     [normalizeProviderPromptBlock(params.promptContribution?.stablePrefix)],
-    buildRuntimeContextSection(),
+    buildRuntimeContextSection(sovereign),
     [""],
     params.nativeCommandGuidanceLines ?? [],
     availableTools.has("process")
@@ -66,15 +103,16 @@ export function buildAgentHarnessBasePrompt(params: {
           "Treat subagent outputs as reports to synthesize.",
         ]
       : [],
-    buildMediaGenerationToolLines(availableTools),
+    buildMediaGenerationToolLines(availableTools, sovereign),
     [""],
-    normalizeProviderPromptBlock(overrides?.tool_call_style)
-      ? [normalizeProviderPromptBlock(overrides?.tool_call_style)]
+    toolCallStyleOverride
+      ? [toolCallStyleOverride]
       : !isMinimal || availableTools.size > 0
-        ? buildToolCallStyleSection()
+        ? buildToolCallStyleSection(sovereign)
         : [],
     buildCareSection({
       controlToolsAvailable: availableTools.has("openclaw") || availableTools.has("gateway"),
+      sovereign,
     }),
     buildOpenClawControlSection({
       setupIssue: params.config ? describeSystemAgentConfigConflict(params.config) : undefined,
@@ -88,10 +126,12 @@ export function buildAgentHarnessBasePrompt(params: {
     // names the public mirror.
     isMinimal ? [] : buildDocumentationSection({ availableTools, sandboxed: false }),
   ];
-  return sections
-    .flat()
-    .filter((line): line is string => line !== undefined && line !== false)
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return placed(
+    sections
+      .flat()
+      .filter((line): line is string => line !== undefined && line !== false)
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim(),
+  );
 }

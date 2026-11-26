@@ -3,6 +3,7 @@ import { formatErrorStackWithMessage } from "@openclaw/normalization-core/error-
 import type { ExecProcessFailureKind } from "../agents/bash-tools.exec-output.js";
 import type { EmbeddedAgentExecutionPhaseInfo } from "../agents/embedded-agent-runner/execution-phase.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { redactSovereignValue } from "../logging/sovereign-redaction.js";
 import { pluginInstanceInvocation } from "../plugins/plugin-instance-invocation.js";
 import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import { registerListener } from "../shared/listeners.js";
@@ -1342,6 +1343,8 @@ export function emitTrustedDiagnosticEventWithPrivateData(
     sanitized = { ...privateData };
     Reflect.deleteProperty(sanitized, "hostPluginId");
   }
+  // Captured model content can carry the system prompt; listeners never get sovereign text.
+  sanitized = redactSovereignValue(sanitized);
   emitDiagnosticEventWithTrust(event, true, { coreModelRequestLifecycle, privateData: sanitized });
 }
 

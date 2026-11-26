@@ -1,0 +1,279 @@
+---
+summary: "CLI reference for `openclaw sovereign` (locate and check an agent's sovereign prompt files without printing them)"
+read_when:
+  - Placing or deploying an agent's sovereign prompt files
+  - Checking a sovereign prompt generation before publishing it
+  - Reading a sovereign prompt refusal code
+title: "Sovereign prompts CLI"
+---
+
+# `openclaw sovereign`
+
+Locate and check an agent's sovereign prompt files: the agent's own prompt text,
+kept as files OpenClaw loads at start instead of built-in prompt text. The
+commands read only mechanics (bytes, structure, filesystem metadata, digests) and
+print codes, names, sizes, digests and paths. They never print file content.
+
+The switch is `agents.entries.<agentId>.sovereignPrompts.mode`: `"off"` (the
+default) or `"enforce"`. See [What `enforce` does](#what-enforce-does).
+
+| Command | Role                                                                                                  |
+| ------- | ----------------------------------------------------------------------------------------------------- |
+| `paths` | Resolves the agent's sovereign root and switch from config; reads no file                             |
+| `check` | Loads a generation (the one `CURRENT` names, or `--generation <dir>`) and runs every mechanical check |
+| `slots` | Lists the slots, file names, reserved tokens and route checks this build declares; no file            |
+
+`paths` and `check` take `--agent <id>` (required); every command takes `--json`.
+They run read-only beside a live Gateway, so a deploy can call them before its
+restart, and `slots --json` lets a deploy validate a tree against the exact build
+it deploys.
+
+```bash
+openclaw sovereign paths --agent main --json
+openclaw sovereign check --agent main --json
+openclaw sovereign check --agent main --generation ~/.openclaw/agents/main/agent/sovereign/systemprompts/generations/.staging-1 --json
+openclaw sovereign slots --json
+```
+
+Exit codes: `0` when the agent resolves (`paths`), the generation loads (`check`)
+or the registry prints (`slots`); `1` on any refusal, with the refusal code in the
+output. An invalid config exits `1` with the config error before a command runs.
+
+## Layout
+
+The root is `<agentDir>/sovereign/systemprompts`, where `agentDir` is the agent's
+configured `agentDir` or `<state-dir>/agents/<agentId>/agent`. There are no search
+paths and no environment override.
+
+```text
+<root>/                          directory 0700 (or 0500), owned by the Gateway user
+  CURRENT                        file 0600: one line, the generation id
+  generations/
+    <generation-id>/             directory 0500 once written
+      MANIFEST.json              0400, written last
+      identity-section.md        required, non-empty
+      safety-section.md          required, non-empty
+      tool-section.md            required, non-empty
+      execution-section.md       optional
+      tool-section.d/<name>.md   optional fragments
+```
+
+A generation id is `<UTC yyyymmddThhmmssZ>-<first 12 hex of the source commit>`.
+`CURRENT` is a regular file replaced by rename, never a symlink.
+
+`MANIFEST.json` holds no content:
+
+```json
+{
+  "schema": "openclaw.sovereign-prompts/1",
+  "agentId": "main",
+  "generation": "20261107T120000Z-0123456789ab",
+  "source": {
+    "repo": "example/sovereign",
+    "commit": "0123456789abcccccccccccccccccccccccccccc",
+    "path": "sovereign/systemprompts"
+  },
+  "files": [{ "path": "identity-section.md", "bytes": 1024, "sha256": "<64 hex>" }],
+  "setDigest": "<64 hex>"
+}
+```
+
+`setDigest` is the sha256 of the RFC 8785 (JCS) JSON of the `files` array, sorted
+by `path`: each entry as `{"bytes":…,"path":"…","sha256":"…"}` with no
+whitespace.
+
+File names come from a code-owned slot registry that declares the whole
+main-assembly namespace, so files can be placed before the code renders them. A
+name outside the registry is refused.
+
+## Checks and codes
+
+Every check is mechanical; nothing reads or judges the text.
+
+| Code                                               | Refused when                                                                                                                                                                                                                       |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `root_missing`                                     | The root does not exist                                                                                                                                                                                                            |
+| `root_unsafe`                                      | A path component is a symlink or not a directory, the path is not canonical, an ancestor is not owned by root or the Gateway user, or a directory is group- or other-writable (a sticky shared ancestor such as `/tmp` is allowed) |
+| `pointer_missing`, `pointer_invalid`               | `CURRENT` is absent, or is not a regular single-link file of at most 128 bytes holding a valid generation id                                                                                                                       |
+| `generation_missing`                               | The generation directory (or `generations/`) does not exist                                                                                                                                                                        |
+| `manifest_invalid`, `manifest_digest_mismatch`     | The manifest is absent, unbounded or malformed, names another agent or generation, or its `setDigest` does not recompute                                                                                                           |
+| `unknown_slot`                                     | The manifest lists a name outside the registry                                                                                                                                                                                     |
+| `unexpected_file`                                  | The directory holds an entry the manifest does not list                                                                                                                                                                            |
+| `required_missing`, `required_empty`               | A required file is not listed, has zero bytes, or is empty after line-ending and whitespace normalization                                                                                                                          |
+| `symlink`, `not_regular`, `hardlink`               | A file or fragment directory is a symlink, a file is not a regular file, or a file has more than one link                                                                                                                          |
+| `owner_mismatch`, `mode_unsafe`                    | A file or directory at or below the root is not owned by the Gateway user, or has group or other permissions (files `0400`/`0600`, directories `0500`/`0700`)                                                                      |
+| `size_exceeded`                                    | A file exceeds 64 KiB or the set exceeds 256 KiB; never truncated                                                                                                                                                                  |
+| `partial_read`, `digest_mismatch`                  | The bytes read differ from the manifest's count, the file changed during the read, or the sha256 differs                                                                                                                           |
+| `encoding_invalid`, `encoding_bom`, `control_char` | A body is not strict UTF-8, starts with a BOM, or holds a C0 control other than tab, line feed or carriage return                                                                                                                  |
+| `reserved_token`                                   | A body holds an OpenClaw prompt marker, or a line equal to a heading OpenClaw matches                                                                                                                                              |
+| `placeholder_invalid`, `placeholder_unknown`       | A `{{oc:…}}` token is malformed or names a fact its slot does not provide                                                                                                                                                          |
+| `generation_changed`                               | `CURRENT` changed during the load twice in a row                                                                                                                                                                                   |
+| `io_error`                                         | Any other read failure, or an unexpected error while loading; the output carries the errno name only                                                                                                                               |
+| `agent_unknown`                                    | `--agent` names no configured agent                                                                                                                                                                                                |
+
+An empty optional file counts as absent. Refusal output names the code and, where
+known, the slot, the registry file name, the generation id, byte counts and
+limits, the uid, the octal mode or the errno name. It never includes content,
+native error text, or names outside the registry.
+
+## What `enforce` does
+
+- **Load once.** The Gateway loads each `enforce` agent's current generation when
+  it starts, before agent work is admitted; any other process that renders
+  prompts loads at its first render. Files are never reread: a new generation
+  takes effect at the next start, and changing `sovereignPrompts` plans a Gateway
+  restart. An agent added as `enforce` by hot reload fails `not_loaded` until then.
+- **Fail closed, per agent.** A refused generation fails every run of that agent
+  with its code, before any model call. The Gateway, status, other agents and
+  rollback keep working. Nothing falls back to built-in text.
+- **What renders.** `openclaw sovereign slots` marks the converted slots. In this
+  build they are the identity line (`identity-section.md`, in the main prompt and
+  the Codex base), Execution Bias (`execution-section.md`), Runtime Context
+  (`runtime-context-section.md`), the media-generation lines
+  (`tool-section.d/media-dedupe.md`, with `{{oc:tool:current}}`), Tool Call Style
+  (`tool-section.md`), Care with its credential lines (`safety-section.md`,
+  `safety-section.d/credentials.{control-tools,no-control-tools}.md`) and the
+  workspace-file framing (`project-context-section.md` and
+  `project-context-section.d/*`). Headings stay OpenClaw's; an absent optional file
+  omits its section. On Codex, workspace files keep the harness's own framing; only
+  the personal `USER.md` line there comes from `project-context-section.d/personal-user.md`.
+  Other declared files are checked and listed in receipts while their positions still
+  render built-in text. Provider overrides of these sections are ignored for the agent.
+- **Routes.** Only the embedded OpenClaw runtime and ordinary Codex threads carry
+  the files (Codex as `baseInstructions`, or as developer text behind an authored
+  Codex base). CLI backends, worker and node placements, other harnesses, Codex
+  ring-zero and `none` threads, harness side questions (`/btw` on Codex), and
+  `openclaw infer model run --local` on the ChatGPT Responses API (it sends the
+  built-in identity line there) refuse with `route_unconverted`. So do a
+  conversation bound to a Codex thread (`/codex bind`: `codex:conversation-binding`;
+  a Codex CLI node session: `codex:cli-node-session`), which runs on Codex's own
+  base. The settled-turn finalizer, which writes a new answer in the agent's name from a
+  code-owned prompt when a tool turn ends without one, refuses on every runtime
+  before any handoff (`<runtime>:settled-turn-finalization`, such as `openclaw:`
+  or `codex:`). The turn then ends as an incomplete turn, with the host's
+  missing-reply notice wherever the host delivers one. An answer the agent
+  already wrote is still delivered.
+- **Codex app-server placement.** The files go only to OpenClaw's managed Codex
+  binary, started as its own stdio child. On any other app-server, every Codex
+  handoff that carries a thread's instructions refuses before OpenClaw reads or
+  writes anything: a new thread, a supervised branch, a resume, reuse of a
+  loaded thread, and the policy refreshes that follow them. A remote connection
+  refuses with `codex:remote-app-server`. That covers an authenticated
+  non-loopback WebSocket and a worker-hosted app-server
+  (`appServer.workerHostedCloud`), which runs off the Gateway host. A loopback
+  WebSocket or Unix socket, whose listener could forward anywhere, an
+  `app-server proxy` launch, and a custom command (`appServer.command` or
+  `OPENCLAW_CODEX_APP_SERVER_BIN`) refuse with `codex:unowned-app-server`.
+  Starting a custom command proves OpenClaw owns its stdio pipe, not that the
+  process behind it keeps the thread local: a wrapper could forward to a server
+  other clients reach, where a resume could not prove which instructions the
+  thread runs on. To continue, remove the custom command so OpenClaw starts its
+  managed Codex binary over stdio. An off agent's handoffs are unchanged on
+  every placement.
+- **Which agent.** An agent's files render only for a call that names that agent.
+  A render or check that names no agent, or an invalid one, is refused while any
+  agent is `enforce`, counting one that was `enforce` when the process read its
+  files (loaded or refused) even after config turns it off, until restart. The render
+  fails with `agent_unknown`, a run on an unconverted route with `route_unconverted`,
+  and a whole-prompt replacement with `sovereign_override_denied`. No default agent
+  stands in for the missing id, so neither built-in text nor another agent's files
+  reach that call. A call that names an `off` agent is unaffected.
+- **No replacement.** A plugin hook that replaces the whole prompt fails the run
+  with `sovereign_override_denied`; prepend and append still apply. A provider
+  transform that alters a sovereign span fails with `transform_altered`.
+- **Checked in the provider request.** After every payload hook and wrapper
+  (`before_provider_request`, a provider plugin's `wrapStreamFn`, OpenClaw's own),
+  each request must still carry every sovereign span whole in its system field:
+  `system`, `instructions`, the leading system or developer message, or
+  `systemInstruction`, by API. For Gemini that is the field its transport sends:
+  `config.systemInstruction` in the Google SDK request, the top-level
+  `systemInstruction` in the REST body the managed Google transport sends. The
+  check reads what will be sent. On a route that encodes its body through
+  OpenClaw (OpenAI), it reads the encoded bytes and those exact bytes are sent.
+  Every other route serializes the request itself or through an SDK
+  (Anthropic, Mistral, Gemini, the ChatGPT route, a plugin's own transport): it
+  is handed a detached copy of the request, checked, holding only plain JSON
+  data. Nothing in it runs when the transport reads or sends it, and no hook
+  keeps a reference it could edit afterwards. A request holding an accessor, a
+  proxy, a function (a `toJSON`, a Google SDK `httpOptions.fetch` or callable
+  tool) or a class instance refuses; the run's own abort signal passes. The
+  Google SDK merges `config.httpOptions.extraBody` over the request it built, so
+  an extra body naming `systemInstruction` or `system_instruction` refuses;
+  other extra-body fields are sent. On the Google plugin's Gemini API and
+  Interactions routes, a `google` Gemini model on AI Studio sends native video,
+  restored after the hooks by the identity of a placeholder object, which the
+  copy does not keep. So, as after any hook replaces the request, an `enforce`
+  agent's video reaches the model as the text
+  `(video omitted: native video slot unavailable)` in its place, and nothing in
+  the request says it was received. An `off` agent's video is sent as before.
+  Vertex sends no native video in either mode. After the check, the Google
+  plugin's Gemini API, Vertex and Interactions transports also replace each part
+  a hook marked as video with omission text, so they hand the JSON they send back
+  to the check: a video mark that would take instruction text with it refuses,
+  and a video added anywhere else is sent as omission text. An altered, missing
+  or unrecognized system field fails the run with `transform_altered`
+  (`site=provider_request`) before anything
+  is sent, and the Gateway logs a content-free `[SOVEREIGN_PROMPTS_REFUSED]` line
+  naming the site. Formatting a provider adds around a span (cache blocks, an
+  identity block, a developer role) passes. Each send is checked, including the
+  resends OpenAI Responses makes on its own (a slower service tier, stripped
+  reasoning). Only the built-in API builders can be checked
+  (`anthropic-messages`, `azure-openai-responses`, `google-generative-ai`,
+  `google-interactions`, `google-vertex`, `mistral-conversations`,
+  `openai-chatgpt-responses`, `openai-completions`, `openai-responses`); a run on
+  any other API, such as Ollama's native API or Bedrock Converse, refuses with
+  `route_unconverted` (`api:<id>`). A configured Gemini `cachedContent` carries
+  no system field and refuses; the automatic Gemini prompt cache, which sends the
+  stable prompt in a separate request, is not used for the agent. Compaction
+  summaries send OpenClaw's summarizer prompt, not the agent's, and are not
+  checked. A plugin that sends a request itself instead of through the stream it
+  wraps is outside this check.
+- **Checked at the Codex handoff.** Codex builds its provider request inside its
+  binary, where OpenClaw cannot read it, so the Codex route is checked at the last
+  request OpenClaw writes: every app-server handoff that carries a thread's
+  instructions must carry each sovereign span of the render that built it, in
+  `baseInstructions` or the developer text. That covers `thread/start` (an ordinary
+  thread and a supervised branch), a cold `thread/resume`, whose base Codex prefers
+  over the one the thread saved, and the developer policy refresh after it, which
+  carries the files behind an authored Codex base. A loaded thread is reused only
+  when the handoff that loaded it passed for the same generation; otherwise it
+  resumes cold and is checked again, or, for an ephemeral (incognito) thread,
+  refuses. A missing, altered or foreign span fails the run with
+  `transform_altered` (`route=codex`, `site=app_server_handoff:<site>`) before the
+  handoff is written. Codex ignores the instructions a resume hands to a thread
+  it keeps loaded (another client holds it, a turn is running, or its shutdown
+  did not finish), and answers as usual. So a resume earns `handoff-verified`
+  only on the managed Codex binary OpenClaw starts over stdio, which no other
+  client reaches, for a thread OpenClaw saw unloaded: cold before the request, or
+  closed or reloaded during it. Otherwise the run fails without a receipt, and
+  the thread is kept. What Codex does with the handed instructions stays
+  unverified: the request it builds, and the parent-local inference relay, the
+  only carrier of the personal `USER.md` line.
+  Codex threads that carry no OpenClaw base are not checked: web-search or media
+  workers run code-owned prompts, as compaction summaries do, and forks or
+  attached threads keep their source's base until the next resume hands the
+  agent's.
+- **Never echoed.** Plugin hook payloads (`llm_input`, `before_agent_run`), session
+  extension `before_agent_start` payloads and `getSystemPrompt()`, trajectory
+  records, diagnostics, model-call content capture, debug proxy capture and
+  `/export-session` carry `<!-- openclaw:sovereign <slot> sha256:<12 hex> bytes:<n> -->`
+  in place of each sovereign span. The session prompt pin and fork checkpoints are
+  not used for the agent.
+- **Receipts.** The Gateway logs `[SOVEREIGN_PROMPTS_LOADED]` or
+  `[SOVEREIGN_PROMPTS_REFUSED]` per agent at start, the `status` method reports each
+  agent's generation and digest or refusal code, and each session's prompt report
+  carries the generation, set digest and per-file digests. The report also records
+  the run's latest passed check as `sovereign.verification`: `final-payload-verified`
+  with the API builder read (route `openclaw`, boundary `provider_request`), or
+  `handoff-verified` with the handoff checked (route `codex`, boundary
+  `app_server_handoff`); a refused request removes it. `slots --json` lists each
+  route's declared check under `routes`, with what stays `unverified`; listing runs
+  no check and never reports a result. None holds content.
+
+| Run-time code               | Raised when                                                                           |
+| --------------------------- | ------------------------------------------------------------------------------------- |
+| `not_loaded`                | An `enforce` agent this process did not load at start (added by hot reload)           |
+| `agent_unknown`             | A render names no agent, or an invalid one, while an agent is `enforce`               |
+| `route_unconverted`         | A run is routed where the files cannot reach the model; the output names the route    |
+| `transform_altered`         | A transform changed a sovereign span, or a provider request or Codex handoff lost one |
+| `sovereign_override_denied` | A plugin hook returned a whole-prompt replacement; the output names the hook site     |

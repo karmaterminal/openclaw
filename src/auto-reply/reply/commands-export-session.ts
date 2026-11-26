@@ -14,6 +14,7 @@ import { loadTranscriptEvents } from "../../config/sessions/session-accessor.js"
 import { withSessionTranscriptHydrationCaller } from "../../config/sessions/session-transcript-hydration-caller.js";
 import { scanSessionTranscriptTree } from "../../config/sessions/transcript-tree.js";
 import { FsSafeError, isPathInside, root, type Root } from "../../infra/fs-safe.js";
+import { redactSovereignText } from "../../logging/sovereign-redaction.js";
 import type { ReplyPayload } from "../types.js";
 import {
   parseExportCommandOutputPath,
@@ -177,7 +178,8 @@ export async function buildExportSessionReply(params: HandleCommandsParams): Pro
     entries,
     leafId,
     hasLeafControl,
-    systemPrompt,
+    // An export is a file a person shares; sovereign spans are markers (openclaw#1321).
+    systemPrompt: redactSovereignText(systemPrompt),
     tools: tools.map((t) => ({
       name: t.name,
       description: t.description,

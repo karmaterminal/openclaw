@@ -300,6 +300,8 @@ it.each(["api-key", "subscription", "native-command"] as const)(
         expect(outcome).toMatchObject({ status: 401 });
       }
       expect(connection.effectiveWorkspace).toBe(sandbox.containerWorkdir);
+      // The worker placement is remote to the thread lifecycle's placement admission (#1321).
+      expect(connection.appServer.connectionClass).toBe("remote");
       expect(open).toHaveBeenCalledWith(
         expect.objectContaining({
           nodeId: "worker-node",

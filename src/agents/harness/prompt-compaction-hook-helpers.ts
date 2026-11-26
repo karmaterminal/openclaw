@@ -8,6 +8,7 @@ import { buildCurrentInboundPrompt } from "../embedded-agent-runner/run/runtime-
 import { wrapPluginSystemContextSection } from "../hook-system-context-boundary.js";
 import { resolvePluginTurnContext } from "../plugin-turn-context.js";
 import type { AgentMessage } from "../runtime/index.js";
+import { assertSovereignPromptNotReplaced } from "../sovereign-prompts/runtime.js";
 import { buildAgentHookContext, type AgentHarnessHookContext } from "./hook-context.js";
 
 const log = createSubsystemLogger("agents/harness");
@@ -114,6 +115,15 @@ export async function resolveAgentHarnessBeforePromptBuildResult(params: {
       : undefined;
   const replacementSystemPrompt = promptBuildResult?.systemPrompt;
   const systemPromptReplaced = typeof replacementSystemPrompt === "string";
+  if (systemPromptReplaced) {
+    // A replacement here withdraws the harness base too (Codex `baseInstructions`); outside
+    // the hook's catch, so the refusal fails the run instead of being logged and dropped.
+    assertSovereignPromptNotReplaced(
+      params.ctx.config,
+      params.ctx.agentId,
+      "harness_before_prompt_build",
+    );
+  }
   const systemPrompt = systemPromptReplaced ? replacementSystemPrompt : developerInstructions;
   const promptPrefix = joinPresentTextSegments([
     turnContext.prependContext,

@@ -6,6 +6,7 @@ import { getPublishedRuntimeToolInputSchema } from "@openclaw/ai/internal/tool-s
 import { sha256Hex } from "@openclaw/normalization-core/node-crypto";
 import type { SessionTranscriptRuntimeTarget } from "../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { redactSovereignValue } from "../logging/sovereign-redaction.js";
 import { memoizeFrozenPlainDataProjection } from "../shared/immutable-data.js";
 import { parseBooleanValue } from "../utils/boolean.js";
 import { safeJsonStringify } from "../utils/safe-json.js";
@@ -401,7 +402,11 @@ export async function createTrajectoryRuntimeRecorder(input: TrajectoryRuntimeIn
         provider: params.provider,
         modelId: params.modelId,
         modelApi: params.modelApi,
-        data: data ? sanitizeTrajectoryPayload(data, serialization) : undefined,
+        // The sink keeps credentials (above), never sovereign prompt text (openclaw#1321).
+        // Redaction runs before bounding, so a truncated copy cannot keep a partial span.
+        data: data
+          ? sanitizeTrajectoryPayload(redactSovereignValue(data), serialization)
+          : undefined,
       };
       // Limiting already creates plain records. Only bigint/function leaves need
       // the replacer; functions include toJSON hooks that can return arbitrary values.

@@ -16,6 +16,7 @@ import { resolveProviderContext, PROVIDER_MODEL_INPUT } from "../provider-types.
 import { createAssistantOutput } from "../transports/assistant-output.js";
 import { buildGuardedModelFetch } from "../transports/host-policy.js";
 import { parseJsonPreservingUnsafeIntegers } from "../transports/json-unsafe-integers.js";
+import { admitModelRequestBody } from "../transports/model-request-body.js";
 import {
   awaitProviderLifecycleCallback,
   failTransportStream,
@@ -172,6 +173,8 @@ export const streamGoogleInteractions: StreamFunction<
           }
         },
       );
+      // Materialization is the request's last edit; these are the exact bytes sent.
+      const requestJson = admitModelRequestBody(options, JSON.stringify(body));
 
       let baseUrl = (model.baseUrl || "https://generativelanguage.googleapis.com/v1beta")
         .trim()
@@ -209,7 +212,7 @@ export const streamGoogleInteractions: StreamFunction<
       const response = await guardedFetch(url, {
         method: "POST",
         headers: omitNullRequestHeaders(headers),
-        body: JSON.stringify(body),
+        body: requestJson,
         signal: options?.signal,
       });
       await notifyProviderHttpResponse({ options, response, model });

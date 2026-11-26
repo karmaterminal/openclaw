@@ -243,7 +243,7 @@ export async function executePreparedCompactionSession(runtime: PreparedCompacti
       setCompactionSafeguardCancellation(sessionManager, undefined);
       // Rebuild on retry so provider wrappers and payload shaping use the fallback effort.
       attemptedThinking.add(thinkLevel);
-      const systemPromptText = await buildSystemPromptText();
+      const { text: systemPromptText, sovereignSpans } = await buildSystemPromptText();
       let session: AgentSession | undefined;
       let diagnosticOwner: DiagnosticEmbeddedRunOwner | undefined;
       let resetCompactionTimeout: (() => void) | undefined;
@@ -292,6 +292,7 @@ export async function executePreparedCompactionSession(runtime: PreparedCompacti
           thinkLevel,
           modelCallUrgency:
             params.trigger === "manual" ? "foreground" : (params.modelCallUrgency ?? "background"),
+          sovereignSpans,
         });
         const compactionReplayEnabled = resolveCompactionReplayEligibility(effectiveModel, {
           extraParams: effectiveExtraParams,

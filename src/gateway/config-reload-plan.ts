@@ -210,6 +210,9 @@ const CORE_RELOAD_POLICIES: ReloadPolicy[] = [
     kind: "hot",
     actions: AGENT_ROSTER_RELOAD_ACTIONS,
   },
+  // A generation loads once per process (openclaw#1321); an agent added by hot reload
+  // fails `not_loaded` until the restart.
+  { prefixes: ["agents.entries.*.sovereignPrompts"], kind: "restart" },
   {
     prefixes: ["agents.entries.*.decisionModel"],
     kind: "hot",

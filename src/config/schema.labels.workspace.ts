@@ -5,6 +5,8 @@ export const WORKSPACE_FIELD_LABELS: Record<string, string> = {
   "agents.defaults.workspace": "Workspace",
   "agents.defaults.workspaceFileMode": "New Memory File Mode",
   "agents.entries.*.workspaceFileMode": "New Memory File Mode",
+  "agents.entries.*.sovereignPrompts": "Agent Sovereign Prompts",
+  "agents.entries.*.sovereignPrompts.mode": "Agent Sovereign Prompt Mode",
   "agents.defaults.cwd": "Working Directory",
   "agents.defaults.repoRoot": "Repo Root",
   "agents.defaults.skipBootstrap": "Skip Workspace Bootstrap Creation",
