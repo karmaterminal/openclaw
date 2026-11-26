@@ -317,27 +317,26 @@ it("refuses every continuation effect on a cron-runner turn in a series a user t
   // The cron turn sends the series' list: the continuation names stay listed.
   expect(definitions(cron)).toEqual(definitions(user));
   expect(cron.map((tool) => tool.name)).toEqual(
-    expect.arrayContaining(["continue_work", "continue_delegate", "dispatch_action"]),
+    expect.arrayContaining([
+      "continue_work",
+      "continue_delegate",
+      "request_compaction",
+      "dispatch_action",
+    ]),
   );
   // Direct calls are refused with the reason, before any argument preparation.
   for (const [name, args] of [
     ["continue_work", { reason: "more" }],
     ["continue_delegate", { task: "audit the build", mode: "normal" }],
+    ["request_compaction", { reason: "context is full" }],
   ] as const) {
     const refused = await find(cron, name).execute(`cron-${name}`, args);
     expect(refused.details).toMatchObject({ gated: true });
     expect(text(refused)).toContain(refusal(name));
   }
-  // Through Tool Search: the deferred request_compaction reaches this turn's refusal, and the
-  // direct-only tools are not dispatchable at all.
+  // Through Tool Search: the direct-only tools are not dispatchable at all.
   const dispatch = find(cron, "dispatch_action");
-  const compaction = await dispatch.execute("cron-compact", {
-    id: "request_compaction",
-    args: { reason: "context is full" },
-  });
-  expect(JSON.stringify(compaction.details)).toContain('"gated":true');
-  expect(text(compaction)).toContain(refusal("request_compaction"));
-  for (const name of ["continue_work", "continue_delegate"]) {
+  for (const name of ["continue_work", "continue_delegate", "request_compaction"]) {
     await expect(
       dispatch.execute(`cron-dispatch-${name}`, { id: name, args: { reason: "more" } }),
     ).rejects.toThrow("already available directly");
@@ -351,10 +350,7 @@ it("refuses every continuation effect on a cron-runner turn in a series a user t
   // The same calls on the user turn reach those effects: the refusals above are the cron turn's.
   await find(user, "continue_work").execute("user-continue", { reason: "more" });
   expect(requestContinuation).toHaveBeenCalledTimes(1);
-  await find(user, "dispatch_action").execute("user-compact", {
-    id: "request_compaction",
-    args: { reason: "context is full" },
-  });
+  await find(user, "request_compaction").execute("user-compact", { reason: "context is full" });
   expect(triggerCompaction).toHaveBeenCalledTimes(1);
 });
 

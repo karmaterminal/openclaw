@@ -1,2 +1,2 @@
-# Continuation tools direct-only: tool-surface tests with Tool Search on, directory, Code Mode, disabled, per-turn policy, and Tool Search off.
-118
+# Continuation tools direct-only: tool-surface tests with Tool Search on, directory, Code Mode, disabled, per-turn policy, and Tool Search off, request_compaction included; the fixed-listing cron turn refuses request_compaction as a direct call.
+136
