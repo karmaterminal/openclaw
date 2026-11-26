@@ -250,6 +250,9 @@ export function buildContinuationLines(
  * The delegate hint and continuation section for harness prompts that assemble their own
  * sections, under the OpenClaw system prompt's gate: config enables it, `none` prompts omit it,
  * minimal prompts get chain delegation, and the callable tools choose tool or bracket form.
+ * `promptMode` is taken as the harness renders it. Harness attempts receive the caller's mode
+ * unresolved; only the embedded runner maps an unset mode to minimal for subagent and cron
+ * sessions and under a restrictive `toolsAllow`.
  */
 export function buildContinuationGuidancePrompt(params: {
   config?: OpenClawConfig;

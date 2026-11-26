@@ -490,8 +490,9 @@ export async function buildContextReply(params: HandleCommandsParams): Promise<R
   }
 
   lines.push(
+    // Tools come from the last run's report or, without one, the embedded-runtime estimate.
     continuation.enabled
-      ? `Continuation: enabled | callable: ${continuation.callableTools.join(", ") || "none (bracket tokens only)"}`
+      ? `Continuation: enabled | callable (${report.source === "run" ? "last run" : "estimate"}): ${continuation.callableTools.join(", ") || "none (bracket tokens only)"}`
       : "Continuation: disabled",
     "",
     totalsLine,

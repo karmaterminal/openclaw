@@ -265,7 +265,7 @@ describe("buildContextReply", () => {
   );
 
   it.each([
-    [true, "Continuation: enabled | callable: continue_work, continue_delegate"],
+    [true, "Continuation: enabled | callable (last run): continue_work, continue_delegate"],
     [false, "Continuation: disabled"],
   ] as const)("reports continuation state and callable tools (enabled: %s)", async (on, line) => {
     const callableTools = on ? ["continue_work", "continue_delegate"] : [];
