@@ -753,11 +753,22 @@ describe("native background process source authority", () => {
         expect(inventory.data).toEqual([
           expect.objectContaining({ processId: peer.terminal.processId }),
         ]);
-        // A cleanup-only physical claim is still protected native work. A
-        // new source must not change its configuration before peer settlement.
-        await expect(f.begin("maintainer")).rejects.toMatchObject({
-          name: "CodexAdoptedThreadActiveError",
+        // A cleanup-only physical claim is still protected native work. A new
+        // source waits for peer settlement, without changing its configuration.
+        const reads = () => f.harness.requests.filter(({ method }) => method === "thread/read");
+        const readsBefore = reads().length;
+        let settled = false;
+        const waiting = f.begin("maintainer").finally(() => {
+          settled = true;
         });
+        await Promise.race([
+          waiting,
+          (async () => {
+            while (!settled && reads().length === readsBefore) {
+              await nextTurn();
+            }
+          })(),
+        ]);
         expect(peer.terminal.alive).toBe(true);
         expect(f.harness.requests.filter(({ method }) => method === "thread/unsubscribe")).toEqual(
           [],
@@ -765,7 +776,8 @@ describe("native background process source authority", () => {
         await f.settleBackgroundProcess(peer.terminal);
         await f.harness.waitForMethod("thread/unsubscribe");
         expect(peer.terminal.alive).toBe(false);
-        const successor = await f.begin("maintainer");
+        await vi.advanceTimersByTimeAsync(1_000);
+        const successor = await waiting;
         expect(successor.terminal.alive).toBe(true);
         expect(
           f.harness.requests.filter(({ method }) => method === "thread/unsubscribe"),

@@ -212,7 +212,7 @@ describe("Codex app-server adopted thread lifecycle", () => {
   });
 
   it.each([
-    { status: "active", canAcceptDirectInput: true, error: "active in another runner" },
+    { status: "active", canAcceptDirectInput: true, error: "still active after the wait" },
     { status: "idle", canAcceptDirectInput: false, error: "controlled by its parent" },
   ])(
     "preserves retained adopted ownership when native preflight rejects: $error",
@@ -248,22 +248,29 @@ describe("Codex app-server adopted thread lifecycle", () => {
       const reserveResumeThread = vi.fn(() => ({ release: vi.fn() }));
       const before = testCodexAppServerBindingStore.read(identity);
       try {
-        await expect(
-          startOrResumeThread({
-            client: harness.client,
-            reserveResumeThread,
-            params,
-            cwd: workspaceDir,
-            dynamicTools: [],
-            appServer: createThreadLifecycleAppServerOptions(),
-          }),
-        ).rejects.toThrow(error);
+        const resuming = startOrResumeThread({
+          client: harness.client,
+          reserveResumeThread,
+          params,
+          cwd: workspaceDir,
+          dynamicTools: [],
+          appServer: createThreadLifecycleAppServerOptions(),
+        });
+        void resuming.catch(() => {});
+        if (status === "active") {
+          // A native turn that never finishes still ends this turn within the wait bound.
+          await harness.waitForMethod("thread/read");
+          vi.useFakeTimers({ toFake: ["Date"] });
+          vi.setSystemTime(Date.now() + 121_000);
+          await expect(resuming).rejects.toMatchObject({
+            userMessage: expect.stringContaining("was not processed"),
+          });
+        }
+        await expect(resuming).rejects.toThrow(error);
 
-        expect(harness.request.mock.calls.map(([method]) => method)).toEqual([
-          "config/read",
-          "configRequirements/read",
-          "thread/read",
-        ]);
+        const methods = harness.request.mock.calls.map(([method]) => method);
+        expect(methods.slice(0, 2)).toEqual(["config/read", "configRequirements/read"]);
+        expect(new Set(methods.slice(2))).toEqual(new Set(["thread/read"]));
         expect(release).not.toHaveBeenCalled();
         expect(testCodexAppServerBindingStore.read(identity)).toEqual(before);
         expect(reserveResumeThread).not.toHaveBeenCalled();
@@ -278,12 +285,20 @@ describe("Codex app-server adopted thread lifecycle", () => {
     },
   );
 
-  it.each(["completed", "cancelled", "revoked"] as const)(
-    "waits without interrupting a remote turn that survived the Gateway restart: %s",
-    async (outcome) => {
+  it.each([
+    { input: "restart", outcome: "completed" },
+    { input: "restart", outcome: "cancelled" },
+    { input: "restart", outcome: "revoked" },
+    { input: "room message", outcome: "completed" },
+  ] as const)(
+    "waits without interrupting an active native turn: $input, $outcome",
+    async ({ input, outcome }) => {
       const workspaceDir = path.join(tempDir, "workspace");
       const params = createThreadLifecycleParams(path.join(tempDir, "session.jsonl"), workspaceDir);
-      params.inputProvenance = { kind: "internal_system", sourceTool: "restart" };
+      params.inputProvenance =
+        input === "restart"
+          ? { kind: "internal_system", sourceTool: "restart" }
+          : { kind: "external_user", sourceChannel: "discord" };
       params.disableTools = false;
       const local = createThreadLifecycleAppServerOptions();
       const appServer = {

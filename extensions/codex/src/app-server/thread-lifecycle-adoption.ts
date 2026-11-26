@@ -207,7 +207,7 @@ async function preparePendingCodexThreadResume(
   ) {
     throw fail("configuration adoption requires an OpenClaw-owned local Codex home");
   }
-  const assertCurrent = captureCodexThreadResumeAuthority(params, binding, "native-process");
+  const { assertCurrent } = captureCodexThreadResumeAuthority(params, binding, "native-process");
   assertCurrent();
   const { thread } = await params.client.request(
     "thread/read",
@@ -251,23 +251,26 @@ export async function prepareCodexThreadResume(
   binding: CodexAppServerThreadBinding,
   context: Pick<CodexThreadRequestContext, "lifecycleTiming" | "throwIfAborted">,
 ): Promise<CodexThreadResumePreparation> {
-  const assertCurrent = captureCodexThreadResumeAuthority(
+  const authority = captureCodexThreadResumeAuthority(
     params,
     binding,
     binding.connectionScope === "supervision" ? "connection" : "thread-configuration",
   );
-  assertCurrent();
+  const { assertCurrent } = authority;
+  authority.assertAuthority();
   let thread: CodexThread;
   try {
+    // Another local run's claim is waited for like native activity, before any change.
     thread = await assertAdoptedCodexThreadResumeAllowed(
       params,
       binding.threadId,
       context,
-      assertCurrent,
+      authority.assertAuthority,
+      authority.isClaimed,
     );
   } finally {
     // A failed read cannot authorize recovery after its physical or host owner closes.
-    assertCurrent();
+    authority.assertAuthority();
   }
   // Reuse the lifecycle read so a missing unused thread reaches its recovery owner.
   if (
@@ -288,16 +291,24 @@ function captureCodexThreadResumeAuthority(
   params: CodexStartOrResumeThreadParams,
   binding: CodexAppServerThreadBinding,
   scope: Parameters<typeof captureCodexAppServerClientLifetime>[1],
-): () => void {
+) {
   const assertClient = captureCodexAppServerClientLifetime(params.client, scope);
-  return () => {
+  const assertAuthority = () => {
     params.params.hostCapabilities.assertActive();
     params.assertCurrent?.();
     params.signal?.throwIfAborted();
     assertClient();
-    if (isCodexAppServerLiveThreadClaimed(params.client, binding.threadId)) {
-      throw new CodexAdoptedThreadActiveError();
-    }
+  };
+  const isClaimed = () => isCodexAppServerLiveThreadClaimed(params.client, binding.threadId);
+  return {
+    assertAuthority,
+    isClaimed,
+    assertCurrent: () => {
+      assertAuthority();
+      if (isClaimed()) {
+        throw new CodexAdoptedThreadActiveError();
+      }
+    },
   };
 }
 
