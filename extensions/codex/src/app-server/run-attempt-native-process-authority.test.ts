@@ -761,10 +761,11 @@ describe("native background process source authority", () => {
         const waiting = f.begin("maintainer").finally(() => {
           settled = true;
         });
+        const beforeFirstPoll = () => !settled && reads().length === readsBefore;
         await Promise.race([
           waiting,
           (async () => {
-            while (!settled && reads().length === readsBefore) {
+            while (beforeFirstPoll()) {
               await nextTurn();
             }
           })(),
