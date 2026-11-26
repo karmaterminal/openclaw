@@ -365,6 +365,51 @@ describe("startCodexAttemptThread", () => {
     continued.releaseSharedClientLease();
   });
 
+  it("ends a busy-thread wait inside the startup budget without retiring the client", async () => {
+    const paths = createAttemptPaths(tempRoots);
+    const harness = createCodexLifecycleHarness({
+      respond: async (method) => {
+        if (method === "config/read") {
+          return { config: {}, origins: {}, layers: [] };
+        }
+        if (method === "configRequirements/read") {
+          return { requirements: null };
+        }
+        if (method === "thread/start") {
+          return threadStartResult("busy-thread");
+        }
+        throw new Error(`unexpected method: ${method}`);
+      },
+    });
+    const start = vi.spyOn(CodexAppServerClient, "start").mockResolvedValue(harness.client);
+    const common = {
+      paths,
+      harness,
+      skipStartSpy: true,
+      buildAttemptParams: () => ({ ...createAttemptParams(paths), disableTools: false }),
+    };
+    const first = await startThreadWithHarness(5_000, undefined, common).run;
+    await harness.endTurn(first.thread.threadId);
+    first.turnRoute.release();
+    first.releaseSharedClientLease();
+    // Earlier native work keeps the thread active past this attempt's startup budget.
+    const busy = threadStartResult("busy-thread");
+    harness.seed(
+      { ...busy, thread: { ...busy.thread, status: { type: "active" } } },
+      { loaded: true, subscribed: false },
+    );
+
+    const refused = await readError(startThreadWithHarness(7_000, undefined, common).run);
+    expect(refused).toMatchObject({
+      name: "CodexAdoptedThreadActiveError",
+      userMessage: expect.stringContaining("was not processed"),
+    });
+    // The startup timeout would have retired the client still running that work.
+    expect(harness.stdinDestroyed).toBe(false);
+    expect(readHarnessRequestMethods(harness)).not.toContain("thread/resume");
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps the healthy startup client when a stop ends its wait for a retired owner's exit", async () => {
     const fixture = await bindToRetiredLeasedOwner();
     const stop = new AbortController();

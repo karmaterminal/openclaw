@@ -176,7 +176,10 @@ const CODEX_ACTIVE_THREAD_WAIT_MS = 120_000;
 
 /** Passive refusal must precede releasing or acquiring any native subscription. */
 export async function assertAdoptedCodexThreadResumeAllowed(
-  params: Pick<CodexStartOrResumeThreadParams, "client" | "params" | "signal" | "authority">,
+  params: Pick<
+    CodexStartOrResumeThreadParams,
+    "client" | "params" | "signal" | "authority" | "busyThreadWaitDeadlineAt"
+  >,
   threadId: string,
   context: {
     lifecycleTiming: Pick<CodexThreadLifecycleTimingTracker, "measure">;
@@ -188,7 +191,10 @@ export async function assertAdoptedCodexThreadResumeAllowed(
   const provenance = params.params.inputProvenance;
   const restartInput =
     provenance?.kind === "internal_system" && provenance.sourceTool === "restart";
-  const deadline = Date.now() + CODEX_ACTIVE_THREAD_WAIT_MS;
+  const deadline = Math.min(
+    Date.now() + CODEX_ACTIVE_THREAD_WAIT_MS,
+    params.busyThreadWaitDeadlineAt ?? Number.POSITIVE_INFINITY,
+  );
   // One span: a wait is a single stage, however many reads it takes.
   return await context.lifecycleTiming.measure("thread-read-adoption-status", async () => {
     for (;;) {

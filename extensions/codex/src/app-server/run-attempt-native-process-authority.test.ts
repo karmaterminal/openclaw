@@ -13,7 +13,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WebSocket } from "ws";
 import { readAttemptTerminal } from "./attempt-terminal.test-helper.js";
 import { resolveCodexAppServerHomeDir } from "./auth-start-options.js";
-import { consumeCodexAppServerLiveThread, hasCodexAppServerLiveThread } from "./client-runtime.js";
+import {
+  consumeCodexAppServerLiveThread,
+  hasCodexAppServerLiveThread,
+  isCodexAppServerLiveThreadClaimed,
+} from "./client-runtime.js";
 import {
   createCodexTestHostCapabilities,
   setCodexTestToolFactory,
@@ -770,10 +774,14 @@ describe("native background process source authority", () => {
             }
           })(),
         ]);
+        expect(settled).toBe(false);
+        expect(isCodexAppServerLiveThreadClaimed(f.harness.client, f.threadId)).toBe(true);
         expect(peer.terminal.alive).toBe(true);
-        expect(f.harness.requests.filter(({ method }) => method === "thread/unsubscribe")).toEqual(
-          [],
-        );
+        expect(
+          f.harness.requests.filter(
+            ({ method }) => method === "thread/unsubscribe" || method === "thread/resume",
+          ),
+        ).toEqual([]);
         await f.settleBackgroundProcess(peer.terminal);
         await f.harness.waitForMethod("thread/unsubscribe");
         expect(peer.terminal.alive).toBe(false);

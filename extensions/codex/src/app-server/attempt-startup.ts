@@ -65,6 +65,9 @@ import { startOrResumeThread } from "./thread-lifecycle-run.js";
 import { getCodexAppServerTurnRouter, type CodexThreadRouteReservation } from "./turn-router.js";
 import type { CodexNativeWebSearchSupport } from "./web-search.js";
 
+/** Startup settles its refusal and releases resources well inside its own deadline. */
+const CODEX_STARTUP_BUSY_THREAD_WAIT_MARGIN_MS = 5_000;
+
 type CodexSandboxContext = Awaited<ReturnType<typeof resolveSandboxContext>>;
 
 /**
@@ -142,6 +145,10 @@ export async function startCodexAttemptThread(params: {
   let startupClientForAbandonedRequestCleanup: CodexAppServerClient | undefined;
   let releaseStartupResourcesOnTimeout: (() => Promise<void>) | undefined;
   const startupStartedAt = performance.now();
+  // A busy-thread wait must refuse before this startup's timeout, which retires the
+  // client still running that thread's earlier work.
+  const busyThreadWaitDeadlineAt =
+    Date.now() + params.startupTimeoutMs - CODEX_STARTUP_BUSY_THREAD_WAIT_MARGIN_MS;
   let stage = "configuration";
   let stageStartedAt = startupStartedAt;
   let startupIdentity: Pick<EmbeddedRunAttemptParams, "runId" | "sessionId"> | undefined;
@@ -504,6 +511,7 @@ export async function startCodexAttemptThread(params: {
                   startupAbandonController.signal,
                   reserveStartupThread,
                 ),
+                busyThreadWaitDeadlineAt,
                 onPrewriteHandoffCancelled: () => {
                   startupAbandonedBeforeThreadWrite = true;
                 },
