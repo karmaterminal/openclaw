@@ -1,5 +1,8 @@
 import { resolveContinuationRuntimeConfig } from "../../../auto-reply/continuation/config.js";
-import { emitPersistedContextPressure } from "../../../auto-reply/continuation/context-pressure.js";
+import {
+  emitPersistedContextPressure,
+  resolveRecordedToolNames,
+} from "../../../auto-reply/continuation/context-pressure.js";
 import { resolveBuiltInCompactionTrigger } from "../../../auto-reply/reply/memory-flush-plan.js";
 import { SESSION_TOTAL_TOKENS_VERSION, type SessionEntry } from "../../../config/sessions.js";
 import { loadExactSessionEntryReadOnly } from "../../../config/sessions/session-accessor.js";
@@ -14,8 +17,8 @@ export async function emitRecoveryContextPressure(
   if (input.runParams.sessionPersistence === "detached") {
     return;
   }
-  // Recovery can only name tools admitted for this exact run. A hot reload
-  // changes the next run's inventory, not the already-prepared attempt.
+  // Recovery names only tools admitted for this exact run: the attempt's own report. A hot
+  // reload changes the next run's inventory, not the already-prepared attempt.
   const runtimeConfig = resolveContinuationRuntimeConfig(input.runParams.config ?? {});
   if (!runtimeConfig.enabled) {
     return;
@@ -68,6 +71,7 @@ export async function emitRecoveryContextPressure(
       continuationEnabled: runtimeConfig.enabled,
       contextPressureThreshold: runtimeConfig.contextPressureThreshold,
       contextWindowTokens,
+      admittedToolNames: resolveRecordedToolNames(input.attempt),
       earlyWarningBand: runtimeConfig.earlyWarningBand,
       // Both recovery callers require generic compaction, so the built-in trigger applies.
       compactionTriggerTokens: resolveBuiltInCompactionTrigger({

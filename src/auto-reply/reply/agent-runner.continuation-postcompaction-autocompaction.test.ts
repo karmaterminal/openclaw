@@ -420,7 +420,11 @@ describe("runReplyAgent :: pressure warning to post-compaction handoff", () => {
   const pressureEvents = (queueKey: string) =>
     peekSystemEvents(queueKey).filter((event) => event.includes("[system:context-pressure]"));
 
-  async function createPressureRun(sessionKey: string, trigger: number) {
+  async function createPressureRun(
+    sessionKey: string,
+    trigger: number,
+    entry: Partial<SessionEntry> = {},
+  ) {
     const run = createContinuationRun({ sessionKey, compactionCount: 0 });
     run.config.agents.defaults.continuation = {
       ...run.config.agents.defaults.continuation,
@@ -433,6 +437,7 @@ describe("runReplyAgent :: pressure warning to post-compaction handoff", () => {
       totalTokensVersion: SESSION_TOTAL_TOKENS_VERSION,
       systemPromptReport: report,
       compactionCount: 0,
+      ...entry,
     } satisfies Partial<SessionEntry>);
     const storePath = path.join(custodyState.stateDir(), "agents/main/agent/openclaw-agent.sqlite");
     await replaceSessionEntry({ storePath, sessionKey }, run.sessionEntry);
@@ -528,6 +533,23 @@ describe("runReplyAgent :: pressure warning to post-compaction handoff", () => {
       );
     },
   );
+
+  it("names the recorded tools in the Codex runtime's window-ratio warning", async () => {
+    const sessionKey = "agent:main:pressure-codex";
+    // A session pinned to the Codex harness keeps window ratios: 850k of the 1M window is band 80.
+    const { run, queueKey, sessionStore, storePath } = await createPressureRun(sessionKey, 0, {
+      agentHarnessId: "codex",
+      modelSelectionLocked: true,
+      totalTokens: 850_000,
+    });
+
+    await runDelegateTurn(run, sessionStore, storePath);
+
+    const warnings = pressureEvents(queueKey);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("85% of context window consumed");
+    expect(warnings[0]).toContain("continue_delegate(mode='post-compaction'");
+  });
 
   const REFRESH = "Reload the kept file.";
   const ARMED_KEY = "agent:main:preflight";
