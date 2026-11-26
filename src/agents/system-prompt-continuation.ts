@@ -1,10 +1,10 @@
 // "RFC §" references herein cite docs/design/continue-work-signal-v2.md (Agent Self-Elected Turn Continuation / CONTINUE_WORK).
 /**
  * Continuation prompt guidance (CONTINUE_WORK / continue_delegate / request_compaction)
- * rendered into the OpenClaw system prompt when the continuation feature is enabled.
+ * rendered into the OpenClaw system prompt and the harness base prompt when the continuation
+ * feature is enabled.
  */
 
-/** Tooling-list hint steering delegate work to `continue_delegate` when the tool is available. */
 /** "You control your own turn cycle" naming only the turn controls this turn exposes; omitted when none are. */
 function turnCycleLine(availableTools: ReadonlySet<string>): string[] {
   const controls = ["continue_work", "continue_delegate", "request_compaction"]
@@ -18,6 +18,7 @@ function turnCycleLine(availableTools: ReadonlySet<string>): string[] {
   ];
 }
 
+/** Tooling-list hint steering delegate work to `continue_delegate` when the tool is available. */
 export function delegateToolHint(availableTools: ReadonlySet<string>): string[] {
   return availableTools.has("continue_delegate")
     ? [

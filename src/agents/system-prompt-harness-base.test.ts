@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { activateWorkshopPluginForTest } from "../skills/test-support/workshop-plugin.test-support.js";
+import { delegateToolHint } from "./system-prompt-continuation.js";
 import { buildAgentHarnessBasePrompt } from "./system-prompt-harness-base.js";
 import { buildAgentSystemPrompt } from "./system-prompt.js";
 
@@ -62,4 +63,34 @@ describe("buildAgentHarnessBasePrompt", () => {
       "You are a personal assistant running inside OpenClaw.",
     );
   });
+
+  // Same gate as the regular prompt: config enables the section, the tools pick tool or bracket form.
+  it.each([
+    ["full", true, ["continue_work", "continue_delegate", "request_compaction", "sessions_yield"]],
+    ["minimal", true, ["continue_work", "continue_delegate", "request_compaction"]],
+    ["full", true, []],
+    ["full", false, []],
+  ] as const)(
+    "carries the regular continuation guidance (%s, enabled: %s, %j)",
+    (mode, on, cont) => {
+      const config = { agents: { defaults: { continuation: { enabled: on } } } };
+      const names = [...toolNames, ...cont];
+      const regular = buildAgentSystemPrompt({
+        workspaceDir: "/work",
+        toolNames: names,
+        promptMode: mode,
+        continuationEnabled: on,
+      });
+      const base = buildAgentHarnessBasePrompt({ config, toolNames: names, promptMode: mode });
+      const heading = mode === "full" ? "## Continuation & Delegation" : "## Chain Delegation";
+      // The regular prompt drops blank lines; the guidance lines themselves are shared.
+      const lines = (prompt: string) =>
+        prompt.includes(heading) ? sectionBody(prompt, heading).split("\n").filter(Boolean) : [];
+      expect(lines(base)).toEqual(lines(regular));
+      expect(lines(base).length > 0).toBe(on);
+      for (const hint of delegateToolHint(new Set(cont))) {
+        expect(base).toContain(hint);
+      }
+    },
+  );
 });
