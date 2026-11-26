@@ -277,6 +277,9 @@ describe("resolveCommandsSystemPromptBundle", () => {
         }),
       }),
     );
+    expect(firstArg(vi.mocked(buildAgentSystemPrompt))).toMatchObject({
+      continuationEnabled: true,
+    });
   });
 
   it("omits continuation tool opts when continuation.enabled is not true", async () => {
@@ -287,6 +290,9 @@ describe("resolveCommandsSystemPromptBundle", () => {
     const call = vi.mocked(createOpenClawCodingToolsAsync).mock.calls.at(-1)?.[0];
     expect(call?.requestCompactionOpts).toBeUndefined();
     expect(call?.continueWorkOpts).toBeUndefined();
+    expect(firstArg(vi.mocked(buildAgentSystemPrompt))).toMatchObject({
+      continuationEnabled: false,
+    });
   });
 
   it("uses the resolved session key and forwards full-access block reasons", async () => {

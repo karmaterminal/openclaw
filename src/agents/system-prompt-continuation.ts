@@ -8,7 +8,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { PromptMode } from "./system-prompt.types.js";
 
 /** The continuation tools that let a session drive its own turn cycle. */
-const CONTINUATION_TURN_CONTROL_TOOL_NAMES = [
+export const CONTINUATION_TURN_CONTROL_TOOL_NAMES = [
   "continue_work",
   "continue_delegate",
   "request_compaction",

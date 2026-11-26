@@ -1,0 +1,2 @@
+# Continuation in /context: the continuation line and json field from the report's tool inventory (enabled and disabled), and the /context estimate rendering with continuationEnabled from config. Measured net, not a cap. Pending review; no approval claimed.
+23

@@ -264,6 +264,23 @@ describe("buildContextReply", () => {
     },
   );
 
+  it.each([
+    [true, "Continuation: enabled | callable (last run): continue_work, continue_delegate"],
+    [false, "Continuation: disabled"],
+  ] as const)("reports continuation state and callable tools (enabled: %s)", async (on, line) => {
+    const callableTools = on ? ["continue_work", "continue_delegate"] : [];
+    const reply = async (mode: string) => {
+      const cfg = { agents: { defaults: { continuation: { enabled: on } } } };
+      const params = makeParams(`/context ${mode}`, false, { cfg });
+      params.sessionEntry!.systemPromptReport!.tools.entries.push(
+        ...callableTools.toReversed().map((name) => ({ name, summaryChars: 10, schemaChars: 20 })),
+      );
+      return (await buildContextReply(params)).text ?? "";
+    };
+    expect(await reply("list")).toContain(line);
+    expect(JSON.parse(await reply("json")).continuation).toEqual({ enabled: on, callableTools });
+  });
+
   it("describes compactable chat history counts in help output", async () => {
     const result = await buildContextReply(makeParams("/context", false));
     expect(result.text).toContain(
