@@ -12,12 +12,14 @@ const continuationDeclarationGrowth = {
   previousRatchetBytes: 5_320_000,
   varianceBytes: 64 * 1024,
   upstreamBytes: 5_284_546, // upstream 5a3e6b1cb0
-  candidateBytes: 5_306_133, // continuation stage 4 head 32285fa3ee
+  candidateBytes: 5_307_042, // continuation head 7fa6378e28
   // Public roots that publish the continuation contracts, and the bundled plugins reading them.
   consumers: {
     "agent-harness": ["extensions/codex (disableContinuationTools)"],
     "agent-harness-runtime": [
       "extensions/codex (continueWorkOpts, requestCompactionOpts, drainsContinuationDelegateQueue)",
+      "extensions/copilot and extensions/agentsapi (the same continuation tool options)",
+      "extensions/copilot, agentsapi, acpx and muse (buildContinuationGuidancePrompt)",
     ],
     "diagnostic-runtime": [
       "extensions/codex (runWithDiagnosticTraceContext)",
