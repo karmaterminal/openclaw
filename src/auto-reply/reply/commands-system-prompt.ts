@@ -213,6 +213,7 @@ export async function resolveCommandsSystemPromptBundle(params: HandleCommandsPa
     messageToolHints,
     runtimeInfo,
     sandboxInfo,
+    continuationEnabled: params.cfg.agents?.defaults?.continuation?.enabled === true,
   });
 
   return { systemPrompt, tools, skillsPrompt, bootstrapFiles, injectedFiles, sandboxRuntime };

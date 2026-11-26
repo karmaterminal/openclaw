@@ -17,6 +17,7 @@ import { findModelInCatalog } from "../../agents/model-catalog-lookup.js";
 import { selectModelCatalogRuntimeEntry } from "../../agents/model-catalog-view.js";
 import { resolveModelContextWindowProfile } from "../../agents/model-context-window.js";
 import type { AgentMessage } from "../../agents/runtime/index.js";
+import { CONTINUATION_TURN_CONTROL_TOOL_NAMES } from "../../agents/system-prompt-continuation.js";
 import { buildSystemPromptReport } from "../../agents/system-prompt-report.js";
 import { resolveEffectiveAgentRuntime } from "../../agents/thinking-runtime.js";
 import { resolveProjectedSessionContextTokens } from "../../config/sessions/context-token-provenance.js";
@@ -300,9 +301,16 @@ export async function buildContextReply(params: HandleCommandsParams): Promise<R
   }
 
   const report = await resolveContextReport(params);
+  const reportedToolNames = new Set(report.tools.entries.map((tool) => tool.name));
+  const continuation = {
+    enabled: params.cfg.agents?.defaults?.continuation?.enabled === true,
+    callableTools: CONTINUATION_TURN_CONTROL_TOOL_NAMES.filter((name) =>
+      reportedToolNames.has(name),
+    ),
+  };
 
   if (sub === "json") {
-    return { text: JSON.stringify({ report, session }, null, 2) };
+    return { text: JSON.stringify({ report, session, continuation }, null, 2) };
   }
 
   if (sub !== "list" && sub !== "show" && sub !== "detail" && sub !== "deep") {
@@ -482,6 +490,9 @@ export async function buildContextReply(params: HandleCommandsParams): Promise<R
   }
 
   lines.push(
+    continuation.enabled
+      ? `Continuation: enabled | callable: ${continuation.callableTools.join(", ") || "none (bracket tokens only)"}`
+      : "Continuation: disabled",
     "",
     totalsLine,
     "",
