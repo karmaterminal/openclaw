@@ -315,9 +315,9 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +2: channel display-mention and mention-adapter types (#192473).
       // +1: shared plugin-owned Control UI message translation.
       // +1: GatewayIngressPrincipalRecovery on gateway-ingress (#193098).
-      // +11: the continuation feature's public contracts (runtime, trace, channel-ingress,
-      // system-event, diagnostics), carried unchanged on upstream's 3865.
-      3876,
+      // +12: the continuation feature's public contracts (runtime, trace, channel-ingress,
+      // system-event, diagnostics, harness prompt guidance), carried on upstream's 3865.
+      3877,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -371,8 +371,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: the same plugin-command continuation classifier.
       // +2: the same settled execution lifecycle classifiers (#192413).
       // +1: the same Control UI message translator.
-      // +4: the continuation feature's callable contracts, carried unchanged on upstream's 2235.
-      2239,
+      // +5: the continuation feature's callable contracts, carried on upstream's 2235.
+      2240,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
