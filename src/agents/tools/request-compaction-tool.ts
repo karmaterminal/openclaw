@@ -299,6 +299,7 @@ export function createRequestCompactionTool(opts: RequestCompactionToolOpts): An
     description: [
       "You choose when you compact: land it at a seam you pick, instead of being compacted mid-thought at context exhaustion with no warning.",
       "Working state is NOT preserved automatically: FIRST stage it via continue_delegate(mode='post-compaction', task='<state-summary>'), THEN call this; the paired post-compaction delegate is what carries state across the seam.",
+      "Use `focus` to say what the summary must keep.",
       "Typically called after receiving a [system:context-pressure] event, which fires as your context approaches compaction.",
       "Async: enqueues compaction; runs after this turn completes — safe to call mid-turn.",
       "Guards return as structured rejections (not errors): requires >=70% context usage and at most one request per 5 minutes per session.",

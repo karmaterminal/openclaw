@@ -521,6 +521,7 @@ describe("request_compaction tool", () => {
     const { description } = makeTool();
 
     expect(description).toMatch(/^You choose when you compact/);
+    expect(description).toContain("Use `focus` to say what the summary must keep.");
     expect(description).toContain(
       "FIRST stage it via continue_delegate(mode='post-compaction', task='<state-summary>'), THEN call this",
     );

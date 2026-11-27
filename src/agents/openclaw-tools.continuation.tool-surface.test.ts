@@ -70,7 +70,7 @@ const continuationNames = /continue_|request_compaction/;
 const workLine =
   "- continue_work: Take your own next turn, now or after a delay; no message needed.";
 const delegateLine =
-  "- continue_delegate: Run bounded work beside you; its result returns to you (`silent-wake` wakes you), a session, the tree, or all.";
+  "- continue_delegate: Run bounded work beside you; its result returns to you (`silent-wake` wakes you).";
 const compactionLine = /^- request_compaction\b/m;
 
 describe("continuation tools beside sessions_yield on cataloged tool surfaces", () => {

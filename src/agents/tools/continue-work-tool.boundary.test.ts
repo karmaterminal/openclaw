@@ -185,7 +185,7 @@ describe("continue_work tool — delaySeconds boundary validation", () => {
   //
   // CANON GUARDED: zero is the IMMEDIATE sentinel — it passes through as a
   // literal 0s schedule, NOT lifted to minDelayMs. This matches the
-  // model-facing schema ("0 or omitted = immediate"): only POSITIVE delays
+  // model-facing schema ("0 or omitted = right after this reply ends"): only POSITIVE delays
   // clamp to the [minDelayMs, maxDelayMs] band. Negatives are still rejected.
   //
   // Regression indicator: if zero starts rejecting (collapse with -1) OR
