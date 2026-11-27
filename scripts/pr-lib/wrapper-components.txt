@@ -1527,6 +1527,7 @@ src/logging/redact-performance.ts
 src/logging/redact-prefilter.ts
 src/logging/redact.ts
 src/logging/secret-redaction-registry.ts
+src/logging/sovereign-redaction.ts
 src/logging/state.ts
 src/logging/structured-authorization-code.ts
 src/logging/subsystem.ts
