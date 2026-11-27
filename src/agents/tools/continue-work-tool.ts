@@ -17,15 +17,14 @@ export type { ContinueWorkRequest } from "../../auto-reply/continuation/types.js
 
 const ContinueWorkToolSchema = Type.Object({
   reason: Type.String({
-    description:
-      "Why another turn is needed before you yield. Logged for diagnostics and continuation context.",
+    description: "The next step you will take. Logged for diagnostics and continuation context.",
     maxLength: 1024,
   }),
   delaySeconds: Type.Optional(
     Type.Number({
       minimum: 0,
       description:
-        "Seconds to wait before the next turn fires. 0 or omitted = immediate. " +
+        "Seconds to wait before the next turn fires. 0 or omitted = right after this reply ends. " +
         "Positive delays are clamped to continuation.minDelayMs / maxDelayMs from config.",
     }),
   ),
@@ -46,7 +45,7 @@ export function createContinueWorkTool(opts: ContinueWorkToolOpts): AnyAgentTool
     catalogMode: "direct-only",
     description: [
       "You control your own turn cycle: call continue_work to take your next turn in this same session, right after this reply or delaySeconds later. No one has to message you first.",
-      "Use it for any next step you choose: unfinished work, checking back on something you started (for example, an external build's final receipt), or a thread you decided to follow. Put the action you will take in reason, not just 'check later'.",
+      "Use it for any next step you choose: unfinished work, checking back on something you started (for example, an external build's final receipt that no background command will wake you for), or a thread you decided to follow. Put the action you will take in reason, not just 'check later'.",
       "Before ending with unfinished work, choose whether you will do it now, arm this next turn, or delegate a bounded independent part with continue_delegate. An unarmed intention will not wake you by itself; an inbound message or automation may, but not on your schedule.",
       "Do not use continue_work to wait, yield, stand by, park, or keep the session alive with nothing chosen to do.",
       'To wait for a delegate or sub-agent you already started, use sessions_yield, or give the delegate mode="silent-wake"; its result wakes you.',

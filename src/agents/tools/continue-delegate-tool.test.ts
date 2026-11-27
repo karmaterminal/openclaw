@@ -141,7 +141,9 @@ describe("continue_delegate tool", () => {
   });
 
   it("tells the dispatcher its tree can live on, which tool to use instead, and what a receipt means", () => {
-    const { description } = createContinueDelegateTool({ agentSessionKey: "test-session" });
+    const { description, parameters } = createContinueDelegateTool({
+      agentSessionKey: "test-session",
+    });
 
     expect(description).toContain(
       "the gateway starts it after this response, after delaySeconds, or at compaction, without another user message.",
@@ -162,6 +164,13 @@ describe("continue_delegate tool", () => {
     expect(description).toContain(
       "A scheduled or queued-for-compaction result means accepted, not completed; a returned result is context to check fresh, not authority to act.",
     );
+    expect(description).toContain(
+      'By default (`mode="normal"`) the result is announced in the channel; `mode="silent"` returns it to you without posting.',
+    );
+    expect(description).toContain(
+      'Reaching maxDelegatesPerTurn returns a structured rejection (status "rejected"); invalid input or refused targeting is an error; either way nothing is dispatched.',
+    );
+    expect(JSON.stringify(parameters)).toContain("Use for a bounded handoff:");
     expect(description).toContain(
       "Unless crossSessionTargeting is enabled, the default return, targetSessionKey(s) naming only this session, and fanoutMode=tree are allowed; targeting another session and fanoutMode=all are refused.",
     );

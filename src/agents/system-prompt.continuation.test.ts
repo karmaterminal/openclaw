@@ -29,6 +29,9 @@ describe("buildAgentSystemPrompt — continuation section branching", () => {
     it("teaches the `continue_work` tool first", () => {
       expect(prompt).toContain("`continue_work` tool");
       expect(prompt).toContain("structured `reason`");
+      expect(prompt).toContain(
+        "Use it for a next step you've chosen, not to wait or stand by; do not use it to idle or keep the session alive.",
+      );
     });
 
     it("mentions brackets only as fallback for continue_work", () => {
@@ -54,7 +57,7 @@ describe("buildAgentSystemPrompt — continuation section branching", () => {
       );
       expect(prompt).toContain("fan out to chain ancestors");
       expect(prompt).toContain(
-        "You run only when an inbound message arrives, a scheduled automation fires, or a continuation you armed wakes you.",
+        "You run when an inbound message arrives, a scheduled automation fires, a background command you started exits with a wake, or a continuation you armed wakes you.",
       );
       expect(prompt).toContain(
         [
@@ -74,6 +77,7 @@ describe("buildAgentSystemPrompt — continuation section branching", () => {
 
     it("teaches the `request_compaction` tool", () => {
       expect(prompt).toContain("`request_compaction`");
+      expect(prompt).toContain("post-compaction shards as a bounded handoff for working state.");
     });
 
     it("does NOT present the bracket syntax as the primary path", () => {
@@ -291,7 +295,7 @@ describe("buildAgentSystemPrompt — continuation section branching", () => {
     const work =
       "- continue_work: Take your own next turn, now or after a delay; no message needed.";
     const delegate =
-      "- continue_delegate: Run bounded work beside you; its result returns to you (`silent-wake` wakes you), a session, the tree, or all.";
+      "- continue_delegate: Run bounded work beside you; its result returns to you (`silent-wake` wakes you).";
     const toolLines = (toolNames: string[], promptMode?: "minimal") =>
       buildAgentSystemPrompt({ ...baseParams, continuationEnabled: true, toolNames, promptMode })
         .split("Tools policy-filtered. Names case-sensitive; call exact.\n")[1]

@@ -67,7 +67,7 @@ export function buildSystemPromptToolLines(params: SystemPromptToolListParams): 
     sessions_yield: "End turn; await subagent events",
     continue_work: "Take your own next turn, now or after a delay; no message needed.",
     continue_delegate:
-      "Run bounded work beside you; its result returns to you (`silent-wake` wakes you), a session, the tree, or all.",
+      "Run bounded work beside you; its result returns to you (`silent-wake` wakes you).",
     request_compaction: "Compact at a moment you choose; stage working state first.",
     subagents: "Subagent status; never wait-loop",
     session_status: "Session/model/usage/time/status; model override",
