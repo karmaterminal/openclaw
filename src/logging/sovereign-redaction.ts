@@ -66,11 +66,9 @@ function ownDataEntries(value: object): [string, unknown][] {
   if (prototype === Object.prototype || prototype === null) {
     return Object.entries(value);
   }
-  return Object.getOwnPropertyNames(value).flatMap((key) => {
+  return Object.getOwnPropertyNames(value).flatMap((key): [string, unknown][] => {
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    return descriptor && "value" in descriptor
-      ? [[key, descriptor.value] as [string, unknown]]
-      : [];
+    return descriptor && "value" in descriptor ? [[key, descriptor.value]] : [];
   });
 }
 
@@ -118,8 +116,9 @@ function redactValue(value: unknown, depth: number, memo: Map<object, unknown>):
  * matched. An object that held a sovereign span comes back as a plain copy.
  */
 export function redactSovereignValue<T>(value: T): T {
-  // SAFETY: only string leaves change; a changed object becomes a plain copy of its own data
-  // properties, which is what every diagnostic and trajectory sink serializes anyway.
+  // A changed object becomes a plain copy of its own data properties, which is what every
+  // diagnostic and trajectory sink serializes anyway.
+  // SAFETY: Only string leaves change, so the result serializes with the input's shape.
   return state.markers.size === 0 ? value : (redactValue(value, 0, new Map()) as T);
 }
 

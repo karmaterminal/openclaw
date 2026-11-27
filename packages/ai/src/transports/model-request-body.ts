@@ -133,9 +133,9 @@ export function withModelRequestBodyBytes(
  * transport needs no call: its encoder already sees each body.
  */
 export function admitModelRequestBody(options: object | undefined, json: string): string {
+  const value = options && Reflect.get(options, REQUEST_BODY);
   // SAFETY: Only this module writes the private symbol, always with ModelRequestBodyState.
-  const state =
-    options && (Reflect.get(options, REQUEST_BODY) as ModelRequestBodyState | undefined);
+  const state = value as ModelRequestBodyState | undefined;
   state?.admit?.(json);
   return json;
 }

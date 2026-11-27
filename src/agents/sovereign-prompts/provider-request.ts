@@ -317,7 +317,7 @@ function detachRequest(value: unknown, copies = new Map<object, unknown>()): unk
     return NOT_DATA;
   }
   const array = Array.isArray(value);
-  const copy: object = array ? [] : Object.create(Object.getPrototypeOf(value) as object | null);
+  const copy: object = array ? [] : Object.create(Object.getPrototypeOf(value));
   copies.set(value, undefined);
   for (const key of Reflect.ownKeys(value)) {
     if (array && key === "length") {
