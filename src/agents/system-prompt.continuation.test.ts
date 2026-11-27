@@ -29,7 +29,9 @@ describe("buildAgentSystemPrompt — continuation section branching", () => {
     it("teaches the `continue_work` tool first", () => {
       expect(prompt).toContain("`continue_work` tool");
       expect(prompt).toContain("structured `reason`");
-      expect(prompt).toContain("Use it for a next step you've chosen, not to wait or stand by.");
+      expect(prompt).toContain(
+        "Use it for a next step you've chosen, not to wait or stand by; do not use it to idle or keep the session alive.",
+      );
     });
 
     it("mentions brackets only as fallback for continue_work", () => {
