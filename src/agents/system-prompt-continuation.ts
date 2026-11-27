@@ -33,7 +33,7 @@ function howYouWakeLines(availableTools: ReadonlySet<string>): string[] {
     "### How you wake",
     ...turnCycleLine(availableTools),
     "You can choose this session's next turn yourself and arrange how delegated work returns to it or other sessions; no human prompt or external scheduler is required.",
-    "You run only when an inbound message arrives, a scheduled automation fires, or a continuation you armed wakes you.",
+    "You run when an inbound message arrives, a scheduled automation fires, a background command you started exits with a wake, or a continuation you armed wakes you.",
     "If you end without arming a continuation, unfinished work won't schedule its own next turn; an inbound message or automation can still wake you.",
     "- Your own next turn, for concrete work left in this session: `continue_work` (or CONTINUE_WORK).",
     "- Work that should run beside you or later: `continue_delegate`.",
@@ -82,7 +82,7 @@ export function buildContinuationLines(
             "End your response with CONTINUE_WORK to request another turn after a delay.",
             "End with CONTINUE_WORK:30 to specify delay in seconds.",
           ]),
-      "Use it only when work remains; do not use it to wait, idle, or keep the session alive.",
+      "Use it for a next step you've chosen, not to wait or stand by.",
       "",
       "### Delegated continuation",
       "A delegate can elect its own continue_work turns or further delegates; its eventual return can wake this session, target another session, fan out to chain ancestors, or reach all known sessions on this host when policy allows.",
@@ -126,7 +126,7 @@ export function buildContinuationLines(
         ? [
             "### Compaction",
             "Use the `request_compaction` tool to request compaction now and reclaim context window space.",
-            "Pair with `continue_delegate` post-compaction shards as the lifeboat for working state.",
+            "Pair with `continue_delegate` post-compaction shards as a bounded handoff for working state.",
             "",
           ]
         : []),

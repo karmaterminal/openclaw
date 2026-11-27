@@ -1,0 +1,2 @@
+# karmaterminal/openclaw#1575 (seven seams): pins for the settled continuation text, and continue_work arming nothing on invalid input or a failed scheduler call.
+47

@@ -515,6 +515,7 @@ describe("request_compaction tool", () => {
         customInstructions: "preserve the b683 fix-spec and the open path-b question",
       }),
     );
+    expect(tool.description).toContain("Use `focus` to say what the summary must keep.");
   });
 
   it("does not expose diagnostic traceparent as a model-facing parameter", () => {
