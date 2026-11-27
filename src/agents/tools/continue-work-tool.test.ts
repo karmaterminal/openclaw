@@ -164,6 +164,12 @@ describe("continue_work tool", () => {
     expect(tool.description).toContain("An unarmed intention will not wake you by itself");
     expect(tool.description).not.toContain("nothing else wakes you");
     expect(tool.description).toContain("right after this reply or delaySeconds later");
+    expect(tool.description).toContain(
+      "an external build's final receipt that no background command will wake you for",
+    );
+    const schema = JSON.stringify(tool.parameters);
+    expect(schema).toContain("The next step you will take.");
+    expect(schema).toContain("0 or omitted = right after this reply ends.");
   });
 
   it("does not expose diagnostic traceparent as a model-facing parameter", () => {

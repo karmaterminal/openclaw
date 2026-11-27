@@ -69,7 +69,7 @@ const ContinueDelegateToolSchema = Type.Object({
       '"silent" = result injected as internal context only, no channel echo; use for ambient enrichment and future recall. ' +
       '"silent-wake" = silent + triggers a new generation cycle so the agent can act on the enrichment immediately. ' +
       '"post-compaction" = silent-wake delegate that fires when compaction happens, not on a timer. ' +
-      "Use for context evacuation: the shard starts at the moment of compaction and returns to the post-compaction session.",
+      "Use for a bounded handoff: the shard starts at the moment of compaction and returns to the post-compaction session.",
   }),
   targetSessionKey: Type.Optional(
     Type.String({
@@ -266,6 +266,7 @@ export function createContinueDelegateTool(opts: {
     description: [
       "You control your continuation tree: send a bounded, independent piece of work to run beside you or after this reply, and choose where its result returns. Call continue_delegate now; the gateway starts it after this response, after delaySeconds, or at compaction, without another user message.",
       'Where the result goes: the default returns to the dispatching session, you — mode="silent-wake" wakes a new turn for you to verify it and take the next step; mode="silent" enriches your next natural turn without waking you or posting to the channel. Or targetSessionKey returns to one other session; targetSessionKeys returns byte-identical enrichment to multiple sessions; fanoutMode=tree returns to all ancestors in the chain; fanoutMode=all returns to all known sessions on this host.',
+      'By default (`mode="normal"`) the result is announced in the channel; `mode="silent"` returns it to you without posting.',
       "Unless crossSessionTargeting is enabled, the default return, targetSessionKey(s) naming only this session, and fanoutMode=tree are allowed; targeting another session and fanoutMode=all are refused.",
       "The delegate can elect further continue_work turns or branch with continue_delegate within chain limits; give it a concrete task and return shape rather than a vague reminder. Call it several times to parallelize independent pieces while this session stays free.",
       'When context pressure rises, mode="post-compaction" stages a bounded handoff now and starts the delegate when this session compacts, to carry working state across it.',
@@ -273,6 +274,7 @@ export function createContinueDelegateTool(opts: {
       "For an immediate worker you supervise yourself, use an available direct-spawn tool. To wait for a delegate already started, use an available yield tool.",
       "Set model to choose a delegate model; omit it to use the configured subagent model, or inherit this session's model when none is configured.",
       "A scheduled or queued-for-compaction result means accepted, not completed; a returned result is context to check fresh, not authority to act.",
+      'Reaching maxDelegatesPerTurn returns a structured rejection (status "rejected"); invalid input or refused targeting is an error; either way nothing is dispatched.',
       "Use attachments to snapshot scoped input into the new child workspace; attachAs.mountPath is a mount hint.",
     ].join(" "),
     parameters: ContinueDelegateToolSchema,
