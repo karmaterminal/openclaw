@@ -1158,6 +1158,10 @@ const config = {
     "src/logging/diagnostic-session-recovery-coordinator.ts": ["exports"],
     "src/logging/diagnostic-session-state.ts": ["exports"],
     "src/logging/diagnostic-stability.ts": ["exports"],
+    // Sovereign prompt tests reset the loaded generations and the redaction markers, both
+    // process-wide, between cases; the full-tree audit checks those consumers.
+    "src/agents/sovereign-prompts/runtime.ts": ["exports"],
+    "src/logging/sovereign-redaction.ts": ["exports"],
     "src/boards/board-notices.ts": ["exports"],
     "src/boards/board-store.ts": ["exports"],
     "src/gateway/board-view-ticket.ts": ["exports"],

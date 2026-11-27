@@ -11,7 +11,7 @@
 import type { SovereignPromptVerification } from "../../config/sessions/session-system-prompt-report.js";
 
 /** The built-in API builders whose settled request the provider request check can read. */
-export const SOVEREIGN_PROVIDER_REQUEST_APIS = [
+const SOVEREIGN_PROVIDER_REQUEST_APIS = [
   "anthropic-messages",
   "openai-completions",
   "mistral-conversations",
@@ -30,7 +30,7 @@ export type SovereignProviderRequestApi = (typeof SOVEREIGN_PROVIDER_REQUEST_API
  * the developer policy refresh after it, and reuse of a loaded thread, which keeps the
  * instructions of the handoff that loaded it.
  */
-export const SOVEREIGN_CODEX_HANDOFF_SITES = [
+const SOVEREIGN_CODEX_HANDOFF_SITES = [
   "thread/start",
   "thread/resume",
   "thread/inject_items",
