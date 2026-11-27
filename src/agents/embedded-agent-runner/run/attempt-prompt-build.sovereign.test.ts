@@ -36,7 +36,8 @@ import { buildConfiguredAgentSystemPrompt } from "../../system-prompt-config.js"
 import { createStubTool } from "../../test-helpers/agent-tool-stubs.js";
 import { prepareEmbeddedAttemptPromptAssembly } from "./attempt-prompt-build.js";
 
-vi.mock("../../../plugins/host-hook-state.js", () => ({
+vi.mock("../../../plugins/host-hook-state.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../plugins/host-hook-state.js")>()),
   drainPluginNextTurnInjectionContext: vi.fn(async () => ({ queuedInjections: [] })),
 }));
 

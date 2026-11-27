@@ -25,7 +25,7 @@ import { buildAttemptSystemPrompt } from "./attempt-system-prompt.js";
 import { createEmptyPromptBootstrap } from "./attempt-system-prompt.test-support.js";
 import type { EmbeddedRunAttemptParams } from "./types.js";
 
-// Prompt assembly consumes a prepared provider handle; discovery belongs to attempt setup.
+// mock-isolation: Prompt assembly consumes a prepared provider handle; discovery belongs to setup.
 vi.mock("../../../plugins/providers.runtime-core.js", () => ({
   createProviderRegistryResolver: () => ({
     isPluginProvidersLoadInFlight: () => {
