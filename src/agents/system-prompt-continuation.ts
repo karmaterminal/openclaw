@@ -82,7 +82,7 @@ export function buildContinuationLines(
             "End your response with CONTINUE_WORK to request another turn after a delay.",
             "End with CONTINUE_WORK:30 to specify delay in seconds.",
           ]),
-      "Use it for a next step you've chosen, not to wait or stand by.",
+      "Use it for a next step you've chosen, not to wait or stand by; do not use it to idle or keep the session alive.",
       "",
       "### Delegated continuation",
       "A delegate can elect its own continue_work turns or further delegates; its eventual return can wake this session, target another session, fan out to chain ancestors, or reach all known sessions on this host when policy allows.",

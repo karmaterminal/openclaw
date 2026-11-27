@@ -49,7 +49,6 @@ export function createContinueWorkTool(opts: ContinueWorkToolOpts): AnyAgentTool
       "Before ending with unfinished work, choose whether you will do it now, arm this next turn, or delegate a bounded independent part with continue_delegate. An unarmed intention will not wake you by itself; an inbound message or automation may, but not on your schedule.",
       "Do not use continue_work to wait, yield, stand by, park, or keep the session alive with nothing chosen to do.",
       'To wait for a delegate or sub-agent you already started, use sessions_yield, or give the delegate mode="silent-wake"; its result wakes you.',
-      "Invalid input or a scheduling failure is an error, and nothing is armed.",
     ].join(" "),
     parameters: ContinueWorkToolSchema,
     execute: async (_toolCallId, args) => {

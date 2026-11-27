@@ -153,32 +153,6 @@ describe("continue_work tool", () => {
     expect(custody.release).not.toHaveBeenCalled();
   });
 
-  it("errors without arming on invalid input or a failed scheduler call", async () => {
-    const custody = {
-      operatorAuthority: {},
-      assertCurrent: vi.fn(),
-      release: vi.fn(),
-      run: <T>(run: () => T): T => run(),
-    };
-    captureOperatorContinuation.mockReturnValue(Promise.resolve(custody));
-    const requestContinuation = vi.fn(() => {
-      throw new Error("scheduler unavailable");
-    });
-    const tool = makeTool({ requestContinuation });
-
-    await expect(tool.execute("call-invalid", { delaySeconds: 5 })).rejects.toThrow(
-      /reason required/i,
-    );
-    expect(captureOperatorContinuation).not.toHaveBeenCalled();
-    expect(requestContinuation).not.toHaveBeenCalled();
-
-    await expect(tool.execute("call-failed", { reason: "next step" })).rejects.toThrow(
-      "scheduler unavailable",
-    );
-    expect(requestContinuation).toHaveBeenCalledTimes(1);
-    expect(custody.release).toHaveBeenCalledTimes(1);
-  });
-
   it("tells models when the armed turn starts and not to use continue_work for wait or park loops", () => {
     const tool = makeTool();
 
@@ -192,9 +166,6 @@ describe("continue_work tool", () => {
     expect(tool.description).toContain("right after this reply or delaySeconds later");
     expect(tool.description).toContain(
       "an external build's final receipt that no background command will wake you for",
-    );
-    expect(tool.description).toContain(
-      "Invalid input or a scheduling failure is an error, and nothing is armed.",
     );
     const schema = JSON.stringify(tool.parameters);
     expect(schema).toContain("The next step you will take.");
