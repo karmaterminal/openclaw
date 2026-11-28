@@ -294,12 +294,11 @@ describe("migrated heartbeat owner", () => {
       expect.objectContaining({
         severity: "warning",
         requirement: "heartbeat-owner-unproven",
-        message: expect.stringContaining(`Automation ${job.id} runs in room ${ROOM}`),
+        message: expect.stringContaining(
+          `Automation ${job.id} runs in room ${ROOM}, but that room's session ${reason}`,
+        ),
       }),
     ]);
-    expect((await collectHeartbeatCadenceMigrationFindings(retired, f.env))[0]?.message).toContain(
-      reason,
-    );
     await maybeMigrateHeartbeatCadenceToCron({ cfg: retired, env: f.env, shouldRepair: true });
     await retireHeartbeatWithDoctor(retired, f.env);
     expect(readRows(f)).toEqual(before);
