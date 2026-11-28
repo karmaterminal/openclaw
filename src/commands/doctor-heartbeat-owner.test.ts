@@ -1,10 +1,12 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import { recordInboundSession } from "../channels/session.js";
 import type { OpenClawConfigWithLegacyRoster } from "../config/legacy.roster.js";
 import { resolveSessionStorePathCore } from "../config/sessions/paths.js";
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.sqlite-entry.js";
 import type { LegacyHeartbeatConfig } from "../config/types.agent-defaults.js";
+import { resolveCronRunAdmissionSource } from "../cron/run-authority.js";
 import { resolveCronJobsStorePathFromConfig } from "../cron/store.js";
 import { resolveCronStoreKeyInDatabase } from "../cron/store/paths.js";
 import {
@@ -86,18 +88,38 @@ function fixture(
 }
 type Fixture = ReturnType<typeof fixture>;
 
-/** What a Discord turn in the room records: its route, context and origin carry ctx.AccountId. */
-async function recordRoomTurn(
+/** A Discord room turn through the real inbound recorder, as the channel plugin records it. */
+async function recordRoomTurn(f: Fixture, accountId = "default", sessionKey = ROOM) {
+  const to = `channel:${ROOM_ID}`;
+  await recordInboundSession({
+    storePath: resolveSessionStorePathCore(undefined, { agentId: "main", env: f.env }),
+    sessionKey,
+    ctx: {
+      SessionKey: sessionKey,
+      Provider: "discord",
+      Surface: "discord",
+      OriginatingChannel: "discord",
+      OriginatingTo: to,
+      To: to,
+      AccountId: accountId,
+      ChatType: "channel",
+    },
+    updateLastRoute: { sessionKey, channel: "discord", to, accountId },
+    onRecordError: (error) => {
+      throw error;
+    },
+  });
+}
+
+/** A room session state the recorder does not produce on its own. */
+async function writeRoomDelivery(
   f: Fixture,
-  delivery: Parameters<typeof normalizeSessionDeliveryState>[0] = {
-    context: { channel: "discord", to: `channel:${ROOM_ID}`, accountId: "default" },
-  },
-  sessionKey = ROOM,
+  delivery: Parameters<typeof normalizeSessionDeliveryState>[0],
 ) {
   await upsertSessionEntryCore(
     {
       agentId: "main",
-      sessionKey,
+      sessionKey: ROOM,
       storePath: resolveSessionStorePathCore(undefined, { agentId: "main", env: f.env }),
       env: f.env,
     },
@@ -160,9 +182,7 @@ describe("migrated heartbeat owner", () => {
     "records the room turn's identity on a fresh conversion (account %s)",
     async (raw, accountId) => {
       const f = fixture();
-      await recordRoomTurn(f, {
-        context: { channel: "discord", to: `channel:${ROOM_ID}`, accountId: raw },
-      });
+      await recordRoomTurn(f, raw);
 
       const job = (await ensureHeartbeatMonitorJobs(f.cfg, f.storePath, f.env)).get("main");
 
@@ -202,11 +222,16 @@ describe("migrated heartbeat owner", () => {
     const beforeJobs = readJobs(f);
 
     expect(await collectHeartbeatCadenceMigrationFindings(retired, f.env)).toEqual([
-      expect.objectContaining({ severity: "warning", requirement: "heartbeat-retirement" }),
+      expect.objectContaining({
+        severity: "warning",
+        requirement: "heartbeat-owner-backfill",
+        message: "1 migrated heartbeat automation can record its room as owner.",
+      }),
     ]);
+    // Nothing is converted, so the cutover's own change line stays silent.
     expect(
       await maybeMigrateHeartbeatCadenceToCron({ cfg: retired, env: f.env, shouldRepair: true }),
-    ).toMatchObject({ warnings: [] });
+    ).toEqual({ changes: [], warnings: [] });
 
     const owner = { agentId: "main", sessionKey: ROOM, accountId: "default" };
     const after = readRows(f);
@@ -217,6 +242,12 @@ describe("migrated heartbeat owner", () => {
       owner,
     });
     expect(others(afterJobs)).toEqual(others(beforeJobs));
+    // The room now owns the job, so its runs carry the room's authority, not operator scheduling.
+    expect(
+      [beforeJobs, afterJobs].map((jobs) =>
+        resolveCronRunAdmissionSource(jobs.find((candidate) => candidate.id === job.id)!),
+      ),
+    ).toEqual(["operator-schedule", "requester-schedule"]);
     for (const row of after) {
       const previous = before.find((candidate) => candidate.job_id === row.job_id)!;
       if (row.job_id !== job.id) {
@@ -265,29 +296,24 @@ describe("migrated heartbeat owner", () => {
   it.each([
     [
       "no recorded account",
-      { context: { channel: "discord", to: `channel:${ROOM_ID}` } },
-      "has no recorded discord account",
+      (f: Fixture) =>
+        writeRoomDelivery(f, { context: { channel: "discord", to: `channel:${ROOM_ID}` } }),
+      "that room's session has no recorded discord account",
     ],
-    [
-      "two recorded accounts",
-      {
-        context: { channel: "discord", to: `channel:${ROOM_ID}`, accountId: "work" },
-        origin: { provider: "discord", to: `channel:${ROOM_ID}`, accountId: "default" },
-      },
-      "recorded more than one account",
-    ],
+
     [
       "another channel's route",
-      { context: { channel: "slack", to: "channel:C1", accountId: "default" } },
-      "has no recorded discord account",
+      (f: Fixture) =>
+        writeRoomDelivery(f, {
+          context: { channel: "slack", to: "channel:C1", accountId: "default" },
+        }),
+      "that room's session has no recorded discord account",
     ],
-    ["no session record", undefined, "has no recorded discord account"],
-  ] as const)("refuses a room with %s and writes nothing", async (_name, delivery, reason) => {
+    ["no session record", async () => {}, "that room's session has no recorded discord account"],
+  ] as const)("refuses a room with %s and writes nothing", async (_name, record, reason) => {
     const f = fixture();
     const { retired, job } = await migrateWithoutOwner(f);
-    if (delivery) {
-      await recordRoomTurn(f, delivery);
-    }
+    await record(f);
     const before = readRows(f);
 
     expect(await collectHeartbeatCadenceMigrationFindings(retired, f.env)).toEqual([
@@ -295,13 +321,66 @@ describe("migrated heartbeat owner", () => {
         severity: "warning",
         requirement: "heartbeat-owner-unproven",
         message: expect.stringContaining(
-          `Automation ${job.id} runs in room ${ROOM}, but that room's session ${reason}`,
+          `Automation ${job.id} runs in room ${ROOM}, but ${reason}`,
         ),
       }),
     ]);
     await maybeMigrateHeartbeatCadenceToCron({ cfg: retired, env: f.env, shouldRepair: true });
     await retireHeartbeatWithDoctor(retired, f.env);
     expect(readRows(f)).toEqual(before);
+  });
+
+  // The room record keeps only its latest turn's account, so other account evidence must agree.
+  it.each([
+    [
+      "a second configured account",
+      { default: {}, work: {} },
+      undefined,
+      "more than one configured account",
+    ],
+    ["a different configured account", { work: {} }, undefined, "name more than one account"],
+    ["a different delivery account", undefined, "work", "name more than one account"],
+  ] as const)(
+    "refuses a room turn whose account meets %s",
+    async (_name, accounts, delivery, reason) => {
+      const f = fixture();
+      const { retired, job } = await migrateWithoutOwner(f);
+      if (delivery) {
+        writeJob(f, {
+          ...job,
+          delivery: { ...job.delivery, mode: "announce", accountId: delivery },
+        });
+      }
+      await recordRoomTurn(f, "default");
+      const cfg = accounts ? { ...retired, channels: { discord: { accounts } } } : retired;
+
+      expect(await collectHeartbeatCadenceMigrationFindings(cfg, f.env)).toEqual([
+        expect.objectContaining({
+          requirement: "heartbeat-owner-unproven",
+          message: expect.stringContaining(reason),
+        }),
+      ]);
+    },
+  );
+
+  it("reports an unreadable room session instead of failing the cutover check", async () => {
+    const f = fixture();
+    const { retired, job } = await migrateWithoutOwner(f);
+    roomRead.onRead = (sessionKey) => {
+      if (sessionKey === ROOM) {
+        throw new Error("fixture: agent database unreadable");
+      }
+    };
+
+    expect(await collectHeartbeatCadenceMigrationFindings(retired, f.env)).toEqual([
+      expect.objectContaining({
+        severity: "warning",
+        requirement: "heartbeat-owner-unproven",
+        message: expect.stringContaining(
+          `Automation ${job.id} runs in room ${ROOM}, but that room's session could not be read (fixture: agent database unreadable)`,
+        ),
+      }),
+    ]);
   });
 
   it.each([
@@ -321,7 +400,7 @@ describe("migrated heartbeat owner", () => {
     async (_name, heartbeat, target) => {
       const f = fixture(heartbeat);
       await recordRoomTurn(f);
-      await recordRoomTurn(f, undefined, "agent:main:discord:direct:42");
+      await recordRoomTurn(f, "default", "agent:main:discord:direct:42");
       const { retired, job } = await migrateWithoutOwner(f);
       expect(job.sessionTarget).toBe(target);
       const before = readRows(f);

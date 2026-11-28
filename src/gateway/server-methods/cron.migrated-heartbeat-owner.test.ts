@@ -1,6 +1,7 @@
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
+import { recordInboundSession } from "../../channels/session.js";
 import { ensureHeartbeatMonitorJobs } from "../../commands/doctor-heartbeat-cadence-migration.js";
 import {
   maybeMigrateHeartbeatCadenceToCron,
@@ -9,7 +10,6 @@ import {
 import { maybeRepairLegacyCronStore } from "../../commands/doctor/cron/index.js";
 import type { OpenClawConfigWithLegacyRoster } from "../../config/legacy.roster.js";
 import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
-import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.sqlite-entry.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
   loadCronStore,
@@ -23,7 +23,6 @@ import {
   closeOpenClawStateDatabaseAsync,
   closeOpenClawStateDatabaseForTest,
 } from "../../state/openclaw-state-db.js";
-import { normalizeSessionDeliveryState } from "../../utils/delivery-context.shared.js";
 import { readCronCallerScope } from "./cron-caller-scope.js";
 import { resolveCronScopedToolEditRefusal } from "./cron-job-access.js";
 import { createReadService } from "./cron-read.test-support.js";
@@ -96,22 +95,27 @@ async function migratedSeat() {
   };
   await ensureHeartbeatMonitorJobs(cfg, resolveCronJobsStorePathFromConfig(cfg, env), env);
   const retired = await retireHeartbeatWithDoctor(cfg, env);
-  // Inbound Discord turns record ctx.AccountId; the same value reaches turnSourceAccountId.
-  await upsertSessionEntryCore(
-    {
-      agentId: "main",
-      sessionKey: ROOM,
-      storePath: resolveSessionStorePathCore(undefined, { agentId: "main", env }),
-      env,
+  // The real inbound recorder writes the turn's ctx.AccountId, which also becomes the room
+  // turn's turnSourceAccountId (agentAccountId = replyRoute.accountId = ctx.AccountId).
+  const to = `channel:${ROOM_ID}`;
+  await recordInboundSession({
+    storePath: resolveSessionStorePathCore(undefined, { agentId: "main", env }),
+    sessionKey: ROOM,
+    ctx: {
+      SessionKey: ROOM,
+      Provider: "discord",
+      Surface: "discord",
+      OriginatingChannel: "discord",
+      OriginatingTo: to,
+      To: to,
+      AccountId: "default",
+      ChatType: "channel",
     },
-    {
-      sessionId: "room-session",
-      updatedAt: Date.now(),
-      delivery: normalizeSessionDeliveryState({
-        context: { channel: "discord", to: `channel:${ROOM_ID}`, accountId: "default" },
-      }),
+    updateLastRoute: { sessionKey: ROOM, channel: "discord", to, accountId: "default" },
+    onRecordError: (error) => {
+      throw error;
     },
-  );
+  });
   const storePath = resolveCronJobsStorePathFromConfig(retired, env);
   const [job] = (await loadCronStore(storePath)).jobs;
   expect(job).toMatchObject({ sessionTarget: `session:${ROOM}`, sessionKey: ROOM });

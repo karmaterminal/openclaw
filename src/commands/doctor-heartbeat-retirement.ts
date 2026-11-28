@@ -17,6 +17,7 @@ import { runOpenClawStateWriteTransaction } from "../state/openclaw-state-db.js"
 import {
   collectHeartbeatCadenceMigrationFindings,
   ensureHeartbeatMonitorJobs,
+  isHeartbeatOwnerFinding,
   isHeartbeatOwnerRefusalFinding,
 } from "./doctor-heartbeat-cadence-migration.js";
 import { decodeDoctorHeartbeatJobRows } from "./doctor-heartbeat-jobs.js";
@@ -224,7 +225,7 @@ export async function retireHeartbeatWithDoctor(
   }
   if (recordedOwners) {
     note(
-      `Recorded the room conversation as owner of ${recordedOwners} migrated heartbeat automation${recordedOwners === 1 ? "" : "s"}; that conversation can now change its prompt and tools.`,
+      `Recorded the room conversation as owner of ${recordedOwners} migrated heartbeat automation${recordedOwners === 1 ? "" : "s"}. That conversation can now change its prompt and tools, and its runs use that conversation's authority instead of operator scheduling.`,
       "Doctor changes",
     );
   }
@@ -283,10 +284,15 @@ export async function maybeMigrateHeartbeatCadenceToCron(params: {
     if (warnings.length) {
       return { changes: [], warnings };
     }
-    const changes = [
-      "Converted legacy heartbeat cadence to ordinary editable automations; recorded one-way provisioning receipts.",
-    ];
-    note(changes.join("\n"), "Doctor changes");
+    // An owner-only pass reports its own change note; nothing was converted.
+    const changes = findings.every(isHeartbeatOwnerFinding)
+      ? []
+      : [
+          "Converted legacy heartbeat cadence to ordinary editable automations; recorded one-way provisioning receipts.",
+        ];
+    if (changes.length) {
+      note(changes.join("\n"), "Doctor changes");
+    }
     return { changes, warnings: [] };
   } catch (error) {
     const warnings = [formatErrorMessage(error)];

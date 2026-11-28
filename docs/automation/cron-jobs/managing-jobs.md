@@ -109,9 +109,10 @@ Automations created before owner attribution have no recorded owner. Chat can
 still enable, disable, reschedule or remove them, but only a Gateway owner or an
 operator can change their prompt or tools. The exception is the heartbeat
 automation Doctor generates: when it runs in one room conversation of its own
-agent and that room's session recorded exactly one account, `openclaw doctor --fix`
-records that room and account as its owner, so turns in that room can change its
-prompt and tools. See [Doctor heartbeat migration](/gateway/doctor/config-migrations).
+agent and Doctor can prove that room's account, `openclaw doctor --fix` records
+that room and account as its owner. Turns in that room can then change its prompt
+and tools, and its runs use that room's authority instead of operator scheduling.
+See [Doctor heartbeat migration](/gateway/doctor/config-migrations).
 
 Operator-created automations that name an owner conversation run with operator
 authority. That conversation can list, enable, disable, reschedule, run

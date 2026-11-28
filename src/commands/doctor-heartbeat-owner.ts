@@ -3,6 +3,7 @@
  * runs in one room conversation of its own agent, whose session recorded exactly one account,
  * gets an owner: that is the identity a room turn presents to `cron.update`.
  */
+import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { listAgentIds } from "../agents/agent-scope-config.js";
 import { resolveSessionStorePathCore } from "../config/sessions/paths.js";
 import { readSessionEntryReadOnlyInWorker } from "../config/sessions/session-entry-read-runtime.js";
@@ -14,6 +15,7 @@ import { publishCronJobsStoreMutation } from "../cron/store.js";
 import { resolveCronStoreKeyInDatabase } from "../cron/store/paths.js";
 import { loadCronRows, upsertCronJobRow } from "../cron/store/row-codec.js";
 import type { CronStoredJob as CronJob } from "../cron/types.js";
+import { formatErrorMessage } from "../infra/errors.js";
 import { normalizeOptionalAccountId } from "../routing/account-id.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { parseAgentSessionKey, parseSessionDeliveryRoute } from "../sessions/session-key-utils.js";
@@ -63,10 +65,13 @@ export async function readHeartbeatRoomSessionEntry(
 
 /**
  * `readCronCallerScope` takes a room turn's session key and `normalizeAccountId(ctx.AccountId)`;
- * inbound turns record that same account in the room's delivery route, context and origin.
+ * inbound turns record that same account in the room's delivery route, context and origin. The
+ * record keeps only the latest turn's account, so the channel must configure at most one account,
+ * and a configured account or the heartbeat's own delivery account must agree with the record.
  */
 export function proveHeartbeatRoomOwner(
-  job: Pick<CronJob, "id" | "agentId" | "sessionTarget" | "sessionKey">,
+  cfg: OpenClawConfig,
+  job: Pick<CronJob, "id" | "agentId" | "sessionTarget" | "sessionKey" | "delivery">,
   entry: Pick<SessionEntry, "delivery"> | undefined,
 ): HeartbeatOwnerProof {
   const target = job.sessionTarget.trim();
@@ -87,6 +92,16 @@ export function proveHeartbeatRoomOwner(
       reason: `Automation ${job.id} runs in ${target}, not one room conversation of agent ${job.agentId ?? "(none)"}, so Doctor leaves it without an owner; only a Gateway owner or an operator can change its prompt or tools.`,
     };
   }
+  const channel = cfg.channels?.[room.channel];
+  const configured =
+    isRecord(channel) && isRecord(channel.accounts) ? Object.keys(channel.accounts) : [];
+  if (configured.length > 1) {
+    return {
+      kind: "refused",
+      room: true,
+      reason: `Automation ${job.id} runs in room ${sessionKey}, but the ${room.channel} channel has more than one configured account, so Doctor cannot prove its owner.`,
+    };
+  }
   const route = sessionDeliveryRoute(entry);
   const accountIds = new Set(
     (route?.channel === room.channel
@@ -94,6 +109,8 @@ export function proveHeartbeatRoomOwner(
           route.accountId,
           deliveryContextFromSession(entry)?.accountId,
           sessionDeliveryOrigin(entry)?.accountId,
+          job.delivery?.accountId,
+          ...configured,
         ]
       : []
     ).flatMap((value) => {
@@ -106,7 +123,7 @@ export function proveHeartbeatRoomOwner(
     return {
       kind: "refused",
       room: true,
-      reason: `Automation ${job.id} runs in room ${sessionKey}, but that room's session ${accountIds.size > 1 ? "recorded more than one account" : `has no recorded ${room.channel} account`}, so Doctor cannot prove its owner.`,
+      reason: `Automation ${job.id} runs in room ${sessionKey}, but ${accountIds.size > 1 ? "its room's session, delivery and configured account name more than one account" : `that room's session has no recorded ${room.channel} account`}, so Doctor cannot prove its owner.`,
     };
   }
   return {
@@ -143,11 +160,26 @@ export async function planHeartbeatOwnerBackfill(
     )) ?? [];
   const plan: HeartbeatOwnerBackfillPlan = { stamps: [], refusals: [] };
   for (const job of candidates) {
-    const sessionKey = job.sessionKey?.trim();
-    const entry = job.agentId
-      ? await readHeartbeatRoomSessionEntry(cfg, normalizeAgentId(job.agentId), sessionKey, env)
-      : undefined;
-    const proof = proveHeartbeatRoomOwner(job, entry);
+    let entry: SessionEntry | undefined;
+    try {
+      entry = job.agentId
+        ? await readHeartbeatRoomSessionEntry(
+            cfg,
+            normalizeAgentId(job.agentId),
+            job.sessionKey,
+            env,
+          )
+        : undefined;
+    } catch (error) {
+      // The backfill is optional: an unreadable room is reported, never a failed cutover check.
+      plan.refusals.push({
+        jobId: job.id,
+        room: true,
+        reason: `Automation ${job.id} runs in room ${job.sessionKey}, but that room's session could not be read (${formatErrorMessage(error)}), so Doctor cannot prove its owner.`,
+      });
+      continue;
+    }
+    const proof = proveHeartbeatRoomOwner(cfg, job, entry);
     if (proof.kind === "owner") {
       plan.stamps.push({ job, owner: proof.owner });
     } else {

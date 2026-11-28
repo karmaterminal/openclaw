@@ -62,11 +62,19 @@ import {
 } from "./doctor-heartbeat-task-identity.js";
 
 const CHECK_ID = "core/doctor/heartbeat-cadence-migration";
+const OWNER_BACKFILL_REQUIREMENT = "heartbeat-owner-backfill";
 const OWNER_REFUSAL_REQUIREMENT = "heartbeat-owner-unproven";
 
 /** Owner refusals stay visible but give the cutover nothing to repair. */
 export function isHeartbeatOwnerRefusalFinding(finding: HealthFinding): boolean {
   return finding.requirement === OWNER_REFUSAL_REQUIREMENT;
+}
+
+/** Owner findings alone mean Doctor converts no heartbeat state. */
+export function isHeartbeatOwnerFinding(finding: HealthFinding): boolean {
+  return (
+    isHeartbeatOwnerRefusalFinding(finding) || finding.requirement === OWNER_BACKFILL_REQUIREMENT
+  );
 }
 
 function isPendingLegacyHeartbeatRetry(job: DoctorCronJob): job is CronJob & {
@@ -177,7 +185,7 @@ function convertMonitor(
   job.sessionKey = session.sessionKey;
   job.sessionTarget = heartbeat?.isolatedSession ? "isolated" : `session:${session.sessionKey}`;
   if (roomSession && !job.owner) {
-    const proof = proveHeartbeatRoomOwner(job, roomSession);
+    const proof = proveHeartbeatRoomOwner(cfg, job, roomSession);
     if (proof.kind === "owner") {
       job.owner = proof.owner;
     }
@@ -293,7 +301,11 @@ export async function ensureHeartbeatMonitorJobs(
       undefined,
       env,
     );
-    roomSessions.set(agentId, await readHeartbeatRoomSessionEntry(cfg, agentId, sessionKey, env));
+    // An unreadable room only skips the stamp; the backfill finding then names the read error.
+    roomSessions.set(
+      agentId,
+      await readHeartbeatRoomSessionEntry(cfg, agentId, sessionKey, env).catch(() => undefined),
+    );
   }
   const nowMs = Date.now();
   const planned = [...agentIds].toSorted().flatMap((agentId) => {
@@ -467,18 +479,20 @@ export async function hasPendingHeartbeatCadenceMigration(
   cfg: OpenClawConfig,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<boolean> {
-  return (await inspectHeartbeatCadenceMigration(cfg, env)).pending;
+  const { cutover, ownerStamps } = await inspectHeartbeatCadenceMigration(cfg, env);
+  return cutover || ownerStamps > 0;
 }
 
 async function inspectHeartbeatCadenceMigration(cfg: OpenClawConfig, env: NodeJS.ProcessEnv) {
-  const pending = await hasPendingHeartbeatCutover(cfg, env);
+  const cutover = await hasPendingHeartbeatCutover(cfg, env);
   const owners = await planHeartbeatOwnerBackfill(
     cfg,
     resolveCronJobsStorePathFromConfig(cfg, env),
     env,
   );
   return {
-    pending: pending || owners.stamps.length > 0,
+    cutover,
+    ownerStamps: owners.stamps.length,
     // Non-room targets are an intentional non-outcome; a room that cannot prove its account is not.
     ownerRefusals: owners.refusals.filter((refusal) => refusal.room),
   };
@@ -542,9 +556,12 @@ export async function collectHeartbeatCadenceMigrationFindings(
 ): Promise<readonly HealthFinding[]> {
   const storePath = resolveCronJobsStorePathFromConfig(cfg, env);
   try {
-    const { pending, ownerRefusals } = await inspectHeartbeatCadenceMigration(cfg, env);
+    const { cutover, ownerStamps, ownerRefusals } = await inspectHeartbeatCadenceMigration(
+      cfg,
+      env,
+    );
     return [
-      ...(pending
+      ...(cutover
         ? [
             {
               checkId: CHECK_ID,
@@ -555,7 +572,18 @@ export async function collectHeartbeatCadenceMigrationFindings(
               fixHint: "Run openclaw doctor --fix before starting the Gateway.",
             },
           ]
-        : []),
+        : ownerStamps > 0
+          ? [
+              {
+                checkId: CHECK_ID,
+                severity: "warning" as const,
+                path: storePath,
+                message: `${ownerStamps} migrated heartbeat automation${ownerStamps === 1 ? "" : "s"} can record ${ownerStamps === 1 ? "its" : "their"} room as owner.`,
+                requirement: OWNER_BACKFILL_REQUIREMENT,
+                fixHint: "Run openclaw doctor --fix.",
+              },
+            ]
+          : []),
       ...ownerRefusals.map((refusal) => ({
         checkId: CHECK_ID,
         severity: "warning" as const,
