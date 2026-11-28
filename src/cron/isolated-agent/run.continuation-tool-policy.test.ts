@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { withContinuationOpts } from "../../agents/agent-tools.options.js";
-import { makeIsolatedAgentParamsFixture } from "./job-fixtures.js";
+import { makeIsolatedAgentJobFixture, makeIsolatedAgentParamsFixture } from "./job-fixtures.js";
 import { setupRunCronIsolatedAgentTurnSuite } from "./run.suite-helpers.js";
 import {
   loadRunCronIsolatedAgentTurn,
@@ -13,9 +13,15 @@ const runCronIsolatedAgentTurn = await loadRunCronIsolatedAgentTurn();
 describe("runCronIsolatedAgentTurn continuation tool policy", () => {
   setupRunCronIsolatedAgentTurnSuite({ fast: true });
 
-  it.each(["cron", "event"] as const)(
+  // A persistent hook runs here in its own hook session, not a cron-run session: the exclusion
+  // follows the runner, which services no continuation, not the session key (#1578).
+  it.each([
+    ["cron", "cron", "isolated", "cron:test"],
+    ["event", "event", "isolated", "cron:test"],
+    ["persistent hook", "event", "session:hook:gmail:msg-1", "hook:gmail:msg-1"],
+  ] as const)(
     "disables continuation tools for a %s job instead of advertising callbacks cron cannot service",
-    async (trigger) => {
+    async (_label, trigger, sessionTarget, sessionKey) => {
       mockRunCronFallbackPassthrough();
 
       const result = await runCronIsolatedAgentTurn(
@@ -28,6 +34,8 @@ describe("runCronIsolatedAgentTurn continuation tool policy", () => {
             },
           },
           trigger,
+          sessionKey,
+          job: makeIsolatedAgentJobFixture({ sessionTarget }),
         }),
       );
 
@@ -35,7 +43,7 @@ describe("runCronIsolatedAgentTurn continuation tool policy", () => {
       expect(runEmbeddedAgentMock).toHaveBeenCalledOnce();
       // The cron run's own parameters, read by the continuation tool gate that builds its tools.
       const runParams = runEmbeddedAgentMock.mock.calls[0]?.[0];
-      expect(runParams).toMatchObject({ trigger });
+      expect(runParams).toMatchObject({ trigger, sessionKey: expect.stringContaining(sessionKey) });
       expect(withContinuationOpts(runParams, {}).disableContinuationTools).toBe(true);
       // The same run outside the cron runner keeps its continuation tools.
       expect(
