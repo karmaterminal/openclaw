@@ -239,6 +239,33 @@ when their creation and definition-update timestamps still match. Ordinary runs
 preserve that provenance. Edited tasks and older converted tasks without that
 provenance remain unchanged.
 
+A converted heartbeat automation that runs in a room belongs to that room. When
+it runs in one channel or group conversation of its own agent, Doctor records that
+conversation as its owner: the agent, the session key, and the account the room's
+session recorded for that channel, which is the identity a turn in that room
+presents. Turns in that room can then change its prompt and tools; other
+conversations and accounts still cannot. Its runs also change authority: they
+use that conversation's authority instead of operator scheduling, like an
+automation created in that room. Operator-only actions such as a Gateway restart
+or update from the heartbeat now need an owner. An announced failure alert can
+start a repair turn in that room. Standing approvals for the job need a one-time
+approval again.
+
+Doctor also records this owner on receipt-owned heartbeat automations converted
+before owner recording, without changing any other field, and only once. It never
+replaces an existing owner. Heartbeats in the agent main session, an isolated run,
+a direct conversation, or the current conversation stay without an owner. Doctor
+reports a room with its reason instead of recording an owner when:
+
+- the room's session has no recorded account for that channel, or it can't be read;
+- the channel configures more than one account;
+- the recorded account differs from the channel's configured account or the
+  heartbeat's own delivery account.
+
+If the automation changes while Doctor checks its room, Doctor records no owner;
+rerun `openclaw doctor --fix`. Once an owned heartbeat has a tool cap, a later
+Doctor pass moves it to that conversation's scheduled authority.
+
 Migrated jobs use standard Automations delivery semantics. Heartbeat-specific
 duplicate suppression and no-route skipping are removed: repeated updates can be
 delivered, and a missing route no longer skips the run before execution. Delivery
