@@ -207,15 +207,11 @@ it("lets only the prince's own room turn edit his heartbeat once Doctor records 
 it("keeps a tool-capped heartbeat editable by its room after Doctor scopes its authority", async () => {
   const { env, retired, storePath, jobId } = await migratedSeat();
   const store = await loadCronStore(storePath);
+  const heartbeat = store.jobs.find((job) => job.id === jobId)!;
   // Seats whose legacy monitor carried a tool cap: unset policy, cap kept, no owner.
-  await saveCronStore(storePath, {
-    ...store,
-    jobs: store.jobs.map((job) =>
-      job.id === jobId && job.payload.kind === "agentTurn"
-        ? { ...job, payload: { ...job.payload, toolsAllow: ["read", "continue_work"] } }
-        : job,
-    ),
-  });
+  expect(heartbeat.payload.kind).toBe("agentTurn");
+  Object.assign(heartbeat.payload, { toolsAllow: ["read", "continue_work"] });
+  await saveCronStore(storePath, store);
 
   await maybeMigrateHeartbeatCadenceToCron({ cfg: retired, env, shouldRepair: true });
   await maybeRepairLegacyCronStore({

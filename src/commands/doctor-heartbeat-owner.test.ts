@@ -211,11 +211,12 @@ describe("migrated heartbeat owner", () => {
     const owner = { agentId: "main", sessionKey: ROOM, accountId: "default" };
     const after = readRows(f);
     const afterJobs = readJobs(f);
-    expect(afterJobs).toEqual(
-      beforeJobs.map((candidate) =>
-        candidate.id === job.id ? { ...candidate, owner } : candidate,
-      ),
-    );
+    const others = (jobs: CronStoredJob[]) => jobs.filter((candidate) => candidate.id !== job.id);
+    expect(afterJobs.find((candidate) => candidate.id === job.id)).toEqual({
+      ...beforeJobs.find((candidate) => candidate.id === job.id),
+      owner,
+    });
+    expect(others(afterJobs)).toEqual(others(beforeJobs));
     for (const row of after) {
       const previous = before.find((candidate) => candidate.job_id === row.job_id)!;
       if (row.job_id !== job.id) {
