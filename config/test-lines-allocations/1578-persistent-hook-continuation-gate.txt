@@ -1,0 +1,2 @@
+# The cron-runner continuation gate keys on the host, not the session key (#1578): a persistent-hook row in the existing isolated-runner policy table, which a cron-run session-key gate would fail (it gives continue_delegate to a hook session nothing drains). Measured net, not a cap. Pending review; no approval claimed.
+8
