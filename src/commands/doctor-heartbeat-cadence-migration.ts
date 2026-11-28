@@ -471,59 +471,69 @@ export async function hasPendingHeartbeatCadenceMigration(
 }
 
 async function inspectHeartbeatCadenceMigration(cfg: OpenClawConfig, env: NodeJS.ProcessEnv) {
+  const pending = await hasPendingHeartbeatCutover(cfg, env);
+  const owners = await planHeartbeatOwnerBackfill(
+    cfg,
+    resolveCronJobsStorePathFromConfig(cfg, env),
+    env,
+  );
+  return {
+    pending: pending || owners.stamps.length > 0,
+    // Non-room targets are an intentional non-outcome; a room that cannot prove its account is not.
+    ownerRefusals: owners.refusals.filter((refusal) => refusal.room),
+  };
+}
+
+async function hasPendingHeartbeatCutover(
+  cfg: OpenClawConfig,
+  env: NodeJS.ProcessEnv,
+): Promise<boolean> {
   const storePath = resolveCronJobsStorePathFromConfig(cfg, env);
   const configured = new Set(
     resolveLegacyHeartbeatAgents(cfg)
       .filter((agent) => agent.heartbeat !== undefined)
       .map((agent) => agent.agentId),
   );
-  const pending = await withExistingOpenClawStateDatabaseArtifactPreservingReadOnlyAsync(
-    ({ db }) => {
-      const storeKey = resolveCronStoreKeyInDatabase(db, storePath, env);
-      const rows = loadCronRows(db, storeKey);
-      const loaded = decodeDoctorHeartbeatJobRows(rows);
-      const agentIds = new Set([
-        ...listAgentIds(cfg),
-        ...loaded.flatMap((job) => (job.agentId ? [job.agentId] : [])),
-      ]);
-      if (
-        loaded.some(
-          (job) =>
-            job.payload.kind === "heartbeat" ||
-            isHeartbeatTaskCronJob(job) ||
-            isPendingLegacyHeartbeatRetry(job),
-        )
-      ) {
-        return true;
-      }
-      return [...agentIds].some((agentId) => {
-        const receipt = readDefaultProactiveJobReceiptInDatabase(db, storeKey, agentId);
-        return (
-          receipt?.phase === "pending" ||
-          (configured.has(agentId) && !receipt) ||
+  return (
+    (await withExistingOpenClawStateDatabaseArtifactPreservingReadOnlyAsync(
+      ({ db }) => {
+        const storeKey = resolveCronStoreKeyInDatabase(db, storePath, env);
+        const rows = loadCronRows(db, storeKey);
+        const loaded = decodeDoctorHeartbeatJobRows(rows);
+        const agentIds = new Set([
+          ...listAgentIds(cfg),
+          ...loaded.flatMap((job) => (job.agentId ? [job.agentId] : [])),
+        ]);
+        if (
           loaded.some(
             (job) =>
-              job.agentId === agentId &&
-              resolveHeartbeatTaskPromptRepair(
-                job,
-                receipt,
-                rows.find((row) => row.job_id === job.id)?.updated_at,
-              ),
+              job.payload.kind === "heartbeat" ||
+              isHeartbeatTaskCronJob(job) ||
+              isPendingLegacyHeartbeatRetry(job),
           )
-        );
-      });
-    },
-    { env },
+        ) {
+          return true;
+        }
+        return [...agentIds].some((agentId) => {
+          const receipt = readDefaultProactiveJobReceiptInDatabase(db, storeKey, agentId);
+          return (
+            receipt?.phase === "pending" ||
+            (configured.has(agentId) && !receipt) ||
+            loaded.some(
+              (job) =>
+                job.agentId === agentId &&
+                resolveHeartbeatTaskPromptRepair(
+                  job,
+                  receipt,
+                  rows.find((row) => row.job_id === job.id)?.updated_at,
+                ),
+            )
+          );
+        });
+      },
+      { env },
+    )) ?? configured.size > 0
   );
-  if (pending === undefined) {
-    return { pending: configured.size > 0, ownerRefusals: [] };
-  }
-  const owners = await planHeartbeatOwnerBackfill(cfg, storePath, env);
-  return {
-    pending: pending || owners.stamps.length > 0,
-    // Non-room targets are an intentional non-outcome; a room that cannot prove its account is not.
-    ownerRefusals: owners.refusals.filter((refusal) => refusal.room),
-  };
 }
 
 export async function collectHeartbeatCadenceMigrationFindings(
