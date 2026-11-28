@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { listAgentIds } from "../agents/agent-scope-config.js";
+import type { SessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
   createDefaultProactiveJob,
@@ -44,6 +45,11 @@ import {
   resolveDoctorHeartbeatReceiptJob,
   selectDoctorHeartbeatMonitor,
 } from "./doctor-heartbeat-monitors.js";
+import {
+  planHeartbeatOwnerBackfill,
+  proveHeartbeatRoomOwner,
+  readHeartbeatRoomSessionEntry,
+} from "./doctor-heartbeat-owner.js";
 import { recoverDoctorHeartbeatRun } from "./doctor-heartbeat-run-recovery.js";
 import {
   resolveHeartbeatPhaseMs,
@@ -56,6 +62,12 @@ import {
 } from "./doctor-heartbeat-task-identity.js";
 
 const CHECK_ID = "core/doctor/heartbeat-cadence-migration";
+const OWNER_REFUSAL_REQUIREMENT = "heartbeat-owner-unproven";
+
+/** Owner refusals stay visible but give the cutover nothing to repair. */
+export function isHeartbeatOwnerRefusalFinding(finding: HealthFinding): boolean {
+  return finding.requirement === OWNER_REFUSAL_REQUIREMENT;
+}
 
 function isPendingLegacyHeartbeatRetry(job: DoctorCronJob): job is CronJob & {
   payload: Extract<CronJob["payload"], { kind: "systemEvent" }>;
@@ -124,6 +136,7 @@ function convertMonitor(
   schedulerSeed: string,
   env: NodeJS.ProcessEnv,
   enrolled: boolean,
+  roomSession?: SessionEntry,
 ): CronJob {
   const heartbeat = resolveLegacyHeartbeatConfig(cfg, agentId);
   const { model } = resolveHeartbeatAutomationModel(cfg, agentId);
@@ -163,6 +176,12 @@ function convertMonitor(
   };
   job.sessionKey = session.sessionKey;
   job.sessionTarget = heartbeat?.isolatedSession ? "isolated" : `session:${session.sessionKey}`;
+  if (roomSession && !job.owner) {
+    const proof = proveHeartbeatRoomOwner(job, roomSession);
+    if (proof.kind === "owner") {
+      job.owner = proof.owner;
+    }
+  }
   job.wakeMode = "now";
   job.idleOnly = true;
   job.activeHours = migrateActiveHours(heartbeat);
@@ -263,6 +282,19 @@ export async function ensureHeartbeatMonitorJobs(
     return new Map();
   }
   const schedulerSeed = await resolveHeartbeatSchedulerSeed(undefined, { env, readOnly: true });
+  // Only the generated monitor becomes its room's; row-only jobs keep their creator record.
+  const roomSessions = new Map<string, SessionEntry | undefined>();
+  for (const agentId of agentIds) {
+    const heartbeat = resolveLegacyHeartbeatConfig(cfg, agentId);
+    const { sessionKey } = resolveLegacyHeartbeatSessionKey(
+      cfg,
+      agentId,
+      heartbeat,
+      undefined,
+      env,
+    );
+    roomSessions.set(agentId, await readHeartbeatRoomSessionEntry(cfg, agentId, sessionKey, env));
+  }
   const nowMs = Date.now();
   const planned = [...agentIds].toSorted().flatMap((agentId) => {
     const legacyJobs = loaded.filter(
@@ -270,7 +302,16 @@ export async function ensureHeartbeatMonitorJobs(
     );
     const previousMonitor = selectDoctorHeartbeatMonitor(legacyJobs, agentId);
     const enrolled = enrolledAgentIds.has(agentId);
-    const job = convertMonitor(cfg, agentId, previousMonitor, nowMs, schedulerSeed, env, enrolled);
+    const job = convertMonitor(
+      cfg,
+      agentId,
+      previousMonitor,
+      nowMs,
+      schedulerSeed,
+      env,
+      enrolled,
+      roomSessions.get(agentId),
+    );
     // Row-only jobs retain their own schedule and identity; only the generated
     // monitor receives the default receipt and imported agent scratch.
     const conversions = [{ agentId, previous: previousMonitor, job, defaultMonitor: true }];
@@ -363,6 +404,7 @@ export async function ensureHeartbeatMonitorJobs(
             schedulerSeed,
             env,
             enrolledAgentIds.has(item.agentId),
+            item.defaultMonitor ? roomSessions.get(item.agentId) : undefined,
           );
         }
         const sortOrder = current
@@ -425,52 +467,63 @@ export async function hasPendingHeartbeatCadenceMigration(
   cfg: OpenClawConfig,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<boolean> {
+  return (await inspectHeartbeatCadenceMigration(cfg, env)).pending;
+}
+
+async function inspectHeartbeatCadenceMigration(cfg: OpenClawConfig, env: NodeJS.ProcessEnv) {
   const storePath = resolveCronJobsStorePathFromConfig(cfg, env);
   const configured = new Set(
     resolveLegacyHeartbeatAgents(cfg)
       .filter((agent) => agent.heartbeat !== undefined)
       .map((agent) => agent.agentId),
   );
-  return (
-    (await withExistingOpenClawStateDatabaseArtifactPreservingReadOnlyAsync(
-      ({ db }) => {
-        const storeKey = resolveCronStoreKeyInDatabase(db, storePath, env);
-        const rows = loadCronRows(db, storeKey);
-        const loaded = decodeDoctorHeartbeatJobRows(rows);
-        const agentIds = new Set([
-          ...listAgentIds(cfg),
-          ...loaded.flatMap((job) => (job.agentId ? [job.agentId] : [])),
-        ]);
-        if (
+  const pending = await withExistingOpenClawStateDatabaseArtifactPreservingReadOnlyAsync(
+    ({ db }) => {
+      const storeKey = resolveCronStoreKeyInDatabase(db, storePath, env);
+      const rows = loadCronRows(db, storeKey);
+      const loaded = decodeDoctorHeartbeatJobRows(rows);
+      const agentIds = new Set([
+        ...listAgentIds(cfg),
+        ...loaded.flatMap((job) => (job.agentId ? [job.agentId] : [])),
+      ]);
+      if (
+        loaded.some(
+          (job) =>
+            job.payload.kind === "heartbeat" ||
+            isHeartbeatTaskCronJob(job) ||
+            isPendingLegacyHeartbeatRetry(job),
+        )
+      ) {
+        return true;
+      }
+      return [...agentIds].some((agentId) => {
+        const receipt = readDefaultProactiveJobReceiptInDatabase(db, storeKey, agentId);
+        return (
+          receipt?.phase === "pending" ||
+          (configured.has(agentId) && !receipt) ||
           loaded.some(
             (job) =>
-              job.payload.kind === "heartbeat" ||
-              isHeartbeatTaskCronJob(job) ||
-              isPendingLegacyHeartbeatRetry(job),
+              job.agentId === agentId &&
+              resolveHeartbeatTaskPromptRepair(
+                job,
+                receipt,
+                rows.find((row) => row.job_id === job.id)?.updated_at,
+              ),
           )
-        ) {
-          return true;
-        }
-        return [...agentIds].some((agentId) => {
-          const receipt = readDefaultProactiveJobReceiptInDatabase(db, storeKey, agentId);
-          return (
-            receipt?.phase === "pending" ||
-            (configured.has(agentId) && !receipt) ||
-            loaded.some(
-              (job) =>
-                job.agentId === agentId &&
-                resolveHeartbeatTaskPromptRepair(
-                  job,
-                  receipt,
-                  rows.find((row) => row.job_id === job.id)?.updated_at,
-                ),
-            )
-          );
-        });
-      },
-      { env },
-    )) ?? configured.size > 0
+        );
+      });
+    },
+    { env },
   );
+  if (pending === undefined) {
+    return { pending: configured.size > 0, ownerRefusals: [] };
+  }
+  const owners = await planHeartbeatOwnerBackfill(cfg, storePath, env);
+  return {
+    pending: pending || owners.stamps.length > 0,
+    // Non-room targets are an intentional non-outcome; a room that cannot prove its account is not.
+    ownerRefusals: owners.refusals.filter((refusal) => refusal.room),
+  };
 }
 
 export async function collectHeartbeatCadenceMigrationFindings(
@@ -479,18 +532,29 @@ export async function collectHeartbeatCadenceMigrationFindings(
 ): Promise<readonly HealthFinding[]> {
   const storePath = resolveCronJobsStorePathFromConfig(cfg, env);
   try {
-    if (!(await hasPendingHeartbeatCadenceMigration(cfg, env))) {
-      return [];
-    }
+    const { pending, ownerRefusals } = await inspectHeartbeatCadenceMigration(cfg, env);
     return [
-      {
+      ...(pending
+        ? [
+            {
+              checkId: CHECK_ID,
+              severity: "warning" as const,
+              path: storePath,
+              message: "Legacy heartbeat state must become ordinary editable automations.",
+              requirement: "heartbeat-retirement",
+              fixHint: "Run openclaw doctor --fix before starting the Gateway.",
+            },
+          ]
+        : []),
+      ...ownerRefusals.map((refusal) => ({
         checkId: CHECK_ID,
-        severity: "warning",
+        severity: "warning" as const,
         path: storePath,
-        message: "Legacy heartbeat state must become ordinary editable automations.",
-        requirement: "heartbeat-retirement",
-        fixHint: "Run openclaw doctor --fix before starting the Gateway.",
-      },
+        message: refusal.reason,
+        requirement: OWNER_REFUSAL_REQUIREMENT,
+        fixHint:
+          "A Gateway owner or an operator can still change its prompt or tools on the Automations page. Once a message in that room records its account, rerun openclaw doctor --fix.",
+      })),
     ];
   } catch (error) {
     const deferred = error instanceof CronStoreSelectionRequiredError;

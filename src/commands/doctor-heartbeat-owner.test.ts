@@ -1,0 +1,360 @@
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import type { OpenClawConfigWithLegacyRoster } from "../config/legacy.roster.js";
+import { resolveSessionStorePathCore } from "../config/sessions/paths.js";
+import { upsertSessionEntryCore } from "../config/sessions/session-accessor.sqlite-entry.js";
+import type { LegacyHeartbeatConfig } from "../config/types.agent-defaults.js";
+import { resolveCronJobsStorePathFromConfig } from "../cron/store.js";
+import { resolveCronStoreKeyInDatabase } from "../cron/store/paths.js";
+import {
+  loadCronRows,
+  loadedCronStoreFromRows,
+  updateCronRuntimeRow,
+  upsertCronJobRow,
+} from "../cron/store/row-codec.js";
+import type { CronStoredJob } from "../cron/types.js";
+import { closeOpenClawAgentDatabasesForTest } from "../state/openclaw-agent-db.js";
+import { withExistingOpenClawStateDatabaseReadOnly } from "../state/openclaw-state-db-readonly.js";
+import {
+  closeOpenClawStateDatabaseAsync,
+  closeOpenClawStateDatabaseForTest,
+  runOpenClawStateWriteTransaction,
+} from "../state/openclaw-state-db.js";
+import { normalizeSessionDeliveryState } from "../utils/delivery-context.shared.js";
+import {
+  collectHeartbeatCadenceMigrationFindings,
+  ensureHeartbeatMonitorJobs,
+} from "./doctor-heartbeat-cadence-migration.js";
+import {
+  applyHeartbeatOwnerBackfill,
+  planHeartbeatOwnerBackfill,
+} from "./doctor-heartbeat-owner.js";
+import {
+  maybeMigrateHeartbeatCadenceToCron,
+  retireHeartbeatWithDoctor,
+} from "./doctor-heartbeat-retirement.js";
+
+const NOW = Date.parse("2026-11-28T03:00:00Z");
+const ROOM_ID = "1466192485440164011";
+const ROOM = `agent:main:discord:channel:${ROOM_ID}`;
+const tempDirs = useAutoCleanupTempDirTracker((cleanup) =>
+  afterEach(async () => {
+    closeOpenClawAgentDatabasesForTest();
+    await closeOpenClawStateDatabaseAsync();
+    closeOpenClawStateDatabaseForTest();
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    cleanup();
+  }),
+);
+
+beforeEach(() => {
+  vi.spyOn(Date, "now").mockReturnValue(NOW);
+});
+
+function fixture(
+  heartbeat: LegacyHeartbeatConfig = { every: "30m", session: `discord:channel:${ROOM_ID}` },
+) {
+  const root = tempDirs.make("openclaw-heartbeat-owner-");
+  const env = { ...process.env, HOME: path.join(root, "home"), OPENCLAW_STATE_DIR: root };
+  vi.stubEnv("HOME", env.HOME);
+  vi.stubEnv("OPENCLAW_STATE_DIR", root);
+  const cfg: OpenClawConfigWithLegacyRoster = {
+    agents: {
+      defaults: { heartbeat },
+      list: [{ id: "main", workspace: path.join(root, "workspace") }],
+    },
+  };
+  return { env, cfg, storePath: resolveCronJobsStorePathFromConfig(cfg, env) };
+}
+type Fixture = ReturnType<typeof fixture>;
+
+/** What a Discord turn in the room records: its route, context and origin carry ctx.AccountId. */
+async function recordRoomTurn(
+  f: Fixture,
+  delivery: Parameters<typeof normalizeSessionDeliveryState>[0] = {
+    context: { channel: "discord", to: `channel:${ROOM_ID}`, accountId: "default" },
+  },
+  sessionKey = ROOM,
+) {
+  await upsertSessionEntryCore(
+    {
+      agentId: "main",
+      sessionKey,
+      storePath: resolveSessionStorePathCore(undefined, { agentId: "main", env: f.env }),
+      env: f.env,
+    },
+    {
+      sessionId: "room-session",
+      updatedAt: NOW,
+      delivery: normalizeSessionDeliveryState(delivery),
+    },
+  );
+}
+
+/** Every physical column of this store's cron rows. */
+function readRows(f: Fixture) {
+  return withExistingOpenClawStateDatabaseReadOnly(
+    ({ db }) =>
+      db
+        .prepare("SELECT * FROM cron_jobs WHERE store_key = ? ORDER BY job_id")
+        .all(resolveCronStoreKeyInDatabase(db, f.storePath, f.env)) as Array<
+        Record<string, unknown> & { job_id: string; job_json: string }
+      >,
+    { env: f.env },
+  )!;
+}
+
+function readJobs(f: Fixture) {
+  return withExistingOpenClawStateDatabaseReadOnly(
+    ({ db }) =>
+      loadedCronStoreFromRows(
+        loadCronRows(db, resolveCronStoreKeyInDatabase(db, f.storePath, f.env)),
+      ).store.jobs,
+    { env: f.env },
+  )!;
+}
+
+function writeJob(f: Fixture, job: CronStoredJob) {
+  runOpenClawStateWriteTransaction(
+    ({ db }) => {
+      const storeKey = resolveCronStoreKeyInDatabase(db, f.storePath, f.env);
+      const row = loadCronRows(db, storeKey).find((candidate) => candidate.job_id === job.id);
+      upsertCronJobRow(db, storeKey, job, row?.sort_order ?? 1);
+    },
+    { env: f.env },
+  );
+}
+
+/** The six seats' state: cut over before stamping, so the receipt job has no owner. */
+async function migrateWithoutOwner(f: Fixture) {
+  await ensureHeartbeatMonitorJobs(f.cfg, f.storePath, f.env);
+  const retired = await retireHeartbeatWithDoctor(f.cfg, f.env);
+  const [job] = readJobs(f);
+  expect(job?.owner).toBeUndefined();
+  return { retired, job: job! };
+}
+
+describe("migrated heartbeat owner", () => {
+  it.each([
+    ["default", "default"],
+    ["Work", "work"],
+  ])(
+    "records the room turn's identity on a fresh conversion (account %s)",
+    async (raw, accountId) => {
+      const f = fixture();
+      await recordRoomTurn(f, {
+        context: { channel: "discord", to: `channel:${ROOM_ID}`, accountId: raw },
+      });
+
+      const job = (await ensureHeartbeatMonitorJobs(f.cfg, f.storePath, f.env)).get("main");
+
+      expect(job?.sessionTarget).toBe(`session:${ROOM}`);
+      expect(readJobs(f)[0]?.owner).toEqual({ agentId: "main", sessionKey: ROOM, accountId });
+    },
+  );
+
+  it("backfills an already-migrated room heartbeat once and keeps every other field", async () => {
+    const f = fixture();
+    const { retired, job } = await migrateWithoutOwner(f);
+    const foreign: CronStoredJob = {
+      ...structuredClone(job),
+      id: "prince-made",
+      name: "prince-made",
+      owner: { agentId: "main", sessionKey: "agent:main:discord:channel:2", accountId: "work" },
+    };
+    const unrelated: CronStoredJob = {
+      ...structuredClone(job),
+      id: "unrelated",
+      name: "unrelated",
+    };
+    writeJob(f, foreign);
+    writeJob(f, unrelated);
+    // A scheduler run between cutover and this Doctor pass must survive the stamp.
+    const ran = {
+      ...job,
+      state: { ...job.state, lastRunAtMs: NOW - 1_000, lastRunStatus: "ok" as const },
+    };
+    runOpenClawStateWriteTransaction(
+      ({ db }) =>
+        updateCronRuntimeRow(db, resolveCronStoreKeyInDatabase(db, f.storePath, f.env), ran),
+      { env: f.env },
+    );
+    await recordRoomTurn(f);
+    const before = readRows(f);
+    const beforeJobs = readJobs(f);
+
+    expect(await collectHeartbeatCadenceMigrationFindings(retired, f.env)).toEqual([
+      expect.objectContaining({ severity: "warning", requirement: "heartbeat-retirement" }),
+    ]);
+    expect(
+      await maybeMigrateHeartbeatCadenceToCron({ cfg: retired, env: f.env, shouldRepair: true }),
+    ).toMatchObject({ warnings: [] });
+
+    const owner = { agentId: "main", sessionKey: ROOM, accountId: "default" };
+    const after = readRows(f);
+    const afterJobs = readJobs(f);
+    expect(afterJobs).toEqual(
+      beforeJobs.map((candidate) =>
+        candidate.id === job.id ? { ...candidate, owner } : candidate,
+      ),
+    );
+    for (const row of after) {
+      const previous = before.find((candidate) => candidate.job_id === row.job_id)!;
+      if (row.job_id !== job.id) {
+        expect(row).toEqual(previous);
+        continue;
+      }
+      // Owner is part of the definition, so only its codec-derived columns move with it.
+      const {
+        job_json: json,
+        owner_agent_id: ownerAgentId,
+        grant_definition_revision: _revision,
+        grant_definition_generation: _generation,
+        ...rest
+      } = row;
+      const {
+        job_json: previousJson,
+        grant_definition_revision: _previousRevision,
+        grant_definition_generation: _previousGeneration,
+        owner_agent_id: previousOwnerAgentId,
+        ...previousRest
+      } = previous;
+      expect(rest).toEqual(previousRest);
+      expect([previousOwnerAgentId, ownerAgentId]).toEqual([null, "main"]);
+      expect(JSON.parse(json)).toEqual({ ...JSON.parse(previousJson), owner });
+    }
+
+    // Repeat Doctor runs find nothing to do and leave the rows byte-identical.
+    expect(await collectHeartbeatCadenceMigrationFindings(retired, f.env)).toEqual([]);
+    await maybeMigrateHeartbeatCadenceToCron({ cfg: retired, env: f.env, shouldRepair: true });
+    await retireHeartbeatWithDoctor(retired, f.env);
+    expect(readRows(f)).toEqual(after);
+  });
+
+  it("keeps an existing owner record", async () => {
+    const f = fixture();
+    const { retired, job } = await migrateWithoutOwner(f);
+    writeJob(f, { ...job, owner: { agentId: "main" } });
+    await recordRoomTurn(f);
+    const before = readRows(f);
+
+    expect(await collectHeartbeatCadenceMigrationFindings(retired, f.env)).toEqual([]);
+    await retireHeartbeatWithDoctor(retired, f.env);
+    expect(readRows(f)).toEqual(before);
+  });
+
+  it.each([
+    [
+      "no recorded account",
+      { context: { channel: "discord", to: `channel:${ROOM_ID}` } },
+      "has no recorded discord account",
+    ],
+    [
+      "two recorded accounts",
+      {
+        context: { channel: "discord", to: `channel:${ROOM_ID}`, accountId: "work" },
+        origin: { provider: "discord", to: `channel:${ROOM_ID}`, accountId: "default" },
+      },
+      "recorded more than one account",
+    ],
+    [
+      "another channel's route",
+      { context: { channel: "slack", to: "channel:C1", accountId: "default" } },
+      "has no recorded discord account",
+    ],
+    ["no session record", undefined, "has no recorded discord account"],
+  ] as const)("refuses a room with %s and writes nothing", async (_name, delivery, reason) => {
+    const f = fixture();
+    const { retired, job } = await migrateWithoutOwner(f);
+    if (delivery) {
+      await recordRoomTurn(f, delivery);
+    }
+    const before = readRows(f);
+
+    expect(await collectHeartbeatCadenceMigrationFindings(retired, f.env)).toEqual([
+      expect.objectContaining({
+        severity: "warning",
+        requirement: "heartbeat-owner-unproven",
+        message: expect.stringContaining(`Automation ${job.id} runs in room ${ROOM}`),
+      }),
+    ]);
+    expect((await collectHeartbeatCadenceMigrationFindings(retired, f.env))[0]?.message).toContain(
+      reason,
+    );
+    await maybeMigrateHeartbeatCadenceToCron({ cfg: retired, env: f.env, shouldRepair: true });
+    await retireHeartbeatWithDoctor(retired, f.env);
+    expect(readRows(f)).toEqual(before);
+  });
+
+  it.each([
+    ["the agent main session", { every: "30m" }, "session:agent:main:main"],
+    [
+      "an isolated run",
+      { every: "30m", session: `discord:channel:${ROOM_ID}`, isolatedSession: true },
+      "isolated",
+    ],
+    [
+      "a direct conversation",
+      { every: "30m", session: "discord:direct:42" },
+      "session:agent:main:discord:direct:42",
+    ],
+  ] as const)(
+    "leaves a heartbeat in %s ownerless, with its reason",
+    async (_name, heartbeat, target) => {
+      const f = fixture(heartbeat);
+      await recordRoomTurn(f);
+      await recordRoomTurn(f, undefined, "agent:main:discord:direct:42");
+      const { retired, job } = await migrateWithoutOwner(f);
+      expect(job.sessionTarget).toBe(target);
+      const before = readRows(f);
+
+      expect(await planHeartbeatOwnerBackfill(retired, f.storePath, f.env)).toEqual({
+        stamps: [],
+        refusals: [
+          {
+            jobId: job.id,
+            room: false,
+            reason: expect.stringContaining(`runs in ${target}, not one room conversation`),
+          },
+        ],
+      });
+      expect(await collectHeartbeatCadenceMigrationFindings(retired, f.env)).toEqual([]);
+      await retireHeartbeatWithDoctor(retired, f.env);
+      expect(readRows(f)).toEqual(before);
+    },
+  );
+
+  it("refuses a current-conversation target", async () => {
+    const f = fixture();
+    const { retired, job } = await migrateWithoutOwner(f);
+    writeJob(f, { ...job, sessionTarget: "current" });
+    await recordRoomTurn(f);
+
+    expect((await planHeartbeatOwnerBackfill(retired, f.storePath, f.env)).refusals).toEqual([
+      expect.objectContaining({ jobId: job.id, room: false }),
+    ]);
+  });
+
+  it("refuses every stamp when a planned row changed before the write", async () => {
+    const f = fixture();
+    const { retired, job } = await migrateWithoutOwner(f);
+    await recordRoomTurn(f);
+    const plan = await planHeartbeatOwnerBackfill(retired, f.storePath, f.env);
+    expect(plan.stamps).toHaveLength(1);
+    const edited: CronStoredJob = {
+      ...job,
+      sessionTarget: "session:agent:main:discord:channel:2",
+      sessionKey: "agent:main:discord:channel:2",
+    };
+    writeJob(f, edited);
+    const before = readRows(f);
+
+    expect(() => applyHeartbeatOwnerBackfill(plan, f.storePath, f.env)).toThrow(
+      `Automation ${job.id} changed while Doctor was proving its owner; no owner was recorded.`,
+    );
+    expect(readRows(f)).toEqual(before);
+    expect(readJobs(f)[0]?.owner).toBeUndefined();
+  });
+});

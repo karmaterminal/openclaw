@@ -17,6 +17,7 @@ import { runOpenClawStateWriteTransaction } from "../state/openclaw-state-db.js"
 import {
   collectHeartbeatCadenceMigrationFindings,
   ensureHeartbeatMonitorJobs,
+  isHeartbeatOwnerRefusalFinding,
 } from "./doctor-heartbeat-cadence-migration.js";
 import { decodeDoctorHeartbeatJobRows } from "./doctor-heartbeat-jobs.js";
 import {
@@ -29,6 +30,10 @@ import {
 import { resolveHeartbeatAutomationModel } from "./doctor-heartbeat-model.js";
 import { resolveDoctorHeartbeatReceiptJob } from "./doctor-heartbeat-monitors.js";
 import { migrateHeartbeatOutcomes } from "./doctor-heartbeat-outcome-migration.js";
+import {
+  applyHeartbeatOwnerBackfill,
+  planHeartbeatOwnerBackfill,
+} from "./doctor-heartbeat-owner.js";
 import {
   collectHeartbeatScratchMigrationFindings,
   maybeMigrateHeartbeatFilesToScratch,
@@ -61,7 +66,11 @@ export async function retireHeartbeatWithDoctor(
     collectHeartbeatCadenceMigrationFindings(cfg, env),
     collectHeartbeatScratchMigrationFindings(cfg, env),
   ]);
-  if (isDeepStrictEqual(next, cfg) && !cadenceFindings.length && !scratchFindings.length) {
+  if (
+    isDeepStrictEqual(next, cfg) &&
+    cadenceFindings.every(isHeartbeatOwnerRefusalFinding) &&
+    !scratchFindings.length
+  ) {
     await migrateHeartbeatOutcomes(cfg, env);
     return next;
   }
@@ -71,6 +80,12 @@ export async function retireHeartbeatWithDoctor(
     storePath,
     env,
     scratchFindings.flatMap((finding) => (finding.target ? [finding.target] : [])),
+  );
+  // Conversion stamps new monitors; this records owners for monitors converted before stamping.
+  const recordedOwners = applyHeartbeatOwnerBackfill(
+    await planHeartbeatOwnerBackfill(cfg, storePath, env),
+    storePath,
+    env,
   );
   const scratch = await maybeMigrateHeartbeatFilesToScratch({ cfg, env, shouldRepair: true });
   if (scratch.warnings.length) {
@@ -207,6 +222,12 @@ export async function retireHeartbeatWithDoctor(
     note(cutoverWarnings.map(sanitizeDoctorNote).join("\n"), "Doctor warnings");
     onWarnings?.(cutoverWarnings);
   }
+  if (recordedOwners) {
+    note(
+      `Recorded the room conversation as owner of ${recordedOwners} migrated heartbeat automation${recordedOwners === 1 ? "" : "s"}; that conversation can now change its prompt and tools.`,
+      "Doctor changes",
+    );
+  }
   if (repairedTaskPrompts) {
     note(
       `Updated migrated heartbeat task quiet replies: ${repairedTaskPrompts}.`,
@@ -251,7 +272,7 @@ export async function maybeMigrateHeartbeatCadenceToCron(params: {
       collectHeartbeatScratchMigrationFindings(params.cfg, params.env),
     ])
   ).flat();
-  if (!params.shouldRepair || !findings.length) {
+  if (!params.shouldRepair || findings.every(isHeartbeatOwnerRefusalFinding)) {
     return { changes: [], warnings: findings.map((finding) => finding.message) };
   }
   try {
