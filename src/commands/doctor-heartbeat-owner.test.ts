@@ -27,19 +27,35 @@ import {
   ensureHeartbeatMonitorJobs,
 } from "./doctor-heartbeat-cadence-migration.js";
 import {
-  applyHeartbeatOwnerBackfill,
-  planHeartbeatOwnerBackfill,
-} from "./doctor-heartbeat-owner.js";
-import {
   maybeMigrateHeartbeatCadenceToCron,
   retireHeartbeatWithDoctor,
 } from "./doctor-heartbeat-retirement.js";
+
+// A pass-through room read that can land an edit between a plan's row snapshot and its write.
+const roomRead = vi.hoisted(() => ({
+  onRead: undefined as ((sessionKey: string) => void) | undefined,
+}));
+vi.mock("../config/sessions/session-entry-read-runtime.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../config/sessions/session-entry-read-runtime.js")>();
+  return {
+    ...actual,
+    readSessionEntryReadOnlyInWorker: async (
+      ...args: Parameters<typeof actual.readSessionEntryReadOnlyInWorker>
+    ) => {
+      const entry = await actual.readSessionEntryReadOnlyInWorker(...args);
+      roomRead.onRead?.(args[0].sessionKey);
+      return entry;
+    },
+  };
+});
 
 const NOW = Date.parse("2026-11-28T03:00:00Z");
 const ROOM_ID = "1466192485440164011";
 const ROOM = `agent:main:discord:channel:${ROOM_ID}`;
 const tempDirs = useAutoCleanupTempDirTracker((cleanup) =>
   afterEach(async () => {
+    roomRead.onRead = undefined;
     closeOpenClawAgentDatabasesForTest();
     await closeOpenClawStateDatabaseAsync();
     closeOpenClawStateDatabaseForTest();
@@ -310,6 +326,7 @@ describe("migrated heartbeat owner", () => {
       expect(job.sessionTarget).toBe(target);
       const before = readRows(f);
 
+      const { planHeartbeatOwnerBackfill } = await import("./doctor-heartbeat-owner.js");
       expect(await planHeartbeatOwnerBackfill(retired, f.storePath, f.env)).toEqual({
         stamps: [],
         refusals: [
@@ -332,29 +349,30 @@ describe("migrated heartbeat owner", () => {
     writeJob(f, { ...job, sessionTarget: "current" });
     await recordRoomTurn(f);
 
+    const { planHeartbeatOwnerBackfill } = await import("./doctor-heartbeat-owner.js");
     expect((await planHeartbeatOwnerBackfill(retired, f.storePath, f.env)).refusals).toEqual([
       expect.objectContaining({ jobId: job.id, room: false }),
     ]);
   });
 
-  it("refuses every stamp when a planned row changed before the write", async () => {
+  it("refuses the stamp when the heartbeat is edited while Doctor reads its room", async () => {
     const f = fixture();
     const { retired, job } = await migrateWithoutOwner(f);
     await recordRoomTurn(f);
-    const plan = await planHeartbeatOwnerBackfill(retired, f.storePath, f.env);
-    expect(plan.stamps).toHaveLength(1);
-    const edited: CronStoredJob = {
-      ...job,
-      sessionTarget: "session:agent:main:discord:channel:2",
-      sessionKey: "agent:main:discord:channel:2",
+    let edits = 0;
+    // Every room read lands an operator edit, so each plan is stale by its write.
+    roomRead.onRead = (sessionKey) => {
+      if (sessionKey === ROOM && job.payload.kind === "agentTurn") {
+        writeJob(f, { ...job, payload: { ...job.payload, message: `edit ${++edits}` } });
+      }
     };
-    writeJob(f, edited);
-    const before = readRows(f);
 
-    expect(() => applyHeartbeatOwnerBackfill(plan, f.storePath, f.env)).toThrow(
+    await expect(retireHeartbeatWithDoctor(retired, f.env)).rejects.toThrow(
       `Automation ${job.id} changed while Doctor was proving its owner; no owner was recorded.`,
     );
-    expect(readRows(f)).toEqual(before);
-    expect(readJobs(f)[0]?.owner).toBeUndefined();
+    roomRead.onRead = undefined;
+    const [after] = readJobs(f);
+    expect(after?.owner).toBeUndefined();
+    expect(after?.payload).toMatchObject({ message: `edit ${edits}` });
   });
 });
