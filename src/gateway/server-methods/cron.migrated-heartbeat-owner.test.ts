@@ -6,11 +6,16 @@ import {
   maybeMigrateHeartbeatCadenceToCron,
   retireHeartbeatWithDoctor,
 } from "../../commands/doctor-heartbeat-retirement.js";
+import { maybeRepairLegacyCronStore } from "../../commands/doctor/cron/index.js";
 import type { OpenClawConfigWithLegacyRoster } from "../../config/legacy.roster.js";
 import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
 import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.sqlite-entry.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import { loadCronStore, resolveCronJobsStorePathFromConfig } from "../../cron/store.js";
+import {
+  loadCronStore,
+  resolveCronJobsStorePathFromConfig,
+  saveCronStore,
+} from "../../cron/store.js";
 import type { CronJob, CronJobPatch } from "../../cron/types.js";
 import { resetPluginRuntimeStateForTest } from "../../plugins/runtime.js";
 import { closeOpenClawAgentDatabasesForTest } from "../../state/openclaw-agent-db.js";
@@ -197,4 +202,47 @@ it("lets only the prince's own room turn edit his heartbeat once Doctor records 
     toolsAllow: ["read", "write", "continue_work", "continue_delegate"],
   });
   expect(edited.owner).toEqual(backfilled.owner);
+});
+
+it("keeps a tool-capped heartbeat editable by its room after Doctor scopes its authority", async () => {
+  const { env, retired, storePath, jobId } = await migratedSeat();
+  const store = await loadCronStore(storePath);
+  // Seats whose legacy monitor carried a tool cap: unset policy, cap kept, no owner.
+  await saveCronStore(storePath, {
+    ...store,
+    jobs: store.jobs.map((job) =>
+      job.id === jobId && job.payload.kind === "agentTurn"
+        ? { ...job, payload: { ...job.payload, toolsAllow: ["read", "continue_work"] } }
+        : job,
+    ),
+  });
+
+  await maybeMigrateHeartbeatCadenceToCron({ cfg: retired, env, shouldRepair: true });
+  await maybeRepairLegacyCronStore({
+    cfg: retired,
+    options: { repair: true, yes: true },
+    prompter: { confirm: async () => true },
+  });
+  const scoped = (await loadCronStore(storePath)).jobs.find((job) => job.id === jobId)!;
+  expect(scoped).toMatchObject({
+    owner: { agentId: "main", sessionKey: ROOM, accountId: "default" },
+    scheduledToolPolicy: {
+      version: 1,
+      mode: "account",
+      ownerSessionKey: ROOM,
+      ownerAccountId: "default",
+    },
+  });
+
+  const context = serve(storePath);
+  for (const stranger of [roomTurn(ROOM, "work"), roomTurn(OTHER_ROOM, "default")]) {
+    expect((await update(context, jobId, TOOLS, stranger)).ok).toBe(false);
+  }
+  expect(await update(context, jobId, TOOLS, roomTurn(ROOM, "default"))).toEqual({
+    ok: true,
+    message: "",
+  });
+  expect(
+    (await loadCronStore(storePath)).jobs.find((job) => job.id === jobId)?.payload,
+  ).toMatchObject({ toolsAllow: ["read", "write", "continue_work", "continue_delegate"] });
 });

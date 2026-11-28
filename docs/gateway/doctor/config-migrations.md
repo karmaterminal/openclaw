@@ -239,6 +239,22 @@ when their creation and definition-update timestamps still match. Ordinary runs
 preserve that provenance. Edited tasks and older converted tasks without that
 provenance remain unchanged.
 
+The converted heartbeat automation belongs to its room. When it runs in one
+channel or group conversation of its own agent, Doctor records that conversation
+as its owner: the agent, the session key, and the one account the room's session
+recorded for that channel, which is the identity a turn in that room presents.
+Turns in that room can then change its prompt and tools; other conversations and
+accounts still cannot. Doctor also records this owner on receipt-owned heartbeat
+automations converted before owner recording, without changing any other field,
+and only once. It never replaces an existing owner. Heartbeats in the agent main
+session, an isolated run, a direct conversation, or the current conversation stay
+without an owner. A room whose session has no recorded account for that channel,
+or recorded more than one, is reported with its reason instead. If the automation
+changes while Doctor checks its room, Doctor records no owner; rerun
+`openclaw doctor --fix`. Once an owned heartbeat has a tool cap, a later Doctor pass
+moves it to that conversation's scheduled authority, like an automation created
+in that room.
+
 Migrated jobs use standard Automations delivery semantics. Heartbeat-specific
 duplicate suppression and no-route skipping are removed: repeated updates can be
 delivered, and a missing route no longer skips the run before execution. Delivery
